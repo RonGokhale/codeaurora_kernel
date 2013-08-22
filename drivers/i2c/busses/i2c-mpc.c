@@ -64,7 +64,7 @@ struct mpc_i2c {
 	struct i2c_adapter adap;
 	int irq;
 	u32 real_clk;
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 	u8 fdr, dfsrr;
 #endif
 };
@@ -609,7 +609,6 @@ static const struct i2c_algorithm mpc_algo = {
 
 static struct i2c_adapter mpc_ops = {
 	.owner = THIS_MODULE,
-	.name = "MPC adapter",
 	.algo = &mpc_algo,
 	.timeout = HZ,
 };
@@ -623,6 +622,7 @@ static int fsl_i2c_probe(struct platform_device *op)
 	u32 clock = MPC_I2C_CLOCK_LEGACY;
 	int result = 0;
 	int plen;
+	struct resource res;
 
 	match = of_match_device(mpc_i2c_of_match, &op->dev);
 	if (!match)
@@ -682,6 +682,9 @@ static int fsl_i2c_probe(struct platform_device *op)
 	platform_set_drvdata(op, i2c);
 
 	i2c->adap = mpc_ops;
+	of_address_to_resource(op->dev.of_node, 0, &res);
+	scnprintf(i2c->adap.name, sizeof(i2c->adap.name),
+		  "MPC adapter at 0x%llx", (unsigned long long)res.start);
 	i2c_set_adapdata(&i2c->adap, i2c);
 	i2c->adap.dev.parent = &op->dev;
 	i2c->adap.dev.of_node = of_node_get(op->dev.of_node);
@@ -720,7 +723,7 @@ static int fsl_i2c_remove(struct platform_device *op)
 	return 0;
 };
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int mpc_i2c_suspend(struct device *dev)
 {
 	struct mpc_i2c *i2c = dev_get_drvdata(dev);
@@ -741,7 +744,10 @@ static int mpc_i2c_resume(struct device *dev)
 	return 0;
 }
 
-SIMPLE_DEV_PM_OPS(mpc_i2c_pm_ops, mpc_i2c_suspend, mpc_i2c_resume);
+static SIMPLE_DEV_PM_OPS(mpc_i2c_pm_ops, mpc_i2c_suspend, mpc_i2c_resume);
+#define MPC_I2C_PM_OPS	(&mpc_i2c_pm_ops)
+#else
+#define MPC_I2C_PM_OPS	NULL
 #endif
 
 static const struct mpc_i2c_data mpc_i2c_data_512x = {
@@ -788,9 +794,7 @@ static struct platform_driver mpc_i2c_driver = {
 		.owner = THIS_MODULE,
 		.name = DRV_NAME,
 		.of_match_table = mpc_i2c_of_match,
-#ifdef CONFIG_PM
-		.pm = &mpc_i2c_pm_ops,
-#endif
+		.pm = MPC_I2C_PM_OPS,
 	},
 };
 
