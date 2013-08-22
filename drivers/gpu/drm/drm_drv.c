@@ -87,7 +87,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 
 	DRM_IOCTL_DEF(DRM_IOCTL_ADD_CTX, drm_addctx, DRM_AUTH|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_RM_CTX, drm_rmctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
-	DRM_IOCTL_DEF(DRM_IOCTL_MOD_CTX, drm_modctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
+	DRM_IOCTL_DEF(DRM_IOCTL_MOD_CTX, drm_noop, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_GET_CTX, drm_getctx, DRM_AUTH),
 	DRM_IOCTL_DEF(DRM_IOCTL_SWITCH_CTX, drm_switchctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_NEW_CTX, drm_newctx, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
@@ -106,8 +106,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 	DRM_IOCTL_DEF(DRM_IOCTL_INFO_BUFS, drm_infobufs, DRM_AUTH),
 	DRM_IOCTL_DEF(DRM_IOCTL_MAP_BUFS, drm_mapbufs, DRM_AUTH),
 	DRM_IOCTL_DEF(DRM_IOCTL_FREE_BUFS, drm_freebufs, DRM_AUTH),
-	/* The DRM_IOCTL_DMA ioctl should be defined by the driver. */
-	DRM_IOCTL_DEF(DRM_IOCTL_DMA, NULL, DRM_AUTH),
+	DRM_IOCTL_DEF(DRM_IOCTL_DMA, drm_dma_ioctl, DRM_AUTH),
 
 	DRM_IOCTL_DEF(DRM_IOCTL_CONTROL, drm_control, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 
@@ -122,7 +121,7 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 	DRM_IOCTL_DEF(DRM_IOCTL_AGP_UNBIND, drm_agp_unbind_ioctl, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 #endif
 
-	DRM_IOCTL_DEF(DRM_IOCTL_SG_ALLOC, drm_sg_alloc_ioctl, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
+	DRM_IOCTL_DEF(DRM_IOCTL_SG_ALLOC, drm_sg_alloc, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF(DRM_IOCTL_SG_FREE, drm_sg_free, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 
 	DRM_IOCTL_DEF(DRM_IOCTL_WAIT_VBLANK, drm_wait_vblank, DRM_UNLOCKED),
@@ -172,6 +171,31 @@ static const struct drm_ioctl_desc drm_ioctls[] = {
 #define DRM_CORE_IOCTL_COUNT	ARRAY_SIZE( drm_ioctls )
 
 /**
+ * drm_legacy_dev_reinit
+ *
+ * Reinitializes a legacy/ums drm device in it's lastclose function.
+ */
+static void drm_legacy_dev_reinit(struct drm_device *dev)
+{
+	int i;
+
+	if (drm_core_check_feature(dev, DRIVER_MODESET))
+		return;
+
+	atomic_set(&dev->ioctl_count, 0);
+	atomic_set(&dev->vma_count, 0);
+
+	for (i = 0; i < ARRAY_SIZE(dev->counts); i++)
+		atomic_set(&dev->counts[i], 0);
+
+	dev->sigdata.lock = NULL;
+
+	dev->context_flag = 0;
+	dev->last_context = 0;
+	dev->if_version = 0;
+}
+
+/**
  * Take down the DRM device.
  *
  * \param dev DRM device structure.
@@ -195,32 +219,9 @@ int drm_lastclose(struct drm_device * dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	/* Clear AGP information */
-	if (drm_core_has_AGP(dev) && dev->agp &&
-			!drm_core_check_feature(dev, DRIVER_MODESET)) {
-		struct drm_agp_mem *entry, *tempe;
+	drm_agp_clear(dev);
 
-		/* Remove AGP resources, but leave dev->agp
-		   intact until drv_cleanup is called. */
-		list_for_each_entry_safe(entry, tempe, &dev->agp->memory, head) {
-			if (entry->bound)
-				drm_unbind_agp(entry->memory);
-			drm_free_agp(entry->memory, entry->pages);
-			kfree(entry);
-		}
-		INIT_LIST_HEAD(&dev->agp->memory);
-
-		if (dev->agp->acquired)
-			drm_agp_release(dev);
-
-		dev->agp->acquired = 0;
-		dev->agp->enabled = 0;
-	}
-	if (drm_core_check_feature(dev, DRIVER_SG) && dev->sg &&
-	    !drm_core_check_feature(dev, DRIVER_MODESET)) {
-		drm_sg_cleanup(dev->sg);
-		dev->sg = NULL;
-	}
+	drm_legacy_sg_cleanup(dev);
 
 	/* Clear vma list (only built for debugging) */
 	list_for_each_entry_safe(vma, vma_temp, &dev->vmalist, head) {
@@ -228,12 +229,12 @@ int drm_lastclose(struct drm_device * dev)
 		kfree(vma);
 	}
 
-	if (drm_core_check_feature(dev, DRIVER_HAVE_DMA) &&
-	    !drm_core_check_feature(dev, DRIVER_MODESET))
-		drm_dma_takedown(dev);
+	drm_legacy_dma_takedown(dev);
 
 	dev->dev_mapping = NULL;
 	mutex_unlock(&dev->struct_mutex);
+
+	drm_legacy_dev_reinit(dev);
 
 	DRM_DEBUG("lastclose completed\n");
 	return 0;
@@ -251,6 +252,7 @@ static int __init drm_core_init(void)
 	int ret = -ENOMEM;
 
 	drm_global_init();
+	drm_connector_ida_init();
 	idr_init(&drm_minors_idr);
 
 	if (register_chrdev(DRM_MAJOR, "drm", &drm_stub_fops))
@@ -261,13 +263,6 @@ static int __init drm_core_init(void)
 		printk(KERN_ERR "DRM: Error creating drm class.\n");
 		ret = PTR_ERR(drm_class);
 		goto err_p2;
-	}
-
-	drm_proc_root = proc_mkdir("dri", NULL);
-	if (!drm_proc_root) {
-		DRM_ERROR("Cannot create /proc/dri\n");
-		ret = -1;
-		goto err_p3;
 	}
 
 	drm_debugfs_root = debugfs_create_dir("dri", NULL);
@@ -292,12 +287,12 @@ err_p1:
 
 static void __exit drm_core_exit(void)
 {
-	remove_proc_entry("dri", NULL);
 	debugfs_remove(drm_debugfs_root);
 	drm_sysfs_destroy();
 
 	unregister_chrdev(DRM_MAJOR, "drm");
 
+	drm_connector_ida_destroy();
 	idr_destroy(&drm_minors_idr);
 }
 
@@ -420,9 +415,6 @@ long drm_ioctl(struct file *filp,
 
 	/* Do not trust userspace, use our own definition */
 	func = ioctl->func;
-	/* is there a local override? */
-	if ((nr == DRM_IOCTL_NR(DRM_IOCTL_DMA)) && dev->driver->dma_ioctl)
-		func = dev->driver->dma_ioctl;
 
 	if (!func) {
 		DRM_DEBUG("no function\n");
@@ -485,19 +477,4 @@ long drm_ioctl(struct file *filp,
 		DRM_DEBUG("ret = %d\n", retcode);
 	return retcode;
 }
-
 EXPORT_SYMBOL(drm_ioctl);
-
-struct drm_local_map *drm_getsarea(struct drm_device *dev)
-{
-	struct drm_map_list *entry;
-
-	list_for_each_entry(entry, &dev->maplist, head) {
-		if (entry->map && entry->map->type == _DRM_SHM &&
-		    (entry->map->flags & _DRM_CONTAINS_LOCK)) {
-			return entry->map;
-		}
-	}
-	return NULL;
-}
-EXPORT_SYMBOL(drm_getsarea);

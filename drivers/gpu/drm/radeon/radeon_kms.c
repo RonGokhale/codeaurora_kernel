@@ -449,19 +449,6 @@ int radeon_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
  * Outdated mess for old drm with Xorg being in charge (void function now).
  */
 /**
- * radeon_driver_firstopen_kms - drm callback for first open
- *
- * @dev: drm dev pointer
- *
- * Nothing to be done for KMS (all asics).
- * Returns 0 on success.
- */
-int radeon_driver_firstopen_kms(struct drm_device *dev)
-{
-	return 0;
-}
-
-/**
  * radeon_driver_firstopen_kms - drm callback for last close
  *
  * @dev: drm dev pointer
@@ -683,16 +670,6 @@ int radeon_get_vblank_timestamp_kms(struct drm_device *dev, int crtc,
 						     drmcrtc);
 }
 
-/*
- * IOCTL.
- */
-int radeon_dma_ioctl_kms(struct drm_device *dev, void *data,
-			 struct drm_file *file_priv)
-{
-	/* Not valid in KMS. */
-	return -EINVAL;
-}
-
 #define KMS_INVALID_IOCTL(name)						\
 int name(struct drm_device *dev, void *data, struct drm_file *file_priv)\
 {									\
@@ -732,7 +709,7 @@ KMS_INVALID_IOCTL(radeon_surface_alloc_kms)
 KMS_INVALID_IOCTL(radeon_surface_free_kms)
 
 
-struct drm_ioctl_desc radeon_ioctls_kms[] = {
+const struct drm_ioctl_desc radeon_ioctls_kms[] = {
 	DRM_IOCTL_DEF_DRV(RADEON_CP_INIT, radeon_cp_init_kms, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF_DRV(RADEON_CP_START, radeon_cp_start_kms, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
 	DRM_IOCTL_DEF_DRV(RADEON_CP_STOP, radeon_cp_stop_kms, DRM_AUTH|DRM_MASTER|DRM_ROOT_ONLY),
