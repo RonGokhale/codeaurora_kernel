@@ -565,7 +565,7 @@ static int truncate_nodes(struct dnode_of_data *dn, unsigned int nofs,
 		return PTR_ERR(page);
 	}
 
-	rn = (struct f2fs_node *)page_address(page);
+	rn = F2FS_NODE(page);
 	if (depth < 3) {
 		for (i = ofs; i < NIDS_PER_BLOCK; i++, freed++) {
 			child_nid = le32_to_cpu(rn->in.nid[i]);
@@ -698,7 +698,7 @@ restart:
 	set_new_dnode(&dn, inode, page, NULL, 0);
 	unlock_page(page);
 
-	rn = page_address(page);
+	rn = F2FS_NODE(page);
 	switch (level) {
 	case 0:
 	case 1:
@@ -833,29 +833,32 @@ struct page *new_node_page(struct dnode_of_data *dn,
 	if (!page)
 		return ERR_PTR(-ENOMEM);
 
-	get_node_info(sbi, dn->nid, &old_ni);
+	if (!inc_valid_node_count(sbi, dn->inode, 1)) {
+		err = -ENOSPC;
+		goto fail;
+	}
 
-	SetPageUptodate(page);
-	fill_node_footer(page, dn->nid, dn->inode->i_ino, ofs, true);
+	get_node_info(sbi, dn->nid, &old_ni);
 
 	/* Reinitialize old_ni with new node page */
 	BUG_ON(old_ni.blk_addr != NULL_ADDR);
 	new_ni = old_ni;
 	new_ni.ino = dn->inode->i_ino;
-
-	if (!inc_valid_node_count(sbi, dn->inode, 1)) {
-		err = -ENOSPC;
-		goto fail;
-	}
 	set_node_addr(sbi, &new_ni, NEW_ADDR);
+
+	fill_node_footer(page, dn->nid, dn->inode->i_ino, ofs, true);
 	set_cold_node(dn->inode, page);
+	SetPageUptodate(page);
+	set_page_dirty(page);
+
+	if (ofs == XATTR_NODE_OFFSET)
+		F2FS_I(dn->inode)->i_xattr_nid = dn->nid;
 
 	dn->node_page = page;
 	if (ipage)
 		update_inode(dn->inode, ipage);
 	else
 		sync_inode_page(dn);
-	set_page_dirty(page);
 	if (ofs == 0)
 		inc_valid_inode_count(sbi);
 
@@ -916,7 +919,6 @@ void ra_node_page(struct f2fs_sb_info *sbi, nid_t nid)
 		f2fs_put_page(apage, 0);
 	else if (err == LOCKED_PAGE)
 		f2fs_put_page(apage, 1);
-	return;
 }
 
 struct page *get_node_page(struct f2fs_sb_info *sbi, pgoff_t nid)
@@ -1484,8 +1486,8 @@ int recover_inode_page(struct f2fs_sb_info *sbi, struct page *page)
 	SetPageUptodate(ipage);
 	fill_node_footer(ipage, ino, ino, 0, true);
 
-	src = (struct f2fs_node *)page_address(page);
-	dst = (struct f2fs_node *)page_address(ipage);
+	src = F2FS_NODE(page);
+	dst = F2FS_NODE(ipage);
 
 	memcpy(dst, src, (unsigned long)&src->i.i_ext - (unsigned long)&src->i);
 	dst->i.i_size = 0;
@@ -1515,8 +1517,8 @@ int restore_node_summary(struct f2fs_sb_info *sbi,
 
 	/* alloc temporal page for read node */
 	page = alloc_page(GFP_NOFS | __GFP_ZERO);
-	if (IS_ERR(page))
-		return PTR_ERR(page);
+	if (!page)
+		return -ENOMEM;
 	lock_page(page);
 
 	/* scan the node segment */
@@ -1535,7 +1537,7 @@ int restore_node_summary(struct f2fs_sb_info *sbi,
 			goto out;
 
 		lock_page(page);
-		rn = (struct f2fs_node *)page_address(page);
+		rn = F2FS_NODE(page);
 		sum_entry->nid = rn->footer.nid;
 		sum_entry->version = 0;
 		sum_entry->ofs_in_node = 0;
