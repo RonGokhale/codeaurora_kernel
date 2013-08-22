@@ -43,6 +43,7 @@
 #define	OPCODE_FAST_READ	0x0b	/* Read data bytes (high frequency) */
 #define	OPCODE_PP		0x02	/* Page program (up to 256 bytes) */
 #define	OPCODE_BE_4K		0x20	/* Erase 4KiB block */
+#define	OPCODE_BE_4K_PMC	0xd7	/* Erase 4KiB block on PMC chips */
 #define	OPCODE_BE_32K		0x52	/* Erase 32KiB block */
 #define	OPCODE_CHIP_ERASE	0xc7	/* Erase whole flash chip */
 #define	OPCODE_SE		0xd8	/* Sector erase (usually 64KiB) */
@@ -169,6 +170,7 @@ static inline int set_4byte(struct m25p *flash, u32 jedec_id, int enable)
 {
 	switch (JEDEC_MFR(jedec_id)) {
 	case CFI_MFR_MACRONIX:
+	case CFI_MFR_ST: /* Micron, actually */
 	case 0xEF /* winbond */:
 		flash->command[0] = enable ? OPCODE_EN4B : OPCODE_EX4B;
 		return spi_write(flash->spi, flash->command, 1);
@@ -690,6 +692,8 @@ struct flash_info {
 #define	SECT_4K		0x01		/* OPCODE_BE_4K works uniformly */
 #define	M25P_NO_ERASE	0x02		/* No erase command needed */
 #define	SST_WRITE	0x04		/* use SST byte programming */
+#define	M25P_NO_FR	0x08		/* Can't do fastread */
+#define	SECT_4K_PMC	0x10		/* OPCODE_BE_4K_PMC works uniformly */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -702,13 +706,13 @@ struct flash_info {
 		.flags = (_flags),					\
 	})
 
-#define CAT25_INFO(_sector_size, _n_sectors, _page_size, _addr_width)	\
+#define CAT25_INFO(_sector_size, _n_sectors, _page_size, _addr_width, _flags)	\
 	((kernel_ulong_t)&(struct flash_info) {				\
 		.sector_size = (_sector_size),				\
 		.n_sectors = (_n_sectors),				\
 		.page_size = (_page_size),				\
 		.addr_width = (_addr_width),				\
-		.flags = M25P_NO_ERASE,					\
+		.flags = (_flags),					\
 	})
 
 /* NOTE: double check command sets and memory organization when you add
@@ -740,7 +744,8 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "en25qh256", INFO(0x1c7019, 0, 64 * 1024, 512, 0) },
 
 	/* Everspin */
-	{ "mr25h256", CAT25_INFO(  32 * 1024, 1, 256, 2) },
+	{ "mr25h256", CAT25_INFO(  32 * 1024, 1, 256, 2, M25P_NO_ERASE | M25P_NO_FR) },
+	{ "mr25h10", CAT25_INFO(128 * 1024, 1, 256, 3, M25P_NO_ERASE | M25P_NO_FR) },
 
 	/* GigaDevice */
 	{ "gd25q32", INFO(0xc84016, 0, 64 * 1024,  64, SECT_4K) },
@@ -769,6 +774,11 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, 0) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, 0) },
 	{ "n25q256a", INFO(0x20ba19, 0, 64 * 1024, 512, SECT_4K) },
+
+	/* PMC */
+	{ "pm25lv512", INFO(0, 0, 32 * 1024, 2, SECT_4K_PMC) },
+	{ "pm25lv010", INFO(0, 0, 32 * 1024, 4, SECT_4K_PMC) },
+	{ "pm25lq032", INFO(0x7f9d46, 0, 64 * 1024,  64, SECT_4K) },
 
 	/* Spansion -- single (large) sector size only, at least
 	 * for the chips listed here (without boot sectors).
@@ -855,11 +865,11 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "w25q256", INFO(0xef4019, 0, 64 * 1024, 512, SECT_4K) },
 
 	/* Catalyst / On Semiconductor -- non-JEDEC */
-	{ "cat25c11", CAT25_INFO(  16, 8, 16, 1) },
-	{ "cat25c03", CAT25_INFO(  32, 8, 16, 2) },
-	{ "cat25c09", CAT25_INFO( 128, 8, 32, 2) },
-	{ "cat25c17", CAT25_INFO( 256, 8, 32, 2) },
-	{ "cat25128", CAT25_INFO(2048, 8, 64, 2) },
+	{ "cat25c11", CAT25_INFO(  16, 8, 16, 1, M25P_NO_ERASE | M25P_NO_FR) },
+	{ "cat25c03", CAT25_INFO(  32, 8, 16, 2, M25P_NO_ERASE | M25P_NO_FR) },
+	{ "cat25c09", CAT25_INFO( 128, 8, 32, 2, M25P_NO_ERASE | M25P_NO_FR) },
+	{ "cat25c17", CAT25_INFO( 256, 8, 32, 2, M25P_NO_ERASE | M25P_NO_FR) },
+	{ "cat25128", CAT25_INFO(2048, 8, 64, 2, M25P_NO_ERASE | M25P_NO_FR) },
 	{ },
 };
 MODULE_DEVICE_TABLE(spi, m25p_ids);
@@ -929,7 +939,7 @@ static int m25p_probe(struct spi_device *spi)
 	 * a chip ID, try the JEDEC id commands; they'll work for most
 	 * newer chips, even if we don't recognize the particular chip.
 	 */
-	data = spi->dev.platform_data;
+	data = dev_get_platdata(&spi->dev);
 	if (data && data->type) {
 		const struct spi_device_id *plat_id;
 
@@ -1023,6 +1033,9 @@ static int m25p_probe(struct spi_device *spi)
 	if (info->flags & SECT_4K) {
 		flash->erase_opcode = OPCODE_BE_4K;
 		flash->mtd.erasesize = 4096;
+	} else if (info->flags & SECT_4K_PMC) {
+		flash->erase_opcode = OPCODE_BE_4K_PMC;
+		flash->mtd.erasesize = 4096;
 	} else {
 		flash->erase_opcode = OPCODE_SE;
 		flash->mtd.erasesize = info->sector_size;
@@ -1037,14 +1050,14 @@ static int m25p_probe(struct spi_device *spi)
 	flash->mtd.writebufsize = flash->page_size;
 
 	flash->fast_read = false;
-#ifdef CONFIG_OF
 	if (np && of_property_read_bool(np, "m25p,fast-read"))
 		flash->fast_read = true;
-#endif
 
 #ifdef CONFIG_M25PXX_USE_FAST_READ
 	flash->fast_read = true;
 #endif
+	if (info->flags & M25P_NO_FR)
+		flash->fast_read = false;
 
 	/* Default commands */
 	if (flash->fast_read)
