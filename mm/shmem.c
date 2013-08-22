@@ -1205,7 +1205,7 @@ repeat:
 						gfp & GFP_RECLAIM_MASK);
 		if (error)
 			goto decused;
-		error = radix_tree_preload(gfp & GFP_RECLAIM_MASK);
+		error = radix_tree_maybe_preload(gfp & GFP_RECLAIM_MASK);
 		if (!error) {
 			error = shmem_add_to_page_cache(page, mapping, index,
 							gfp, NULL);
@@ -1555,11 +1555,12 @@ static ssize_t shmem_file_read_iter(struct kiocb *iocb,
 		 * Ok, we have the page, and it's up-to-date, so
 		 * now we can copy it to user space...
 		 *
-		 * The actor routine returns how many bytes were actually used..
+		 * The file_read_iter_actor routine returns how many bytes
+		 * were actually used..
 		 * NOTE! This may not be the same as how much of a user buffer
 		 * we filled up (we may be padding etc), so we can only update
-		 * "pos" here (the actor routine has to update the user buffer
-		 * pointers and the remaining count).
+		 * "pos" here (file_read_iter_actor has to update the user
+		 * buffer pointers and the remaining count).
 		 */
 		ret = file_read_iter_actor(&desc, page, offset, nr);
 		offset += ret;
@@ -2793,6 +2794,10 @@ static struct file_system_type shmem_fs_type = {
 int __init shmem_init(void)
 {
 	int error;
+
+	/* If rootfs called this, don't re-init */
+	if (shmem_inode_cachep)
+		return 0;
 
 	error = bdi_init(&shmem_backing_dev_info);
 	if (error)

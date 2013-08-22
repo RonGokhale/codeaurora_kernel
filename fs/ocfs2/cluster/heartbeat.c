@@ -620,11 +620,9 @@ static void o2hb_fire_callbacks(struct o2hb_callback *hbcall,
 				struct o2nm_node *node,
 				int idx)
 {
-	struct list_head *iter;
 	struct o2hb_callback_func *f;
 
-	list_for_each(iter, &hbcall->list) {
-		f = list_entry(iter, struct o2hb_callback_func, hc_item);
+	list_for_each_entry(f, &hbcall->list, hc_item) {
 		mlog(ML_HEARTBEAT, "calling funcs %p\n", f);
 		(f->hc_func)(node, idx, f->hc_data);
 	}
@@ -2494,8 +2492,7 @@ unlock:
 int o2hb_register_callback(const char *region_uuid,
 			   struct o2hb_callback_func *hc)
 {
-	struct o2hb_callback_func *tmp;
-	struct list_head *iter;
+	struct o2hb_callback_func *f;
 	struct o2hb_callback *hbcall;
 	int ret;
 
@@ -2518,10 +2515,9 @@ int o2hb_register_callback(const char *region_uuid,
 
 	down_write(&o2hb_callback_sem);
 
-	list_for_each(iter, &hbcall->list) {
-		tmp = list_entry(iter, struct o2hb_callback_func, hc_item);
-		if (hc->hc_priority < tmp->hc_priority) {
-			list_add_tail(&hc->hc_item, iter);
+	list_for_each_entry(f, &hbcall->list, hc_item) {
+		if (hc->hc_priority < f->hc_priority) {
+			list_add_tail(&hc->hc_item, &f->hc_item);
 			break;
 		}
 	}
