@@ -100,7 +100,7 @@
 
 
 /* A copy of the ASID from the PID reg is kept in asid_cache */
-unsigned int asid_cache = MM_CTXT_FIRST_CYCLE;
+DEFINE_PER_CPU(unsigned int, asid_cache) = MM_CTXT_FIRST_CYCLE;
 
 /*
  * Utility Routine to erase a J-TLB entry
@@ -275,6 +275,7 @@ noinline void local_flush_tlb_mm(struct mm_struct *mm)
 void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 			   unsigned long end)
 {
+	const unsigned int cpu = smp_processor_id();
 	unsigned long flags;
 
 	/* If range @start to @end is more than 32 TLB entries deep,
@@ -298,9 +299,9 @@ void local_flush_tlb_range(struct vm_area_struct *vma, unsigned long start,
 
 	local_irq_save(flags);
 
-	if (vma->vm_mm->context.asid != MM_CTXT_NO_ASID) {
+	if (asid_mm(vma->vm_mm, cpu) != MM_CTXT_NO_ASID) {
 		while (start < end) {
-			tlb_entry_erase(start | hw_pid(vma->vm_mm));
+			tlb_entry_erase(start | hw_pid(vma->vm_mm, cpu));
 			start += PAGE_SIZE;
 		}
 	}
@@ -347,6 +348,7 @@ void local_flush_tlb_kernel_range(unsigned long start, unsigned long end)
 
 void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long page)
 {
+	const unsigned int cpu = smp_processor_id();
 	unsigned long flags;
 
 	/* Note that it is critical that interrupts are DISABLED between
@@ -354,8 +356,8 @@ void local_flush_tlb_page(struct vm_area_struct *vma, unsigned long page)
 	 */
 	local_irq_save(flags);
 
-	if (vma->vm_mm->context.asid != MM_CTXT_NO_ASID) {
-		tlb_entry_erase((page & PAGE_MASK) | hw_pid(vma->vm_mm));
+	if (asid_mm(vma->vm_mm, cpu) != MM_CTXT_NO_ASID) {
+		tlb_entry_erase((page & PAGE_MASK) | hw_pid(vma->vm_mm, cpu));
 		utlb_invalidate();
 	}
 
