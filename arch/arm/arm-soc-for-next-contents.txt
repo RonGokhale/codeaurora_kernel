@@ -78,6 +78,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-i2c-for-arm-soc
 	at91/dt
 		git://github.com/at91linux/linux-at91.git tags/at91-dt
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/bcousson/linux-omap-dt.git for_3.12/dts
 
 next/soc
 	vexpress/mcpm

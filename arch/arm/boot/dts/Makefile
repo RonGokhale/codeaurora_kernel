@@ -162,7 +162,9 @@ dtb-$(CONFIG_ARCH_OMAP2PLUS) += omap2420-h4.dtb \
 	omap3-devkit8000.dtb \
 	omap3-beagle-xm.dtb \
 	omap3-evm.dtb \
+	omap3-n900.dtb \
 	omap3-tobi.dtb \
+	omap3-gta04.dtb \
 	omap3-igep0020.dtb \
 	omap3-igep0030.dtb \
 	omap4-panda.dtb \
@@ -177,7 +179,8 @@ dtb-$(CONFIG_ARCH_OMAP2PLUS) += omap2420-h4.dtb \
 	am335x-bone.dtb \
 	am3517-evm.dtb \
 	am3517_mt_ventoux.dtb \
-	am43x-epos-evm.dtb
+	am43x-epos-evm.dtb \
+	dra7-evm.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += orion5x-lacie-ethernet-disk-mini-v2.dtb
 dtb-$(CONFIG_ARCH_PRIMA2) += prima2-evb.dtb
 dtb-$(CONFIG_ARCH_U8500) += ste-snowball.dtb \
