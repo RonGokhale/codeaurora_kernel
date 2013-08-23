@@ -118,6 +118,8 @@ next/soc
 	imx/dt
 		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/imx-dt-3.12
 		# khilman: included into next/soc due to dependency on imx/soc
+	mxs/soc
+		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-soc-3.12
 
 next/boards
 	renesas/backlight
