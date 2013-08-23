@@ -303,8 +303,8 @@ struct qpnp_chg_chip {
 	unsigned int			maxinput_dc_ma;
 	unsigned int			hot_batt_p;
 	unsigned int			cold_batt_p;
-	unsigned int			warm_bat_decidegc;
-	unsigned int			cool_bat_decidegc;
+	int				warm_bat_decidegc;
+	int				cool_bat_decidegc;
 	unsigned int			safe_current;
 	unsigned int			revision;
 	unsigned int			type;
@@ -2411,7 +2411,8 @@ qpnp_chg_request_irqs(struct qpnp_chg_chip *chip)
 			}
 			rc = devm_request_irq(chip->dev, chip->batt_pres.irq,
 				qpnp_chg_bat_if_batt_pres_irq_handler,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+				| IRQF_SHARED | IRQF_ONESHOT,
 				"batt-pres", chip);
 			if (rc < 0) {
 				pr_err("Can't request %d batt-pres irq: %d\n",
