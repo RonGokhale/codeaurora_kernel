@@ -33,11 +33,21 @@ struct sh_dmae_slave_config {
 	char		mid_rid;
 };
 
+/**
+ * struct sh_dmae_channel - DMAC channel platform data
+ * @offset:		register offset within the main IOMEM resource
+ * @dmars:		channel DMARS register offset
+ * @chclr_offset:	channel CHCLR register offset
+ * @dmars_bit:		channel DMARS field offset within the register
+ * @chclr_bit:		> 0: bit position, to be set to reset the channel
+ *			< 0: CHCLR has to be cleared to clear channel's buffers
+ */
 struct sh_dmae_channel {
 	unsigned int	offset;
 	unsigned int	dmars;
-	unsigned int	dmars_bit;
 	unsigned int	chclr_offset;
+	unsigned char	dmars_bit;
+	signed char	chclr_bit;
 };
 
 struct sh_dmae_pdata {
@@ -62,39 +72,18 @@ struct sh_dmae_pdata {
 	unsigned int slave_only:1;
 };
 
-/* DMA register */
-#define SAR	0x00
-#define DAR	0x04
-#define TCR	0x08
-#define CHCR	0x0C
-#define DMAOR	0x40
-
-#define TEND	0x18 /* USB-DMAC */
-
 /* DMAOR definitions */
 #define DMAOR_AE	0x00000004
 #define DMAOR_NMIF	0x00000002
 #define DMAOR_DME	0x00000001
 
 /* Definitions for the SuperH DMAC */
-#define REQ_L	0x00000000
-#define REQ_E	0x00080000
-#define RACK_H	0x00000000
-#define RACK_L	0x00040000
-#define ACK_R	0x00000000
-#define ACK_W	0x00020000
-#define ACK_H	0x00000000
-#define ACK_L	0x00010000
 #define DM_INC	0x00004000
 #define DM_DEC	0x00008000
 #define DM_FIX	0x0000c000
 #define SM_INC	0x00001000
 #define SM_DEC	0x00002000
 #define SM_FIX	0x00003000
-#define RS_IN	0x00000200
-#define RS_OUT	0x00000300
-#define TS_BLK	0x00000040
-#define TM_BUR	0x00000020
 #define CHCR_DE	0x00000001
 #define CHCR_TE	0x00000002
 #define CHCR_IE	0x00000004
