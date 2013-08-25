@@ -172,6 +172,7 @@ enum {
 	ATA_DFLAG_DUBIOUS_XFER	= (1 << 16), /* data transfer not verified */
 	ATA_DFLAG_NO_UNLOAD	= (1 << 17), /* device doesn't support unload */
 	ATA_DFLAG_UNLOCK_HPA	= (1 << 18), /* unlock HPA */
+	ATA_DFLAG_NCQ_SEND_RECV = (1 << 19), /* device supports NCQ SEND and RECV */
 	ATA_DFLAG_INIT_MASK	= (1 << 24) - 1,
 
 	ATA_DFLAG_DETACH	= (1 << 24),
@@ -223,6 +224,7 @@ enum {
 	ATA_FLAG_ACPI_SATA	= (1 << 17), /* need native SATA ACPI layout */
 	ATA_FLAG_AN		= (1 << 18), /* controller supports AN */
 	ATA_FLAG_PMP		= (1 << 19), /* controller supports PMP */
+	ATA_FLAG_FPDMA_AUX	= (1 << 20), /* controller supports H2DFIS aux field */
 	ATA_FLAG_EM		= (1 << 21), /* driver supports enclosure
 					      * management */
 	ATA_FLAG_SW_ACTIVITY	= (1 << 22), /* driver supports sw activity
@@ -555,6 +557,10 @@ struct ata_taskfile {
 	u8			device;
 
 	u8			command;	/* IO operation */
+
+	u32			auxiliary;	/* auxiliary field */
+						/* from SATA 3.1 and */
+						/* ATA-8 ACS-3 */
 };
 
 #ifdef CONFIG_ATA_SFF
@@ -698,6 +704,9 @@ struct ata_device {
 
 	/* DEVSLP Timing Variables from Identify Device Data Log */
 	u8			devslp_timing[ATA_LOG_DEVSLP_SIZE];
+
+	/* NCQ send and receive log subcommand support */
+	u8			ncq_send_recv_cmds[ATA_LOG_NCQ_SEND_RECV_SIZE];
 
 	/* error history */
 	int			spdn_cnt;
@@ -1595,6 +1604,13 @@ static inline int ata_ncq_enabled(struct ata_device *dev)
 {
 	return (dev->flags & (ATA_DFLAG_PIO | ATA_DFLAG_NCQ_OFF |
 			      ATA_DFLAG_NCQ)) == ATA_DFLAG_NCQ;
+}
+
+static inline bool ata_fpdma_dsm_supported(struct ata_device *dev)
+{
+	return (dev->flags & ATA_DFLAG_NCQ_SEND_RECV) &&
+		(dev->ncq_send_recv_cmds[ATA_LOG_NCQ_SEND_RECV_DSM_OFFSET] &
+		 ATA_LOG_NCQ_SEND_RECV_DSM_TRIM);
 }
 
 static inline void ata_qc_set_polling(struct ata_queued_cmd *qc)
