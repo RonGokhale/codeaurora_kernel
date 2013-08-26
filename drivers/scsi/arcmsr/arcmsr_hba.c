@@ -2461,12 +2461,12 @@ arcmsr_hbaC_postqueue_isr(struct AdapterControlBlock *acb)
 			? true : false;
 		/* check if command done with no error */
 		arcmsr_drain_donequeue(acb, ccb, error);
+		throttling++;
 		if (throttling == ARCMSR_HBC_ISR_THROTTLING_LEVEL) {
 			writel(ARCMSR_HBCMU_DRV2IOP_POSTQUEUE_THROTTLING,
 				&phbcmu->inbound_doorbell);
-			continue;
+			throttling = 0;
 		}
-		throttling++;
 	} while (readl(&phbcmu->host_int_status) &
 	ARCMSR_HBCMU_OUTBOUND_POSTQUEUE_ISR);
 }

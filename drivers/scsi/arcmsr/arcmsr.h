@@ -51,7 +51,7 @@ struct device_attribute;
 #else
 	#define ARCMSR_MAX_FREECCB_NUM	320
 #endif
-#define ARCMSR_DRIVER_VERSION		"Driver Version 1.30.00.00 2013/05/06"
+#define ARCMSR_DRIVER_VERSION		"Driver Version 1.30.00.02 2013/05/15"
 #define ARCMSR_SCSI_INITIATOR_ID		255
 #define ARCMSR_MAX_XFER_SECTORS		512
 #define ARCMSR_MAX_XFER_SECTORS_B		4096
