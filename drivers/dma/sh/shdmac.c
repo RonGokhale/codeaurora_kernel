@@ -882,7 +882,6 @@ rst_err:
 	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
-	platform_set_drvdata(pdev, NULL);
 	shdma_cleanup(&shdev->shdma_dev);
 eshdma:
 	synchronize_rcu();
@@ -910,8 +909,6 @@ static int sh_dmae_remove(struct platform_device *pdev)
 
 	sh_dmae_chan_remove(shdev);
 	shdma_cleanup(&shdev->shdma_dev);
-
-	platform_set_drvdata(pdev, NULL);
 
 	synchronize_rcu();
 
