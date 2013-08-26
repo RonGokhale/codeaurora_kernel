@@ -224,6 +224,8 @@ config MACH_KZM9D
 	depends on ARCH_EMEV2
 	select REGULATOR_FIXED_VOLTAGE if REGULATOR
 	select USE_OF
+	select SND_SOC_AK4554 if SND_SIMPLE_CARD
+	select SND_SOC_AK4642 if SND_SIMPLE_CARD
 
 config MACH_KZM9D_REFERENCE
 	bool "KZM9D board - Reference Device Tree Implementation"
