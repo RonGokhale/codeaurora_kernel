@@ -2076,8 +2076,6 @@ int __i915_add_request(struct intel_ring_buffer *ring,
 	request->ring = ring;
 	request->head = request_start;
 	request->tail = request_ring_position;
-	request->ctx = ring->last_context;
-	request->batch_obj = obj;
 
 	/* Whilst this request exists, batch_obj will be on the
 	 * active_list, and so will hold the active reference. Only when this
@@ -2085,7 +2083,12 @@ int __i915_add_request(struct intel_ring_buffer *ring,
 	 * inactive_list and lose its active reference. Hence we do not need
 	 * to explicitly hold another reference here.
 	 */
+	request->batch_obj = obj;
 
+	/* Hold a reference to the current context so that we can inspect
+	 * it later in case a hangcheck error event fires.
+	 */
+	request->ctx = ring->last_context;
 	if (request->ctx)
 		i915_gem_context_reference(request->ctx);
 
