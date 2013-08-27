@@ -64,7 +64,7 @@ static void __init sunxi_osc_clk_setup(struct device_node *node)
 			&gate->hw, &clk_gate_ops,
 			CLK_IS_ROOT);
 
-	if (clk) {
+	if (!IS_ERR(clk)) {
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
 		clk_register_clkdev(clk, clk_name, NULL);
 	}
@@ -221,7 +221,7 @@ static void __init sunxi_factors_clk_setup(struct device_node *node,
 	clk = clk_register_factors(NULL, clk_name, parent, 0, reg,
 				   data->table, data->getter, &clk_lock);
 
-	if (clk) {
+	if (!IS_ERR(clk)) {
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
 		clk_register_clkdev(clk, clk_name, NULL);
 	}
@@ -261,7 +261,8 @@ static void __init sunxi_mux_clk_setup(struct device_node *node,
 	while (i < 5 && (parents[i] = of_clk_get_parent_name(node, i)) != NULL)
 		i++;
 
-	clk = clk_register_mux(NULL, clk_name, parents, i, 0, reg,
+	clk = clk_register_mux(NULL, clk_name, parents, i,
+			       CLK_SET_RATE_NO_REPARENT, reg,
 			       data->shift, SUNXI_MUX_GATE_WIDTH,
 			       0, &clk_lock);
 
