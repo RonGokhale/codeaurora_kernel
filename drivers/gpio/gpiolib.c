@@ -1445,9 +1445,15 @@ static int gpiod_request(struct gpio_desc *desc, const char *label)
 		spin_lock_irqsave(&gpio_lock, flags);
 	}
 done:
-	if (status)
-		pr_debug("_gpio_request: gpio-%d (%s) status %d\n",
-			 desc_to_gpio(desc), label ? : "?", status);
+	if (status) {
+		if (desc->chip) {
+			pr_debug("_gpio_request: gpio-%d (%s) status %d\n",
+				 desc_to_gpio(desc), label ? : "?", status);
+		} else {
+			pr_debug("_gpio_request: gpio-?? (%s) status %d\n",
+				 label ? : "?", status);
+		}
+	}
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	return status;
 }
