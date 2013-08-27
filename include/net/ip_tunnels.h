@@ -86,12 +86,12 @@ struct tnl_ptk_info {
 #define PACKET_RCVD	0
 #define PACKET_REJECT	1
 
-#define IP_TNL_HASH_BITS   10
+#define IP_TNL_HASH_BITS   7
 #define IP_TNL_HASH_SIZE   (1 << IP_TNL_HASH_BITS)
 
 struct ip_tunnel_net {
-	struct hlist_head *tunnels;
 	struct net_device *fb_tunnel_dev;
+	struct hlist_head tunnels[IP_TNL_HASH_SIZE];
 };
 
 #ifdef CONFIG_INET
@@ -102,7 +102,7 @@ void  ip_tunnel_dellink(struct net_device *dev, struct list_head *head);
 int ip_tunnel_init_net(struct net *net, int ip_tnl_net_id,
 		       struct rtnl_link_ops *ops, char *devname);
 
-void ip_tunnel_delete_net(struct ip_tunnel_net *itn);
+void ip_tunnel_delete_net(struct ip_tunnel_net *itn, struct rtnl_link_ops *ops);
 
 void ip_tunnel_xmit(struct sk_buff *skb, struct net_device *dev,
 		    const struct iphdr *tnl_params, const u8 protocol);

@@ -258,7 +258,8 @@ static void be_async_grp5_evt_process(struct be_adapter *adapter,
 		(struct be_async_event_grp5_pvid_state *)evt);
 	break;
 	default:
-		dev_warn(&adapter->pdev->dev, "Unknown grp5 event!\n");
+		dev_warn(&adapter->pdev->dev, "Unknown grp5 event 0x%x!\n",
+			 event_type);
 		break;
 	}
 }
@@ -279,7 +280,8 @@ static void be_async_dbg_evt_process(struct be_adapter *adapter,
 		adapter->flags |= BE_FLAGS_QNQ_ASYNC_EVT_RCVD;
 	break;
 	default:
-		dev_warn(&adapter->pdev->dev, "Unknown debug event\n");
+		dev_warn(&adapter->pdev->dev, "Unknown debug event 0x%x!\n",
+			 event_type);
 	break;
 	}
 }
@@ -1010,9 +1012,9 @@ static u32 be_encoded_q_len(int q_len)
 	return len_encoded;
 }
 
-int be_cmd_mccq_ext_create(struct be_adapter *adapter,
-			struct be_queue_info *mccq,
-			struct be_queue_info *cq)
+static int be_cmd_mccq_ext_create(struct be_adapter *adapter,
+				struct be_queue_info *mccq,
+				struct be_queue_info *cq)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_mcc_ext_create *req;
@@ -1068,9 +1070,9 @@ int be_cmd_mccq_ext_create(struct be_adapter *adapter,
 	return status;
 }
 
-int be_cmd_mccq_org_create(struct be_adapter *adapter,
-			struct be_queue_info *mccq,
-			struct be_queue_info *cq)
+static int be_cmd_mccq_org_create(struct be_adapter *adapter,
+				struct be_queue_info *mccq,
+				struct be_queue_info *cq)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_mcc_create *req;
@@ -1339,6 +1341,10 @@ int be_cmd_if_create(struct be_adapter *adapter, u32 cap_flags, u32 en_flags,
 	if (!status) {
 		struct be_cmd_resp_if_create *resp = embedded_payload(wrb);
 		*if_handle = le32_to_cpu(resp->interface_id);
+
+		/* Hack to retrieve VF's pmac-id on BE3 */
+		if (BE3_chip(adapter) && !be_physfn(adapter))
+			adapter->pmac_id[0] = le32_to_cpu(resp->pmac_id);
 	}
 
 err:
@@ -1460,6 +1466,12 @@ static int be_mac_to_link_speed(int mac_speed)
 		return 1000;
 	case PHY_LINK_SPEED_10GBPS:
 		return 10000;
+	case PHY_LINK_SPEED_20GBPS:
+		return 20000;
+	case PHY_LINK_SPEED_25GBPS:
+		return 25000;
+	case PHY_LINK_SPEED_40GBPS:
+		return 40000;
 	}
 	return 0;
 }
@@ -1520,7 +1532,7 @@ int be_cmd_get_die_temperature(struct be_adapter *adapter)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_get_cntl_addnl_attribs *req;
-	int status;
+	int status = 0;
 
 	spin_lock_bh(&adapter->mcc_lock);
 
@@ -2444,6 +2456,12 @@ int be_cmd_get_phy_info(struct be_adapter *adapter)
 			le16_to_cpu(resp_phy_info->fixed_speeds_supported);
 		adapter->phy.misc_params =
 			le32_to_cpu(resp_phy_info->misc_params);
+
+		if (BE2_chip(adapter)) {
+			adapter->phy.fixed_speeds_supported =
+				BE_SUPPORTED_SPEED_10GBPS |
+				BE_SUPPORTED_SPEED_1GBPS;
+		}
 	}
 	pci_free_consistent(adapter->pdev, cmd.size,
 				cmd.va, cmd.dma);
@@ -2606,9 +2624,44 @@ err:
 	return status;
 }
 
-/* Uses synchronous MCCQ */
+/* Set privilege(s) for a function */
+int be_cmd_set_fn_privileges(struct be_adapter *adapter, u32 privileges,
+			     u32 domain)
+{
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_req_set_fn_privileges *req;
+	int status;
+
+	spin_lock_bh(&adapter->mcc_lock);
+
+	wrb = wrb_from_mccq(adapter);
+	if (!wrb) {
+		status = -EBUSY;
+		goto err;
+	}
+
+	req = embedded_payload(wrb);
+	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
+			       OPCODE_COMMON_SET_FN_PRIVILEGES, sizeof(*req),
+			       wrb, NULL);
+	req->hdr.domain = domain;
+	if (lancer_chip(adapter))
+		req->privileges_lancer = cpu_to_le32(privileges);
+	else
+		req->privileges = cpu_to_le32(privileges);
+
+	status = be_mcc_notify_wait(adapter);
+err:
+	spin_unlock_bh(&adapter->mcc_lock);
+	return status;
+}
+
+/* pmac_id_valid: true => pmac_id is supplied and MAC address is requested.
+ * pmac_id_valid: false => pmac_id or MAC address is requested.
+ *		  If pmac_id is returned, pmac_id_valid is returned as true
+ */
 int be_cmd_get_mac_from_list(struct be_adapter *adapter, u8 *mac,
-			     bool *pmac_id_active, u32 *pmac_id, u8 domain)
+			     bool *pmac_id_valid, u32 *pmac_id, u8 domain)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_get_mac_list *req;
@@ -2644,12 +2697,25 @@ int be_cmd_get_mac_from_list(struct be_adapter *adapter, u8 *mac,
 			       get_mac_list_cmd.size, wrb, &get_mac_list_cmd);
 	req->hdr.domain = domain;
 	req->mac_type = MAC_ADDRESS_TYPE_NETWORK;
-	req->perm_override = 1;
+	if (*pmac_id_valid) {
+		req->mac_id = cpu_to_le32(*pmac_id);
+		req->iface_id = cpu_to_le16(adapter->if_handle);
+		req->perm_override = 0;
+	} else {
+		req->perm_override = 1;
+	}
 
 	status = be_mcc_notify_wait(adapter);
 	if (!status) {
 		struct be_cmd_resp_get_mac_list *resp =
 						get_mac_list_cmd.va;
+
+		if (*pmac_id_valid) {
+			memcpy(mac, resp->macid_macaddr.mac_addr_id.macaddr,
+			       ETH_ALEN);
+			goto out;
+		}
+
 		mac_count = resp->true_mac_count + resp->pseudo_mac_count;
 		/* Mac list returned could contain one or more active mac_ids
 		 * or one or more true or pseudo permanant mac addresses.
@@ -2667,14 +2733,14 @@ int be_cmd_get_mac_from_list(struct be_adapter *adapter, u8 *mac,
 			 * is 6 bytes
 			 */
 			if (mac_addr_size == sizeof(u32)) {
-				*pmac_id_active = true;
+				*pmac_id_valid = true;
 				mac_id = mac_entry->mac_addr_id.s_mac_id.mac_id;
 				*pmac_id = le32_to_cpu(mac_id);
 				goto out;
 			}
 		}
 		/* If no active mac_id found, return first mac addr */
-		*pmac_id_active = false;
+		*pmac_id_valid = false;
 		memcpy(mac, resp->macaddr_list[0].mac_addr_id.macaddr,
 								ETH_ALEN);
 	}
@@ -2683,6 +2749,41 @@ out:
 	spin_unlock_bh(&adapter->mcc_lock);
 	pci_free_consistent(adapter->pdev, get_mac_list_cmd.size,
 			get_mac_list_cmd.va, get_mac_list_cmd.dma);
+	return status;
+}
+
+int be_cmd_get_active_mac(struct be_adapter *adapter, u32 curr_pmac_id, u8 *mac)
+{
+	bool active = true;
+
+	if (BEx_chip(adapter))
+		return be_cmd_mac_addr_query(adapter, mac, false,
+					     adapter->if_handle, curr_pmac_id);
+	else
+		/* Fetch the MAC address using pmac_id */
+		return be_cmd_get_mac_from_list(adapter, mac, &active,
+						&curr_pmac_id, 0);
+}
+
+int be_cmd_get_perm_mac(struct be_adapter *adapter, u8 *mac)
+{
+	int status;
+	bool pmac_valid = false;
+
+	memset(mac, 0, ETH_ALEN);
+
+	if (BEx_chip(adapter)) {
+		if (be_physfn(adapter))
+			status = be_cmd_mac_addr_query(adapter, mac, true, 0,
+						       0);
+		else
+			status = be_cmd_mac_addr_query(adapter, mac, false,
+						       adapter->if_handle, 0);
+	} else {
+		status = be_cmd_get_mac_from_list(adapter, mac, &pmac_valid,
+						  NULL, 0);
+	}
+
 	return status;
 }
 
@@ -2727,6 +2828,25 @@ err:
 				cmd.va, cmd.dma);
 	spin_unlock_bh(&adapter->mcc_lock);
 	return status;
+}
+
+/* Wrapper to delete any active MACs and provision the new mac.
+ * Changes to MAC_LIST are allowed iff none of the MAC addresses in the
+ * current list are active.
+ */
+int be_cmd_set_mac(struct be_adapter *adapter, u8 *mac, int if_id, u32 dom)
+{
+	bool active_mac = false;
+	u8 old_mac[ETH_ALEN];
+	u32 pmac_id;
+	int status;
+
+	status = be_cmd_get_mac_from_list(adapter, old_mac, &active_mac,
+					  &pmac_id, dom);
+	if (!status && active_mac)
+		be_cmd_pmac_del(adapter, if_id, pmac_id, dom);
+
+	return be_cmd_set_mac_list(adapter, mac, mac ? 1 : 0, dom);
 }
 
 int be_cmd_set_hsw_config(struct be_adapter *adapter, u16 pvid,
@@ -3060,8 +3180,8 @@ err:
 }
 
 /* Uses mbox */
-int be_cmd_get_profile_config_mbox(struct be_adapter *adapter,
-				   u8 domain, struct be_dma_mem *cmd)
+static int be_cmd_get_profile_config_mbox(struct be_adapter *adapter,
+					u8 domain, struct be_dma_mem *cmd)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_get_profile_config *req;
@@ -3088,8 +3208,8 @@ int be_cmd_get_profile_config_mbox(struct be_adapter *adapter,
 }
 
 /* Uses sync mcc */
-int be_cmd_get_profile_config_mccq(struct be_adapter *adapter,
-				   u8 domain, struct be_dma_mem *cmd)
+static int be_cmd_get_profile_config_mccq(struct be_adapter *adapter,
+					u8 domain, struct be_dma_mem *cmd)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_get_profile_config *req;
