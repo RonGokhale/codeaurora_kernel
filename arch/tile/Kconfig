@@ -5,7 +5,6 @@ config TILE
 	def_bool y
 	select HAVE_DMA_ATTRS
 	select HAVE_DMA_API_DEBUG
-	select HAVE_KVM if !TILEGX
 	select GENERIC_FIND_FIRST_BIT
 	select SYSCTL_EXCEPTION_TRACE
 	select USE_GENERIC_SMP_HELPERS
@@ -26,6 +25,7 @@ config TILE
 	select HAVE_SYSCALL_TRACEPOINTS
 	select ARCH_HAS_ATOMIC64_DEC_IF_POSITIVE
 	select HAVE_DEBUG_STACKOVERFLOW
+	select ARCH_WANT_FRAME_POINTERS
 
 # FIXME: investigate whether we need/want these options.
 #	select HAVE_IOREMAP_PROT
@@ -62,6 +62,9 @@ config SYS_SUPPORTS_HUGETLBFS
 # larger than the default HPAGE_SIZE.
 config HUGETLB_SUPER_PAGES
 	depends on HUGETLB_PAGE && TILEGX
+	def_bool y
+
+config GENERIC_TIME_VSYSCALL
 	def_bool y
 
 # FIXME: tilegx can implement a more efficient rwsem.
@@ -111,11 +114,22 @@ config SMP
 
 config HVC_TILE
 	depends on TTY
+	depends on !KVM_GUEST
 	select HVC_DRIVER
+	select HVC_IRQ if TILEGX
 	def_bool y
 
 config TILEGX
-	bool "Building with TILE-Gx (64-bit) compiler and toolchain"
+	bool "Building for TILE-Gx (64-bit) processor"
+	select HAVE_FUNCTION_TRACER
+	select HAVE_FUNCTION_TRACE_MCOUNT_TEST
+	select HAVE_FUNCTION_GRAPH_TRACER
+	select HAVE_DYNAMIC_FTRACE
+	select HAVE_FTRACE_MCOUNT_RECORD
+	select HAVE_KPROBES
+	select HAVE_KRETPROBES
+	select HAVE_KVM if !KVM_GUEST
+	select HAVE_ARCH_KGDB
 
 config TILEPRO
 	def_bool !TILEGX
@@ -194,7 +208,7 @@ config SYSVIPC_COMPAT
 	def_bool y
 	depends on COMPAT && SYSVIPC
 
-# We do not currently support disabling HIGHMEM on tile64 and tilepro.
+# We do not currently support disabling HIGHMEM on tilepro.
 config HIGHMEM
 	bool # "Support for more than 512 MB of RAM"
 	default !TILEGX
@@ -300,6 +314,8 @@ config PAGE_OFFSET
 
 source "mm/Kconfig"
 
+source "kernel/Kconfig.preempt"
+
 config CMDLINE_BOOL
 	bool "Built-in kernel command line"
 	default n
@@ -353,11 +369,22 @@ config HARDWALL
 	bool "Hardwall support to allow access to user dynamic network"
 	default y
 
+config KVM_GUEST
+	bool "Build kernel as guest for KVM"
+	default n
+	depends on TILEGX
+	select VIRTIO
+	select VIRTIO_RING
+	select VIRTIO_CONSOLE
+	---help---
+	  This will build a kernel that runs at a lower protection level
+	  than the default kernel and is suitable to run under KVM.
+
 config KERNEL_PL
 	int "Processor protection level for kernel"
 	range 1 2
-	default 2 if TILEGX
-	default 1 if !TILEGX
+	default 2 if TILEGX && !KVM_GUEST
+	default 1 if !TILEGX || KVM_GUEST
 	---help---
 	  Since MDE 4.2, the Tilera hypervisor runs the kernel
 	  at PL2 by default.  If running under an older hypervisor,
@@ -396,7 +423,19 @@ config NO_IOMEM
 config NO_IOPORT
 	def_bool !PCI
 
+config TILE_PCI_IO
+	bool "PCI I/O space support"
+	default n
+	depends on PCI
+	depends on TILEGX
+	---help---
+	  Enable PCI I/O space support on TILEGx. Since the PCI I/O space
+	  is used by few modern PCIe endpoint devices, its support is disabled
+	  by default to save the TRIO PIO Region resource for other purposes.
+
 source "drivers/pci/Kconfig"
+
+source "drivers/pci/pcie/Kconfig"
 
 config TILE_USB
 	tristate "Tilera USB host adapter support"
@@ -433,3 +472,20 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/tile/kvm/Kconfig"
+
+menu "CPU Frequency scaling"
+	depends on TILEGX
+
+source "drivers/cpufreq/Kconfig"
+
+config CPU_FREQ_TILEGX
+	tristate "CPUfreq driver for TILE-Gx"
+	depends on CPU_FREQ && TILEGX
+	default n
+	select STOP_MACHINE
+	---help---
+	  This enables the CPUfreq driver for TILE-Gx CPUs.  Say Y here
+	  if you want to be able to dynamically adjust CPU frequency
+	  while the system is running.
+
+endmenu
