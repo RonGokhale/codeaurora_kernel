@@ -1248,6 +1248,30 @@ static int populate_table(struct dm_table *table,
 	return dm_table_complete(table);
 }
 
+static bool immutable_target_type_is_valid(struct mapped_device *md,
+					   struct target_type *current_immutable_tt,
+					   struct target_type *next_immutable_tt)
+{
+	if (current_immutable_tt == next_immutable_tt)
+		return true;
+
+	if (!next_immutable_tt)
+		return false;
+
+	if (dm_target_always_returns_io_error(next_immutable_tt)) {
+		/*
+		 * Only allow a transition to an error target_type if
+		 * the mapped_device is no longer open.
+		 */
+		if (!dm_open_count(md))
+			return true;
+
+		DMERR("can't change target type to error while device is in use");
+	}
+
+	return false;
+}
+
 static int table_load(struct dm_ioctl *param, size_t param_size)
 {
 	int r;
@@ -1272,7 +1296,8 @@ static int table_load(struct dm_ioctl *param, size_t param_size)
 
 	immutable_target_type = dm_get_immutable_target_type(md);
 	if (immutable_target_type &&
-	    (immutable_target_type != dm_table_get_immutable_target_type(t))) {
+	    !immutable_target_type_is_valid(md, immutable_target_type,
+					    dm_table_get_immutable_target_type(t))) {
 		DMWARN("can't replace immutable target type %s",
 		       immutable_target_type->name);
 		r = -EINVAL;

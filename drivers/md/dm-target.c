@@ -139,6 +139,7 @@ static int io_err_map_rq(struct dm_target *ti, struct request *clone,
 
 static struct target_type error_target = {
 	.name = "error",
+	.features = DM_TARGET_ALWAYS_RETURNS_IO_ERROR,
 	.version = {1, 2, 0},
 	.ctr  = io_err_ctr,
 	.dtr  = io_err_dtr,

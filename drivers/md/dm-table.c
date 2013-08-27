@@ -745,7 +745,14 @@ int dm_table_add_target(struct dm_table *t, const char *type,
 		return -EINVAL;
 	}
 
-	if (t->immutable_target_type) {
+	if (dm_target_always_returns_io_error(tgt->type) &&
+	    dm_get_immutable_target_type(t->md)) {
+		/*
+		 * This error target must be upgraded to immutable because
+		 * the mapped device is already using an immutable target.
+		 */
+		t->immutable_target_type = tgt->type;
+	} else if (t->immutable_target_type) {
 		if (t->immutable_target_type != tgt->type) {
 			DMERR("%s: immutable target type %s cannot be mixed with other target types",
 			      dm_device_name(t->md), t->immutable_target_type->name);

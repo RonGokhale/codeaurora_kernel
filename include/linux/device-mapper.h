@@ -192,6 +192,16 @@ struct target_type {
 #define dm_target_is_immutable(type)	((type)->features & DM_TARGET_IMMUTABLE)
 
 /*
+ * Indicates that a target always returns IO error.  Because the target will error
+ * all IO it can safely replace any target (including an immutable target) as long
+ * as the associated mapped device is not open.  If an error target replaces an
+ * immutable target it is elevated to the mapped device's immutable target type.
+ */
+#define DM_TARGET_ALWAYS_RETURNS_IO_ERROR	0x00000008
+#define dm_target_always_returns_io_error(type) \
+		((type)->features & DM_TARGET_ALWAYS_RETURNS_IO_ERROR)
+
+/*
  * Some targets need to be sent the same WRITE bio severals times so
  * that they can send copies of it to different devices.  This function
  * examines any supplied bio and returns the number of copies of it the
