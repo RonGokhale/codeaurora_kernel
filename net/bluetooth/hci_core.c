@@ -981,6 +981,11 @@ int hci_inquiry(void __user *arg)
 	if (!hdev)
 		return -ENODEV;
 
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		err = -EBUSY;
+		goto done;
+	}
+
 	hci_dev_lock(hdev);
 	if (inquiry_cache_age(hdev) > INQUIRY_CACHE_AGE_MAX ||
 	    inquiry_cache_empty(hdev) || ir.flags & IREQ_CACHE_FLUSH) {
@@ -1174,7 +1179,8 @@ int hci_dev_open(__u16 dev)
 		if (test_bit(HCI_QUIRK_RAW_DEVICE, &hdev->quirks))
 			set_bit(HCI_RAW, &hdev->flags);
 
-		if (!test_bit(HCI_RAW, &hdev->flags))
+		if (!test_bit(HCI_RAW, &hdev->flags) &&
+		    !test_bit(HCI_USER_CHANNEL, &hdev->dev_flags))
 			ret = __hci_init(hdev);
 	}
 
@@ -1185,6 +1191,7 @@ int hci_dev_open(__u16 dev)
 		set_bit(HCI_UP, &hdev->flags);
 		hci_notify(hdev, HCI_DEV_UP);
 		if (!test_bit(HCI_SETUP, &hdev->dev_flags) &&
+		    !test_bit(HCI_USER_CHANNEL, &hdev->dev_flags) &&
 		    mgmt_valid_hdev(hdev)) {
 			hci_dev_lock(hdev);
 			mgmt_powered(hdev, 1);
@@ -1321,11 +1328,17 @@ int hci_dev_close(__u16 dev)
 	if (!hdev)
 		return -ENODEV;
 
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		err = -EBUSY;
+		goto done;
+	}
+
 	if (test_and_clear_bit(HCI_AUTO_OFF, &hdev->dev_flags))
 		cancel_delayed_work(&hdev->power_off);
 
 	err = hci_dev_do_close(hdev);
 
+done:
 	hci_dev_put(hdev);
 	return err;
 }
@@ -1343,6 +1356,11 @@ int hci_dev_reset(__u16 dev)
 
 	if (!test_bit(HCI_UP, &hdev->flags)) {
 		ret = -ENETDOWN;
+		goto done;
+	}
+
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		ret = -EBUSY;
 		goto done;
 	}
 
@@ -1379,10 +1397,15 @@ int hci_dev_reset_stat(__u16 dev)
 	if (!hdev)
 		return -ENODEV;
 
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		ret = -EBUSY;
+		goto done;
+	}
+
 	memset(&hdev->stat, 0, sizeof(struct hci_dev_stats));
 
+done:
 	hci_dev_put(hdev);
-
 	return ret;
 }
 
@@ -1398,6 +1421,11 @@ int hci_dev_cmd(unsigned int cmd, void __user *arg)
 	hdev = hci_dev_get(dr.dev_id);
 	if (!hdev)
 		return -ENODEV;
+
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
+		err = -EBUSY;
+		goto done;
+	}
 
 	switch (cmd) {
 	case HCISETAUTH:
@@ -1457,6 +1485,7 @@ int hci_dev_cmd(unsigned int cmd, void __user *arg)
 		break;
 	}
 
+done:
 	hci_dev_put(hdev);
 	return err;
 }
@@ -1564,6 +1593,9 @@ static int hci_rfkill_set_block(void *data, bool blocked)
 	struct hci_dev *hdev = data;
 
 	BT_DBG("%p name %s blocked %d", hdev, hdev->name, blocked);
+
+	if (test_bit(HCI_USER_CHANNEL, &hdev->dev_flags))
+		return -EBUSY;
 
 	if (!blocked)
 		return 0;
@@ -3451,7 +3483,8 @@ static void hci_rx_work(struct work_struct *work)
 			hci_send_to_sock(hdev, skb);
 		}
 
-		if (test_bit(HCI_RAW, &hdev->flags)) {
+		if (test_bit(HCI_RAW, &hdev->flags) ||
+		    test_bit(HCI_USER_CHANNEL, &hdev->dev_flags)) {
 			kfree_skb(skb);
 			continue;
 		}
