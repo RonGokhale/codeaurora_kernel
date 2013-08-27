@@ -555,7 +555,6 @@ struct snd_soc_dai_ops fsl_spdif_dai_ops = {
 
 
 /*
- * ============================================
  * FSL SPDIF IEC958 controller(mixer) functions
  *
  *	Channel status get/put control
@@ -563,7 +562,6 @@ struct snd_soc_dai_ops fsl_spdif_dai_ops = {
  *	Valid bit value get control
  *	DPLL lock status get control
  *	User bit sync mode selection control
- * ============================================
  */
 
 static int fsl_spdif_info(struct snd_kcontrol *kcontrol,
@@ -942,11 +940,7 @@ static const struct snd_soc_component_driver fsl_spdif_component = {
 	.name		= "fsl-spdif",
 };
 
-/*
- * ================
- * FSL SPDIF REGMAP
- * ================
- */
+/* FSL SPDIF REGMAP */
 
 static bool fsl_spdif_readable_reg(struct device *dev, unsigned int reg)
 {
@@ -1184,7 +1178,7 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 					 &spdif_priv->cpu_dai_drv, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register DAI: %d\n", ret);
-		goto error_dev;
+		return ret;
 	}
 
 	ret = imx_pcm_dma_init(pdev);
@@ -1197,8 +1191,6 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 
 error_component:
 	snd_soc_unregister_component(&pdev->dev);
-error_dev:
-	dev_set_drvdata(&pdev->dev, NULL);
 
 	return ret;
 }
@@ -1207,7 +1199,6 @@ static int fsl_spdif_remove(struct platform_device *pdev)
 {
 	imx_pcm_dma_exit(pdev);
 	snd_soc_unregister_component(&pdev->dev);
-	dev_set_drvdata(&pdev->dev, NULL);
 
 	return 0;
 }
