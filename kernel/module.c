@@ -136,6 +136,7 @@ static int param_set_bool_enable_only(const char *val,
 }
 
 static const struct kernel_param_ops param_ops_bool_enable_only = {
+	.flags = KERNEL_PARAM_FL_NOARG,
 	.set = param_set_bool_enable_only,
 	.get = param_get_bool,
 };
@@ -603,7 +604,7 @@ static void setup_modinfo_##field(struct module *mod, const char *s)  \
 static ssize_t show_modinfo_##field(struct module_attribute *mattr,   \
 			struct module_kobject *mk, char *buffer)      \
 {                                                                     \
-	return sprintf(buffer, "%s\n", mk->mod->field);               \
+	return scnprintf(buffer, PAGE_SIZE, "%s\n", mk->mod->field);  \
 }                                                                     \
 static int modinfo_##field##_exists(struct module *mod)               \
 {                                                                     \
