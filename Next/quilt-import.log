@@ -1,0 +1,13 @@
+Importing jdelvare-hwmon based on fd3930f70c8d14008f3377d51ce039806dfc542e
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard fd3930f70c8d14008f3377d51ce039806dfc542e
+HEAD is now at fd3930f proc: more readdir conversion bug-fixes
+$ git am ../quilt/jdelvare-hwmon/hwmon-w83792d-update-module-author.patch
+Applying: hwmon: (w83792d) Update module author
+$ git am ../quilt/jdelvare-hwmon/hwmon-emc6w201-do-not-declare-enum-variable.patch
+Applying: hwmon: (emc6w201) Do not declare enum variable
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 6f7e0b6...d9d5701 master     -> jdelvare-hwmon/master  (forced update)
