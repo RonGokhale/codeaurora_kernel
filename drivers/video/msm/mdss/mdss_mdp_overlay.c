@@ -1435,6 +1435,11 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 	struct fb_image *img = &cursor->image;
 	u32 blendcfg;
 	int off, ret = 0;
+	u32 xres = mfd->fbi->var.xres;
+	u32 yres = mfd->fbi->var.yres;
+	int roi_w = min(xres - img->dx, img->width);
+	int roi_h = min(yres - img->dy, img->height);
+	int roi_size = (roi_h << 16) | roi_w;
 
 	if (!mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
 		mfd->cursor_buf = dma_alloc_coherent(NULL, MDSS_MDP_CURSOR_SIZE,
@@ -1464,7 +1469,7 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 
 	if ((img->width > MDSS_MDP_CURSOR_WIDTH) ||
 		(img->height > MDSS_MDP_CURSOR_HEIGHT) ||
-		(img->depth != 32))
+		(img->depth != 32) || (img->dx >= xres) || (img->dy >= yres))
 		return -EINVAL;
 
 	pr_debug("mixer=%d enable=%x set=%x\n", mixer->num, cursor->enable,
@@ -1473,9 +1478,11 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 	blendcfg = MDSS_MDP_REG_READ(off + MDSS_MDP_REG_LM_CURSOR_BLEND_CONFIG);
 
-	if (cursor->set & FB_CUR_SETPOS)
+	if (cursor->set & FB_CUR_SETPOS) {
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_START_XY,
-				   (img->dy << 16) | img->dx);
+				(img->dy << 16) | img->dx);
+		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_SIZE, roi_size);
+	}
 
 	if (cursor->set & FB_CUR_SETIMAGE) {
 		int calpha_en, transp_en, alpha, size, cursor_addr;
@@ -1503,7 +1510,7 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 
 		size = (img->height << 16) | img->width;
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_IMG_SIZE, size);
-		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_SIZE, size);
+		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_SIZE, roi_size);
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_STRIDE,
 				   img->width * 4);
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_BASE_ADDR,
