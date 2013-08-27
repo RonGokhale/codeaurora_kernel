@@ -784,6 +784,13 @@ static int hpwdt_init_one(struct pci_dev *dev,
 {
 	int retval;
 
+
+	/*
+	 * Ignore all auxilary iLO devices with the following PCI ID
+	 */
+	if (dev->subsystem_device == 0x1979)
+		return -ENODEV;
+
 	/*
 	 * Check if we can do NMI decoding or not
 	 */
