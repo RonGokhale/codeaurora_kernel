@@ -591,18 +591,11 @@ struct vnt_private {
 	u8 abyBSSID[ETH_ALEN];
 	u8 abyDesireBSSID[ETH_ALEN];
 
-	u16 wCTSDuration;       /* update while speed change */
-	u16 wACKDuration;
-	u16 wRTSTransmitLen;
-	u8 byRTSServiceField;
-	u8 byRTSSignalField;
-
 	u32 dwMaxReceiveLifetime;  /* dot11MaxReceiveLifetime */
 
 	int bCCK;
 	int bEncryptionEnable;
 	int bLongHeader;
-	int bSoftwareGenCrcErr;
 	int bShortSlotTime;
 	int bProtectMode;
 	int bNonERPPresent;
