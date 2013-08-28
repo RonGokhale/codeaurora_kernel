@@ -179,17 +179,17 @@ typedef struct _RCB
 } RCB, *PRCB;
 
 /* used to track bulk out irps */
-typedef struct _USB_SEND_CONTEXT {
-    void *pDevice;
-    struct sk_buff *pPacket;
-    struct urb      *pUrb;
-    unsigned int            uBufLen;
-    CONTEXT_TYPE    Type;
-    struct ethhdr sEthHeader;
-    void *Next;
-    bool            bBoolInUse;
-    unsigned char           Data[MAX_TOTAL_SIZE_WITH_ALL_HEADERS];
-} USB_SEND_CONTEXT, *PUSB_SEND_CONTEXT;
+struct vnt_usb_send_context {
+	void *pDevice;
+	struct sk_buff *pPacket;
+	struct urb *pUrb;
+	unsigned int uBufLen;
+	CONTEXT_TYPE Type;
+	struct ethhdr sEthHeader;
+	void *Next;
+	bool bBoolInUse;
+	unsigned char Data[MAX_TOTAL_SIZE_WITH_ALL_HEADERS];
+};
 
 /* structure got from configuration file as user-desired default settings */
 typedef struct _DEFAULT_CONFIG {
@@ -430,7 +430,7 @@ struct vnt_private {
 	unsigned long ulRcvRefCount; /* packets that have not returned back */
 
 	/* Variables to track resources for the BULK Out Pipe */
-	PUSB_SEND_CONTEXT apTD[CB_MAX_TX_DESC];
+	struct vnt_usb_send_context *apTD[CB_MAX_TX_DESC];
 	u32 cbTD;
 
 	/* Variables to track resources for the Interrupt In Pipe */
@@ -591,18 +591,11 @@ struct vnt_private {
 	u8 abyBSSID[ETH_ALEN];
 	u8 abyDesireBSSID[ETH_ALEN];
 
-	u16 wCTSDuration;       /* update while speed change */
-	u16 wACKDuration;
-	u16 wRTSTransmitLen;
-	u8 byRTSServiceField;
-	u8 byRTSSignalField;
-
 	u32 dwMaxReceiveLifetime;  /* dot11MaxReceiveLifetime */
 
 	int bCCK;
 	int bEncryptionEnable;
 	int bLongHeader;
-	int bSoftwareGenCrcErr;
 	int bShortSlotTime;
 	int bProtectMode;
 	int bNonERPPresent;

@@ -267,7 +267,6 @@ device_set_options(struct vnt_private *pDevice) {
     pDevice->bUpdateBBVGA = true;
     pDevice->byFOETuning = 0;
     pDevice->byAutoPwrTunning = 0;
-    pDevice->wCTSDuration = 0;
     pDevice->byPreambleType = 0;
     pDevice->bExistSWNetAddr = false;
     /* pDevice->bDiversityRegCtlON = true; */
@@ -734,7 +733,7 @@ err_nomem:
 
 static void device_free_tx_bufs(struct vnt_private *pDevice)
 {
-    PUSB_SEND_CONTEXT pTxContext;
+	struct vnt_usb_send_context *pTxContext;
     int ii;
 
     for (ii = 0; ii < pDevice->cbTD; ii++) {
@@ -789,14 +788,13 @@ static void device_free_int_bufs(struct vnt_private *pDevice)
 
 static bool device_alloc_bufs(struct vnt_private *pDevice)
 {
-
-    PUSB_SEND_CONTEXT pTxContext;
+	struct vnt_usb_send_context *pTxContext;
     PRCB pRCB;
     int ii;
 
     for (ii = 0; ii < pDevice->cbTD; ii++) {
 
-        pTxContext = kmalloc(sizeof(USB_SEND_CONTEXT), GFP_KERNEL);
+	pTxContext = kmalloc(sizeof(struct vnt_usb_send_context), GFP_KERNEL);
         if (pTxContext == NULL) {
             DBG_PRT(MSG_LEVEL_ERR,KERN_ERR "%s : allocate tx usb context failed\n", pDevice->dev->name);
             goto free_tx;
@@ -925,7 +923,6 @@ int device_alloc_frag_buf(struct vnt_private *pDevice,
     pDeF->skb = dev_alloc_skb((int)pDevice->rx_buf_sz);
     if (pDeF->skb == NULL)
         return false;
-    ASSERT(pDeF->skb);
     pDeF->skb->dev = pDevice->dev;
 
     return true;
