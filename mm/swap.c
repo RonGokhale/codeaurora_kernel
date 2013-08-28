@@ -83,9 +83,9 @@ static void __put_compound_page(struct page *page)
 static void put_compound_page(struct page *page)
 {
 	/*
-	 * hugetlbfs pages can not be split from under us. If this
-	 * is a hugetlbfs page, check refcount on head page and release
-	 * the page if refcount is zero.
+	 * hugetlbfs pages cannot be split from under us.  If this is a
+	 * hugetlbfs page, check refcount on head page and release the page if
+	 * the refcount becomes zero.
 	 */
 	if (PageHuge(page)) {
 		page = compound_head(page);
@@ -202,8 +202,8 @@ bool __get_page_tail(struct page *page)
 	struct page *page_head;
 
 	/*
-	 * If this is a hugetlbfs page, it can not be split under
-	 * us. Simply increment refcount for head page
+	 * If this is a hugetlbfs page it cannot be split under us.  Simply
+	 * increment refcount for the head page.
 	 */
 	if (PageHuge(page)) {
 		page_head = compound_head(page);
