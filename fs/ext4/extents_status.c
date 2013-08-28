@@ -938,6 +938,8 @@ static int __ext4_es_shrink(struct ext4_sb_info *sbi, int nr_to_scan,
 
 retry:
 	list_for_each_safe(cur, tmp, &sbi->s_es_lru) {
+		int ret;
+
 		/*
 		 * If we have already reclaimed all extents from extent
 		 * status tree, just stop the loop immediately.
@@ -1007,18 +1009,20 @@ retry:
 	return nr_shrunk;
 }
 
-static long ext4_es_count(struct shrinker *shrink, struct shrink_control *sc)
+static unsigned long ext4_es_count(struct shrinker *shrink,
+				   struct shrink_control *sc)
 {
-	long nr;
-	struct ext4_sb_info *sbi = container_of(shrink,
-					struct ext4_sb_info, s_es_shrinker);
+	unsigned long nr;
+	struct ext4_sb_info *sbi;
 
+	sbi = container_of(shrink, struct ext4_sb_info, s_es_shrinker);
 	nr = percpu_counter_read_positive(&sbi->s_extent_cache_cnt);
 	trace_ext4_es_shrink_enter(sbi->s_sb, sc->nr_to_scan, nr);
 	return nr;
 }
 
-static long ext4_es_scan(struct shrinker *shrink, struct shrink_control *sc)
+static unsigned long ext4_es_scan(struct shrinker *shrink,
+				  struct shrink_control *sc)
 {
 	struct ext4_sb_info *sbi = container_of(shrink,
 					struct ext4_sb_info, s_es_shrinker);
@@ -1087,7 +1091,7 @@ static int __es_try_to_reclaim_extents(struct ext4_inode_info *ei,
 	struct ext4_es_tree *tree = &ei->i_es_tree;
 	struct rb_node *node;
 	struct extent_status *es;
-	long nr_shrunk = 0;
+	unsigned long nr_shrunk = 0;
 	static DEFINE_RATELIMIT_STATE(_rs, DEFAULT_RATELIMIT_INTERVAL,
 				      DEFAULT_RATELIMIT_BURST);
 
