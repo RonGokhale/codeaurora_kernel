@@ -123,6 +123,12 @@ next/soc
 	mxs/soc
 		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-soc-3.12
 
+next/drivers
+	cpuidle/biglittle
+		patch cpuidle: big.LITTLE: vexpress-TC2 CPU idle driver
+		patch ARM: vexpress: tc2: disable GIC CPU IF in tc2_pm_suspend
+		patch drivers: irq-chip: irq-gic: introduce gic_cpu_if_down()
+
 next/boards
 	renesas/backlight
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-backlight-for-v3.12
