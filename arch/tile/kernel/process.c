@@ -248,11 +248,13 @@ struct task_struct *validate_current(void)
 /* Take and return the pointer to the previous task, for schedule_tail(). */
 struct task_struct *sim_notify_fork(struct task_struct *prev)
 {
+#ifndef CONFIG_KVM_GUEST   /* see notify_sim_task_change() */
 	struct task_struct *tsk = current;
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK_PARENT |
 		     (tsk->thread.creator_pid << _SIM_CONTROL_OPERATOR_BITS));
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK |
 		     (tsk->pid << _SIM_CONTROL_OPERATOR_BITS));
+#endif
 	return prev;
 }
 

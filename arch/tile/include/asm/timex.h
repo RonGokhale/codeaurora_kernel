@@ -27,6 +27,14 @@
 
 typedef unsigned long long cycles_t;
 
+#ifdef CONFIG_KVM_GUEST
+#define INT_LINUX_TIMER INT_AUX_TILE_TIMER
+#define SPR_LINUX_TIMER_CONTROL SPR_AUX_TILE_TIMER_CONTROL
+#else
+#define INT_LINUX_TIMER INT_TILE_TIMER
+#define SPR_LINUX_TIMER_CONTROL SPR_TILE_TIMER_CONTROL
+#endif
+
 #if CHIP_HAS_SPLIT_CYCLE()
 cycles_t get_cycles(void);
 #define get_cycles_low() __insn_mfspr(SPR_CYCLE_LOW)

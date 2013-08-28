@@ -38,6 +38,16 @@
 
 #define PTREGS_OFFSET_SYSCALL PTREGS_OFFSET_REG(TREG_SYSCALL_NR)
 
+#if CONFIG_KERNEL_PL == 1 || CONFIG_KERNEL_PL == 2
+/*
+ * Set "result" non-zero if ex1 holds the PL of the kernel
+ * (with or without ICS being set).  Note this works only
+ * because we never find the PL at level 3.
+ */
+# define IS_KERNEL_EX1(result, ex1) andi result, ex1, CONFIG_KERNEL_PL
+#else
+# error Recode IS_KERNEL_EX1 for CONFIG_KERNEL_PL
+#endif
 
 	.macro  push_reg reg, ptr=sp, delta=-8
 	{
@@ -312,7 +322,7 @@ intvec_\vecname:
 	 */
 	{
 	 blbs   sp, 2f
-	 andi   r0, r0, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(r0, r0)
 	}
 
 	.ifc    \vecnum, INT_DOUBLE_FAULT
@@ -530,7 +540,7 @@ intvec_\vecname:
 #ifdef __COLLECT_LINKER_FEEDBACK__
 	.pushsection .text.intvec_feedback,"ax"
 	.org    (\vecnum << 5)
-	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt1, 1 << 8)
+	FEEDBACK_ENTER_EXPLICIT(intvec_\vecname, .intrpt, 1 << 8)
 	jrp     lr
 	.popsection
 #endif
@@ -651,7 +661,7 @@ intvec_\vecname:
 	 */
 	mfspr   r22, SPR_EX_CONTEXT_K_1
 	{
-	 andi   r32, r32, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(r22, r22)
 	 PTREGS_PTR(r21, PTREGS_OFFSET_FLAGS)
 	}
 	beqzt  r22, 1f        /* zero if from user space */
@@ -818,7 +828,7 @@ STD_ENTRY(interrupt_return)
 	 PTREGS_PTR(r29, PTREGS_OFFSET_EX1)
 	}
 	ld      r29, r29
-	andi    r29, r29, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	IS_KERNEL_EX1(r29, r29)
 	{
 	 beqzt  r29, .Lresume_userspace
 	 move   r29, sp
@@ -955,7 +965,7 @@ restore_all:
 	 PTREGS_PTR(r32, PTREGS_OFFSET_FLAGS)
 	}
 	{
-	 andi   r0, r0, SPR_EX_CONTEXT_1_1__PL_MASK
+	 IS_KERNEL_EX1(r0, r0)
 	 ld     r32, r32
 	}
 	bnez    r0, 1f
@@ -1026,7 +1036,7 @@ restore_all:
 	pop_reg r21, sp, PTREGS_OFFSET_REG(31) - PTREGS_OFFSET_PC
 	{
 	 mtspr  SPR_EX_CONTEXT_K_1, lr
-	 andi   lr, lr, SPR_EX_CONTEXT_1_1__PL_MASK  /* mask off ICS */
+	 IS_KERNEL_EX1(lr, lr)
 	}
 	{
 	 mtspr  SPR_EX_CONTEXT_K_0, r21
@@ -1555,8 +1565,10 @@ handle_downcall_dispatch:
 		__int_hand   \vecnum, \vecname, \c_routine, \processing
 	.endm
 
-/* Include .intrpt1 array of interrupt vectors */
-	.section ".intrpt1", "ax"
+/* Include .intrpt array of interrupt vectors */
+	.section ".intrpt", "ax"
+	.global intrpt_start
+intrpt_start:
 
 #define op_handle_perf_interrupt bad_intr
 #define op_handle_aux_perf_interrupt bad_intr
@@ -1601,7 +1613,13 @@ handle_downcall_dispatch:
 	int_hand     INT_DTLB_ACCESS, DTLB_ACCESS, do_page_fault
 	int_hand     INT_IDN_FIREWALL, IDN_FIREWALL, do_hardwall_trap
 	int_hand     INT_UDN_FIREWALL, UDN_FIREWALL, do_hardwall_trap
+#ifndef CONFIG_KVM_GUEST
 	int_hand     INT_TILE_TIMER, TILE_TIMER, do_timer_interrupt
+	int_hand     INT_AUX_TILE_TIMER, AUX_TILE_TIMER, bad_intr
+#else
+	int_hand     INT_TILE_TIMER, TILE_TIMER, bad_intr
+	int_hand     INT_AUX_TILE_TIMER, AUX_TILE_TIMER, do_timer_interrupt
+#endif
 	int_hand     INT_IDN_TIMER, IDN_TIMER, bad_intr
 	int_hand     INT_UDN_TIMER, UDN_TIMER, bad_intr
 	int_hand     INT_IDN_AVAIL, IDN_AVAIL, bad_intr
