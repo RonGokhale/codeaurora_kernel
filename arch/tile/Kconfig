@@ -126,7 +126,7 @@ config TILEGX
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_KPROBES
 	select HAVE_KRETPROBES
-	select HAVE_KVM
+	select HAVE_KVM if !KVM_GUEST
 
 config TILEPRO
 	def_bool !TILEGX
@@ -366,11 +366,19 @@ config HARDWALL
 	bool "Hardwall support to allow access to user dynamic network"
 	default y
 
+config KVM_GUEST
+	bool "Build kernel as guest for KVM"
+	default n
+	depends on TILEGX
+	---help---
+	  This will build a kernel that runs at a lower protection level
+	  than the default kernel and is suitable to run under KVM.
+
 config KERNEL_PL
 	int "Processor protection level for kernel"
 	range 1 2
-	default 2 if TILEGX
-	default 1 if !TILEGX
+	default 2 if TILEGX && !KVM_GUEST
+	default 1 if !TILEGX || KVM_GUEST
 	---help---
 	  Since MDE 4.2, the Tilera hypervisor runs the kernel
 	  at PL2 by default.  If running under an older hypervisor,

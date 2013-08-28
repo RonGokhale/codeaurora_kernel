@@ -114,9 +114,9 @@ void __init time_init(void)
 
 /*
  * Define the tile timer clock event device.  The timer is driven by
- * the TILE_TIMER_CONTROL register, which consists of a 31-bit down
+ * the TILE_[AUX_]TIMER_CONTROL register, which consists of a 31-bit down
  * counter, plus bit 31, which signifies that the counter has wrapped
- * from zero to (2**31) - 1.  The INT_TILE_TIMER interrupt will be
+ * from zero to (2**31) - 1.  The INT_[AUX_]TILE_TIMER interrupt will be
  * raised as long as bit 31 is set.
  *
  * The TILE_MINSEC value represents the largest range of real-time
@@ -131,8 +131,8 @@ static int tile_timer_set_next_event(unsigned long ticks,
 				     struct clock_event_device *evt)
 {
 	BUG_ON(ticks > MAX_TICK);
-	__insn_mtspr(SPR_TILE_TIMER_CONTROL, ticks);
-	arch_local_irq_unmask_now(INT_TILE_TIMER);
+	__insn_mtspr(SPR_LINUX_TIMER_CONTROL, ticks);
+	arch_local_irq_unmask_now(INT_LINUX_TIMER);
 	return 0;
 }
 
@@ -143,7 +143,7 @@ static int tile_timer_set_next_event(unsigned long ticks,
 static void tile_timer_set_mode(enum clock_event_mode mode,
 				struct clock_event_device *evt)
 {
-	arch_local_irq_mask_now(INT_TILE_TIMER);
+	arch_local_irq_mask_now(INT_LINUX_TIMER);
 }
 
 /*
@@ -172,7 +172,7 @@ void __cpuinit setup_tile_timer(void)
 	evt->cpumask = cpumask_of(smp_processor_id());
 
 	/* Start out with timer not firing. */
-	arch_local_irq_mask_now(INT_TILE_TIMER);
+	arch_local_irq_mask_now(INT_LINUX_TIMER);
 
 	/* Register tile timer. */
 	clockevents_register_device(evt);
@@ -188,7 +188,7 @@ void do_timer_interrupt(struct pt_regs *regs, int fault_num)
 	 * Mask the timer interrupt here, since we are a oneshot timer
 	 * and there are now by definition no events pending.
 	 */
-	arch_local_irq_mask(INT_TILE_TIMER);
+	arch_local_irq_mask(INT_LINUX_TIMER);
 
 	/* Track time spent here in an interrupt context */
 	irq_enter();

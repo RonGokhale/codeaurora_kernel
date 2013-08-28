@@ -42,7 +42,9 @@ static int notify_exec(struct mm_struct *mm)
 	char *buf, *path;
 	struct vm_area_struct *vma;
 
+#ifndef CONFIG_KVM_GUEST   /* see notify_sim_task_change() */
 	if (!sim_is_simulator())
+#endif
 		return 1;
 
 	if (mm->exe_file == NULL)
