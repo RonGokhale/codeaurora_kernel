@@ -233,6 +233,9 @@ static int __mlock_posix_error_return(long retval)
  * and attempts to isolate the pages, all under a single zone lru lock.
  * The second phase finishes the munlock only for pages where isolation
  * succeeded.
+ *
+ * Note that pvec is modified during the process. Before returning
+ * pagevec_reinit() is called on it.
  */
 static void __munlock_pagevec(struct pagevec *pvec, struct zone *zone)
 {
