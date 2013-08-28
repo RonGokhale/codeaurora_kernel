@@ -539,7 +539,7 @@ static struct page *dequeue_huge_page_node(struct hstate *h, int nid)
 }
 
 /* Movability of hugepages depends on migration support. */
-static inline int htlb_alloc_mask(struct hstate *h)
+static inline gfp_t htlb_alloc_mask(struct hstate *h)
 {
 	if (hugepages_treat_as_movable || hugepage_migration_support(h))
 		return GFP_HIGHUSER_MOVABLE;
