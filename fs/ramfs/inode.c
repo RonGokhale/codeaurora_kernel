@@ -249,7 +249,7 @@ static struct dentry *rootfs_mount(struct file_system_type *fs_type,
 {
 	static unsigned long once;
 
-	if (test_and_set_bit(1, &once))
+	if (test_and_set_bit(0, &once))
 		return ERR_PTR(-ENODEV);
 
 	return mount_nodev(fs_type, flags, data, ramfs_fill_super);
@@ -278,7 +278,7 @@ static int __init init_ramfs_fs(void)
 	static unsigned long once;
 	int err;
 
-	if (test_and_set_bit(1, &once))
+	if (test_and_set_bit(0, &once))
 		return 0;
 
 	err = bdi_init(&ramfs_backing_dev_info);
