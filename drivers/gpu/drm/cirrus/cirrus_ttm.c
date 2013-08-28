@@ -326,7 +326,6 @@ int cirrus_bo_create(struct drm_device *dev, int size, int align,
 		return ret;
 	}
 
-	cirrusbo->gem.driver_private = NULL;
 	cirrusbo->bo.bdev = &cirrus->ttm.bdev;
 	cirrusbo->bo.bdev->dev_mapping = dev->dev_mapping;
 
