@@ -128,7 +128,7 @@ next/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-backlight-for-v3.12
 	mvebu/boards
 		git://git.infradead.org/linux-mvebu.git tags/boards-3.12
-	renesas/tpu-pwm
+	renesas/tpepwm
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-tpu-pwm-for-v3.12
 	renesas/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-boards-for-v3.12
@@ -149,3 +149,23 @@ next/dt2
 	renesas/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt2-for-v3.12
 		contains renesas/cleanup renesas/dt and renesas/soc
+
+next/renesas
+	renesas/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup2-for-v3.12
+		contains renesas/backlight
+		contains renesas/soc
+		contains renesas/dt
+		contains renesas/cleanup
+
+	renesas/cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup3-for-v3.12
+		contains renesas/dt2
+		contains renesas/cleanup2
+
+	renesas/smp
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-smp-for-v3.12
+		contains renesas/dt
+		contains renesas/soc
+		contains renesas/cleanup
+
