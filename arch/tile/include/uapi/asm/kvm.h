@@ -149,6 +149,9 @@
  */
 #define KVM_OTHER_HCALL                  128
 
+/* Hypercall index for virtio. */
+#define KVM_HCALL_virtio                 128
+
 /* One greater than the maximum hypercall number. */
 #define KVM_NUM_HCALLS                   256
 
@@ -256,6 +259,8 @@ struct kvm_sync_regs {
 	KVM_EMULATE(get_ipi_pte) \
 	KVM_EMULATE(set_pte_super_shift) \
 	KVM_EMULATE(set_speed) \
+	/* For others */ \
+	USER_HCALL(virtio)
 
 #endif
 

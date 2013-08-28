@@ -18,11 +18,26 @@
 #include <linux/string.h>
 #include <linux/irqflags.h>
 #include <linux/printk.h>
+#ifdef CONFIG_KVM_GUEST
+#include <linux/virtio_console.h>
+#include <linux/kvm_para.h>
+#include <asm/kvm_virtio.h>
+#endif
 #include <asm/setup.h>
 #include <hv/hypervisor.h>
 
 static void early_hv_write(struct console *con, const char *s, unsigned n)
 {
+#ifdef CONFIG_KVM_GUEST
+	char buf[512];
+
+	if (n > sizeof(buf) - 1)
+		n = sizeof(buf) - 1;
+	memcpy(buf, s, n);
+	buf[n] = '\0';
+
+	hcall_virtio(KVM_VIRTIO_NOTIFY, __pa(buf));
+#else
 	tile_console_write(s, n);
 
 	/*
@@ -32,6 +47,7 @@ static void early_hv_write(struct console *con, const char *s, unsigned n)
 	 */
 	if (n && s[n-1] == '\n')
 		tile_console_write("\r", 1);
+#endif
 }
 
 static struct console early_hv_console = {
