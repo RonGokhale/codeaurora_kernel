@@ -15,6 +15,7 @@
 #include "internal.h"
 #include "pnfs.h"
 #include "nfs4session.h"
+#include "nfs4trace.h"
 
 #ifdef NFS_DEBUG
 #define NFSDBG_FACILITY NFSDBG_CALLBACK
@@ -93,6 +94,7 @@ __be32 nfs4_callback_recall(struct cb_recallargs *args, void *dummy,
 	default:
 		res = htonl(NFS4ERR_RESOURCE);
 	}
+	trace_nfs4_recall_delegation(inode, -ntohl(res));
 	iput(inode);
 out:
 	dprintk("%s: exit with status = %d\n", __func__, ntohl(res));
@@ -462,6 +464,7 @@ out:
 	} else
 		res->csr_status = status;
 
+	trace_nfs4_cb_sequence(args, res, status);
 	dprintk("%s: exit with status = %d res->csr_status %d\n", __func__,
 		ntohl(status), ntohl(res->csr_status));
 	return status;

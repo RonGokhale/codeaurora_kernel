@@ -154,6 +154,19 @@ struct rpc_cred *nfs4_get_machine_cred_locked(struct nfs_client *clp)
 	return cred;
 }
 
+static void nfs4_root_machine_cred(struct nfs_client *clp)
+{
+	struct rpc_cred *cred, *new;
+
+	new = rpc_lookup_machine_cred(NULL);
+	spin_lock(&clp->cl_lock);
+	cred = clp->cl_machine_cred;
+	clp->cl_machine_cred = new;
+	spin_unlock(&clp->cl_lock);
+	if (cred != NULL)
+		put_rpccred(cred);
+}
+
 static struct rpc_cred *
 nfs4_get_renew_cred_server_locked(struct nfs_server *server)
 {
@@ -339,62 +352,21 @@ int nfs41_discover_server_trunking(struct nfs_client *clp,
 	return nfs41_walk_client_list(clp, result, cred);
 }
 
-struct rpc_cred *nfs4_get_exchange_id_cred(struct nfs_client *clp)
-{
-	struct rpc_cred *cred;
-
-	spin_lock(&clp->cl_lock);
-	cred = nfs4_get_machine_cred_locked(clp);
-	spin_unlock(&clp->cl_lock);
-	return cred;
-}
-
 #endif /* CONFIG_NFS_V4_1 */
 
-static struct rpc_cred *
-nfs4_get_setclientid_cred_server(struct nfs_server *server)
-{
-	struct nfs_client *clp = server->nfs_client;
-	struct rpc_cred *cred = NULL;
-	struct nfs4_state_owner *sp;
-	struct rb_node *pos;
-
-	spin_lock(&clp->cl_lock);
-	pos = rb_first(&server->state_owners);
-	if (pos != NULL) {
-		sp = rb_entry(pos, struct nfs4_state_owner, so_server_node);
-		cred = get_rpccred(sp->so_cred);
-	}
-	spin_unlock(&clp->cl_lock);
-	return cred;
-}
-
 /**
- * nfs4_get_setclientid_cred - Acquire credential for a setclientid operation
+ * nfs4_get_clid_cred - Acquire credential for a setclientid operation
  * @clp: client state handle
  *
  * Returns an rpc_cred with reference count bumped, or NULL.
  */
-struct rpc_cred *nfs4_get_setclientid_cred(struct nfs_client *clp)
+struct rpc_cred *nfs4_get_clid_cred(struct nfs_client *clp)
 {
-	struct nfs_server *server;
 	struct rpc_cred *cred;
 
 	spin_lock(&clp->cl_lock);
 	cred = nfs4_get_machine_cred_locked(clp);
 	spin_unlock(&clp->cl_lock);
-	if (cred != NULL)
-		goto out;
-
-	rcu_read_lock();
-	list_for_each_entry_rcu(server, &clp->cl_superblocks, client_link) {
-		cred = nfs4_get_setclientid_cred_server(server);
-		if (cred != NULL)
-			break;
-	}
-	rcu_read_unlock();
-
-out:
 	return cred;
 }
 
@@ -1443,14 +1415,16 @@ restart:
 		if (status >= 0) {
 			status = nfs4_reclaim_locks(state, ops);
 			if (status >= 0) {
-				spin_lock(&state->state_lock);
-				list_for_each_entry(lock, &state->lock_states, ls_locks) {
-					if (!test_bit(NFS_LOCK_INITIALIZED, &lock->ls_flags))
-						pr_warn_ratelimited("NFS: "
-							"%s: Lock reclaim "
-							"failed!\n", __func__);
+				if (test_bit(NFS_DELEGATED_STATE, &state->flags) != 0) {
+					spin_lock(&state->state_lock);
+					list_for_each_entry(lock, &state->lock_states, ls_locks) {
+						if (!test_bit(NFS_LOCK_INITIALIZED, &lock->ls_flags))
+							pr_warn_ratelimited("NFS: "
+									    "%s: Lock reclaim "
+									    "failed!\n", __func__);
+					}
+					spin_unlock(&state->state_lock);
 				}
-				spin_unlock(&state->state_lock);
 				nfs4_put_open_state(state);
 				spin_lock(&sp->so_lock);
 				goto restart;
@@ -1618,7 +1592,7 @@ static void nfs4_state_end_reclaim_reboot(struct nfs_client *clp)
 	if (!nfs4_state_clear_reclaim_reboot(clp))
 		return;
 	ops = clp->cl_mvops->reboot_recovery_ops;
-	cred = ops->get_clid_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	nfs4_reclaim_complete(clp, ops, cred);
 	put_rpccred(cred);
 }
@@ -1732,7 +1706,7 @@ static int nfs4_check_lease(struct nfs_client *clp)
 	cred = ops->get_state_renewal_cred_locked(clp);
 	spin_unlock(&clp->cl_lock);
 	if (cred == NULL) {
-		cred = nfs4_get_setclientid_cred(clp);
+		cred = nfs4_get_clid_cred(clp);
 		status = -ENOKEY;
 		if (cred == NULL)
 			goto out;
@@ -1804,7 +1778,7 @@ static int nfs4_establish_lease(struct nfs_client *clp)
 		clp->cl_mvops->reboot_recovery_ops;
 	int status;
 
-	cred = ops->get_clid_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	if (cred == NULL)
 		return -ENOENT;
 	status = ops->establish_clid(clp, cred);
@@ -1878,7 +1852,7 @@ int nfs4_discover_server_trunking(struct nfs_client *clp,
 	mutex_lock(&nfs_clid_init_mutex);
 again:
 	status  = -ENOENT;
-	cred = ops->get_clid_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	if (cred == NULL)
 		goto out_unlock;
 
@@ -1896,7 +1870,11 @@ again:
 			__func__, status);
 		goto again;
 	case -EACCES:
-		if (i++)
+		if (i++ == 0) {
+			nfs4_root_machine_cred(clp);
+			goto again;
+		}
+		if (i > 2)
 			break;
 	case -NFS4ERR_CLID_INUSE:
 	case -NFS4ERR_WRONGSEC:
@@ -2052,7 +2030,7 @@ static int nfs4_reset_session(struct nfs_client *clp)
 	if (!nfs4_has_session(clp))
 		return 0;
 	nfs4_begin_drain_session(clp);
-	cred = nfs4_get_exchange_id_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	status = nfs4_proc_destroy_session(clp->cl_session, cred);
 	switch (status) {
 	case 0:
@@ -2095,7 +2073,7 @@ static int nfs4_bind_conn_to_session(struct nfs_client *clp)
 	if (!nfs4_has_session(clp))
 		return 0;
 	nfs4_begin_drain_session(clp);
-	cred = nfs4_get_exchange_id_cred(clp);
+	cred = nfs4_get_clid_cred(clp);
 	ret = nfs4_proc_bind_conn_to_session(clp, cred);
 	if (cred)
 		put_rpccred(cred);
@@ -2116,7 +2094,7 @@ static int nfs4_bind_conn_to_session(struct nfs_client *clp)
 }
 #else /* CONFIG_NFS_V4_1 */
 static int nfs4_reset_session(struct nfs_client *clp) { return 0; }
-static int nfs4_end_drain_session(struct nfs_client *clp) { return 0; }
+static void nfs4_end_drain_session(struct nfs_client *clp) { }
 
 static int nfs4_bind_conn_to_session(struct nfs_client *clp)
 {
