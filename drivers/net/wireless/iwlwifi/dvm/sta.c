@@ -27,6 +27,7 @@
  *
  *****************************************************************************/
 #include <linux/etherdevice.h>
+#include <linux/sched.h>
 #include <net/mac80211.h>
 #include "iwl-trans.h"
 #include "dev.h"

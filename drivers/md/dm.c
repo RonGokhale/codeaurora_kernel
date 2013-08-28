@@ -5,6 +5,7 @@
  * This file is released under the GPL.
  */
 
+#include <linux/sched.h>
 #include "dm.h"
 #include "dm-uevent.h"
 

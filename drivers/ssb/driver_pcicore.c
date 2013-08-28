@@ -8,6 +8,7 @@
  * Licensed under the GNU/GPL. See COPYING for details.
  */
 
+#include <linux/sched.h>
 #include <linux/ssb/ssb.h>
 #include <linux/pci.h>
 #include <linux/export.h>
