@@ -3388,6 +3388,14 @@ int snd_soc_dapm_new_dai_widgets(struct snd_soc_dapm_context *dapm,
 		}
 
 		w->priv = dai;
+		/*
+		 * The ASoC maintainer refuses to acknowledge that these
+		 * widgets could possibly be overwritten, which causes a
+		 * bug with widgets being marked active and DAPM widgets
+		 * and routes being powered up.  So this is an attempt to
+		 * prove that this is the case.
+		 */
+		WARN_ON(dai->playback_widget);
 		dai->playback_widget = w;
 	}
 
@@ -3406,6 +3414,14 @@ int snd_soc_dapm_new_dai_widgets(struct snd_soc_dapm_context *dapm,
 		}
 
 		w->priv = dai;
+		/*
+		 * The ASoC maintainer refuses to acknowledge that these
+		 * widgets could possibly be overwritten, which causes a
+		 * bug with widgets being marked active and DAPM widgets
+		 * and routes being powered up.  So this is an attempt to
+		 * prove that this is the case.
+		 */
+		WARN_ON(dai->capture_widget);
 		dai->capture_widget = w;
 	}
 
