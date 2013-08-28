@@ -318,8 +318,26 @@
 /** hv_set_pte_super_shift */
 #define HV_DISPATCH_SET_PTE_SUPER_SHIFT           57
 
+/** hv_set_speed */
+#define HV_DISPATCH_SET_SPEED                     58
+
+/** hv_install_virt_context */
+#define HV_DISPATCH_INSTALL_VIRT_CONTEXT          59
+
+/** hv_inquire_virt_context */
+#define HV_DISPATCH_INQUIRE_VIRT_CONTEXT          60
+
+/** hv_install_guest_context */
+#define HV_DISPATCH_INSTALL_GUEST_CONTEXT         61
+
+/** hv_inquire_guest_context */
+#define HV_DISPATCH_INQUIRE_GUEST_CONTEXT         62
+
+/** hv_console_set_ipi */
+#define HV_DISPATCH_CONSOLE_SET_IPI               63
+
 /** One more than the largest dispatch value */
-#define _HV_DISPATCH_END                          58
+#define _HV_DISPATCH_END                          64
 
 
 #ifndef __ASSEMBLER__
@@ -541,14 +559,24 @@ typedef enum {
   HV_CONFSTR_CPUMOD_REV      = 18,
 
   /** Human-readable CPU module description. */
-  HV_CONFSTR_CPUMOD_DESC     = 19
+  HV_CONFSTR_CPUMOD_DESC     = 19,
+
+  /** Per-tile hypervisor statistics.  When this identifier is specified,
+   *  the hv_confstr call takes two extra arguments.  The first is the
+   *  HV_XY_TO_LOTAR of the target tile's coordinates.  The second is
+   *  a flag word.  The only current flag is the lowest bit, which means
+   *  "zero out the stats instead of retrieving them"; in this case the
+   *  buffer and buffer length are ignored. */
+  HV_CONFSTR_HV_STATS        = 20
 
 } HV_ConfstrQuery;
 
 /** Query a configuration string from the hypervisor.
  *
  * @param query Identifier for the specific string to be retrieved
- *        (HV_CONFSTR_xxx).
+ *        (HV_CONFSTR_xxx).  Some strings may require or permit extra
+ *        arguments to be appended which select specific objects to be
+ *        described; see the string descriptions above.
  * @param buf Buffer in which to place the string.
  * @param len Length of the buffer.
  * @return If query is valid, then the length of the corresponding string,
@@ -556,21 +584,16 @@ typedef enum {
  *        was truncated.  If query is invalid, HV_EINVAL.  If the specified
  *        buffer is not writable by the client, HV_EFAULT.
  */
-int hv_confstr(HV_ConfstrQuery query, HV_VirtAddr buf, int len);
+int hv_confstr(HV_ConfstrQuery query, HV_VirtAddr buf, int len, ...);
 
 /** Tile coordinate */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   /** X coordinate, relative to supervisor's top-left coordinate */
   int x;
 
   /** Y coordinate, relative to supervisor's top-left coordinate */
   int y;
-#else
-  int y;
-  int x;
-#endif
 } HV_Coord;
 
 
@@ -584,6 +607,30 @@ typedef struct
  * @result Zero if no error, non-zero for invalid parameters.
  */
 int hv_get_ipi_pte(HV_Coord tile, int pl, HV_PTE* pte);
+
+/** Configure the console interrupt.
+ *
+ * When the console client interrupt is enabled, the hypervisor will
+ * deliver the specified IPI to the client in the following situations:
+ *
+ * - The console has at least one character available for input.
+ *
+ * - The console can accept new characters for output, and the last call
+ *   to hv_console_write() did not write all of the characters requested
+ *   by the client.
+ *
+ * Note that in some system configurations, console interrupt will not
+ * be available; clients should be prepared for this routine to fail and
+ * to fall back to periodic console polling in that case.
+ *
+ * @param ipi Index of the IPI register which will receive the interrupt.
+ * @param event IPI event number for console interrupt. If less than 0,
+ *        disable the console IPI interrupt.
+ * @param coord Tile to be targeted for console interrupt.
+ * @return 0 on success, otherwise, HV_EINVAL if illegal parameter,
+ *         HV_ENOTSUP if console interrupt are not available.
+ */
+int hv_console_set_ipi(int ipi, int event, HV_Coord coord);
 
 #else /* !CHIP_HAS_IPI() */
 
@@ -689,6 +736,43 @@ HV_RTCTime hv_get_rtc(void);
  */
 void hv_set_rtc(HV_RTCTime time);
 
+
+/** Value returned from hv_set_speed(). */
+typedef struct {
+  /** The new speed achieved, in Hertz, or a negative error code. */
+  long new_speed;
+
+  /** A cycle counter value, in the post-speed-change time domain. */
+  __hv64 end_cycle;
+
+  /** Time elapsed in nanoseconds between start_cycle (passed to
+   *  hv_set_speed(), in the pre-speed-change time domain) and end_cycle
+   *  (returned in this structure). */
+  __hv64 delta_ns;
+} HV_SetSpeed;
+
+
+/** Set the processor clock speed.
+ * @param speed Clock speed in hertz.
+ * @param start_cycle Initial cycle counter value; see the definition of
+ *  HV_SetSpeed for how this is used.
+ * @param flags Flags (HV_SET_SPEED_xxx).
+ * @return A HV_SetSpeed structure.
+ */
+HV_SetSpeed hv_set_speed(unsigned long speed, __hv64 start_cycle,
+                         unsigned long flags);
+
+/** Don't set the speed, just check the value and return the speed we would
+ *  have set if this flag had not been specified.  When this flag is
+ *  specified, the start_cycle parameter is ignored, and the end_cycle and
+ *  delta_ns values in the HV_SetSpeed structure are undefined. */
+#define HV_SET_SPEED_DRYRUN   0x1
+
+/** If the precise speed specified is not supported by the hardware, round
+ *  it up to the next higher supported frequency if necessary; without this
+ *  flag, we round down. */
+#define HV_SET_SPEED_ROUNDUP  0x2
+
 /** Installs a context, comprising a page table and other attributes.
  *
  *  Once this service completes, page_table will be used to translate
@@ -721,11 +805,14 @@ void hv_set_rtc(HV_RTCTime time);
  *  new page table does not need to contain any mapping for the
  *  hv_install_context address itself.
  *
- *  At most one HV_CTX_PG_SM_* flag may be specified in "flags";
+ *  At most one HV_CTX_PG_SM_* flag may be specified in the flags argument;
  *  if multiple flags are specified, HV_EINVAL is returned.
  *  Specifying none of the flags results in using the default page size.
  *  All cores participating in a given client must request the same
  *  page size, or the results are undefined.
+ *
+ *  To disable an installed page table, install HV_CTX_NONE.  The access
+ *  and asid fields are ignored.
  *
  * @param page_table Root of the page table.
  * @param access PTE providing info on how to read the page table.  This
@@ -742,15 +829,100 @@ int hv_install_context(HV_PhysAddr page_table, HV_PTE access, HV_ASID asid,
 
 #endif /* !__ASSEMBLER__ */
 
+#define HV_CTX_NONE         ((HV_PhysAddr)-1)  /**< Disable page table. */
+
 #define HV_CTX_DIRECTIO     0x1   /**< Direct I/O requests are accepted from
                                        PL0. */
+
+#define HV_CTX_GUEST_CACHE  0x4   /**< Let guest control caching flags (only
+                                       usable with hv_install_virt_context.) */
 
 #define HV_CTX_PG_SM_4K     0x10  /**< Use 4K small pages, if available. */
 #define HV_CTX_PG_SM_16K    0x20  /**< Use 16K small pages, if available. */
 #define HV_CTX_PG_SM_64K    0x40  /**< Use 64K small pages, if available. */
 #define HV_CTX_PG_SM_MASK   0xf0  /**< Mask of all possible small pages. */
 
+
 #ifndef __ASSEMBLER__
+
+/** Install a virtualization context.
+ *
+ * When a virtualization context is installed, all faults from PL0 or
+ * PL1 are handled via a "guest context" and then post-processed by
+ * the "virtualization context"; faults at PL2 are still handled by
+ * the normal context.  For guest faults, the "guest PAs" produced by
+ * the guest page table are passed through the virtualization page
+ * table as pseudo-VAs, generating the true CPA as a result.  See the
+ * individual HV_PTE_xxx bits for the effect the bits have when
+ * present in the virtualization page table.  The ASID is currently
+ * ignored in this syscall, but it might be used later, so the API
+ * includes it.  The HV_CTX_GUEST_CACHE flag indicates that all
+ * cache-related flags should be taken from the primary page table,
+ * not the virtualization page table.
+ *
+ * Once the virtualization context is installed, a guest context
+ * should also be installed; otherwise a VA-equals-PA context will be
+ * used for accesses at PL 0 or 1, i.e. VAs will be passed directly to
+ * the virtualization context to generate CPAs.
+ *
+ * When entering client PL after being at guest or user PL, the
+ * client is expected to call hv_flush_all() to clear any TLB mappings
+ * that might otherwise conflict.  Similarly, hv_flush_all() should
+ * be called before returning to guest or user PL with a virtualization
+ * context installed, so that any TLB mappings are cleared.  Future
+ * work may include adding a "vpid" or similar namespace so that
+ * the TLBs may be managed independently.
+ *
+ * Subsequent guest page table installations will have their root PA
+ * and PTE cached after translating through the virtualization
+ * context, so if entries in the virtualization page table are
+ * modified or removed, the guest context should be re-installed.
+ * This, in conjunction with flushing the TLB on return to the guest,
+ * will ensure that the new virtualization entries are honored.
+ *
+ * @param page_table Root of the page table.
+ * @param access PTE providing info on how to read the page table.  This
+ *   value must be consistent between multiple tiles sharing a page table,
+ *   and must also be consistent with any virtual mappings the client
+ *   may be using to access the page table.
+ * @param asid HV_ASID the page table is to be used for (currently ignored).
+ * @param flags Context flags, denoting attributes or privileges of the
+ *   current virtualization context (see below).
+ * @return Zero on success, or a hypervisor error code on failure.
+ */
+
+int hv_install_virt_context(HV_PhysAddr page_table, HV_PTE access,
+                            HV_ASID asid, __hv32 flags);
+
+
+
+/** Install a guest context.
+ *
+ * The guest context is only consulted when a virtualization context
+ * is also installed, and for faults that occur below the client's PL.
+ * If no guest context is installed, in such a case, a VA=PA context
+ * is used instead.
+ *
+ * The access PTE will only be honored if the virtualization table was
+ * installed with HV_CTX_GUEST_CACHE.
+ *
+ * A virtualization context must already be installed prior to
+ * installing the guest context.
+ *
+ * @param page_table Root of the page table; the value is the guest's
+ *   physical address (GPA), not a CPA.
+ * @param access PTE providing info on how to read the page table.  This
+ *   value must be consistent between multiple tiles sharing a page table,
+ *   and must also be consistent with any virtual mappings the client
+ *   may be using to access the page table.
+ * @param asid HV_ASID the page table is to be used for.
+ * @param flags Context flags, denoting attributes or privileges of the
+ *   current context (HV_CTX_xxx).
+ * @return Zero on success, or a hypervisor error code on failure.
+ */
+
+int hv_install_guest_context(HV_PhysAddr page_table, HV_PTE access,
+                             HV_ASID asid, __hv32 flags);
 
 
 /** Set the number of pages ganged together by HV_PTE_SUPER at a
@@ -761,7 +933,7 @@ int hv_install_context(HV_PhysAddr page_table, HV_PTE access, HV_ASID asid,
  * "super" page size must be less than the span of the next level in
  * the page table.  The largest size that can be requested is 64GB.
  *
- * The shift value is initially "0" for all page table levels,
+ * The shift value is initially 0 for all page table levels,
  * indicating that the HV_PTE_SUPER bit is effectively ignored.
  *
  * If you change the count from one non-zero value to another, the
@@ -792,9 +964,24 @@ typedef struct
 } HV_Context;
 
 /** Retrieve information about the currently installed context.
- * @return The data passed to the last successful hv_install_context call.
+ * @return The data passed to the last successful call to
+ * hv_install_context().
  */
 HV_Context hv_inquire_context(void);
+
+
+/** Retrieve information about the currently installed virtualization context.
+ * @return The data passed to the last successful call to
+ * hv_install_virt_context().
+ */
+HV_Context hv_inquire_virt_context(void);
+
+
+/** Retrieve information about the currently installed guest context.
+ * @return The data passed to the last successful call to
+ * hv_install_guest_context().
+ */
+HV_Context hv_inquire_guest_context(void);
 
 
 /** Flushes all translations associated with the named address space
@@ -855,7 +1042,7 @@ int hv_flush_pages(HV_VirtAddr start, HV_PageSize page_size,
 /** Flushes all non-global translations (if preserve_global is true),
  *  or absolutely all translations (if preserve_global is false).
  *
- * @param preserve_global Non-zero if we want to preserve "global" mappings.
+ * @param preserve_global Non-zero if we want to preserve global mappings.
  * @return Zero on success, or a hypervisor error code on failure.
 */
 int hv_flush_all(int preserve_global);
@@ -929,7 +1116,11 @@ typedef enum {
   HV_INQ_TILES_HFH_CACHE       = 2,
 
   /** The set of tiles that can be legally used as a LOTAR for a PTE. */
-  HV_INQ_TILES_LOTAR           = 3
+  HV_INQ_TILES_LOTAR           = 3,
+
+  /** The set of "shared" driver tiles that the hypervisor may
+   *  periodically interrupt. */
+  HV_INQ_TILES_SHARED          = 4
 } HV_InqTileSet;
 
 /** Returns specific information about various sets of tiles within the
@@ -1092,13 +1283,8 @@ HV_VirtAddrRange hv_inquire_virtual(int idx);
 /** A range of ASID values. */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   HV_ASID start;        /**< First ASID in the range. */
   unsigned int size;    /**< Number of ASIDs. Zero for an invalid range. */
-#else
-  unsigned int size;    /**< Number of ASIDs. Zero for an invalid range. */
-  HV_ASID start;        /**< First ASID in the range. */
-#endif
 } HV_ASIDRange;
 
 /** Returns information about a range of ASIDs.
@@ -1214,14 +1400,21 @@ void hv_downcall_dispatch(void);
  */
 /** Message receive downcall interrupt vector */
 #define INT_MESSAGE_RCV_DWNCL    INT_BOOT_ACCESS
-/** DMA TLB miss downcall interrupt vector */
-#define INT_DMATLB_MISS_DWNCL    INT_DMA_ASID
-/** Static nework processor instruction TLB miss interrupt vector */
-#define INT_SNITLB_MISS_DWNCL    INT_SNI_ASID
-/** DMA TLB access violation downcall interrupt vector */
-#define INT_DMATLB_ACCESS_DWNCL  INT_DMA_CPL
 /** Device interrupt downcall interrupt vector */
 #define INT_DEV_INTR_DWNCL       INT_WORLD_ACCESS
+#ifdef __tilegx__
+/** Virtualization page table miss downcall interrupt vector */
+#define INT_VPGTABLE_MISS_DWNCL  INT_I_ASID
+/** Virtualization guest illegal page table */
+#define INT_VGUEST_FATAL_DWNCL   INT_D_ASID
+#else
+/** DMA TLB miss downcall interrupt vector */
+#define INT_DMATLB_MISS_DWNCL    INT_DMA_ASID
+/** DMA TLB access violation downcall interrupt vector */
+#define INT_DMATLB_ACCESS_DWNCL  INT_DMA_CPL
+/** Static nework processor instruction TLB miss interrupt vector */
+#define INT_SNITLB_MISS_DWNCL    INT_SNI_ASID
+#endif
 
 #ifndef __ASSEMBLER__
 
@@ -1422,7 +1615,6 @@ typedef enum
 /** Message recipient. */
 typedef struct
 {
-#ifndef __BIG_ENDIAN__
   /** X coordinate, relative to supervisor's top-left coordinate */
   unsigned int x:11;
 
@@ -1431,11 +1623,6 @@ typedef struct
 
   /** Status of this recipient */
   HV_Recip_State state:10;
-#else //__BIG_ENDIAN__
-  HV_Recip_State state:10;
-  unsigned int y:11;
-  unsigned int x:11;
-#endif
 } HV_Recipient;
 
 /** Send a message to a set of recipients.
@@ -1990,8 +2177,16 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
 #define HV_PTE_PTFN_BITS             29  /**< Number of bits in a PTFN */
 
 /*
- * Legal values for the PTE's mode field
+ * Legal values for the PTE's mode field.
+ *
+ * If a virtualization page table is installed, this field is only honored
+ * in the primary page table if HV_CTX_GUEST_CACHE was set when the page
+ * table was installed, otherwise only in the virtualization page table.
+ * Note that if HV_CTX_GUEST_CACHE is not set, guests will only be able
+ * to access MMIO resources via pseudo PAs that map to MMIO in the
+ * virtualization page table.
  */
+
 /** Data is not resident in any caches; loads and stores access memory
  *  directly.
  */
@@ -2110,6 +2305,8 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * doing so may race with the hypervisor's update of ACCESSED and DIRTY bits.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * This bit is ignored in the primary page table if a virtualization
+ * page table is installed.
  */
 #define HV_PTE_GLOBAL                (__HV_PTE_ONE << HV_PTE_INDEX_GLOBAL)
 
@@ -2123,6 +2320,7 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * doing so may race with the hypervisor's update of ACCESSED and DIRTY bits.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * This bit is ignored in the virtualization page table.
  */
 #define HV_PTE_USER                  (__HV_PTE_ONE << HV_PTE_INDEX_USER)
 
@@ -2134,7 +2332,7 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * has been cleared, subsequent references are not guaranteed to set
  * it again until the translation has been flushed from the TLB.
  *
- * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * This bit is ignored in level-0 or level-1 PTEs unless the Page bit is set.
  */
 #define HV_PTE_ACCESSED              (__HV_PTE_ONE << HV_PTE_INDEX_ACCESSED)
 
@@ -2146,7 +2344,7 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * has been cleared, subsequent references are not guaranteed to set
  * it again until the translation has been flushed from the TLB.
  *
- * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * This bit is ignored in level-0 or level-1 PTEs unless the Page bit is set.
  */
 #define HV_PTE_DIRTY                 (__HV_PTE_ONE << HV_PTE_INDEX_DIRTY)
 
@@ -2188,6 +2386,10 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  *
  * In level-1 PTEs, if the Page bit is clear, this bit determines how the
  * level-2 page table is accessed.
+ *
+ * If a virtualization page table is installed, this field is only honored
+ * in the primary page table if HV_CTX_GUEST_CACHE was set when the page
+ * table was installed, otherwise only in the virtualization page table.
  */
 #define HV_PTE_NC                    (__HV_PTE_ONE << HV_PTE_INDEX_NC)
 
@@ -2201,6 +2403,10 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  *
  * In level-1 PTEs, if the Page bit is clear, this bit
  * determines how the level-2 page table is accessed.
+ *
+ * If a virtualization page table is installed, this field is only honored
+ * in the primary page table if HV_CTX_GUEST_CACHE was set when the page
+ * table was installed, otherwise only in the virtualization page table.
  */
 #define HV_PTE_NO_ALLOC_L1           (__HV_PTE_ONE << HV_PTE_INDEX_NO_ALLOC_L1)
 
@@ -2214,6 +2420,10 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  *
  * In level-1 PTEs, if the Page bit is clear, this bit determines how the
  * level-2 page table is accessed.
+ *
+ * If a virtualization page table is installed, this field is only honored
+ * in the primary page table if HV_CTX_GUEST_CACHE was set when the page
+ * table was installed, otherwise only in the virtualization page table.
  */
 #define HV_PTE_NO_ALLOC_L2           (__HV_PTE_ONE << HV_PTE_INDEX_NO_ALLOC_L2)
 
@@ -2233,6 +2443,10 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * the page map directly to memory.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ *
+ * If a virtualization page table is installed, this field is only honored
+ * in the primary page table if HV_CTX_GUEST_CACHE was set when the page
+ * table was installed, otherwise only in the virtualization page table.
  */
 #define HV_PTE_CACHED_PRIORITY       (__HV_PTE_ONE << \
                                       HV_PTE_INDEX_CACHED_PRIORITY)
@@ -2246,6 +2460,8 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * It is illegal for this bit to be clear if the Writable bit is set.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * If a virtualization page table is present, the final Readable status
+ * is the logical "and" of this bit in both page tables.
  */
 #define HV_PTE_READABLE              (__HV_PTE_ONE << HV_PTE_INDEX_READABLE)
 
@@ -2256,6 +2472,8 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * PTE.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * If a virtualization page table is present, the final Writable status
+ * is the logical "and" of this bit in both page tables.
  */
 #define HV_PTE_WRITABLE              (__HV_PTE_ONE << HV_PTE_INDEX_WRITABLE)
 
@@ -2268,6 +2486,8 @@ int hv_flush_remote(HV_PhysAddr cache_pa, unsigned long cache_control,
  * than one.
  *
  * This bit is ignored in level-1 PTEs unless the Page bit is set.
+ * If a virtualization page table is present, the final Executable status
+ * is the logical "and" of this bit in both page tables.
  */
 #define HV_PTE_EXECUTABLE            (__HV_PTE_ONE << HV_PTE_INDEX_EXECUTABLE)
 
