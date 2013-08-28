@@ -85,7 +85,6 @@
 #define MDSS_MDP_REG_INTR_EN			0x00110
 #define MDSS_MDP_REG_INTR_STATUS		0x00114
 #define MDSS_MDP_REG_INTR_CLEAR		0x00118
-#define MDSS_MDP_VSYNC_IRQ		0x08000000
 #define MDSS_MDP_INTR_INTF_1_VSYNC		BIT(27)
 #define MDSS_MDP_INTR_INTF_3_VSYNC		BIT(31)
 #define MDSS_MDP_INTR_WB_0_DONE		BIT(0)
@@ -1853,17 +1852,21 @@ kgsl_drm_irq_postinstall(struct drm_device *dev)
 {
 	struct drm_kgsl_private *dev_priv =
 		(struct drm_kgsl_private *)dev->dev_private;
-	u32 mask;
+	u32 enable, mask;
 
 	mdss_mdp_clk_ctrl(1, false);
 
 	mask = readl_relaxed(dev_priv->regs +
 		MDSS_MDP_REG_INTR_EN);
 
-	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
+	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_0_DONE;
 
-	mask |= MDSS_MDP_VSYNC_IRQ;
-	writel_relaxed(MDSS_MDP_VSYNC_IRQ,
+	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
+		(int)dev_priv->regs, enable);
+
+	mask |= enable;
+	writel_relaxed(enable,
 		dev_priv->regs + MDSS_MDP_REG_INTR_CLEAR);
 	writel_relaxed(mask,
 		dev_priv->regs + MDSS_MDP_REG_INTR_EN);
@@ -1880,16 +1883,20 @@ kgsl_drm_irq_uninstall(struct drm_device *dev)
 {
 	struct drm_kgsl_private *dev_priv =
 		(struct drm_kgsl_private *)dev->dev_private;
-	u32 mask;
+	u32 enable, mask;
 
 	mdss_mdp_clk_ctrl(1, false);
 
 	mask = readl_relaxed(dev_priv->regs +
 		MDSS_MDP_REG_INTR_EN);
 
-	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
+	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_0_DONE;
 
-	mask &= ~MDSS_MDP_VSYNC_IRQ;
+	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
+		(int)dev_priv->regs, enable);
+
+	mask &= ~enable;
 	writel_relaxed(mask, dev_priv->regs + MDSS_MDP_REG_INTR_EN);
 
 	dev->irq_enabled = 0;
