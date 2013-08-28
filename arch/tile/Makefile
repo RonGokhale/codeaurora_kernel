@@ -62,6 +62,7 @@ libs-y		+= $(LIBGCC_PATH)
 
 # See arch/tile/Kbuild for content of core part of the kernel
 core-y		+= arch/tile/
+core-$(CONFIG_KVM) += arch/tile/kvm/
 
 core-$(CONFIG_TILE_GXIO) += arch/tile/gxio/
 

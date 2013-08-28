@@ -6,6 +6,7 @@ header-y += bitsperlong.h
 header-y += byteorder.h
 header-y += cachectl.h
 header-y += hardwall.h
+header-y += kvm.h
 header-y += kvm_para.h
 header-y += mman.h
 header-y += ptrace.h

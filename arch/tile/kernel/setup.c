@@ -1074,7 +1074,20 @@ void __cpuinit setup_cpu(int boot)
 	 * SPRs, as well as the interrupt mask.
 	 */
 	__insn_mtspr(SPR_MPL_INTCTRL_0_SET_0, 1);
+
+#ifdef CONFIG_KVM
+	/*
+	 * If we launch a guest kernel, it will need some interrupts
+	 * that otherwise are not used by the host or by userspace.
+	 * Set them to MPL 1 now and leave them alone going forward;
+	 * they are masked in the host so will never fire there anyway,
+	 * and we mask them at PL1 as we exit the guest.
+	 */
 	__insn_mtspr(SPR_MPL_INTCTRL_1_SET_1, 1);
+	__insn_mtspr(SPR_MPL_SINGLE_STEP_1_SET_1, 1);
+	__insn_mtspr(SPR_MPL_AUX_TILE_TIMER_SET_1, 1);
+	__insn_mtspr(SPR_MPL_IPI_1_SET_1, 1);
+#endif
 
 	/* Initialize IRQ support for this cpu. */
 	setup_irq_regs();

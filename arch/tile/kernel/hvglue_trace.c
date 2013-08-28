@@ -75,6 +75,10 @@
 #define hv_get_ipi_pte _hv_get_ipi_pte
 #define hv_set_pte_super_shift _hv_set_pte_super_shift
 #define hv_set_speed _hv_set_speed
+#define hv_install_virt_context _hv_install_virt_context
+#define hv_inquire_virt_context _hv_inquire_virt_context
+#define hv_install_guest_context _hv_install_guest_context
+#define hv_inquire_guest_context _hv_inquire_guest_context
 #define hv_console_set_ipi _hv_console_set_ipi
 #include <hv/hypervisor.h>
 #undef hv_init
@@ -135,6 +139,10 @@
 #undef hv_get_ipi_pte
 #undef hv_set_pte_super_shift
 #undef hv_set_speed
+#undef hv_install_virt_context
+#undef hv_inquire_virt_context
+#undef hv_install_guest_context
+#undef hv_inquire_guest_context
 #undef hv_console_set_ipi
 
 /*
@@ -209,8 +217,14 @@ HV_WRAP3(HV_SetSpeed, hv_set_speed, unsigned long, speed, __hv64, start_cycle,
 	 unsigned long, flags)
 HV_WRAP4(int, hv_install_context, HV_PhysAddr, page_table, HV_PTE, access,
 	 HV_ASID, asid, __hv32, flags)
+HV_WRAP4(int, hv_install_virt_context, HV_PhysAddr, page_table, HV_PTE, access,
+	 HV_ASID, asid, __hv32, flags)
+HV_WRAP4(int, hv_install_guest_context, HV_PhysAddr, page_table, HV_PTE, access,
+	 HV_ASID, asid, __hv32, flags)
 HV_WRAP2(int, hv_set_pte_super_shift, int, level, int, log2_count)
 HV_WRAP0(HV_Context, hv_inquire_context)
+HV_WRAP0(HV_Context, hv_inquire_virt_context)
+HV_WRAP0(HV_Context, hv_inquire_guest_context)
 HV_WRAP1(int, hv_flush_asid, HV_ASID, asid)
 HV_WRAP2(int, hv_flush_page, HV_VirtAddr, address, HV_PageSize, page_size)
 HV_WRAP3(int, hv_flush_pages, HV_VirtAddr, start, HV_PageSize, page_size,

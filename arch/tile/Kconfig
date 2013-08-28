@@ -5,7 +5,6 @@ config TILE
 	def_bool y
 	select HAVE_DMA_ATTRS
 	select HAVE_DMA_API_DEBUG
-	select HAVE_KVM if !TILEGX
 	select GENERIC_FIND_FIRST_BIT
 	select SYSCTL_EXCEPTION_TRACE
 	select USE_GENERIC_SMP_HELPERS
@@ -127,6 +126,7 @@ config TILEGX
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_KPROBES
 	select HAVE_KRETPROBES
+	select HAVE_KVM
 
 config TILEPRO
 	def_bool !TILEGX
