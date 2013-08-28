@@ -286,7 +286,7 @@ static int _set_clock_rate_barrier;
 static int _set_clock_rate(void *arg)
 {
 	struct _set_clock_rate_args *args = arg;
-	struct clock_event_device *evt = &__get_cpu_var(tile_timer);
+	struct clock_event_device *evt = this_cpu_ptr(&tile_timer);
 
 	/*
 	 * Only one CPU needs to change the timekeeping parameters and
