@@ -221,6 +221,14 @@
  */
 #define SIM_CONTROL_ENABLE_MPIPE_LINK_MAGIC_BYTE 36
 
+/**
+ * If written to SPR_SIM_CONTROL, combined with a signed virtual cpu
+ * number shifted by 8, will tag any identification of the cpu that
+ * task is running on with the given virtual cpu number.  If the
+ * virtual cpu number is -1, the tag is removed.
+ */
+#define SIM_CONTROL_VCPU 37
+
 
 /*
  * Syscall numbers for use with "sim_syscall()".

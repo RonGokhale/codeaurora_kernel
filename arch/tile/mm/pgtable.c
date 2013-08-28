@@ -486,24 +486,17 @@ void check_mm_caching(struct mm_struct *prev, struct mm_struct *next)
 
 #if CHIP_HAS_MMIO()
 
-/* Map an arbitrary MMIO address, homed according to pgprot, into VA space. */
-void __iomem *ioremap_prot(resource_size_t phys_addr, unsigned long size,
-			   pgprot_t home)
+void *generic_remap_prot(resource_size_t phys_addr, unsigned long size,
+		    unsigned long flags, pgprot_t prot)
 {
 	void *addr;
 	struct vm_struct *area;
 	unsigned long offset, last_addr;
-	pgprot_t pgprot;
 
 	/* Don't allow wraparound or zero size */
 	last_addr = phys_addr + size - 1;
 	if (!size || last_addr < phys_addr)
 		return NULL;
-
-	/* Create a read/write, MMIO VA mapping homed at the requested shim. */
-	pgprot = PAGE_KERNEL;
-	pgprot = hv_pte_set_mode(pgprot, HV_PTE_MODE_MMIO);
-	pgprot = hv_pte_set_lotar(pgprot, hv_pte_get_lotar(home));
 
 	/*
 	 * Mappings have to be page-aligned
@@ -515,17 +508,35 @@ void __iomem *ioremap_prot(resource_size_t phys_addr, unsigned long size,
 	/*
 	 * Ok, go for it..
 	 */
-	area = get_vm_area(size, VM_IOREMAP /* | other flags? */);
+	area = get_vm_area(size, flags);
 	if (!area)
 		return NULL;
 	area->phys_addr = phys_addr;
 	addr = area->addr;
 	if (ioremap_page_range((unsigned long)addr, (unsigned long)addr + size,
-			       phys_addr, pgprot)) {
+			       phys_addr, prot)) {
 		free_vm_area(area);
 		return NULL;
 	}
-	return (__force void __iomem *) (offset + (char *)addr);
+	return (void *) (offset + (char *)addr);
+}
+EXPORT_SYMBOL(generic_remap_prot);
+
+/* Map an arbitrary MMIO address, homed according to pgprot, into VA space. */
+void __iomem *ioremap_prot(resource_size_t phys_addr, unsigned long size,
+			   pgprot_t home)
+{
+	pgprot_t pgprot;
+	unsigned long flags;
+
+	/* Create a read/write, MMIO VA mapping homed at the requested shim. */
+	pgprot = PAGE_KERNEL;
+	pgprot = hv_pte_set_mode(pgprot, HV_PTE_MODE_MMIO);
+	pgprot = hv_pte_set_lotar(pgprot, hv_pte_get_lotar(home));
+	flags = VM_IOREMAP; /* | other flags? */
+
+	return (__force void __iomem *) generic_remap_prot(phys_addr,
+							   size, flags, pgprot);
 }
 EXPORT_SYMBOL(ioremap_prot);
 

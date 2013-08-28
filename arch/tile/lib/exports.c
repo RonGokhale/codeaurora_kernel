@@ -50,18 +50,26 @@ EXPORT_SYMBOL(__copy_in_user_inatomic);
 
 /* hypervisor glue */
 #include <hv/hypervisor.h>
+EXPORT_SYMBOL(hv_confstr);
+EXPORT_SYMBOL(hv_dev_close);
 EXPORT_SYMBOL(hv_dev_open);
-EXPORT_SYMBOL(hv_dev_pread);
-EXPORT_SYMBOL(hv_dev_pwrite);
-EXPORT_SYMBOL(hv_dev_preada);
-EXPORT_SYMBOL(hv_dev_pwritea);
 EXPORT_SYMBOL(hv_dev_poll);
 EXPORT_SYMBOL(hv_dev_poll_cancel);
-EXPORT_SYMBOL(hv_dev_close);
-EXPORT_SYMBOL(hv_sysconf);
-EXPORT_SYMBOL(hv_confstr);
+EXPORT_SYMBOL(hv_dev_pread);
+EXPORT_SYMBOL(hv_dev_preada);
+EXPORT_SYMBOL(hv_dev_pwrite);
+EXPORT_SYMBOL(hv_dev_pwritea);
+EXPORT_SYMBOL(hv_flush_all);
 EXPORT_SYMBOL(hv_get_rtc);
+#ifdef __tilegx__
+EXPORT_SYMBOL(hv_inquire_guest_context);
+EXPORT_SYMBOL(hv_install_guest_context);
+EXPORT_SYMBOL(hv_install_virt_context);
+#endif
+EXPORT_SYMBOL(hv_physaddr_read64);
+EXPORT_SYMBOL(hv_physaddr_write64);
 EXPORT_SYMBOL(hv_set_rtc);
+EXPORT_SYMBOL(hv_sysconf);
 
 /* libgcc.a */
 uint32_t __udivsi3(uint32_t dividend, uint32_t divisor);

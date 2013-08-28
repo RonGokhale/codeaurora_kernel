@@ -223,30 +223,34 @@ void __init ipi_init(void)
 
 #if CHIP_HAS_IPI()
 
-void smp_send_reschedule(int cpu)
+static void __smp_send_reschedule(int cpu)
 {
-	WARN_ON(cpu_is_offline(cpu));
-
 	/*
 	 * We just want to do an MMIO store.  The traditional writeq()
 	 * functions aren't really correct here, since they're always
 	 * directed at the PCI shim.  For now, just do a raw store,
-	 * casting away the __iomem attribute.
+	 * casting away the __iomem attribute.  We do the store as a
+	 * single asm() instruction to ensure that we can force a step
+	 * over it in the KVM case, if we are not binding vcpus to cpus,
+	 * rather than require it to be possible to issue validly.
 	 */
-	((unsigned long __force *)ipi_mappings[cpu])[IRQ_RESCHEDULE] = 0;
+	unsigned long *addr =
+		&((unsigned long __force *)ipi_mappings[cpu])[IRQ_RESCHEDULE];
+	asm volatile("st %0, zero" :: "r" (addr));
 }
 
 #else
 
-void smp_send_reschedule(int cpu)
+static void __smp_send_reschedule(int cpu)
 {
-	HV_Coord coord;
-
-	WARN_ON(cpu_is_offline(cpu));
-
-	coord.y = cpu_y(cpu);
-	coord.x = cpu_x(cpu);
+	HV_Coord coord = { .y = cpu_y(cpu), .x = cpu_x(cpu) };
 	hv_trigger_ipi(coord, IRQ_RESCHEDULE);
 }
 
 #endif /* CHIP_HAS_IPI() */
+
+void smp_send_reschedule(int cpu)
+{
+	WARN_ON(cpu_is_offline(cpu));
+	__smp_send_reschedule(cpu);
+}
