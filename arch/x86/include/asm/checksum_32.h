@@ -2,6 +2,7 @@
 #define _ASM_X86_CHECKSUM_32_H
 
 #include <linux/in6.h>
+#include <linux/sched.h>
 
 #include <asm/uaccess.h>
 

@@ -16,6 +16,7 @@
  * The content of the file is basically the content of "struct iw_statistics".
  */
 
+#include <linux/sched.h>
 #include <linux/module.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>

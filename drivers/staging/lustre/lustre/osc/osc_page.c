@@ -41,6 +41,7 @@
 #define DEBUG_SUBSYSTEM S_OSC
 
 #include "osc_cl_internal.h"
+#include <linux/sched.h>
 
 static void osc_lru_del(struct client_obd *cli, struct osc_page *opg, bool del);
 static void osc_lru_add(struct client_obd *cli, struct osc_page *opg);

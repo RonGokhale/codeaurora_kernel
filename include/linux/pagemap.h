@@ -5,6 +5,7 @@
  * Copyright 1995 Linus Torvalds
  */
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/highmem.h>

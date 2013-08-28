@@ -41,6 +41,7 @@
 #define DEBUG_SUBSYSTEM S_CLASS
 
 #include <obd_class.h>
+#include <linux/sched.h>
 #include <obd_support.h>
 #include <lustre_fid.h>
 #include <linux/list.h>

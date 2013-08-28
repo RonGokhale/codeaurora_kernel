@@ -6,6 +6,7 @@
  * Licensed under the GPL v2 or later.
  */
 #include <linux/completion.h>
+#include <linux/sched.h>
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
 #include <linux/mutex.h>

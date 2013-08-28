@@ -2,6 +2,7 @@
  * Generic hugetlb support.
  * (C) Nadia Yvette Chambers, April 2004
  */
+#include <linux/sched.h>
 #include <linux/list.h>
 #include <linux/init.h>
 #include <linux/module.h>

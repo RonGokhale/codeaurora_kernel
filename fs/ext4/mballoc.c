@@ -22,6 +22,7 @@
  */
 
 #include "ext4_jbd2.h"
+#include <linux/sched.h>
 #include "mballoc.h"
 #include <linux/log2.h>
 #include <linux/module.h>

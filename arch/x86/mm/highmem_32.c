@@ -1,3 +1,4 @@
+#include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/module.h>
 #include <linux/swap.h> /* for totalram_pages */
