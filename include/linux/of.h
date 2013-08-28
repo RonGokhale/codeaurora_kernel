@@ -333,6 +333,8 @@ const __be32 *of_prop_next_u32(struct property *prop, const __be32 *cur,
  */
 const char *of_prop_next_string(struct property *prop, const char *cur);
 
+int of_device_is_stdout_path(struct device_node *dn);
+
 #else /* CONFIG_OF */
 
 static inline const char* of_node_full_name(struct device_node *np)
@@ -511,6 +513,11 @@ static inline const char *of_prop_next_string(struct property *prop,
 		const char *cur)
 {
 	return NULL;
+}
+
+static inline int of_device_is_stdout_path(struct device_node *dn)
+{
+	return 0;
 }
 
 #define of_match_ptr(_ptr)	NULL
