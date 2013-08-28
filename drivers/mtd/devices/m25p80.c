@@ -116,6 +116,7 @@ struct m25p {
 	u8			program_opcode;
 	u8			*command;
 	bool			fast_read;
+	struct flash_info *info;
 	int (*wait_till_ready)(struct m25p *flash);
 };
 
@@ -815,7 +816,8 @@ struct flash_info {
 #define	SST_WRITE	0x04		/* use SST byte programming */
 #define	M25P_NO_FR	0x08		/* Can't do fastread */
 #define	SECT_4K_PMC	0x10		/* OPCODE_BE_4K_PMC works uniformly */
-#define	USE_FSR   0x04    /* use flag status register */
+#define	USE_FSR   0x08    /* use flag status register */
+#define	SHUTDOWN_3BYTE   0x10    /* set 3-byte mode on shutdown */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -904,8 +906,10 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024,  256, 0) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024,  256, 0) },
 	{ "n25q256a",    INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K) },
-	{ "n25q512a",    INFO(0x20bb20, 0, 64 * 1024, 1024, SECT_4K) },
-	{ "n25q00",   INFO(0x20ba21, 0, 64 * 1024, 2048, USE_FSR) },
+	{ "n25q512a", INFO(0x20ba20, 0, 64 * 1024, 1024,
+		USE_FSR|SHUTDOWN_3BYTE) },
+	{ "n25q00",   INFO(0x20ba21, 0, 64 * 1024, 2048,
+		USE_FSR|SHUTDOWN_3BYTE) },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
@@ -1114,6 +1118,7 @@ static int m25p_probe(struct spi_device *spi)
 	if (!flash->command)
 		return -ENOMEM;
 
+	flash->info = info;
 	flash->spi = spi;
 	mutex_init(&flash->lock);
 	spi_set_drvdata(spi, flash);
@@ -1271,6 +1276,12 @@ static int m25p_remove(struct spi_device *spi)
 	return mtd_device_unregister(&flash->mtd);
 }
 
+static void m25p_shutdown(struct spi_device *spi)
+{
+	struct m25p	*flash = dev_get_drvdata(&spi->dev);
+	if (flash->info->flags & SHUTDOWN_3BYTE)
+		set_4byte(flash, flash->info->jedec_id, 0);
+}
 
 static struct spi_driver m25p80_driver = {
 	.driver = {
@@ -1280,6 +1291,7 @@ static struct spi_driver m25p80_driver = {
 	.id_table	= m25p_ids,
 	.probe	= m25p_probe,
 	.remove	= m25p_remove,
+	.shutdown = m25p_shutdown,
 
 	/* REVISIT: many of these chips have deep power-down modes, which
 	 * should clearly be entered on suspend() to minimize power use.
