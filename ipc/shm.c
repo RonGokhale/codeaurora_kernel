@@ -918,7 +918,7 @@ static int shmctl_nolock(struct ipc_namespace *ns, int shmid,
 		tbuf.shm_nattch	= shp->shm_nattch;
 		rcu_read_unlock();
 
-		if (copy_shmid_to_user (buf, &tbuf, version))
+		if (copy_shmid_to_user(buf, &tbuf, version))
 			err = -EFAULT;
 		else
 			err = result;
