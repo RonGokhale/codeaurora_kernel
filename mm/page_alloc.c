@@ -1551,6 +1551,7 @@ again:
 					  get_pageblock_migratetype(page));
 	}
 
+	__mod_zone_page_state(zone, NR_ALLOC_BATCH, -(1 << order));
 	__count_zone_vm_events(PGALLOC, zone, 1 << order);
 	zone_statistics(preferred_zone, zone, gfp_flags);
 	local_irq_restore(flags);
@@ -1924,7 +1925,7 @@ zonelist_scan:
 		 * fairness round-robin cycle of this zonelist.
 		 */
 		if (alloc_flags & ALLOC_WMARK_LOW) {
-			if (zone->alloc_batch <= 0)
+			if (zone_page_state(zone, NR_ALLOC_BATCH) <= 0)
 				continue;
 			if (zone_reclaim_mode &&
 			    !zone_local(preferred_zone, zone))
@@ -2036,8 +2037,7 @@ this_zone_full:
 		goto zonelist_scan;
 	}
 
-	if (page) {
-		zone->alloc_batch -= 1U << order;
+	if (page)
 		/*
 		 * page->pfmemalloc is set when ALLOC_NO_WATERMARKS was
 		 * necessary to allocate the page. The expectation is
@@ -2046,7 +2046,6 @@ this_zone_full:
 		 * for !PFMEMALLOC purposes.
 		 */
 		page->pfmemalloc = !!(alloc_flags & ALLOC_NO_WATERMARKS);
-	}
 
 	return page;
 }
@@ -2397,8 +2396,10 @@ static void prepare_slowpath(gfp_t gfp_mask, unsigned int order,
 		 */
 		if (zone_reclaim_mode && !zone_local(preferred_zone, zone))
 			continue;
-		zone->alloc_batch = high_wmark_pages(zone) -
-			low_wmark_pages(zone);
+		mod_zone_page_state(zone, NR_ALLOC_BATCH,
+				    high_wmark_pages(zone) -
+				    low_wmark_pages(zone) -
+				    zone_page_state(zone, NR_ALLOC_BATCH));
 	}
 }
 
@@ -4798,7 +4799,7 @@ static void __paginginit free_area_init_core(struct pglist_data *pgdat,
 		zone->zone_pgdat = pgdat;
 
 		/* For bootup, initialized properly in watermark setup */
-		zone->alloc_batch = zone->managed_pages;
+		mod_zone_page_state(zone, NR_ALLOC_BATCH, zone->managed_pages);
 
 		zone_pcp_init(zone);
 		lruvec_init(&zone->lruvec);
@@ -5571,8 +5572,10 @@ static void __setup_per_zone_wmarks(void)
 		zone->watermark[WMARK_LOW]  = min_wmark_pages(zone) + (tmp >> 2);
 		zone->watermark[WMARK_HIGH] = min_wmark_pages(zone) + (tmp >> 1);
 
-		zone->alloc_batch = high_wmark_pages(zone) -
-			low_wmark_pages(zone);
+		__mod_zone_page_state(zone, NR_ALLOC_BATCH,
+				      high_wmark_pages(zone) -
+				      low_wmark_pages(zone) -
+				      zone_page_state(zone, NR_ALLOC_BATCH));
 
 		setup_zone_migrate_reserve(zone);
 		spin_unlock_irqrestore(&zone->lock, flags);
