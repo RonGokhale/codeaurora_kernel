@@ -169,3 +169,7 @@ next/renesas
 		contains renesas/soc
 		contains renesas/cleanup
 
+
+patch
+	ARM: shmobile: lager: Do not use register_type field of struct sh_eth_plat_data
+	Needed to not break builds on lager on linux-next; needs to be merged after net-next)
