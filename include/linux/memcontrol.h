@@ -328,7 +328,8 @@ mem_cgroup_iter_cond(struct mem_cgroup *root,
 		struct mem_cgroup_reclaim_cookie *reclaim,
 		mem_cgroup_iter_filter cond)
 {
-	return NULL;
+	/* first call must return non-NULL, second return NULL */
+	return (struct mem_cgroup *)(unsigned long)!prev;
 }
 
 static inline struct mem_cgroup *
