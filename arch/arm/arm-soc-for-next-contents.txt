@@ -220,4 +220,8 @@ late/all
 		git://github.com/at91linux/linux-at91.git tags/at91-soc
 	highbank/soc
 		git://sources.calxeda.com/kernel/linux.git tags/highbank-for-3.12
+	omap/prcm
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/prcm-signed
+	omap/dra7xx-prm
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/dra7xx-prcm
 
