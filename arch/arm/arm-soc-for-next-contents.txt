@@ -122,6 +122,8 @@ next/soc
 		# khilman: included into next/soc due to dependency on imx/soc
 	mxs/soc
 		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-soc-3.12
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu.git tags/dt-3.12
 
 next/drivers
 	cpuidle/biglittle
