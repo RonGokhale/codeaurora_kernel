@@ -197,3 +197,16 @@ next/renesas
 patch
 	ARM: shmobile: lager: Do not use register_type field of struct sh_eth_plat_data
 	Needed to not break builds on lager on linux-next; needs to be merged after net-next)
+
+late/all
+	ux500/core
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/ux500-core-for-arm-soc-2
+	mmp/irq
+		git://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux.git tags/mmp-irq
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-2
+	samsung/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-mach-exynos-v2
+	at91/dt2
+		git://github.com/at91linux/linux-at91.git tags/at91-dt
+
