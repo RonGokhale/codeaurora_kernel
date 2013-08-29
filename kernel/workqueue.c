@@ -2205,6 +2205,15 @@ __acquires(&pool->lock)
 		dump_stack();
 	}
 
+	/*
+	 * The following prevents a kworker from hogging CPU on !PREEMPT
+	 * kernels, where a requeueing work item waiting for something to
+	 * happen could deadlock with stop_machine as such work item could
+	 * indefinitely requeue itself while all other CPUs are trapped in
+	 * stop_machine.
+	 */
+	cond_resched();
+
 	spin_lock_irq(&pool->lock);
 
 	/* clear cpu intensive status */
@@ -4665,7 +4674,7 @@ static void restore_unbound_workers_cpumask(struct worker_pool *pool, int cpu)
  * Workqueues should be brought up before normal priority CPU notifiers.
  * This will be registered high priority CPU notifier.
  */
-static int __cpuinit workqueue_cpu_up_callback(struct notifier_block *nfb,
+static int workqueue_cpu_up_callback(struct notifier_block *nfb,
 					       unsigned long action,
 					       void *hcpu)
 {
@@ -4718,7 +4727,7 @@ static int __cpuinit workqueue_cpu_up_callback(struct notifier_block *nfb,
  * Workqueues should be brought down after normal priority CPU notifiers.
  * This will be registered as low priority CPU notifier.
  */
-static int __cpuinit workqueue_cpu_down_callback(struct notifier_block *nfb,
+static int workqueue_cpu_down_callback(struct notifier_block *nfb,
 						 unsigned long action,
 						 void *hcpu)
 {
