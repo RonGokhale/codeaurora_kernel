@@ -422,6 +422,8 @@
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
 			gpio = <&gpio TEGRA_GPIO(V, 2) 0>;
+			regulator-always-on;
+			regulator-boot-on;
 		};
 
 		pci_clk_reg: regulator@3 {
