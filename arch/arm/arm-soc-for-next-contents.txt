@@ -128,6 +128,8 @@ next/soc
 		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-soc-3.12
 	mvebu/dt
 		git://git.infradead.org/linux-mvebu.git tags/dt-3.12
+	patch
+		ARM: tegra: Drop ARCH_SUPPORTS_MSI and sort list
 
 next/drivers
 	cpuidle/biglittle
