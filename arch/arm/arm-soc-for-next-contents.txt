@@ -138,6 +138,7 @@ next/soc
 	patch
 		ARM: tegra: Drop ARCH_SUPPORTS_MSI and sort list
 		PCI: tegra: replace devm_request_and_ioremap by devm_ioremap_resource         
+		tegra-cpuidle: provide stub when !CONFIG_CPU_IDLE                             
 
 next/drivers
 	cpuidle/biglittle
