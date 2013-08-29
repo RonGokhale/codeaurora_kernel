@@ -1,11 +1,12 @@
+#include <traceevent/event-parse.h>
 #include "builtin.h"
 #include "util/color.h"
 #include "util/evlist.h"
 #include "util/machine.h"
 #include "util/thread.h"
 #include "util/parse-options.h"
+#include "util/strlist.h"
 #include "util/thread_map.h"
-#include "event-parse.h"
 
 #include <libaudit.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@ static struct syscall_fmt {
 } syscall_fmts[] = {
 	{ .name	    = "access",	    .errmsg = true, },
 	{ .name	    = "arch_prctl", .errmsg = true, .alias = "prctl", },
+	{ .name	    = "connect",    .errmsg = true, },
 	{ .name	    = "fstat",	    .errmsg = true, .alias = "newfstat", },
 	{ .name	    = "fstatat",    .errmsg = true, .alias = "newfstatat", },
 	{ .name	    = "futex",	    .errmsg = true, },
@@ -46,6 +48,7 @@ static struct syscall_fmt *syscall_fmt__find(const char *name)
 struct syscall {
 	struct event_format *tp_format;
 	const char	    *name;
+	bool		    filtered;
 	struct syscall_fmt  *fmt;
 };
 
@@ -109,6 +112,7 @@ struct trace {
 	struct perf_record_opts opts;
 	struct machine		host;
 	u64			base_time;
+	struct strlist		*ev_qualifier;
 	unsigned long		nr_events;
 	bool			sched;
 	bool			multiple_threads;
@@ -142,7 +146,7 @@ static size_t trace__fprintf_entry_head(struct trace *trace, struct thread *thre
 	printed += fprintf_duration(duration, fp);
 
 	if (trace->multiple_threads)
-		printed += fprintf(fp, "%d ", thread->pid);
+		printed += fprintf(fp, "%d ", thread->tid);
 
 	return printed;
 }
@@ -225,6 +229,16 @@ static int trace__read_syscall_info(struct trace *trace, int id)
 
 	sc = trace->syscalls.table + id;
 	sc->name = name;
+
+	if (trace->ev_qualifier && !strlist__find(trace->ev_qualifier, name)) {
+		sc->filtered = true;
+		/*
+ 		 * No need to do read tracepoint information since this will be
+ 		 * filtered out.
+ 		 */
+		return 0;
+	}
+
 	sc->fmt  = syscall_fmt__find(sc->name);
 
 	snprintf(tp_name, sizeof(tp_name), "sys_enter_%s", sc->name);
@@ -301,11 +315,19 @@ static int trace__sys_enter(struct trace *trace, struct perf_evsel *evsel,
 	char *msg;
 	void *args;
 	size_t printed = 0;
-	struct thread *thread = machine__findnew_thread(&trace->host, sample->tid);
+	struct thread *thread;
 	struct syscall *sc = trace__syscall_info(trace, evsel, sample);
-	struct thread_trace *ttrace = thread__trace(thread);
+	struct thread_trace *ttrace;
 
-	if (ttrace == NULL || sc == NULL)
+	if (sc == NULL)
+		return -1;
+
+	if (sc->filtered)
+		return 0;
+
+	thread = machine__findnew_thread(&trace->host, sample->tid);
+	ttrace = thread__trace(thread);
+	if (ttrace == NULL)
 		return -1;
 
 	args = perf_evsel__rawptr(evsel, sample, "args");
@@ -344,11 +366,19 @@ static int trace__sys_exit(struct trace *trace, struct perf_evsel *evsel,
 {
 	int ret;
 	u64 duration = 0;
-	struct thread *thread = machine__findnew_thread(&trace->host, sample->tid);
-	struct thread_trace *ttrace = thread__trace(thread);
+	struct thread *thread;
 	struct syscall *sc = trace__syscall_info(trace, evsel, sample);
+	struct thread_trace *ttrace;
 
-	if (ttrace == NULL || sc == NULL)
+	if (sc == NULL)
+		return -1;
+
+	if (sc->filtered)
+		return 0;
+
+	thread = machine__findnew_thread(&trace->host, sample->tid);
+	ttrace = thread__trace(thread);
+	if (ttrace == NULL)
 		return -1;
 
 	ret = perf_evsel__intval(evsel, sample, "ret");
@@ -593,7 +623,7 @@ static size_t trace__fprintf_thread_summary(struct trace *trace, FILE *fp)
 			color = PERF_COLOR_YELLOW;
 
 		printed += color_fprintf(fp, color, "%20s", thread->comm);
-		printed += fprintf(fp, " - %-5d :%11lu   [", thread->pid, ttrace->nr_events);
+		printed += fprintf(fp, " - %-5d :%11lu   [", thread->tid, ttrace->nr_events);
 		printed += color_fprintf(fp, color, "%5.1f%%", ratio);
 		printed += fprintf(fp, " ] %10.3f ms\n", ttrace->runtime_ms);
 	}
@@ -633,7 +663,10 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 			.mmap_pages    = 1024,
 		},
 	};
+	const char *ev_qualifier_str = NULL;
 	const struct option trace_options[] = {
+	OPT_STRING('e', "expr", &ev_qualifier_str, "expr",
+		    "list of events to trace"),
 	OPT_STRING('p', "pid", &trace.opts.target.pid, "pid",
 		    "trace events on existing process id"),
 	OPT_STRING(0, "tid", &trace.opts.target.tid, "tid",
@@ -658,6 +691,14 @@ int cmd_trace(int argc, const char **argv, const char *prefix __maybe_unused)
 	char bf[BUFSIZ];
 
 	argc = parse_options(argc, argv, trace_options, trace_usage, 0);
+
+	if (ev_qualifier_str != NULL) {
+		trace.ev_qualifier = strlist__new(true, ev_qualifier_str);
+		if (trace.ev_qualifier == NULL) {
+			puts("Not enough memory to parse event qualifier");
+			return -ENOMEM;
+		}
+	}
 
 	err = perf_target__validate(&trace.opts.target);
 	if (err) {
