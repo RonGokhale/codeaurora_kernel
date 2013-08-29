@@ -2072,19 +2072,17 @@ static int try_get_cap_refs(struct ceph_inode_info *ci, int need, int want,
 	/* finish pending truncate */
 	while (ci->i_truncate_pending) {
 		spin_unlock(&ci->i_ceph_lock);
-		if (!(need & CEPH_CAP_FILE_WR))
-			mutex_lock(&inode->i_mutex);
 		__ceph_do_pending_vmtruncate(inode);
-		if (!(need & CEPH_CAP_FILE_WR))
-			mutex_unlock(&inode->i_mutex);
 		spin_lock(&ci->i_ceph_lock);
 	}
 
-	if (need & CEPH_CAP_FILE_WR) {
+	have = __ceph_caps_issued(ci, &implemented);
+
+	if (have & need & CEPH_CAP_FILE_WR) {
 		if (endoff >= 0 && endoff > (loff_t)ci->i_max_size) {
 			dout("get_cap_refs %p endoff %llu > maxsize %llu\n",
 			     inode, endoff, ci->i_max_size);
-			if (endoff > ci->i_wanted_max_size) {
+			if (endoff > ci->i_requested_max_size) {
 				*check_max = 1;
 				ret = 1;
 			}
@@ -2099,7 +2097,6 @@ static int try_get_cap_refs(struct ceph_inode_info *ci, int need, int want,
 			goto out;
 		}
 	}
-	have = __ceph_caps_issued(ci, &implemented);
 
 	if ((have & need) == need) {
 		/*
@@ -2141,14 +2138,17 @@ static void check_max_size(struct inode *inode, loff_t endoff)
 
 	/* do we need to explicitly request a larger max_size? */
 	spin_lock(&ci->i_ceph_lock);
-	if ((endoff >= ci->i_max_size ||
-	     endoff > (inode->i_size << 1)) &&
-	    endoff > ci->i_wanted_max_size) {
+	if (endoff >= ci->i_max_size && endoff > ci->i_wanted_max_size) {
 		dout("write %p at large endoff %llu, req max_size\n",
 		     inode, endoff);
 		ci->i_wanted_max_size = endoff;
-		check = 1;
 	}
+	/* duplicate ceph_check_caps()'s logic */
+	if (ci->i_auth_cap &&
+	    (ci->i_auth_cap->issued & CEPH_CAP_FILE_WR) &&
+	    ci->i_wanted_max_size > ci->i_max_size &&
+	    ci->i_wanted_max_size > ci->i_requested_max_size)
+		check = 1;
 	spin_unlock(&ci->i_ceph_lock);
 	if (check)
 		ceph_check_caps(ci, CHECK_CAPS_AUTHONLY, NULL);
@@ -2334,6 +2334,38 @@ void ceph_put_wrbuffer_cap_refs(struct ceph_inode_info *ci, int nr,
 }
 
 /*
+ * Invalidate unlinked inode's aliases, so we can drop the inode ASAP.
+ */
+static void invalidate_aliases(struct inode *inode)
+{
+	struct dentry *dn, *prev = NULL;
+
+	dout("invalidate_aliases inode %p\n", inode);
+	d_prune_aliases(inode);
+	/*
+	 * For non-directory inode, d_find_alias() only returns
+	 * connected dentry. After calling d_delete(), the dentry
+	 * become disconnected.
+	 *
+	 * For directory inode, d_find_alias() only can return
+	 * disconnected dentry. But directory inode should have
+	 * one alias at most.
+	 */
+	while ((dn = d_find_alias(inode))) {
+		if (dn == prev) {
+			dput(dn);
+			break;
+		}
+		d_delete(dn);
+		if (prev)
+			dput(prev);
+		prev = dn;
+	}
+	if (prev)
+		dput(prev);
+}
+
+/*
  * Handle a cap GRANT message from the MDS.  (Note that a GRANT may
  * actually be a revocation if it specifies a smaller cap set.)
  *
@@ -2361,8 +2393,8 @@ static void handle_cap_grant(struct inode *inode, struct ceph_mds_caps *grant,
 	int check_caps = 0;
 	int wake = 0;
 	int writeback = 0;
-	int revoked_rdcache = 0;
 	int queue_invalidate = 0;
+	int deleted_inode = 0;
 
 	dout("handle_cap_grant inode %p cap %p mds%d seq %d %s\n",
 	     inode, cap, mds, seq, ceph_cap_string(newcaps));
@@ -2377,9 +2409,7 @@ static void handle_cap_grant(struct inode *inode, struct ceph_mds_caps *grant,
 	if (((cap->issued & ~newcaps) & CEPH_CAP_FILE_CACHE) &&
 	    (newcaps & CEPH_CAP_FILE_LAZYIO) == 0 &&
 	    !ci->i_wrbuffer_ref) {
-		if (try_nonblocking_invalidate(inode) == 0) {
-			revoked_rdcache = 1;
-		} else {
+		if (try_nonblocking_invalidate(inode)) {
 			/* there were locked pages.. invalidate later
 			   in a separate thread. */
 			if (ci->i_rdcache_revoking != ci->i_rdcache_gen) {
@@ -2407,8 +2437,12 @@ static void handle_cap_grant(struct inode *inode, struct ceph_mds_caps *grant,
 		     from_kgid(&init_user_ns, inode->i_gid));
 	}
 
-	if ((issued & CEPH_CAP_LINK_EXCL) == 0)
+	if ((issued & CEPH_CAP_LINK_EXCL) == 0) {
 		set_nlink(inode, le32_to_cpu(grant->nlink));
+		if (inode->i_nlink == 0 &&
+		    (newcaps & (CEPH_CAP_LINK_SHARED | CEPH_CAP_LINK_EXCL)))
+			deleted_inode = 1;
+	}
 
 	if ((issued & CEPH_CAP_XATTR_EXCL) == 0 && grant->xattr_len) {
 		int len = le32_to_cpu(grant->xattr_len);
@@ -2517,6 +2551,8 @@ static void handle_cap_grant(struct inode *inode, struct ceph_mds_caps *grant,
 		ceph_queue_writeback(inode);
 	if (queue_invalidate)
 		ceph_queue_invalidate(inode);
+	if (deleted_inode)
+		invalidate_aliases(inode);
 	if (wake)
 		wake_up_all(&ci->i_cap_wq);
 
