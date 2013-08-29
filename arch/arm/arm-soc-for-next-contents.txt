@@ -51,6 +51,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-cleanup-1
 	patch
 		gpio: (gpio-pca953x) move header to linux/platform_data/
+	samsung/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-defconfig-v2
 
 next/dt
 	renesas/dt
