@@ -8,11 +8,11 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
  */
 
-#include "adreno.h"
-
-/* Instantiate tracepoints */
-#define CREATE_TRACE_POINTS
-#include "adreno_trace.h"
+#ifndef __ARCH_ARM_MACH_MSM_KRAIT_REGULATOR_PMIC_H
+#define __ARCH_ARM_MACH_MSM_KRAIT_REGULATOR_PMIC_H
+bool krait_pmic_is_ready(void);
+int krait_pmic_post_pfm_entry(void);
+int krait_pmic_post_pwm_entry(void);
+#endif
