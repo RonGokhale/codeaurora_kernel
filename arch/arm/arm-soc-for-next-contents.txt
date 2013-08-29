@@ -92,7 +92,7 @@ next/dt
 			dts: Deprecate ALTR as a vendor prefix
 			of: add vendor prefix for Altera Corp.
 
-nextsoc
+next/soc
 	vess/mcpm
 		git://git.linaro.org/people/pawelmoll/linux.git tags/tc2-pm
 	patches
@@ -135,6 +135,7 @@ nextsoc
 		git://git.infradead.org/linux-mvebu.git tags/dt-3.12
 	patch
 		ARM: tegra: Drop ARCH_SUPPORTS_MSI and sort list
+		PCI: tegra: replace devm_request_and_ioremap by devm_ioremap_resource         
 
 next/drivers
 	cpuidle/biglittle
