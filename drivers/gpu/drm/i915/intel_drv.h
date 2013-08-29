@@ -93,12 +93,16 @@
 #define INTEL_OUTPUT_HDMI 6
 #define INTEL_OUTPUT_DISPLAYPORT 7
 #define INTEL_OUTPUT_EDP 8
-#define INTEL_OUTPUT_UNKNOWN 9
+#define INTEL_OUTPUT_DSI 9
+#define INTEL_OUTPUT_UNKNOWN 10
 
 #define INTEL_DVO_CHIP_NONE 0
 #define INTEL_DVO_CHIP_LVDS 1
 #define INTEL_DVO_CHIP_TMDS 2
 #define INTEL_DVO_CHIP_TVOUT 4
+
+#define INTEL_DSI_COMMAND_MODE	0
+#define INTEL_DSI_VIDEO_MODE	1
 
 struct intel_framebuffer {
 	struct drm_framebuffer base;
@@ -521,6 +525,7 @@ extern void intel_mark_fb_busy(struct drm_i915_gem_object *obj,
 			       struct intel_ring_buffer *ring);
 extern void intel_mark_idle(struct drm_device *dev);
 extern void intel_lvds_init(struct drm_device *dev);
+extern bool intel_dsi_init(struct drm_device *dev);
 extern bool intel_is_dual_link_lvds(struct drm_device *dev);
 extern void intel_dp_init(struct drm_device *dev, int output_reg,
 			  enum port port);
@@ -745,6 +750,7 @@ extern void intel_set_power_well(struct drm_device *dev, bool enable);
 extern void intel_enable_gt_powersave(struct drm_device *dev);
 extern void intel_disable_gt_powersave(struct drm_device *dev);
 extern void ironlake_teardown_rc6(struct drm_device *dev);
+void gen6_update_ring_freq(struct drm_device *dev);
 
 extern bool intel_ddi_get_hw_state(struct intel_encoder *encoder,
 				   enum pipe *pipe);
@@ -778,5 +784,18 @@ extern void intel_edp_psr_update(struct drm_device *dev);
 extern void hsw_disable_lcpll(struct drm_i915_private *dev_priv,
 			      bool switch_to_fclk, bool allow_power_down);
 extern void hsw_restore_lcpll(struct drm_i915_private *dev_priv);
+extern void ilk_enable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
+extern void ilk_disable_gt_irq(struct drm_i915_private *dev_priv,
+			       uint32_t mask);
+extern void snb_enable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
+extern void snb_disable_pm_irq(struct drm_i915_private *dev_priv,
+			       uint32_t mask);
+extern void hsw_enable_pc8_work(struct work_struct *__work);
+extern void hsw_enable_package_c8(struct drm_i915_private *dev_priv);
+extern void hsw_disable_package_c8(struct drm_i915_private *dev_priv);
+extern void hsw_pc8_disable_interrupts(struct drm_device *dev);
+extern void hsw_pc8_restore_interrupts(struct drm_device *dev);
+extern void intel_aux_display_runtime_get(struct drm_i915_private *dev_priv);
+extern void intel_aux_display_runtime_put(struct drm_i915_private *dev_priv);
 
 #endif /* __INTEL_DRV_H__ */
