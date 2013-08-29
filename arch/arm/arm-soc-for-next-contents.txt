@@ -211,3 +211,5 @@ late/all
 	at91/dt2
 		git://github.com/at91linux/linux-at91.git tags/at91-dt
 
+	sunxi/dt4
+		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12-4
