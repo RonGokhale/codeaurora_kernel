@@ -145,6 +145,8 @@ next/drivers
 		patch cpuidle: big.LITTLE: vexpress-TC2 CPU idle driver
 		patch ARM: vexpress: tc2: disable GIC CPU IF in tc2_pm_suspend
 		patch drivers: irq-chip: irq-gic: introduce gic_cpu_if_down()
+	mvebu/msi
+		git://git.infradead.org/linux-mvebu.git tags/msi-3.12
 
 next/boards
 	renesas/backlight
