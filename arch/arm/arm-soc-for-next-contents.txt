@@ -152,6 +152,8 @@ next/boards
 		git://git.infradead.org/linux-mvebu.git tags/defconfig-3.12
 	tegra/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.12-defconfig
+	bcm/soc
+		git://github.com/broadcom/bcm11351.git armsoc/for-3.12/soc
 
 next/dt2
 	renesas/dt2
