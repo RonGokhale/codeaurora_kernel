@@ -82,6 +82,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/bcousson/linux-omap-dt.git for_3.12/dts
 	mxs/dt
 		git://git.linaro.org/people/shawnguo/linux-2.6.git tags/mxs-dt-3.12
+	bcm/dt
+		git://github.com/broadcom/bcm11351.git armsoc/for-3.12/dt
 
 next/soc
 	vexpress/mcpm
