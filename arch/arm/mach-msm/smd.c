@@ -41,6 +41,7 @@
 #include <mach/subsystem_notif.h>
 #include <mach/socinfo.h>
 #include <asm/cacheflush.h>
+#include <asm/unwind.h>
 
 #include "smd_private.h"
 #include "proc_comm.h"
@@ -2632,6 +2633,8 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 
 		} else if (modm & SMSM_RESET) {
 			pr_err("\nSMSM: Modem SMSM state changed to SMSM_RESET.");
+			pr_err("\nUnwinding Backtrace for state change to SMSM_RESET");
+			unwind_backtrace(0,0);
 			if (!disable_smsm_reset_handshake) {
 				apps |= SMSM_RESET;
 				flush_cache_all();
