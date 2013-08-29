@@ -279,7 +279,7 @@
 
 #include <asm/uaccess.h>
 #include <asm/ioctls.h>
-#include <net/ll_poll.h>
+#include <net/busy_poll.h>
 
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
@@ -1119,6 +1119,13 @@ new_segment:
 							  sk->sk_allocation);
 				if (!skb)
 					goto wait_for_memory;
+
+				/*
+				 * All packets are restored as if they have
+				 * already been sent.
+				 */
+				if (tp->repair)
+					TCP_SKB_CB(skb)->when = tcp_time_stamp;
 
 				/*
 				 * Check whether we can use HW checksum.
