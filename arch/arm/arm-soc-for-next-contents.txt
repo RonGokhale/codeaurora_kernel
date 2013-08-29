@@ -49,6 +49,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra.git tegra-for-3.12-cleanup
 	samsung/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-cleanup-1
+	patch
+		gpio: (gpio-pca953x) move header to linux/platform_data/
 
 next/dt
 	renesas/dt
