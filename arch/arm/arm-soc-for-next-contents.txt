@@ -210,6 +210,10 @@ late/all
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-mach-exynos-v2
 	at91/dt2
 		git://github.com/at91linux/linux-at91.git tags/at91-dt
-
 	sunxi/dt4
 		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.12-4
+	at91/soc
+		git://github.com/at91linux/linux-at91.git tags/at91-soc
+	highbank/soc
+		git://sources.calxeda.com/kernel/linux.git tags/highbank-for-3.12
+
