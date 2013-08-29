@@ -103,16 +103,6 @@ static void altera_spi_chipsel(struct spi_device *spi, int value)
 	}
 }
 
-static int altera_spi_setupxfer(struct spi_device *spi, struct spi_transfer *t)
-{
-	return 0;
-}
-
-static int altera_spi_setup(struct spi_device *spi)
-{
-	return 0;
-}
-
 static inline unsigned int hw_txbyte(struct altera_spi *hw, int count)
 {
 	if (hw->tx) {
@@ -150,11 +140,11 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 		hw->imr &= ~ALTERA_SPI_CONTROL_IRRDY_MSK;
 		writel(hw->imr, hw->base + ALTERA_SPI_CONTROL);
 	} else {
-		/* send the first byte */
-		writel(hw_txbyte(hw, 0), hw->base + ALTERA_SPI_TXDATA);
-
-		while (1) {
+		while (hw->count < hw->len) {
 			unsigned int rxd;
+
+			writel(hw_txbyte(hw, hw->count),
+			       hw->base + ALTERA_SPI_TXDATA);
 
 			while (!(readl(hw->base + ALTERA_SPI_STATUS) &
 				 ALTERA_SPI_STATUS_RRDY_MSK))
@@ -174,14 +164,7 @@ static int altera_spi_txrx(struct spi_device *spi, struct spi_transfer *t)
 			}
 
 			hw->count++;
-
-			if (hw->count < hw->len)
-				writel(hw_txbyte(hw, hw->count),
-				       hw->base + ALTERA_SPI_TXDATA);
-			else
-				break;
 		}
-
 	}
 
 	return hw->count * hw->bytes_per_word;
@@ -231,7 +214,6 @@ static int altera_spi_probe(struct platform_device *pdev)
 	master->bus_num = pdev->id;
 	master->num_chipselect = 16;
 	master->mode_bits = SPI_CS_HIGH;
-	master->setup = altera_spi_setup;
 
 	hw = spi_master_get_devdata(master);
 	platform_set_drvdata(pdev, hw);
@@ -240,7 +222,6 @@ static int altera_spi_probe(struct platform_device *pdev)
 	hw->bitbang.master = spi_master_get(master);
 	if (!hw->bitbang.master)
 		return err;
-	hw->bitbang.setup_transfer = altera_spi_setupxfer;
 	hw->bitbang.chipselect = altera_spi_chipsel;
 	hw->bitbang.txrx_bufs = altera_spi_txrx;
 
