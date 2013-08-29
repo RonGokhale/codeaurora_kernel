@@ -7,6 +7,7 @@
  *	Copyright 1997 -- 2000 Martin Mares <mj@ucw.cz>
  */
 
+#include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/delay.h>
 #include <linux/init.h>

@@ -39,6 +39,7 @@
 #define DEBUG_SUBSYSTEM S_RPC
 
 #include <obd_support.h>
+#include <linux/sched.h>
 #include <obd_class.h>
 #include <lustre_lib.h>
 #include <lustre_ha.h>

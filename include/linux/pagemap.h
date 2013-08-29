@@ -5,6 +5,7 @@
  * Copyright 1995 Linus Torvalds
  */
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/fs.h>
 #include <linux/list.h>
 #include <linux/highmem.h>
@@ -339,6 +340,7 @@ static inline void __clear_page_locked(struct page *page)
 
 static inline int trylock_page(struct page *page)
 {
+	VM_BUG_ON(PageTail(page));
 	return (likely(!test_and_set_bit_lock(PG_locked, &page->flags)));
 }
 

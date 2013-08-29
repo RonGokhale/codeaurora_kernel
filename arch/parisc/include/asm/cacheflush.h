@@ -2,6 +2,7 @@
 #define _PARISC_CACHEFLUSH_H
 
 #include <linux/mm.h>
+#include <linux/sched.h>
 #include <linux/uaccess.h>
 #include <asm/tlbflush.h>
 
