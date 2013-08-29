@@ -565,8 +565,6 @@ void arc_mmu_init(void)
 	if (mmu->pg_sz != PAGE_SIZE)
 		panic("MMU pg size != PAGE_SIZE (%luk)\n", TO_KB(PAGE_SIZE));
 
-	local_flush_tlb_all();
-
 	/* Enable the MMU */
 	write_aux_reg(ARC_REG_PID, MMU_ENABLE);
 
