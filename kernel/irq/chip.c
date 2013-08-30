@@ -10,6 +10,7 @@
  * Detailed information is available in Documentation/DocBook/genericirq
  */
 
+#include <linux/sched.h>
 #include <linux/irq.h>
 #include <linux/msi.h>
 #include <linux/module.h>

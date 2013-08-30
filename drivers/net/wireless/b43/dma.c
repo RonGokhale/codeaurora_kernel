@@ -27,6 +27,7 @@
 
 */
 
+#include <linux/sched.h>
 #include "b43.h"
 #include "dma.h"
 #include "main.h"

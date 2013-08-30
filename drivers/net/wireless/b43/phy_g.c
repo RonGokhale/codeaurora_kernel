@@ -26,6 +26,7 @@
 
 */
 
+#include <linux/sched.h>
 #include "b43.h"
 #include "phy_g.h"
 #include "phy_common.h"

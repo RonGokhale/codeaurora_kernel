@@ -128,7 +128,7 @@ void __init setup_sched_clock(u32 (*read)(void), int bits, unsigned long rate)
 	clocks_calc_mult_shift(&cd.mult, &cd.shift, rate, NSEC_PER_SEC, 0);
 
 	r = rate;
-	if (r >= 4000000) {
+	if (r >= 1000000) {
 		r /= 1000000;
 		r_unit = 'M';
 	} else if (r >= 1000) {

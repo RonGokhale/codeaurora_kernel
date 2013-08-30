@@ -2,6 +2,7 @@
  * Interface between ext4 and JBD
  */
 
+#include <linux/sched.h>
 #include "ext4_jbd2.h"
 
 #include <trace/events/ext4.h>

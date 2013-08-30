@@ -35,6 +35,7 @@
  * SOFTWARE.
  *
  */
+#include <linux/sched.h>
 #include <linux/gfp.h>
 
 #include "c2.h"
