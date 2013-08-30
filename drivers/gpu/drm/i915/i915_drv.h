@@ -1014,6 +1014,7 @@ typedef struct drm_i915_private {
 	unsigned int fsb_freq, mem_freq, is_ddr3;
 
 	struct workqueue_struct *wq;
+	struct workqueue_struct *flip_unpin_wq;
 
 	/* Display functions */
 	struct drm_i915_display_funcs display;
