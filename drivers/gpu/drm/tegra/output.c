@@ -9,6 +9,7 @@
 
 #include <linux/of_gpio.h>
 
+#include <drm/drm_panel.h>
 #include "drm.h"
 
 static int tegra_connector_get_modes(struct drm_connector *connector)
@@ -16,6 +17,9 @@ static int tegra_connector_get_modes(struct drm_connector *connector)
 	struct tegra_output *output = connector_to_output(connector);
 	struct edid *edid = NULL;
 	int err = 0;
+
+	if (output->panel)
+		return output->panel->funcs->get_modes(output->panel);
 
 	if (output->edid)
 		edid = kmemdup(output->edid, sizeof(*edid), GFP_KERNEL);
@@ -72,6 +76,9 @@ tegra_connector_detect(struct drm_connector *connector, bool force)
 		else
 			status = connector_status_connected;
 	} else {
+		if (output->panel)
+			status = connector_status_connected;
+
 		if (connector->connector_type == DRM_MODE_CONNECTOR_LVDS)
 			status = connector_status_connected;
 	}
@@ -115,6 +122,15 @@ static const struct drm_encoder_funcs encoder_funcs = {
 
 static void tegra_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
+	struct tegra_output *output = encoder_to_output(encoder);
+	struct drm_panel *panel = output->panel;
+
+	if (panel && panel->funcs) {
+		if (mode != DRM_MODE_DPMS_ON)
+			drm_panel_disable(panel);
+		else
+			drm_panel_enable(panel);
+	}
 }
 
 static bool tegra_encoder_mode_fixup(struct drm_encoder *encoder,
@@ -163,13 +179,22 @@ static irqreturn_t hpd_irq(int irq, void *data)
 
 int tegra_output_probe(struct tegra_output *output)
 {
+	struct device_node *ddc, *panel;
 	enum of_gpio_flags flags;
-	struct device_node *ddc;
 	size_t size;
 	int err;
 
 	if (!output->of_node)
 		output->of_node = output->dev->of_node;
+
+	panel = of_parse_phandle(output->of_node, "nvidia,panel", 0);
+	if (panel) {
+		output->panel = of_drm_find_panel(panel);
+		if (!output->panel)
+			return -EPROBE_DEFER;
+
+		of_node_put(panel);
+	}
 
 	output->edid = of_get_property(output->of_node, "nvidia,edid", &size);
 
@@ -185,7 +210,7 @@ int tegra_output_probe(struct tegra_output *output)
 		of_node_put(ddc);
 	}
 
-	if (!output->edid && !output->ddc)
+	if (!output->panel && !output->edid && !output->ddc)
 		return -ENODEV;
 
 	output->hpd_gpio = of_get_named_gpio_flags(output->of_node,
@@ -265,6 +290,9 @@ int tegra_output_init(struct drm_device *drm, struct tegra_output *output)
 	drm_connector_init(drm, &output->connector, &connector_funcs,
 			   connector);
 	drm_connector_helper_add(&output->connector, &connector_helper_funcs);
+
+	if (output->panel)
+		drm_panel_attach(output->panel, &output->connector);
 
 	drm_encoder_init(drm, &output->encoder, &encoder_funcs, encoder);
 	drm_encoder_helper_add(&output->encoder, &encoder_helper_funcs);
