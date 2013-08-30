@@ -74,6 +74,9 @@ enum dwc2_lx_state {
  *                       0 - HNP and SRP capable (default)
  *                       1 - SRP Only capable
  *                       2 - No HNP/SRP capable
+ * @otg_ver:            OTG version supported
+ *                       0 - 1.3
+ *                       1 - 2.0
  * @dma_enable:         Specifies whether to use slave or DMA mode for accessing
  *                      the data FIFOs. The driver will automatically detect the
  *                      value for this parameter if none is specified.
@@ -90,20 +93,10 @@ enum dwc2_lx_state {
  *                      the attached device and the value of phy_type.
  *                       0 - High Speed (default)
  *                       1 - Full Speed
- * @host_support_fs_ls_low_power: Specifies whether low power mode is supported
- *                      when attached to a Full Speed or Low Speed device in
- *                      host mode.
- *                       0 - Don't support low power mode (default)
- *                       1 - Support low power mode
- * @host_ls_low_power_phy_clk: Specifies the PHY clock rate in low power mode
- *                      when connected to a Low Speed device in host mode. This
- *                      parameter is applicable only if
- *                      host_support_fs_ls_low_power is enabled. If phy_type is
- *                      set to FS then defaults to 6 MHZ otherwise 48 MHZ.
- *                       0 - 48 MHz
- *                       1 - 6 MHz
  * @enable_dynamic_fifo: 0 - Use coreConsultant-specified FIFO size parameters
  *                       1 - Allow dynamic FIFO sizing (default)
+ * @en_multiple_tx_fifo: Specifies whether dedicated per-endpoint transmit FIFOs
+ *                      are enabled
  * @host_rx_fifo_size:  Number of 4-byte words in the Rx FIFO in host mode when
  *                      dynamic FIFO sizing is enabled
  *                       16 to 32768 (default 1024)
@@ -145,18 +138,26 @@ enum dwc2_lx_state {
  *                       0 - No (default)
  *                       1 - Yes
  * @ulpi_fs_ls:         True to make ULPI phy operate in FS/LS mode only
+ * @host_support_fs_ls_low_power: Specifies whether low power mode is supported
+ *                      when attached to a Full Speed or Low Speed device in
+ *                      host mode.
+ *                       0 - Don't support low power mode (default)
+ *                       1 - Support low power mode
+ * @host_ls_low_power_phy_clk: Specifies the PHY clock rate in low power mode
+ *                      when connected to a Low Speed device in host mode. This
+ *                      parameter is applicable only if
+ *                      host_support_fs_ls_low_power is enabled. If phy_type is
+ *                      set to FS then defaults to 6 MHZ otherwise 48 MHZ.
+ *                       0 - 48 MHz
+ *                       1 - 6 MHz
  * @ts_dline:           True to enable Term Select Dline pulsing
- * @en_multiple_tx_fifo: Specifies whether dedicated per-endpoint transmit FIFOs
- *                      are enabled
  * @reload_ctl:         True to allow dynamic reloading of HFIR register during
  *                      runtime
- * @ahb_single:         This bit enables SINGLE transfers for remainder data in
- *                      a transfer for DMA mode of operation.
- *                       0 - remainder data will be sent using INCR burst size
- *                       1 - remainder data will be sent using SINGLE burst size
- * @otg_ver:            OTG version supported
- *                       0 - 1.3
- *                       1 - 2.0
+ * @ahbcfg:             This field allows the default value of the GAHBCFG
+ *                      register to be overridden
+ *                       -1         - GAHBCFG value will not be overridden
+ *                       all others - GAHBCFG value will be overridden with
+ *                                    this value
  *
  * The following parameters may be specified when starting the module. These
  * parameters define how the DWC_otg controller should be configured.
@@ -189,7 +190,7 @@ struct dwc2_core_params {
 	int host_ls_low_power_phy_clk;
 	int ts_dline;
 	int reload_ctl;
-	int ahb_single;
+	int ahbcfg;
 };
 
 /**
@@ -643,7 +644,7 @@ extern int dwc2_set_param_en_multiple_tx_fifo(struct dwc2_hsotg *hsotg,
 
 extern int dwc2_set_param_reload_ctl(struct dwc2_hsotg *hsotg, int val);
 
-extern int dwc2_set_param_ahb_single(struct dwc2_hsotg *hsotg, int val);
+extern int dwc2_set_param_ahbcfg(struct dwc2_hsotg *hsotg, int val);
 
 extern int dwc2_set_param_otg_ver(struct dwc2_hsotg *hsotg, int val);
 
