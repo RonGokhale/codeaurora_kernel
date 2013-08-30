@@ -64,11 +64,12 @@ static void __init sunxi_osc_clk_setup(struct device_node *node)
 			&gate->hw, &clk_gate_ops,
 			CLK_IS_ROOT);
 
-	if (clk) {
+	if (!IS_ERR(clk)) {
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
 		clk_register_clkdev(clk, clk_name, NULL);
 	}
 }
+CLK_OF_DECLARE(sunxi_osc, "allwinner,sun4i-osc-clk", sunxi_osc_clk_setup);
 
 
 
@@ -221,7 +222,7 @@ static void __init sunxi_factors_clk_setup(struct device_node *node,
 	clk = clk_register_factors(NULL, clk_name, parent, 0, reg,
 				   data->table, data->getter, &clk_lock);
 
-	if (clk) {
+	if (!IS_ERR(clk)) {
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
 		clk_register_clkdev(clk, clk_name, NULL);
 	}
@@ -261,7 +262,8 @@ static void __init sunxi_mux_clk_setup(struct device_node *node,
 	while (i < 5 && (parents[i] = of_clk_get_parent_name(node, i)) != NULL)
 		i++;
 
-	clk = clk_register_mux(NULL, clk_name, parents, i, 0, reg,
+	clk = clk_register_mux(NULL, clk_name, parents, i,
+			       CLK_SET_RATE_NO_REPARENT, reg,
 			       data->shift, SUNXI_MUX_GATE_WIDTH,
 			       0, &clk_lock);
 
@@ -410,12 +412,6 @@ static void __init sunxi_gates_clk_setup(struct device_node *node,
 	of_clk_add_provider(node, of_clk_src_onecell_get, clk_data);
 }
 
-/* Matches for of_clk_init */
-static const __initconst struct of_device_id clk_match[] = {
-	{.compatible = "allwinner,sun4i-osc-clk", .data = sunxi_osc_clk_setup,},
-	{}
-};
-
 /* Matches for factors clocks */
 static const __initconst struct of_device_id clk_factors_match[] = {
 	{.compatible = "allwinner,sun4i-pll1-clk", .data = &pll1_data,},
@@ -467,8 +463,8 @@ static void __init of_sunxi_table_clock_setup(const struct of_device_id *clk_mat
 
 void __init sunxi_init_clocks(void)
 {
-	/* Register all the simple sunxi clocks on DT */
-	of_clk_init(clk_match);
+	/* Register all the simple and basic clocks on DT */
+	of_clk_init(NULL);
 
 	/* Register factor clocks */
 	of_sunxi_table_clock_setup(clk_factors_match, sunxi_factors_clk_setup);
