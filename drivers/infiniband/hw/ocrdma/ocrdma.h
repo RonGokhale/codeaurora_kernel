@@ -60,6 +60,7 @@ struct ocrdma_dev_attr {
 	int max_send_sge;
 	int max_recv_sge;
 	int max_srq_sge;
+	int max_rdma_sge;
 	int max_mr;
 	u64 max_mr_size;
 	u32 max_num_mr_pbl;
@@ -172,7 +173,6 @@ struct ocrdma_dev {
 
 struct ocrdma_cq {
 	struct ib_cq ibcq;
-	struct ocrdma_dev *dev;
 	struct ocrdma_cqe *va;
 	u32 phase;
 	u32 getp;	/* pointer to pending wrs to
@@ -214,7 +214,6 @@ struct ocrdma_pd {
 
 struct ocrdma_ah {
 	struct ib_ah ibah;
-	struct ocrdma_dev *dev;
 	struct ocrdma_av *av;
 	u16 sgid_index;
 	u32 id;
@@ -234,7 +233,6 @@ struct ocrdma_qp_hwq_info {
 
 struct ocrdma_srq {
 	struct ib_srq ibsrq;
-	struct ocrdma_dev *dev;
 	u8 __iomem *db;
 	struct ocrdma_qp_hwq_info rq;
 	u64 *rqe_wr_id_tbl;
@@ -290,10 +288,10 @@ struct ocrdma_qp {
 	u32 qkey;
 	bool dpp_enabled;
 	u8 *ird_q_va;
+	u16 db_cache;
 };
 
 struct ocrdma_hw_mr {
-	struct ocrdma_dev *dev;
 	u32 lkey;
 	u8 fr_mr;
 	u8 remote_atomic;
@@ -317,12 +315,10 @@ struct ocrdma_mr {
 	struct ib_mr ibmr;
 	struct ib_umem *umem;
 	struct ocrdma_hw_mr hwmr;
-	struct ocrdma_pd *pd;
 };
 
 struct ocrdma_ucontext {
 	struct ib_ucontext ibucontext;
-	struct ocrdma_dev *dev;
 
 	struct list_head mm_head;
 	struct mutex mm_list_lock; /* protects list entries of mm type */
@@ -393,7 +389,7 @@ static inline int is_cqe_valid(struct ocrdma_cq *cq, struct ocrdma_cqe *cqe)
 {
 	int cqe_valid;
 	cqe_valid = le32_to_cpu(cqe->flags_status_srcqpn) & OCRDMA_CQE_VALID;
-	return ((cqe_valid == cq->phase) ? 1 : 0);
+	return (cqe_valid == cq->phase);
 }
 
 static inline int is_cqe_for_sq(struct ocrdma_cqe *cqe)
