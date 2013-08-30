@@ -1,0 +1,4 @@
+menuconfig DRM_PANEL
+	bool "DRM panel support"
+	help
+	  Panel registration and lookup framework.
