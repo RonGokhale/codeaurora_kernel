@@ -228,4 +228,5 @@ late/all
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/prcm-signed
 	omap/dra7xx-prm
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.12/dra7xx-prcm
-
+	patch
+		ARM: dts: vexpress: Add CCI node to TC2 device-tree
