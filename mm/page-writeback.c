@@ -1366,10 +1366,8 @@ static void balance_dirty_pages(struct address_space *mapping,
 {
 	unsigned long nr_reclaimable;	/* = file_dirty + unstable_nfs */
 	unsigned long nr_dirty;  /* = file_dirty + writeback + unstable_nfs */
-	unsigned long bdi_dirty;
 	unsigned long background_thresh;
 	unsigned long dirty_thresh;
-	unsigned long bdi_thresh;
 	long period;
 	long pause;
 	long max_pause;
@@ -1385,8 +1383,10 @@ static void balance_dirty_pages(struct address_space *mapping,
 
 	for (;;) {
 		unsigned long now = jiffies;
-		unsigned long dirty;
+		unsigned long uninitialized_var(bdi_thresh);
 		unsigned long thresh;
+		unsigned long uninitialized_var(bdi_dirty);
+		unsigned long dirty;
 		unsigned long bg_thresh;
 
 		/*
