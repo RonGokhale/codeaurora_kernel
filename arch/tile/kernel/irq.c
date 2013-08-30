@@ -55,7 +55,8 @@ static DEFINE_PER_CPU(int, irq_depth);
 
 /* State for allocating IRQs on Gx. */
 #if CHIP_HAS_IPI()
-static unsigned long available_irqs = ~(1UL << IRQ_RESCHEDULE);
+static unsigned long available_irqs = ((1UL << NR_IRQS) - 1) &
+				      (~(1UL << IRQ_RESCHEDULE));
 static DEFINE_SPINLOCK(available_irqs_lock);
 #endif
 
@@ -73,11 +74,12 @@ static DEFINE_SPINLOCK(available_irqs_lock);
 
 /*
  * The interrupt handling path, implemented in terms of HV interrupt
- * emulation on TILE64 and TILEPro, and IPI hardware on TILE-Gx.
+ * emulation on TILEPro, and IPI hardware on TILE-Gx.
+ * Entered with interrupts disabled.
  */
 void tile_dev_intr(struct pt_regs *regs, int intnum)
 {
-	int depth = __get_cpu_var(irq_depth)++;
+	int depth = __this_cpu_inc_return(irq_depth);
 	unsigned long original_irqs;
 	unsigned long remaining_irqs;
 	struct pt_regs *old_regs;
@@ -124,7 +126,7 @@ void tile_dev_intr(struct pt_regs *regs, int intnum)
 
 		/* Count device irqs; Linux IPIs are counted elsewhere. */
 		if (irq != IRQ_RESCHEDULE)
-			__get_cpu_var(irq_stat).irq_dev_intr_count++;
+			__this_cpu_inc(irq_stat.irq_dev_intr_count);
 
 		generic_handle_irq(irq);
 	}
@@ -134,10 +136,10 @@ void tile_dev_intr(struct pt_regs *regs, int intnum)
 	 * including any that were reenabled during interrupt
 	 * handling.
 	 */
-	if (depth == 0)
-		unmask_irqs(~__get_cpu_var(irq_disable_mask));
+	if (depth == 1)
+		unmask_irqs(~__this_cpu_read(irq_disable_mask));
 
-	__get_cpu_var(irq_depth)--;
+	__this_cpu_dec(irq_depth);
 
 	/*
 	 * Track time spent against the current process again and
@@ -155,7 +157,7 @@ void tile_dev_intr(struct pt_regs *regs, int intnum)
 static void tile_irq_chip_enable(struct irq_data *d)
 {
 	get_cpu_var(irq_disable_mask) &= ~(1UL << d->irq);
-	if (__get_cpu_var(irq_depth) == 0)
+	if (__this_cpu_read(irq_depth) == 0)
 		unmask_irqs(1UL << d->irq);
 	put_cpu_var(irq_disable_mask);
 }
@@ -201,7 +203,7 @@ static void tile_irq_chip_ack(struct irq_data *d)
  */
 static void tile_irq_chip_eoi(struct irq_data *d)
 {
-	if (!(__get_cpu_var(irq_disable_mask) & (1UL << d->irq)))
+	if (!(__this_cpu_read(irq_disable_mask) & (1UL << d->irq)))
 		unmask_irqs(1UL << d->irq);
 }
 
@@ -233,7 +235,7 @@ void tile_irq_activate(unsigned int irq, int tile_irq_type)
 {
 	/*
 	 * We use handle_level_irq() by default because the pending
-	 * interrupt vector (whether modeled by the HV on TILE64 and
+	 * interrupt vector (whether modeled by the HV on
 	 * TILEPro or implemented in hardware on TILE-Gx) has
 	 * level-style semantics for each bit.  An interrupt fires
 	 * whenever a bit is high, not just at edges.
