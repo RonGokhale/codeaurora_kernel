@@ -55,6 +55,8 @@ next/cleanup
 		gpio: (gpio-pca953x) move header to linux/platform_data/
 	samsung/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-defconfig-v2
+	patch
+		ARM: OMAP2+: Add back the define for AM33XX_RST_GLOBAL_WARM_SW_MASK
 
 next/dt
 	renesas/dt
