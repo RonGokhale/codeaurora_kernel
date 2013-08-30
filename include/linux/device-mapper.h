@@ -10,6 +10,7 @@
 
 #include <linux/bio.h>
 #include <linux/blkdev.h>
+#include <linux/math64.h>
 #include <linux/ratelimit.h>
 
 struct dm_dev;
@@ -189,6 +190,16 @@ struct target_type {
  */
 #define DM_TARGET_IMMUTABLE		0x00000004
 #define dm_target_is_immutable(type)	((type)->features & DM_TARGET_IMMUTABLE)
+
+/*
+ * Indicates that a target always returns IO error.  Because the target will error
+ * all IO it can safely replace any target (including an immutable target) as long
+ * as the associated mapped device is not open.  If an error target replaces an
+ * immutable target it is elevated to the mapped device's immutable target type.
+ */
+#define DM_TARGET_ALWAYS_RETURNS_IO_ERROR	0x00000008
+#define dm_target_always_returns_io_error(type) \
+		((type)->features & DM_TARGET_ALWAYS_RETURNS_IO_ERROR)
 
 /*
  * Some targets need to be sent the same WRITE bio severals times so
@@ -549,6 +560,14 @@ extern struct ratelimit_state dm_ratelimit_state;
 #define DM_MAPIO_SUBMITTED	0
 #define DM_MAPIO_REMAPPED	1
 #define DM_MAPIO_REQUEUE	DM_ENDIO_REQUEUE
+
+#define dm_sector_div64(x, y)( \
+{ \
+	u64 _res; \
+	(x) = div64_u64_rem(x, y, &_res); \
+	_res; \
+} \
+)
 
 /*
  * Ceiling(n / sz)
