@@ -95,6 +95,7 @@ static void __init armada_xp_smp_init_cpus(void)
 		panic("No 'cpus' node found\n");
 
 	ncores = of_get_child_count(np);
+	of_node_put(np);
 	if (ncores == 0 || ncores > ARMADA_XP_MAX_CPUS)
 		panic("Invalid number of CPUs in DT\n");
 

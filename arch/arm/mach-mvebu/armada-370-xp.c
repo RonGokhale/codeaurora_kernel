@@ -64,6 +64,7 @@ static void __init armada_370_xp_mbus_init(void)
 			ARMADA_370_XP_MBUS_WINS_SIZE,
 			of_translate_address(dn, &sdram_wins_offs),
 			ARMADA_370_XP_SDRAM_WINS_SIZE);
+	of_node_put(dn);
 }
 
 static void __init armada_370_xp_timer_and_clk_init(void)
