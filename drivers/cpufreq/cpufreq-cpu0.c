@@ -185,7 +185,7 @@ static int cpu0_cpufreq_probe(struct platform_device *pdev)
 		return -ENOENT;
 	}
 
-	cpu_reg = devm_regulator_get(cpu_dev, "cpu0");
+	cpu_reg = devm_regulator_get_optional(cpu_dev, "cpu0");
 	if (IS_ERR(cpu_reg)) {
 		/*
 		 * If cpu0 regulator supply node is present, but regulator is
