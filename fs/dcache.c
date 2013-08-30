@@ -890,7 +890,7 @@ dentry_lru_isolate(struct list_head *item, spinlock_t *lru_lock, void *arg)
 	 * counts, just remove them from the LRU. Otherwise give them
 	 * another pass through the LRU.
 	 */
-	if (dentry->d_count) {
+	if (dentry->d_lockref.count) {
 		list_del_init(&dentry->d_lru);
 		spin_unlock(&dentry->d_lock);
 		return LRU_REMOVED;
