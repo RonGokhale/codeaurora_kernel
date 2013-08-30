@@ -437,6 +437,9 @@ void efx_xmit_done(struct efx_tx_queue *tx_queue, unsigned int index)
 	efx_dequeue_buffers(tx_queue, index, &pkts_compl, &bytes_compl);
 	netdev_tx_completed_queue(tx_queue->core_txq, pkts_compl, bytes_compl);
 
+	if (pkts_compl > 1)
+		++tx_queue->merge_events;
+
 	/* See if we need to restart the netif queue.  This memory
 	 * barrier ensures that we write read_count (inside
 	 * efx_dequeue_buffers()) before reading the queue status.
@@ -543,9 +546,12 @@ void efx_init_tx_queue(struct efx_tx_queue *tx_queue)
 	tx_queue->initialised = true;
 }
 
-void efx_release_tx_buffers(struct efx_tx_queue *tx_queue)
+void efx_fini_tx_queue(struct efx_tx_queue *tx_queue)
 {
 	struct efx_tx_buffer *buffer;
+
+	netif_dbg(tx_queue->efx, drv, tx_queue->efx->net_dev,
+		  "shutting down TX queue %d\n", tx_queue->queue);
 
 	if (!tx_queue->buffer)
 		return;
@@ -559,22 +565,6 @@ void efx_release_tx_buffers(struct efx_tx_queue *tx_queue)
 		++tx_queue->read_count;
 	}
 	netdev_tx_reset_queue(tx_queue->core_txq);
-}
-
-void efx_fini_tx_queue(struct efx_tx_queue *tx_queue)
-{
-	if (!tx_queue->initialised)
-		return;
-
-	netif_dbg(tx_queue->efx, drv, tx_queue->efx->net_dev,
-		  "shutting down TX queue %d\n", tx_queue->queue);
-
-	tx_queue->initialised = false;
-
-	/* Flush TX queue, remove descriptor ring */
-	efx_nic_fini_tx(tx_queue);
-
-	efx_release_tx_buffers(tx_queue);
 }
 
 void efx_remove_tx_queue(struct efx_tx_queue *tx_queue)
@@ -708,7 +698,8 @@ static u8 *efx_tsoh_get_buffer(struct efx_tx_queue *tx_queue,
 			TSOH_STD_SIZE * (index % TSOH_PER_PAGE) + TSOH_OFFSET;
 
 		if (unlikely(!page_buf->addr) &&
-		    efx_nic_alloc_buffer(tx_queue->efx, page_buf, PAGE_SIZE))
+		    efx_nic_alloc_buffer(tx_queue->efx, page_buf, PAGE_SIZE,
+					 GFP_ATOMIC))
 			return NULL;
 
 		result = (u8 *)page_buf->addr + offset;
