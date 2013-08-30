@@ -227,7 +227,7 @@ s32 init_wr_node(struct i2c_client *client)
     }
     if (i)
     {
-        DATA_LENGTH = i * DATA_LENGTH_UINT + GTP_ADDR_LENGTH;
+        DATA_LENGTH = i * DATA_LENGTH_UINT;// + GTP_ADDR_LENGTH;
         GTP_INFO("Applied memory size:%d.", DATA_LENGTH);
     }
     else
@@ -565,7 +565,8 @@ static s32 goodix_tool_read( char *page, char **start, off_t off, int count, int
             {
                 len = data_len;
             }
-            data_len -= DATA_LENGTH;
+            //data_len -= DATA_LENGTH;
+            data_len -= len;
 
             if (tool_i2c_read(cmd_head.data, len) <= 0)
             {
