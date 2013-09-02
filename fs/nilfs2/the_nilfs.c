@@ -21,6 +21,7 @@
  *
  */
 
+#include <linux/sched.h>
 #include <linux/buffer_head.h>
 #include <linux/slab.h>
 #include <linux/blkdev.h>

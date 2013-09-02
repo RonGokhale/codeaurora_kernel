@@ -52,6 +52,7 @@
 #define DEBUG_SUBSYSTEM S_CLASS
 
 #include <linux/libcfs/libcfs.h>
+#include <linux/sched.h>
 /* class_put_type() */
 #include <obd_class.h>
 #include <obd_support.h>
