@@ -20,8 +20,13 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <asm/cacheflush.h>
+#include <asm/homecache.h>
 
-HV_Topology smp_topology __write_once;
+/*
+ * We write to width and height with a single store in head_NN.S,
+ * so make the variable aligned to "long".
+ */
+HV_Topology smp_topology __write_once __aligned(sizeof(long));
 EXPORT_SYMBOL(smp_topology);
 
 #if CHIP_HAS_IPI()
@@ -100,8 +105,8 @@ static void smp_start_cpu_interrupt(void)
 /* Handler to stop the current cpu. */
 static void smp_stop_cpu_interrupt(void)
 {
-	set_cpu_online(smp_processor_id(), 0);
 	arch_local_irq_disable_all();
+	set_cpu_online(smp_processor_id(), 0);
 	for (;;)
 		asm("nap; nop");
 }
@@ -167,9 +172,16 @@ static void ipi_flush_icache_range(void *info)
 void flush_icache_range(unsigned long start, unsigned long end)
 {
 	struct ipi_flush flush = { start, end };
-	preempt_disable();
-	on_each_cpu(ipi_flush_icache_range, &flush, 1);
-	preempt_enable();
+
+	/* If invoked with irqs disabled, we can not issue IPIs. */
+	if (irqs_disabled())
+		flush_remote(0, HV_FLUSH_EVICT_L1I, NULL, 0, 0, 0,
+			NULL, NULL, 0);
+	else {
+		preempt_disable();
+		on_each_cpu(ipi_flush_icache_range, &flush, 1);
+		preempt_enable();
+	}
 }
 
 
@@ -215,30 +227,34 @@ void __init ipi_init(void)
 
 #if CHIP_HAS_IPI()
 
-void smp_send_reschedule(int cpu)
+static void __smp_send_reschedule(int cpu)
 {
-	WARN_ON(cpu_is_offline(cpu));
-
 	/*
 	 * We just want to do an MMIO store.  The traditional writeq()
 	 * functions aren't really correct here, since they're always
 	 * directed at the PCI shim.  For now, just do a raw store,
-	 * casting away the __iomem attribute.
+	 * casting away the __iomem attribute.  We do the store as a
+	 * single asm() instruction to ensure that we can force a step
+	 * over it in the KVM case, if we are not binding vcpus to cpus,
+	 * rather than require it to be possible to issue validly.
 	 */
-	((unsigned long __force *)ipi_mappings[cpu])[IRQ_RESCHEDULE] = 0;
+	unsigned long *addr =
+		&((unsigned long __force *)ipi_mappings[cpu])[IRQ_RESCHEDULE];
+	asm volatile("st %0, zero" :: "r" (addr));
 }
 
 #else
 
-void smp_send_reschedule(int cpu)
+static void __smp_send_reschedule(int cpu)
 {
-	HV_Coord coord;
-
-	WARN_ON(cpu_is_offline(cpu));
-
-	coord.y = cpu_y(cpu);
-	coord.x = cpu_x(cpu);
+	HV_Coord coord = { .y = cpu_y(cpu), .x = cpu_x(cpu) };
 	hv_trigger_ipi(coord, IRQ_RESCHEDULE);
 }
 
 #endif /* CHIP_HAS_IPI() */
+
+void smp_send_reschedule(int cpu)
+{
+	WARN_ON(cpu_is_offline(cpu));
+	__smp_send_reschedule(cpu);
+}

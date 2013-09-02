@@ -30,10 +30,6 @@ endif
 # In kernel modules, this causes load failures due to unsupported relocations.
 KBUILD_CFLAGS   += -fno-asynchronous-unwind-tables
 
-ifneq ($(CONFIG_DEBUG_EXTRA_FLAGS),"")
-KBUILD_CFLAGS   += $(CONFIG_DEBUG_EXTRA_FLAGS)
-endif
-
 LIBGCC_PATH     := \
   $(shell $(CC) $(KBUILD_CFLAGS) $(KCFLAGS) -print-libgcc-file-name)
 
@@ -62,6 +58,7 @@ libs-y		+= $(LIBGCC_PATH)
 
 # See arch/tile/Kbuild for content of core part of the kernel
 core-y		+= arch/tile/
+core-$(CONFIG_KVM) += arch/tile/kvm/
 
 core-$(CONFIG_TILE_GXIO) += arch/tile/gxio/
 

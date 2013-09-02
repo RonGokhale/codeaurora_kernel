@@ -27,12 +27,14 @@
 #include <linux/kernel.h>
 #include <linux/tracehook.h>
 #include <linux/signal.h>
+#include <linux/kvm_host.h>
 #include <asm/stack.h>
 #include <asm/switch_to.h>
 #include <asm/homecache.h>
 #include <asm/syscalls.h>
 #include <asm/traps.h>
 #include <asm/setup.h>
+#include <asm/uaccess.h>
 #ifdef CONFIG_HARDWALL
 #include <asm/hardwall.h>
 #endif
@@ -73,19 +75,6 @@ void arch_cpu_idle(void)
 void arch_release_thread_info(struct thread_info *info)
 {
 	struct single_step_state *step_state = info->step_state;
-
-#ifdef CONFIG_HARDWALL
-	/*
-	 * We free a thread_info from the context of the task that has
-	 * been scheduled next, so the original task is already dead.
-	 * Calling deactivate here just frees up the data structures.
-	 * If the task we're freeing held the last reference to a
-	 * hardwall fd, it would have been released prior to this point
-	 * anyway via exit_files(), and the hardwall_task.info pointers
-	 * would be NULL by now.
-	 */
-	hardwall_deactivate_all(info->task);
-#endif
 
 	if (step_state) {
 
@@ -160,6 +149,14 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	 */
 	task_thread_info(p)->step_state = NULL;
 
+#ifdef __tilegx__
+	/*
+	 * Do not clone unalign jit fixup from the parent; each thread
+	 * must allocate its own on demand.
+	 */
+	task_thread_info(p)->unalign_jit_base = NULL;
+#endif
+
 	/*
 	 * Copy the registers onto the kernel stack so the
 	 * return-from-interrupt code will reload it into registers.
@@ -191,16 +188,8 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	memset(&p->thread.dma_async_tlb, 0, sizeof(struct async_tlb));
 #endif
 
-#if CHIP_HAS_SN_PROC()
-	/* Likewise, the new thread is not running static processor code. */
-	p->thread.sn_proc_running = 0;
-	memset(&p->thread.sn_async_tlb, 0, sizeof(struct async_tlb));
-#endif
-
-#if CHIP_HAS_PROC_STATUS_SPR()
 	/* New thread has its miscellaneous processor state bits clear. */
 	p->thread.proc_status = 0;
-#endif
 
 #ifdef CONFIG_HARDWALL
 	/* New thread does not own any networks. */
@@ -218,19 +207,32 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	return 0;
 }
 
+int set_unalign_ctl(struct task_struct *tsk, unsigned int val)
+{
+	task_thread_info(tsk)->align_ctl = val;
+	return 0;
+}
+
+int get_unalign_ctl(struct task_struct *tsk, unsigned long adr)
+{
+	return put_user(task_thread_info(tsk)->align_ctl,
+			(unsigned int __user *)adr);
+}
+
+static struct task_struct corrupt_current = { .comm = "<corrupt>" };
+
 /*
  * Return "current" if it looks plausible, or else a pointer to a dummy.
  * This can be helpful if we are just trying to emit a clean panic.
  */
 struct task_struct *validate_current(void)
 {
-	static struct task_struct corrupt = { .comm = "<corrupt>" };
 	struct task_struct *tsk = current;
 	if (unlikely((unsigned long)tsk < PAGE_OFFSET ||
 		     (high_memory && (void *)tsk > high_memory) ||
 		     ((unsigned long)tsk & (__alignof__(*tsk) - 1)) != 0)) {
 		pr_err("Corrupt 'current' %p (sp %#lx)\n", tsk, stack_pointer);
-		tsk = &corrupt;
+		tsk = &corrupt_current;
 	}
 	return tsk;
 }
@@ -238,11 +240,13 @@ struct task_struct *validate_current(void)
 /* Take and return the pointer to the previous task, for schedule_tail(). */
 struct task_struct *sim_notify_fork(struct task_struct *prev)
 {
+#ifndef CONFIG_KVM_GUEST   /* see notify_sim_task_change() */
 	struct task_struct *tsk = current;
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK_PARENT |
 		     (tsk->thread.creator_pid << _SIM_CONTROL_OPERATOR_BITS));
 	__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_FORK |
 		     (tsk->pid << _SIM_CONTROL_OPERATOR_BITS));
+#endif
 	return prev;
 }
 
@@ -369,15 +373,11 @@ static void save_arch_state(struct thread_struct *t)
 	t->system_save[2] = __insn_mfspr(SPR_SYSTEM_SAVE_0_2);
 	t->system_save[3] = __insn_mfspr(SPR_SYSTEM_SAVE_0_3);
 	t->intctrl_0 = __insn_mfspr(SPR_INTCTRL_0_STATUS);
-#if CHIP_HAS_PROC_STATUS_SPR()
 	t->proc_status = __insn_mfspr(SPR_PROC_STATUS);
-#endif
 #if !CHIP_HAS_FIXED_INTVEC_BASE()
 	t->interrupt_vector_base = __insn_mfspr(SPR_INTERRUPT_VECTOR_BASE_0);
 #endif
-#if CHIP_HAS_TILE_RTF_HWM()
 	t->tile_rtf_hwm = __insn_mfspr(SPR_TILE_RTF_HWM);
-#endif
 #if CHIP_HAS_DSTREAM_PF()
 	t->dstream_pf = __insn_mfspr(SPR_DSTREAM_PF);
 #endif
@@ -398,15 +398,11 @@ static void restore_arch_state(const struct thread_struct *t)
 	__insn_mtspr(SPR_SYSTEM_SAVE_0_2, t->system_save[2]);
 	__insn_mtspr(SPR_SYSTEM_SAVE_0_3, t->system_save[3]);
 	__insn_mtspr(SPR_INTCTRL_0_STATUS, t->intctrl_0);
-#if CHIP_HAS_PROC_STATUS_SPR()
 	__insn_mtspr(SPR_PROC_STATUS, t->proc_status);
-#endif
 #if !CHIP_HAS_FIXED_INTVEC_BASE()
 	__insn_mtspr(SPR_INTERRUPT_VECTOR_BASE_0, t->interrupt_vector_base);
 #endif
-#if CHIP_HAS_TILE_RTF_HWM()
 	__insn_mtspr(SPR_TILE_RTF_HWM, t->tile_rtf_hwm);
-#endif
 #if CHIP_HAS_DSTREAM_PF()
 	__insn_mtspr(SPR_DSTREAM_PF, t->dstream_pf);
 #endif
@@ -415,25 +411,10 @@ static void restore_arch_state(const struct thread_struct *t)
 
 void _prepare_arch_switch(struct task_struct *next)
 {
-#if CHIP_HAS_SN_PROC()
-	int snctl;
-#endif
 #if CHIP_HAS_TILE_DMA()
 	struct tile_dma_state *dma = &current->thread.tile_dma_state;
 	if (dma->enabled)
 		save_tile_dma_state(dma);
-#endif
-#if CHIP_HAS_SN_PROC()
-	/*
-	 * Suspend the static network processor if it was running.
-	 * We do not suspend the fabric itself, just like we don't
-	 * try to suspend the UDN.
-	 */
-	snctl = __insn_mfspr(SPR_SNCTL);
-	current->thread.sn_proc_running =
-		(snctl & SPR_SNCTL__FRZPROC_MASK) == 0;
-	if (current->thread.sn_proc_running)
-		__insn_mtspr(SPR_SNCTL, snctl | SPR_SNCTL__FRZPROC_MASK);
 #endif
 }
 
@@ -441,6 +422,11 @@ void _prepare_arch_switch(struct task_struct *next)
 struct task_struct *__sched _switch_to(struct task_struct *prev,
 				       struct task_struct *next)
 {
+#ifdef CONFIG_KVM
+	/* vmexit is needed before context switch. */
+	BUG_ON(task_thread_info(prev)->vcpu);
+#endif
+
 	/* DMA state is already saved; save off other arch state. */
 	save_arch_state(&prev->thread);
 
@@ -461,17 +447,6 @@ struct task_struct *__sched _switch_to(struct task_struct *prev,
 
 	/* Restore other arch state. */
 	restore_arch_state(&next->thread);
-
-#if CHIP_HAS_SN_PROC()
-	/*
-	 * Restart static network processor in the new process
-	 * if it was running before.
-	 */
-	if (next->thread.sn_proc_running) {
-		int snctl = __insn_mfspr(SPR_SNCTL);
-		__insn_mtspr(SPR_SNCTL, snctl & ~SPR_SNCTL__FRZPROC_MASK);
-	}
-#endif
 
 #ifdef CONFIG_HARDWALL
 	/* Enable or disable access to the network registers appropriately. */
@@ -510,11 +485,37 @@ int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
 	/* Enable interrupts; they are disabled again on return to caller. */
 	local_irq_enable();
 
+#ifdef CONFIG_KVM
+	/*
+	 * Some work requires us to exit the VM first.  Typically this
+	 * allows the process running the VM to respond to the work
+	 * (e.g. a signal), or allows the VM mechanism to latch
+	 * modified host state (e.g. a "hypervisor" message sent to a
+	 * different vcpu).  It also means that if we are considering
+	 * calling schedule(), we exit the VM first, so we never have
+	 * to worry about context-switching into a VM.
+	 */
+	if (current_thread_info()->vcpu) {
+		u32 do_exit = thread_info_flags &
+			(_TIF_NEED_RESCHED|_TIF_SIGPENDING|_TIF_VIRT_EXIT);
+
+		if (thread_info_flags & _TIF_VIRT_EXIT)
+			clear_thread_flag(TIF_VIRT_EXIT);
+		if (do_exit) {
+			kvm_trigger_vmexit(regs, KVM_EXIT_AGAIN);
+			/*NORETURN*/
+		}
+	}
+#endif
+
+	/* Enable interrupts; they are disabled again on return to caller. */
+	local_irq_enable();
+
 	if (thread_info_flags & _TIF_NEED_RESCHED) {
 		schedule();
 		return 1;
 	}
-#if CHIP_HAS_TILE_DMA() || CHIP_HAS_SN_PROC()
+#if CHIP_HAS_TILE_DMA()
 	if (thread_info_flags & _TIF_ASYNC_TLB) {
 		do_async_page_fault(regs);
 		return 1;
@@ -529,11 +530,12 @@ int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
 		tracehook_notify_resume(regs);
 		return 1;
 	}
-	if (thread_info_flags & _TIF_SINGLESTEP) {
+
+	/* Handle a few flags here that stay set. */
+	if (thread_info_flags & _TIF_SINGLESTEP)
 		single_step_once(regs);
-		return 0;
-	}
-	panic("work_pending: bad flags %#x\n", thread_info_flags);
+
+	return 0;
 }
 
 unsigned long get_wchan(struct task_struct *p)
@@ -564,7 +566,15 @@ void flush_thread(void)
  */
 void exit_thread(void)
 {
-	/* Nothing */
+#ifdef CONFIG_HARDWALL
+	/*
+	 * Remove the task from the list of tasks that are associated
+	 * with any live hardwalls.  (If the task that is exiting held
+	 * the last reference to a hardwall fd, it would already have
+	 * been released and deactivated at this point.)
+	 */
+	hardwall_deactivate_all(current);
+#endif
 }
 
 void show_regs(struct pt_regs *regs)
@@ -573,23 +583,24 @@ void show_regs(struct pt_regs *regs)
 	int i;
 
 	pr_err("\n");
-	show_regs_print_info(KERN_ERR);
+	if (tsk != &corrupt_current)
+		show_regs_print_info(KERN_ERR);
 #ifdef __tilegx__
-	for (i = 0; i < 51; i += 3)
+	for (i = 0; i < 17; i++)
 		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
-		       i, regs->regs[i], i+1, regs->regs[i+1],
-		       i+2, regs->regs[i+2]);
-	pr_err(" r51: "REGFMT" r52: "REGFMT" tp : "REGFMT"\n",
-	       regs->regs[51], regs->regs[52], regs->tp);
+		       i, regs->regs[i], i+18, regs->regs[i+18],
+		       i+36, regs->regs[i+36]);
+	pr_err(" r17: "REGFMT" r35: "REGFMT" tp : "REGFMT"\n",
+	       regs->regs[17], regs->regs[35], regs->tp);
 	pr_err(" sp : "REGFMT" lr : "REGFMT"\n", regs->sp, regs->lr);
 #else
-	for (i = 0; i < 52; i += 4)
+	for (i = 0; i < 13; i++)
 		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT
 		       " r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
-		       i, regs->regs[i], i+1, regs->regs[i+1],
-		       i+2, regs->regs[i+2], i+3, regs->regs[i+3]);
-	pr_err(" r52: "REGFMT" tp : "REGFMT" sp : "REGFMT" lr : "REGFMT"\n",
-	       regs->regs[52], regs->tp, regs->sp, regs->lr);
+		       i, regs->regs[i], i+14, regs->regs[i+14],
+		       i+27, regs->regs[i+27], i+40, regs->regs[i+40]);
+	pr_err(" r13: "REGFMT" tp : "REGFMT" sp : "REGFMT" lr : "REGFMT"\n",
+	       regs->regs[13], regs->tp, regs->sp, regs->lr);
 #endif
 	pr_err(" pc : "REGFMT" ex1: %ld     faultnum: %ld\n",
 	       regs->pc, regs->ex1, regs->faultnum);
