@@ -212,7 +212,7 @@ i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
 void *i915_gem_object_alloc(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	return kmem_cache_alloc(dev_priv->slab, GFP_KERNEL | __GFP_ZERO);
+	return kmem_cache_zalloc(dev_priv->slab, GFP_KERNEL);
 }
 
 void i915_gem_object_free(struct drm_i915_gem_object *obj)
@@ -2605,11 +2605,17 @@ int i915_vma_unbind(struct i915_vma *vma)
 	drm_i915_private_t *dev_priv = obj->base.dev->dev_private;
 	int ret;
 
+	/* For now we only ever use 1 vma per object */
+	WARN_ON(!list_is_singular(&obj->vma_list));
+
 	if (list_empty(&vma->vma_link))
 		return 0;
 
-	if (!drm_mm_node_allocated(&vma->node))
-		goto destroy;
+	if (!drm_mm_node_allocated(&vma->node)) {
+		i915_gem_vma_destroy(vma);
+
+		return 0;
+	}
 
 	if (obj->pin_count)
 		return -EBUSY;
@@ -2649,13 +2655,10 @@ int i915_vma_unbind(struct i915_vma *vma)
 
 	drm_mm_remove_node(&vma->node);
 
-destroy:
 	i915_gem_vma_destroy(vma);
 
 	/* Since the unbound list is global, only move to that list if
-	 * no more VMAs exist.
-	 * NB: Until we have real VMAs there will only ever be one */
-	WARN_ON(!list_empty(&obj->vma_list));
+	 * no more VMAs exist. */
 	if (list_empty(&obj->vma_list))
 		list_move_tail(&obj->global_list, &dev_priv->mm.unbound_list);
 
@@ -3979,7 +3982,6 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 {
 	INIT_LIST_HEAD(&obj->global_list);
 	INIT_LIST_HEAD(&obj->ring_list);
-	INIT_LIST_HEAD(&obj->exec_list);
 	INIT_LIST_HEAD(&obj->obj_exec_link);
 	INIT_LIST_HEAD(&obj->vma_list);
 
@@ -4111,8 +4113,19 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 	i915_gem_object_free(obj);
 }
 
-struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
+struct i915_vma *i915_gem_obj_to_vma(struct drm_i915_gem_object *obj,
 				     struct i915_address_space *vm)
+{
+	struct i915_vma *vma;
+	list_for_each_entry(vma, &obj->vma_list, vma_link)
+		if (vma->vm == vm)
+			return vma;
+
+	return NULL;
+}
+
+static struct i915_vma *__i915_gem_vma_create(struct drm_i915_gem_object *obj,
+					      struct i915_address_space *vm)
 {
 	struct i915_vma *vma = kzalloc(sizeof(*vma), GFP_KERNEL);
 	if (vma == NULL)
@@ -4133,10 +4146,29 @@ struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
 	return vma;
 }
 
+struct i915_vma *
+i915_gem_obj_lookup_or_create_vma(struct drm_i915_gem_object *obj,
+				  struct i915_address_space *vm)
+{
+	struct i915_vma *vma;
+
+	vma = i915_gem_obj_to_vma(obj, vm);
+	if (!vma)
+		vma = __i915_gem_vma_create(obj, vm);
+
+	return vma;
+}
+
 void i915_gem_vma_destroy(struct i915_vma *vma)
 {
 	WARN_ON(vma->node.allocated);
+
+	/* Keep the vma as a placeholder in the execbuffer reservation lists */
+	if (!list_empty(&vma->exec_list))
+		return;
+
 	list_del(&vma->vma_link);
+
 	kfree(vma);
 }
 
@@ -4301,6 +4333,11 @@ i915_gem_init_hw(struct drm_device *dev)
 
 	if (dev_priv->ellc_size)
 		I915_WRITE(HSW_IDICR, I915_READ(HSW_IDICR) | IDIHASHMSK(0xf));
+
+	if (IS_HSW_GT3(dev))
+		I915_WRITE(MI_PREDICATE_RESULT_2, LOWER_SLICE_ENABLED);
+	else
+		I915_WRITE(MI_PREDICATE_RESULT_2, LOWER_SLICE_DISABLED);
 
 	if (HAS_PCH_NOP(dev)) {
 		u32 temp = I915_READ(GEN7_MSG_CTL);
@@ -4858,28 +4895,4 @@ unsigned long i915_gem_obj_size(struct drm_i915_gem_object *o,
 			return vma->node.size;
 
 	return 0;
-}
-
-struct i915_vma *i915_gem_obj_to_vma(struct drm_i915_gem_object *obj,
-				     struct i915_address_space *vm)
-{
-	struct i915_vma *vma;
-	list_for_each_entry(vma, &obj->vma_list, vma_link)
-		if (vma->vm == vm)
-			return vma;
-
-	return NULL;
-}
-
-struct i915_vma *
-i915_gem_obj_lookup_or_create_vma(struct drm_i915_gem_object *obj,
-				  struct i915_address_space *vm)
-{
-	struct i915_vma *vma;
-
-	vma = i915_gem_obj_to_vma(obj, vm);
-	if (!vma)
-		vma = i915_gem_vma_create(obj, vm);
-
-	return vma;
 }
