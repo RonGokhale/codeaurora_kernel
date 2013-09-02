@@ -44,6 +44,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/pkt_sched.h>
 #include <net/mld.h>
 
 #include <linux/netfilter.h>
@@ -106,9 +107,11 @@ static int ip6_mc_add_src(struct inet6_dev *idev, const struct in6_addr *pmca,
 static int ip6_mc_leave_src(struct sock *sk, struct ipv6_mc_socklist *iml,
 			    struct inet6_dev *idev);
 
-
-#define IGMP6_UNSOLICITED_IVAL	(10*HZ)
 #define MLD_QRV_DEFAULT		2
+
+/* RFC3810, 8.1 Query Version Distinctions */
+#define MLD_V1_QUERY_LEN	24
+#define MLD_V2_QUERY_LEN_MIN	28
 
 #define MLD_V1_SEEN(idev) (dev_net((idev)->dev)->ipv6.devconf_all->force_mld_version == 1 || \
 		(idev)->cnf.force_mld_version == 1 || \
@@ -127,6 +130,18 @@ int sysctl_mld_max_msf __read_mostly = IPV6_MLD_MAX_MSF;
 	for (pmc = rcu_dereference(np->ipv6_mc_list);		\
 	     pmc != NULL;					\
 	     pmc = rcu_dereference(pmc->next))
+
+static int unsolicited_report_interval(struct inet6_dev *idev)
+{
+	int iv;
+
+	if (MLD_V1_SEEN(idev))
+		iv = idev->cnf.mldv1_unsolicited_report_interval;
+	else
+		iv = idev->cnf.mldv2_unsolicited_report_interval;
+
+	return iv > 0 ? iv : 1;
+}
 
 int ipv6_sock_mc_join(struct sock *sk, int ifindex, const struct in6_addr *addr)
 {
@@ -984,24 +999,24 @@ bool ipv6_chk_mcast_addr(struct net_device *dev, const struct in6_addr *group,
 
 static void mld_gq_start_timer(struct inet6_dev *idev)
 {
-	int tv = net_random() % idev->mc_maxdelay;
+	unsigned long tv = net_random() % idev->mc_maxdelay;
 
 	idev->mc_gq_running = 1;
 	if (!mod_timer(&idev->mc_gq_timer, jiffies+tv+2))
 		in6_dev_hold(idev);
 }
 
-static void mld_ifc_start_timer(struct inet6_dev *idev, int delay)
+static void mld_ifc_start_timer(struct inet6_dev *idev, unsigned long delay)
 {
-	int tv = net_random() % delay;
+	unsigned long tv = net_random() % delay;
 
 	if (!mod_timer(&idev->mc_ifc_timer, jiffies+tv+2))
 		in6_dev_hold(idev);
 }
 
-static void mld_dad_start_timer(struct inet6_dev *idev, int delay)
+static void mld_dad_start_timer(struct inet6_dev *idev, unsigned long delay)
 {
-	int tv = net_random() % delay;
+	unsigned long tv = net_random() % delay;
 
 	if (!mod_timer(&idev->mc_dad_timer, jiffies+tv+2))
 		in6_dev_hold(idev);
@@ -1134,13 +1149,11 @@ int igmp6_event_query(struct sk_buff *skb)
 	    !(group_type&IPV6_ADDR_MULTICAST))
 		return -EINVAL;
 
-	if (len == 24) {
+	if (len == MLD_V1_QUERY_LEN) {
 		int switchback;
 		/* MLDv1 router present */
 
-		/* Translate milliseconds to jiffies */
-		max_delay = (ntohs(mld->mld_maxdelay)*HZ)/1000;
-
+		max_delay = msecs_to_jiffies(ntohs(mld->mld_maxdelay));
 		switchback = (idev->mc_qrv + 1) * max_delay;
 		idev->mc_v1_seen = jiffies + switchback;
 
@@ -1150,17 +1163,18 @@ int igmp6_event_query(struct sk_buff *skb)
 			__in6_dev_put(idev);
 		/* clear deleted report items */
 		mld_clear_delrec(idev);
-	} else if (len >= 28) {
+	} else if (len >= MLD_V2_QUERY_LEN_MIN) {
 		int srcs_offset = sizeof(struct mld2_query) -
 				  sizeof(struct icmp6hdr);
 		if (!pskb_may_pull(skb, srcs_offset))
 			return -EINVAL;
 
 		mlh2 = (struct mld2_query *)skb_transport_header(skb);
-		max_delay = (MLDV2_MRC(ntohs(mlh2->mld2q_mrc))*HZ)/1000;
-		if (!max_delay)
-			max_delay = 1;
+
+		max_delay = max(msecs_to_jiffies(MLDV2_MRC(ntohs(mlh2->mld2q_mrc))), 1UL);
+
 		idev->mc_maxdelay = max_delay;
+
 		if (mlh2->mld2q_qrv)
 			idev->mc_qrv = mlh2->mld2q_qrv;
 		if (group_type == IPV6_ADDR_ANY) { /* general query */
@@ -1376,6 +1390,7 @@ static struct sk_buff *mld_newpack(struct inet6_dev *idev, int size)
 	if (!skb)
 		return NULL;
 
+	skb->priority = TC_PRIO_CONTROL;
 	skb_reserve(skb, hlen);
 
 	if (__ipv6_get_lladdr(idev, &addr_buf, IFA_F_TENTATIVE)) {
@@ -1769,7 +1784,7 @@ static void igmp6_send(struct in6_addr *addr, struct net_device *dev, int type)
 		rcu_read_unlock();
 		return;
 	}
-
+	skb->priority = TC_PRIO_CONTROL;
 	skb_reserve(skb, hlen);
 
 	if (ipv6_get_lladdr(dev, &addr_buf, IFA_F_TENTATIVE)) {
@@ -2156,7 +2171,7 @@ static void igmp6_join_group(struct ifmcaddr6 *ma)
 
 	igmp6_send(&ma->mca_addr, ma->idev->dev, ICMPV6_MGM_REPORT);
 
-	delay = net_random() % IGMP6_UNSOLICITED_IVAL;
+	delay = net_random() % unsolicited_report_interval(ma->idev);
 
 	spin_lock_bh(&ma->mca_lock);
 	if (del_timer(&ma->mca_timer)) {
@@ -2323,7 +2338,7 @@ void ipv6_mc_init_dev(struct inet6_dev *idev)
 	setup_timer(&idev->mc_dad_timer, mld_dad_timer_expire,
 		    (unsigned long)idev);
 	idev->mc_qrv = MLD_QRV_DEFAULT;
-	idev->mc_maxdelay = IGMP6_UNSOLICITED_IVAL;
+	idev->mc_maxdelay = unsolicited_report_interval(idev);
 	idev->mc_v1_seen = 0;
 	write_unlock_bh(&idev->lock);
 }
