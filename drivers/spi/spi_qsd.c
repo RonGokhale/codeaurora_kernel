@@ -651,8 +651,6 @@ static void msm_spi_set_spi_config(struct msm_spi *dd, int bpw)
 	if (dd->qup_ver == SPI_QUP_VERSION_NONE)
 		/* flags removed from SPI_CONFIG in QUP version-2 */
 		msm_spi_set_bpw_and_no_io_flags(dd, &spi_config, bpw-1);
-	else if (dd->mode == SPI_BAM_MODE)
-		spi_config |= SPI_CFG_INPUT_FIRST;
 
 	/*
 	 * HS_MODE improves signal stability for spi-clk high rates
@@ -2649,7 +2647,7 @@ __init msm_spi_dt_to_pdata(struct platform_device *pdev)
 			pdata->use_bam = false;
 		}
 
-		if (pdata->bam_producer_pipe_index) {
+		if (!pdata->bam_producer_pipe_index) {
 			dev_warn(&pdev->dev,
 			"missing qcom,bam-producer-pipe-index entry in device-tree\n");
 			pdata->use_bam = false;

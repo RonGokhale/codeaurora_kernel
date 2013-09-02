@@ -610,6 +610,19 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	unsigned int rcmd_gpu;
 	unsigned int context_id = KGSL_MEMSTORE_GLOBAL;
 	unsigned int gpuaddr = rb->device->memstore.gpuaddr;
+	bool profile_ready;
+
+	/*
+	 * If in stream ib profiling is enabled and there are counters
+	 * assigned, then space needs to be reserved for profiling.  This
+	 * space in the ringbuffer is always consumed (might be filled with
+	 * NOPs in error case.  profile_ready needs to be consistent through
+	 * the _addcmds call since it is allocating additional ringbuffer
+	 * command space.
+	 */
+	profile_ready = !adreno_is_a2xx(adreno_dev) &&
+		adreno_profile_assignments_ready(&adreno_dev->profile) &&
+		!(flags & KGSL_CMD_FLAGS_INTERNAL_ISSUE);
 
 	/*
 	 * if the context was not created with per context timestamp
@@ -671,6 +684,12 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 	if (flags & KGSL_CMD_FLAGS_EOF)
 		total_sizedwords += 2;
 
+	if (profile_ready)
+		total_sizedwords += 6;   /* space for pre_ib and post_ib */
+	/* Add space for the power on shader fixup if we need it */
+	if (flags & KGSL_CMD_FLAGS_PWRON_FIXUP)
+		total_sizedwords += 5;
+
 	ringcmds = adreno_ringbuffer_allocspace(rb, context, total_sizedwords);
 	if (!ringcmds) {
 		/*
@@ -692,6 +711,11 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 				KGSL_CMD_INTERNAL_IDENTIFIER);
 	}
 
+	/* Add any IB required for profiling if it is enabled */
+	if (profile_ready)
+		adreno_profile_preib_processing(rb->device, context->base.id,
+				&flags, &ringcmds, &rcmd_gpu);
+
 	/* always increment the global timestamp. once. */
 	rb->timestamp[KGSL_MEMSTORE_GLOBAL]++;
 
@@ -706,6 +730,18 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 			rb->timestamp[context_id]++;
 	}
 	timestamp = rb->timestamp[context_id];
+
+	if (flags & KGSL_CMD_FLAGS_PWRON_FIXUP) {
+		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu, cp_nop_packet(1));
+		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu,
+				KGSL_PWRON_FIXUP_IDENTIFIER);
+		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu,
+			CP_HDR_INDIRECT_BUFFER_PFD);
+		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu,
+			adreno_dev->pwron_fixup.gpuaddr);
+		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu,
+			adreno_dev->pwron_fixup_dwords);
+	}
 
 	/* scratchpad ts for fault tolerance */
 	GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu,
@@ -763,6 +799,12 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 			cp_type3_packet(CP_WAIT_FOR_IDLE, 1));
 		GSL_RB_WRITE(rb->device, ringcmds, rcmd_gpu, 0x00);
 	}
+
+	/* Add any postIB required for profiling if it is enabled and has
+	   assigned counters */
+	if (profile_ready)
+		adreno_profile_postib_processing(rb->device, &flags,
+						 &ringcmds, &rcmd_gpu);
 
 	/*
 	 * end-of-pipeline timestamp.  If per context timestamps is not
@@ -1106,6 +1148,9 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
+	/* process any profiling results that are available into the log_buf */
+	adreno_profile_process_results(device);
+
 	/*When preamble is enabled, the preamble buffer with state restoration
 	commands are stored in the first node of the IB chain. We can skip that
 	if a context switch hasn't occured */
@@ -1167,9 +1212,20 @@ adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 
 	adreno_drawctxt_switch(adreno_dev, drawctxt, flags);
 
+	flags &= KGSL_CMD_FLAGS_EOF;
+
+	/*
+	 * For some targets, we need to execute a dummy shader operation after a
+	 * power collapse
+	 */
+
+	if (test_and_clear_bit(ADRENO_DEVICE_PWRON, &adreno_dev->priv) &&
+		test_bit(ADRENO_DEVICE_PWRON_FIXUP, &adreno_dev->priv))
+		flags |= KGSL_CMD_FLAGS_PWRON_FIXUP;
+
 	*timestamp = adreno_ringbuffer_addcmds(&adreno_dev->ringbuffer,
 					drawctxt,
-					(flags & KGSL_CMD_FLAGS_EOF),
+					flags,
 					&link[0], (cmds - link), *timestamp);
 
 #ifdef CONFIG_MSM_KGSL_CFF_DUMP
