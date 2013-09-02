@@ -696,7 +696,7 @@ static int sh_dmae_probe(struct platform_device *pdev)
 	if (pdev->dev.of_node)
 		pdata = of_match_device(sh_dmae_of_match, &pdev->dev)->data;
 	else
-		pdata = pdev->dev.platform_data;
+		pdata = dev_get_platdata(&pdev->dev);
 
 	/* get platform data */
 	if (!pdata || !pdata->channel_num)
