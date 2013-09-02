@@ -443,36 +443,16 @@ static inline void local_flush_bp_all(void)
 		isb();
 }
 
-#include <asm/cputype.h>
-#ifdef CONFIG_ARM_ERRATA_798181
-static inline int erratum_a15_798181(void)
-{
-	unsigned int midr = read_cpuid_id();
+extern void erratum_a15_798181_init(void);
+extern bool (*erratum_a15_798181_handler)(void);
 
-	/* Cortex-A15 r0p0..r3p2 affected */
-	if ((midr & 0xff0ffff0) != 0x410fc0f0 || midr > 0x413fc0f2)
-		return 0;
-	return 1;
-}
-
-static inline void dummy_flush_tlb_a15_erratum(void)
+static inline bool erratum_a15_798181(void)
 {
-	/*
-	 * Dummy TLBIMVAIS. Using the unmapped address 0 and ASID 0.
-	 */
-	asm("mcr p15, 0, %0, c8, c3, 1" : : "r" (0));
-	dsb();
+	if (unlikely(IS_ENABLED(CONFIG_ARM_ERRATA_798181) &&
+		erratum_a15_798181_handler))
+		return erratum_a15_798181_handler();
+	return false;
 }
-#else
-static inline int erratum_a15_798181(void)
-{
-	return 0;
-}
-
-static inline void dummy_flush_tlb_a15_erratum(void)
-{
-}
-#endif
 
 /*
  *	flush_pmd_entry
