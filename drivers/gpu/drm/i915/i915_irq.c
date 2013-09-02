@@ -1027,8 +1027,7 @@ static inline void intel_hpd_irq_handler(struct drm_device *dev,
 		dev_priv->display.hpd_irq_setup(dev);
 	spin_unlock(&dev_priv->irq_lock);
 
-	queue_work(dev_priv->wq,
-		   &dev_priv->hotplug_work);
+	schedule_work(&dev_priv->hotplug_work);
 }
 
 static void gmbus_irq_handler(struct drm_device *dev)
