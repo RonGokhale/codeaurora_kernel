@@ -258,8 +258,6 @@
 		interrupt-names = "core_irq", "bam_irq";
 
 		vdd-supply = <&pm8110_l17>;
-		qcom,vdd-always-on;
-		qcom,vdd-lpm-sup;
 		qcom,vdd-voltage-level = <2900000 2900000>;
 		qcom,vdd-current-level = <9000 400000>;
 
@@ -472,6 +470,7 @@
 		qcom,i2c-src-freq = <19200000>;
 		qcom,sda-gpio = <&msmgpio 2 0>;
 		qcom,scl-gpio = <&msmgpio 3 0>;
+                qcom,master-id = <86>;
 	};
 
 	i2c_cdc: i2c@f9927000 { /* BLSP1 QUP5 */
@@ -484,6 +483,8 @@
                 interrupt-names = "qup_err_intr";
                 interrupts = <0 99 0>;
                 qcom,i2c-bus-freq = <100000>;
+                qcom,i2c-src-freq = <19200000>;
+                qcom,master-id = <86>;
         };
 
 	i2c: i2c@f9928000 { /* BLSP1 QUP6 */
@@ -499,6 +500,7 @@
 		qcom,i2c-src-freq = <19200000>;
 		qcom,sda-gpio = <&msmgpio 16 0>;
 		qcom,scl-gpio = <&msmgpio 17 0>;
+                qcom,master-id = <86>;
 	};
 
 	i2c@f9925000 { /* BLSP-1 QUP-3 */
@@ -511,6 +513,10 @@
 		interrupt-names = "qup_err_intr";
 		interrupts = <0 97 0>;
 		qcom,i2c-bus-freq = <100000>;
+                qcom,i2c-src-freq = <19200000>;
+                qcom,sda-gpio = <&msmgpio 10 0>;
+                qcom,scl-gpio = <&msmgpio 11 0>;
+                qcom,master-id = <86>;
 	};
 
 	spi_4: spi@f9926000 { /* BLSP1 QUP4 */
