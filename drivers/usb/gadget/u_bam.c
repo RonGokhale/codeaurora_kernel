@@ -1345,6 +1345,10 @@ void gbam_disconnect(struct grmnet *gr, u8 port_num, enum transport_type trans)
 
 	spin_lock_irqsave(&port->port_lock_ul, flags);
 	spin_lock(&port->port_lock_dl);
+	gbam_stop_endless_rx(port);
+	usb_ep_free_request(port->port_usb->out, d->rx_req);
+	gbam_stop_endless_tx(port);
+	usb_ep_free_request(port->port_usb->in, d->tx_req);
 	port->port_usb = 0;
 	n_tx_req_queued = 0;
 	spin_unlock(&port->port_lock_dl);

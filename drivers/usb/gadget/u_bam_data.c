@@ -389,10 +389,15 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 	}
 
 	port = bam2bam_data_ports[port_num];
+	d = &port->data_ch;
 
 	if (port->port_usb && port->port_usb->in &&
 	  port->port_usb->in->driver_data) {
 		/* disable endpoints */
+		bam_data_stop_endless_rx(port);
+		bam_data_stop_endless_tx(port);
+		usb_ep_free_request(port->port_usb->out, d->rx_req);
+		usb_ep_free_request(port->port_usb->in, d->tx_req);
 		usb_ep_disable(port->port_usb->out);
 		usb_ep_disable(port->port_usb->in);
 
@@ -402,7 +407,6 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 		port->port_usb = 0;
 	}
 
-	d = &port->data_ch;
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA)
 		queue_work(bam_data_wq, &port->disconnect_w);
 	else {
