@@ -28,6 +28,7 @@
  * disconnect and reconnect the device).
  */
 
+#include <linux/sched.h>
 #include <net/wimax.h>
 #include <net/genetlink.h>
 #include <linux/wimax.h>

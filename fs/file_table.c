@@ -5,6 +5,7 @@
  *  Copyright (C) 1997 David S. Miller (davem@caip.rutgers.edu)
  */
 
+#include <linux/sched.h>
 #include <linux/string.h>
 #include <linux/slab.h>
 #include <linux/file.h>
@@ -311,8 +312,7 @@ void fput(struct file *file)
 				return;
 			/*
 			 * After this task has run exit_task_work(),
-			 * task_work_add() will fail.  free_ipc_ns()->
-			 * shm_destroy() can do this.  Fall through to delayed
+			 * task_work_add() will fail.  Fall through to delayed
 			 * fput to avoid leaking *file.
 			 */
 		}

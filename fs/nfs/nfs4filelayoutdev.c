@@ -29,6 +29,7 @@
  */
 
 #include <linux/nfs_fs.h>
+#include <linux/sched.h>
 #include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/sunrpc/addr.h>

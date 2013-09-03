@@ -71,6 +71,7 @@
  *   wimax_msg_alloc()
  *   wimax_msg_send()
  */
+#include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <net/genetlink.h>
