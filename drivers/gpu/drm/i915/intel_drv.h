@@ -93,12 +93,16 @@
 #define INTEL_OUTPUT_HDMI 6
 #define INTEL_OUTPUT_DISPLAYPORT 7
 #define INTEL_OUTPUT_EDP 8
-#define INTEL_OUTPUT_UNKNOWN 9
+#define INTEL_OUTPUT_DSI 9
+#define INTEL_OUTPUT_UNKNOWN 10
 
 #define INTEL_DVO_CHIP_NONE 0
 #define INTEL_DVO_CHIP_LVDS 1
 #define INTEL_DVO_CHIP_TMDS 2
 #define INTEL_DVO_CHIP_TVOUT 4
+
+#define INTEL_DSI_COMMAND_MODE	0
+#define INTEL_DSI_VIDEO_MODE	1
 
 struct intel_framebuffer {
 	struct drm_framebuffer base;
@@ -521,6 +525,7 @@ extern void intel_mark_fb_busy(struct drm_i915_gem_object *obj,
 			       struct intel_ring_buffer *ring);
 extern void intel_mark_idle(struct drm_device *dev);
 extern void intel_lvds_init(struct drm_device *dev);
+extern bool intel_dsi_init(struct drm_device *dev);
 extern bool intel_is_dual_link_lvds(struct drm_device *dev);
 extern void intel_dp_init(struct drm_device *dev, int output_reg,
 			  enum port port);
@@ -551,7 +556,7 @@ extern int intel_panel_init(struct intel_panel *panel,
 			    struct drm_display_mode *fixed_mode);
 extern void intel_panel_fini(struct intel_panel *panel);
 
-extern void intel_fixed_panel_mode(struct drm_display_mode *fixed_mode,
+extern void intel_fixed_panel_mode(const struct drm_display_mode *fixed_mode,
 				   struct drm_display_mode *adjusted_mode);
 extern void intel_pch_panel_fitting(struct intel_crtc *crtc,
 				    struct intel_crtc_config *pipe_config,
@@ -707,6 +712,7 @@ extern void intel_write_eld(struct drm_encoder *encoder,
 extern void intel_prepare_ddi(struct drm_device *dev);
 extern void hsw_fdi_link_train(struct drm_crtc *crtc);
 extern void intel_ddi_init(struct drm_device *dev, enum port port);
+extern enum port intel_ddi_get_encoder_port(struct intel_encoder *intel_encoder);
 
 /* For use by IVB LP watermark workaround in intel_sprite.c */
 extern void intel_update_watermarks(struct drm_device *dev);
