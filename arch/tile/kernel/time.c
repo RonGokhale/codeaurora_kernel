@@ -23,8 +23,10 @@
 #include <linux/smp.h>
 #include <linux/delay.h>
 #include <linux/module.h>
+#include <linux/timekeeper_internal.h>
 #include <asm/irq_regs.h>
 #include <asm/traps.h>
+#include <asm/vdso.h>
 #include <hv/hypervisor.h>
 #include <arch/interrupts.h>
 #include <arch/spr_def.h>
@@ -110,12 +112,11 @@ void __init time_init(void)
 	setup_tile_timer();
 }
 
-
 /*
  * Define the tile timer clock event device.  The timer is driven by
- * the TILE_TIMER_CONTROL register, which consists of a 31-bit down
+ * the TILE_[AUX_]TIMER_CONTROL register, which consists of a 31-bit down
  * counter, plus bit 31, which signifies that the counter has wrapped
- * from zero to (2**31) - 1.  The INT_TILE_TIMER interrupt will be
+ * from zero to (2**31) - 1.  The INT_[AUX_]TILE_TIMER interrupt will be
  * raised as long as bit 31 is set.
  *
  * The TILE_MINSEC value represents the largest range of real-time
@@ -130,8 +131,8 @@ static int tile_timer_set_next_event(unsigned long ticks,
 				     struct clock_event_device *evt)
 {
 	BUG_ON(ticks > MAX_TICK);
-	__insn_mtspr(SPR_TILE_TIMER_CONTROL, ticks);
-	arch_local_irq_unmask_now(INT_TILE_TIMER);
+	__insn_mtspr(SPR_LINUX_TIMER_CONTROL, ticks);
+	arch_local_irq_unmask_now(INT_LINUX_TIMER);
 	return 0;
 }
 
@@ -142,7 +143,7 @@ static int tile_timer_set_next_event(unsigned long ticks,
 static void tile_timer_set_mode(enum clock_event_mode mode,
 				struct clock_event_device *evt)
 {
-	arch_local_irq_mask_now(INT_TILE_TIMER);
+	arch_local_irq_mask_now(INT_LINUX_TIMER);
 }
 
 /*
@@ -171,7 +172,7 @@ void setup_tile_timer(void)
 	evt->cpumask = cpumask_of(smp_processor_id());
 
 	/* Start out with timer not firing. */
-	arch_local_irq_mask_now(INT_TILE_TIMER);
+	arch_local_irq_mask_now(INT_LINUX_TIMER);
 
 	/* Register tile timer. */
 	clockevents_register_device(evt);
@@ -187,7 +188,7 @@ void do_timer_interrupt(struct pt_regs *regs, int fault_num)
 	 * Mask the timer interrupt here, since we are a oneshot timer
 	 * and there are now by definition no events pending.
 	 */
-	arch_local_irq_mask(INT_TILE_TIMER);
+	arch_local_irq_mask(INT_LINUX_TIMER);
 
 	/* Track time spent here in an interrupt context */
 	irq_enter();
@@ -236,4 +237,38 @@ cycles_t ns2cycles(unsigned long nsecs)
 	 */
 	struct clock_event_device *dev = &__raw_get_cpu_var(tile_timer);
 	return ((u64)nsecs * dev->mult) >> dev->shift;
+}
+
+void update_vsyscall_tz(void)
+{
+	/* Userspace gettimeofday will spin while this value is odd. */
+	++vdso_data->tz_update_count;
+	smp_wmb();
+	vdso_data->tz_minuteswest = sys_tz.tz_minuteswest;
+	vdso_data->tz_dsttime = sys_tz.tz_dsttime;
+	smp_wmb();
+	++vdso_data->tz_update_count;
+}
+
+void update_vsyscall(struct timekeeper *tk)
+{
+	struct timespec wall_time = tk_xtime(tk);
+	struct timespec *wtm = &tk->wall_to_monotonic;
+	struct clocksource *clock = tk->clock;
+
+	if (clock != &cycle_counter_cs)
+		return;
+
+	/* Userspace gettimeofday will spin while this value is odd. */
+	++vdso_data->tb_update_count;
+	smp_wmb();
+	vdso_data->xtime_tod_stamp = clock->cycle_last;
+	vdso_data->xtime_clock_sec = wall_time.tv_sec;
+	vdso_data->xtime_clock_nsec = wall_time.tv_nsec;
+	vdso_data->wtom_clock_sec = wtm->tv_sec;
+	vdso_data->wtom_clock_nsec = wtm->tv_nsec;
+	vdso_data->mult = clock->mult;
+	vdso_data->shift = clock->shift;
+	smp_wmb();
+	++vdso_data->tb_update_count;
 }

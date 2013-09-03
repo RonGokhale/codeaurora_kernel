@@ -22,7 +22,6 @@ EXPORT_SYMBOL(strnlen_user_asm);
 EXPORT_SYMBOL(strncpy_from_user_asm);
 EXPORT_SYMBOL(clear_user_asm);
 EXPORT_SYMBOL(flush_user_asm);
-EXPORT_SYMBOL(inv_user_asm);
 EXPORT_SYMBOL(finv_user_asm);
 
 /* arch/tile/kernel/entry.S */
@@ -33,6 +32,12 @@ EXPORT_SYMBOL(dump_stack);
 
 /* arch/tile/kernel/head.S */
 EXPORT_SYMBOL(empty_zero_page);
+
+#ifdef CONFIG_FUNCTION_TRACER
+/* arch/tile/kernel/mcount_64.S */
+#include <asm/ftrace.h>
+EXPORT_SYMBOL(__mcount);
+#endif /* CONFIG_FUNCTION_TRACER */
 
 /* arch/tile/lib/, various memcpy files */
 EXPORT_SYMBOL(memcpy);
@@ -45,18 +50,26 @@ EXPORT_SYMBOL(__copy_in_user_inatomic);
 
 /* hypervisor glue */
 #include <hv/hypervisor.h>
+EXPORT_SYMBOL(hv_confstr);
+EXPORT_SYMBOL(hv_dev_close);
 EXPORT_SYMBOL(hv_dev_open);
-EXPORT_SYMBOL(hv_dev_pread);
-EXPORT_SYMBOL(hv_dev_pwrite);
-EXPORT_SYMBOL(hv_dev_preada);
-EXPORT_SYMBOL(hv_dev_pwritea);
 EXPORT_SYMBOL(hv_dev_poll);
 EXPORT_SYMBOL(hv_dev_poll_cancel);
-EXPORT_SYMBOL(hv_dev_close);
-EXPORT_SYMBOL(hv_sysconf);
-EXPORT_SYMBOL(hv_confstr);
+EXPORT_SYMBOL(hv_dev_pread);
+EXPORT_SYMBOL(hv_dev_preada);
+EXPORT_SYMBOL(hv_dev_pwrite);
+EXPORT_SYMBOL(hv_dev_pwritea);
+EXPORT_SYMBOL(hv_flush_all);
 EXPORT_SYMBOL(hv_get_rtc);
+#ifdef __tilegx__
+EXPORT_SYMBOL(hv_inquire_guest_context);
+EXPORT_SYMBOL(hv_install_guest_context);
+EXPORT_SYMBOL(hv_install_virt_context);
+#endif
+EXPORT_SYMBOL(hv_physaddr_read64);
+EXPORT_SYMBOL(hv_physaddr_write64);
 EXPORT_SYMBOL(hv_set_rtc);
+EXPORT_SYMBOL(hv_sysconf);
 
 /* libgcc.a */
 uint32_t __udivsi3(uint32_t dividend, uint32_t divisor);

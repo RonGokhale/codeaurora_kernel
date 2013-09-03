@@ -27,9 +27,6 @@ config KVM
 	  This module provides access to the hardware capabilities through
 	  a character device node named /dev/kvm.
 
-	  To compile this as a module, choose M here: the module
-	  will be called kvm.
-
 	  If unsure, say N.
 
 source drivers/vhost/Kconfig
