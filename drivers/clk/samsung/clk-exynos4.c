@@ -17,7 +17,6 @@
 #include <linux/of_address.h>
 
 #include "clk.h"
-#include "clk-pll.h"
 
 /* Exynos4 clock controller register offsets */
 #define SRC_LEFTBUS		0x4200
@@ -97,12 +96,14 @@
 #define GATE_IP_PERIL		0xc950
 #define E4210_GATE_IP_PERIR	0xc960
 #define GATE_BLOCK		0xc970
+#define E4X12_MPLL_LOCK		0x10008
 #define E4X12_MPLL_CON0		0x10108
 #define SRC_DMC			0x10200
 #define SRC_MASK_DMC		0x10300
 #define DIV_DMC0		0x10500
 #define DIV_DMC1		0x10504
 #define GATE_IP_DMC		0x10900
+#define APLL_LOCK		0x14000
 #define APLL_CON0		0x14100
 #define E4210_MPLL_CON0		0x14108
 #define SRC_CPU			0x14200
@@ -119,6 +120,12 @@
 enum exynos4_soc {
 	EXYNOS4210,
 	EXYNOS4X12,
+};
+
+/* list of PLLs to be registered */
+enum exynos4_plls {
+	apll, mpll, epll, vpll,
+	nr_plls			/* number of PLLs */
 };
 
 /*
@@ -169,7 +176,7 @@ enum exynos4_clks {
 	gicisp, smmu_isp, smmu_drc, smmu_fd, smmu_lite0, smmu_lite1, mcuctl_isp,
 	mpwm_isp, i2c0_isp, i2c1_isp, mtcadc_isp, pwm_isp, wdt_isp, uart_isp,
 	asyncaxim, smmu_ispcx, spi0_isp, spi1_isp, pwm_isp_sclk, spi0_isp_sclk,
-	spi1_isp_sclk, uart_isp_sclk,
+	spi1_isp_sclk, uart_isp_sclk, tmu_apbif,
 
 	/* mux clocks */
 	mout_fimc0 = 384, mout_fimc1, mout_fimc2, mout_fimc3, mout_cam0,
@@ -187,7 +194,7 @@ enum exynos4_clks {
  * list of controller registers to be saved and restored during a
  * suspend/resume cycle.
  */
-static __initdata unsigned long exynos4210_clk_save[] = {
+static unsigned long exynos4210_clk_save[] __initdata = {
 	E4210_SRC_IMAGE,
 	E4210_SRC_LCD1,
 	E4210_SRC_MASK_LCD1,
@@ -198,7 +205,7 @@ static __initdata unsigned long exynos4210_clk_save[] = {
 	E4210_MPLL_CON0,
 };
 
-static __initdata unsigned long exynos4x12_clk_save[] = {
+static unsigned long exynos4x12_clk_save[] __initdata = {
 	E4X12_GATE_IP_IMAGE,
 	E4X12_GATE_IP_PERIR,
 	E4X12_SRC_CAM1,
@@ -207,7 +214,7 @@ static __initdata unsigned long exynos4x12_clk_save[] = {
 	E4X12_MPLL_CON0,
 };
 
-static __initdata unsigned long exynos4_clk_regs[] = {
+static unsigned long exynos4_clk_regs[] __initdata = {
 	SRC_LEFTBUS,
 	DIV_LEFTBUS,
 	GATE_IP_LEFTBUS,
@@ -338,24 +345,24 @@ PNAME(mout_user_aclk200_p4x12) = {"fin_pll", "div_aclk200", };
 PNAME(mout_user_aclk266_gps_p4x12) = {"fin_pll", "div_aclk266_gps", };
 
 /* fixed rate clocks generated outside the soc */
-struct samsung_fixed_rate_clock exynos4_fixed_rate_ext_clks[] __initdata = {
+static struct samsung_fixed_rate_clock exynos4_fixed_rate_ext_clks[] __initdata = {
 	FRATE(xxti, "xxti", NULL, CLK_IS_ROOT, 0),
 	FRATE(xusbxti, "xusbxti", NULL, CLK_IS_ROOT, 0),
 };
 
 /* fixed rate clocks generated inside the soc */
-struct samsung_fixed_rate_clock exynos4_fixed_rate_clks[] __initdata = {
+static struct samsung_fixed_rate_clock exynos4_fixed_rate_clks[] __initdata = {
 	FRATE(none, "sclk_hdmi24m", NULL, CLK_IS_ROOT, 24000000),
 	FRATE(none, "sclk_hdmiphy", NULL, CLK_IS_ROOT, 27000000),
 	FRATE(none, "sclk_usbphy0", NULL, CLK_IS_ROOT, 48000000),
 };
 
-struct samsung_fixed_rate_clock exynos4210_fixed_rate_clks[] __initdata = {
+static struct samsung_fixed_rate_clock exynos4210_fixed_rate_clks[] __initdata = {
 	FRATE(none, "sclk_usbphy1", NULL, CLK_IS_ROOT, 48000000),
 };
 
 /* list of mux clocks supported in all exynos4 soc's */
-struct samsung_mux_clock exynos4_mux_clks[] __initdata = {
+static struct samsung_mux_clock exynos4_mux_clks[] __initdata = {
 	MUX_FA(mout_apll, "mout_apll", mout_apll_p, SRC_CPU, 0, 1,
 			CLK_SET_RATE_PARENT, 0, "mout_apll"),
 	MUX(none, "mout_hdmi", mout_hdmi_p, SRC_TV, 0, 1),
@@ -372,7 +379,7 @@ struct samsung_mux_clock exynos4_mux_clks[] __initdata = {
 };
 
 /* list of mux clocks supported in exynos4210 soc */
-struct samsung_mux_clock exynos4210_mux_clks[] __initdata = {
+static struct samsung_mux_clock exynos4210_mux_clks[] __initdata = {
 	MUX(none, "mout_aclk200", sclk_ampll_p4210, SRC_TOP0, 12, 1),
 	MUX(none, "mout_aclk100", sclk_ampll_p4210, SRC_TOP0, 16, 1),
 	MUX(none, "mout_aclk160", sclk_ampll_p4210, SRC_TOP0, 20, 1),
@@ -423,7 +430,7 @@ struct samsung_mux_clock exynos4210_mux_clks[] __initdata = {
 };
 
 /* list of mux clocks supported in exynos4x12 soc */
-struct samsung_mux_clock exynos4x12_mux_clks[] __initdata = {
+static struct samsung_mux_clock exynos4x12_mux_clks[] __initdata = {
 	MUX_A(mout_mpll_user_c, "mout_mpll_user_c", mout_mpll_user_p4x12,
 			SRC_CPU, 24, 1, "mout_mpll"),
 	MUX(none, "mout_aclk266_gps", aclk_p4412, SRC_TOP1, 4, 1),
@@ -491,7 +498,7 @@ struct samsung_mux_clock exynos4x12_mux_clks[] __initdata = {
 };
 
 /* list of divider clocks supported in all exynos4 soc's */
-struct samsung_div_clock exynos4_div_clks[] __initdata = {
+static struct samsung_div_clock exynos4_div_clks[] __initdata = {
 	DIV(none, "div_core", "mout_core", DIV_CPU0, 0, 3),
 	DIV(none, "div_core2", "div_core", DIV_CPU0, 28, 3),
 	DIV(none, "div_fimc0", "mout_fimc0", DIV_CAM, 0, 4),
@@ -554,7 +561,7 @@ struct samsung_div_clock exynos4_div_clks[] __initdata = {
 };
 
 /* list of divider clocks supported in exynos4210 soc */
-struct samsung_div_clock exynos4210_div_clks[] __initdata = {
+static struct samsung_div_clock exynos4210_div_clks[] __initdata = {
 	DIV(aclk200, "aclk200", "mout_aclk200", DIV_TOP, 0, 3),
 	DIV(sclk_fimg2d, "sclk_fimg2d", "mout_g2d", DIV_IMAGE, 0, 4),
 	DIV(none, "div_fimd1", "mout_fimd1", E4210_DIV_LCD1, 0, 4),
@@ -565,7 +572,7 @@ struct samsung_div_clock exynos4210_div_clks[] __initdata = {
 };
 
 /* list of divider clocks supported in exynos4x12 soc */
-struct samsung_div_clock exynos4x12_div_clks[] __initdata = {
+static struct samsung_div_clock exynos4x12_div_clks[] __initdata = {
 	DIV(none, "div_mdnie0", "mout_mdnie0", DIV_LCD0, 4, 4),
 	DIV(none, "div_mdnie_pwm0", "mout_mdnie_pwm0", DIV_LCD0, 8, 4),
 	DIV(none, "div_mdnie_pwm_pre0", "div_mdnie_pwm0", DIV_LCD0, 12, 4),
@@ -594,7 +601,7 @@ struct samsung_div_clock exynos4x12_div_clks[] __initdata = {
 };
 
 /* list of gate clocks supported in all exynos4 soc's */
-struct samsung_gate_clock exynos4_gate_clks[] __initdata = {
+static struct samsung_gate_clock exynos4_gate_clks[] __initdata = {
 	/*
 	 * After all Exynos4 based platforms are migrated to use device tree,
 	 * the device name and clock alias names specified below for some
@@ -786,7 +793,7 @@ struct samsung_gate_clock exynos4_gate_clks[] __initdata = {
 };
 
 /* list of gate clocks supported in exynos4210 soc */
-struct samsung_gate_clock exynos4210_gate_clks[] __initdata = {
+static struct samsung_gate_clock exynos4210_gate_clks[] __initdata = {
 	GATE(tvenc, "tvenc", "aclk160", GATE_IP_TV, 2, 0, 0),
 	GATE(g2d, "g2d", "aclk200", E4210_GATE_IP_IMAGE, 0, 0, 0),
 	GATE(rotator, "rotator", "aclk200", E4210_GATE_IP_IMAGE, 1, 0, 0),
@@ -818,10 +825,11 @@ struct samsung_gate_clock exynos4210_gate_clks[] __initdata = {
 	GATE_A(keyif, "keyif", "aclk100", E4210_GATE_IP_PERIR, 16, 0, 0, "keypad"),
 	GATE_DA(sclk_fimd1, "exynos4-fb.1", "sclk_fimd1", "div_fimd1",
 			E4210_SRC_MASK_LCD1, 0, CLK_SET_RATE_PARENT, 0, "sclk_fimd"),
+	GATE(tmu_apbif, "tmu_apbif", "aclk100", E4210_GATE_IP_PERIR, 17, 0, 0),
 };
 
 /* list of gate clocks supported in exynos4x12 soc */
-struct samsung_gate_clock exynos4x12_gate_clks[] __initdata = {
+static struct samsung_gate_clock exynos4x12_gate_clks[] __initdata = {
 	GATE(audss, "audss", "sclk_epll", E4X12_GATE_IP_MAUDIO, 0, 0, 0),
 	GATE(mdnie0, "mdnie0", "aclk160", GATE_IP_LCD0, 2, 0, 0),
 	GATE(rotator, "rotator", "aclk200", E4X12_GATE_IP_IMAGE, 1, 0, 0),
@@ -919,6 +927,7 @@ struct samsung_gate_clock exynos4x12_gate_clks[] __initdata = {
 	GATE(spi1_isp, "spi1_isp", "aclk200", E4X12_GATE_ISP1, 13,
 			CLK_IGNORE_UNUSED | CLK_GET_RATE_NOCACHE, 0),
 	GATE(g2d, "g2d", "aclk200", GATE_IP_DMC, 23, 0, 0),
+	GATE(tmu_apbif, "tmu_apbif", "aclk100", E4X12_GATE_IP_PERIR, 17, 0, 0),
 };
 
 /*
@@ -973,28 +982,27 @@ static void __init exynos4_clk_register_finpll(unsigned long xom)
 
 }
 
-/*
- * This function allows non-dt platforms to specify the clock speed of the
- * xxti and xusbxti clocks. These clocks are then registered with the specified
- * clock speed.
- */
-void __init exynos4_clk_register_fixed_ext(unsigned long xxti_f,
-						unsigned long xusbxti_f)
-{
-	exynos4_fixed_rate_ext_clks[0].fixed_rate = xxti_f;
-	exynos4_fixed_rate_ext_clks[1].fixed_rate = xusbxti_f;
-	samsung_clk_register_fixed_rate(exynos4_fixed_rate_ext_clks,
-			ARRAY_SIZE(exynos4_fixed_rate_ext_clks));
-}
-
-static __initdata struct of_device_id ext_clk_match[] = {
+static struct of_device_id ext_clk_match[] __initdata = {
 	{ .compatible = "samsung,clock-xxti", .data = (void *)0, },
 	{ .compatible = "samsung,clock-xusbxti", .data = (void *)1, },
 	{},
 };
 
+static struct samsung_pll_clock exynos4_plls[nr_plls] __initdata = {
+	[apll] = PLL_A(pll_35xx, fout_apll, "fout_apll", "fin_pll", APLL_LOCK,
+		APLL_CON0, "fout_apll", NULL),
+	[mpll] = PLL_A(pll_35xx, fout_mpll, "fout_mpll", "fin_pll",
+		E4X12_MPLL_LOCK, E4X12_MPLL_CON0, "fout_mpll", NULL),
+	[epll] = PLL_A(pll_36xx, fout_epll, "fout_epll", "fin_pll", EPLL_LOCK,
+		EPLL_CON0, "fout_epll", NULL),
+	[vpll] = PLL_A(pll_36xx, fout_vpll, "fout_vpll", "fin_pll", VPLL_LOCK,
+		VPLL_CON0, "fout_vpll", NULL),
+};
+
 /* register exynos4 clocks */
-void __init exynos4_clk_init(struct device_node *np, enum exynos4_soc exynos4_soc, void __iomem *reg_base, unsigned long xom)
+static void __init exynos4_clk_init(struct device_node *np,
+				    enum exynos4_soc exynos4_soc,
+				    void __iomem *reg_base, unsigned long xom)
 {
 	struct clk *apll, *mpll, *epll, *vpll;
 
@@ -1029,21 +1037,15 @@ void __init exynos4_clk_init(struct device_node *np, enum exynos4_soc exynos4_so
 					reg_base + EPLL_CON0, pll_4600);
 		vpll = samsung_clk_register_pll46xx("fout_vpll", "mout_vpllsrc",
 					reg_base + VPLL_CON0, pll_4650c);
-	} else {
-		apll = samsung_clk_register_pll35xx("fout_apll", "fin_pll",
-					reg_base + APLL_CON0);
-		mpll = samsung_clk_register_pll35xx("fout_mpll", "fin_pll",
-					reg_base + E4X12_MPLL_CON0);
-		epll = samsung_clk_register_pll36xx("fout_epll", "fin_pll",
-					reg_base + EPLL_CON0);
-		vpll = samsung_clk_register_pll36xx("fout_vpll", "fin_pll",
-					reg_base + VPLL_CON0);
-	}
 
-	samsung_clk_add_lookup(apll, fout_apll);
-	samsung_clk_add_lookup(mpll, fout_mpll);
-	samsung_clk_add_lookup(epll, fout_epll);
-	samsung_clk_add_lookup(vpll, fout_vpll);
+		samsung_clk_add_lookup(apll, fout_apll);
+		samsung_clk_add_lookup(mpll, fout_mpll);
+		samsung_clk_add_lookup(epll, fout_epll);
+		samsung_clk_add_lookup(vpll, fout_vpll);
+	} else {
+		samsung_clk_register_pll(exynos4_plls,
+					ARRAY_SIZE(exynos4_plls), reg_base);
+	}
 
 	samsung_clk_register_fixed_rate(exynos4_fixed_rate_clks,
 			ARRAY_SIZE(exynos4_fixed_rate_clks));
