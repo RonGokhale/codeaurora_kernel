@@ -2381,7 +2381,7 @@ static char early_serial_buf[32];
 
 static int sci_probe_earlyprintk(struct platform_device *pdev)
 {
-	struct plat_sci_port *cfg = pdev->dev.platform_data;
+	struct plat_sci_port *cfg = dev_get_platdata(&pdev->dev);
 
 	if (early_serial_console.data)
 		return -EEXIST;
@@ -2591,7 +2591,7 @@ static int sci_probe(struct platform_device *dev)
 	if (dev->dev.of_node)
 		p = sci_parse_dt(dev, &dev_id);
 	else
-		p = dev->dev.platform_data;
+		p = dev_get_platdata(&dev->dev);
 
 	if (!p) {
 		dev_err(&dev->dev, "no setup data supplied\n");
