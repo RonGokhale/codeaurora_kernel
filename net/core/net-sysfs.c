@@ -252,6 +252,28 @@ static ssize_t operstate_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(operstate);
 
+static ssize_t phys_port_id_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	ssize_t ret = -EINVAL;
+
+	if (!rtnl_trylock())
+		return restart_syscall();
+
+	if (dev_isalive(netdev)) {
+		struct netdev_phys_port_id ppid;
+
+		ret = dev_get_phys_port_id(netdev, &ppid);
+		if (!ret)
+			ret = sprintf(buf, "%*phN\n", ppid.id_len, ppid.id);
+	}
+	rtnl_unlock();
+
+	return ret;
+}
+static DEVICE_ATTR_RO(phys_port_id);
+
 /* read-write attributes */
 
 static int change_mtu(struct net_device *net, unsigned long new_mtu)
@@ -362,6 +384,7 @@ static struct attribute *net_class_attrs[] = {
 	&dev_attr_duplex.attr,
 	&dev_attr_dormant.attr,
 	&dev_attr_operstate.attr,
+	&dev_attr_phys_port_id.attr,
 	&dev_attr_ifalias.attr,
 	&dev_attr_carrier.attr,
 	&dev_attr_mtu.attr,
