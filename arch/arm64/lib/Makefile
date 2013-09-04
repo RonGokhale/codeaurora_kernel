@@ -4,6 +4,10 @@ lib-y		:= bitops.o clear_user.o delay.o copy_from_user.o	\
 		   memcmp.o strcmp.o strncmp.o strlen.o strnlen.o	\
 		   strchr.o strrchr.o
 
+ifeq ($(COMPILER),clang)
+lib-y += eabi.o
+endif
+
 # Tell the compiler to treat all general purpose registers as
 # callee-saved, which allows for efficient runtime patching of the bl
 # instruction in the caller with an atomic instruction when supported by
