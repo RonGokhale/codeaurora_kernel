@@ -162,10 +162,7 @@ static void flush_context(unsigned int cpu)
 	}
 
 	/* Queue a TLB invalidate and flush the I-cache if necessary. */
-	if (!tlb_ops_need_broadcast())
-		cpumask_set_cpu(cpu, &tlb_flush_pending);
-	else
-		cpumask_setall(&tlb_flush_pending);
+	cpumask_setall(&tlb_flush_pending);
 
 	if (icache_is_vivt_asid_tagged())
 		__flush_icache_all();
