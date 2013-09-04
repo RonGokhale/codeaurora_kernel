@@ -8,6 +8,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/sched.h>
 #include <net/mac80211.h>
 #include <linux/module.h>
 #include <linux/init.h>

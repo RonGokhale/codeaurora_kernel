@@ -114,6 +114,7 @@
  *  Stephen Rothwell <sfr@canb.auug.org.au>, June, 2000.
  */
 
+#include <linux/sched.h>
 #include <linux/capability.h>
 #include <linux/file.h>
 #include <linux/fdtable.h>

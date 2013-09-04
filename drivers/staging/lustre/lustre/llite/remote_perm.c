@@ -44,6 +44,7 @@
 #define DEBUG_SUBSYSTEM S_LLITE
 
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/types.h>
 
 #include <lustre_lite.h>
