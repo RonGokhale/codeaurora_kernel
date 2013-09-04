@@ -26,16 +26,25 @@ $(warning LSE atomics not supported by binutils)
   endif
 endif
 
-KBUILD_CFLAGS	+= -mgeneral-regs-only $(lseinstr)
-KBUILD_CFLAGS	+= -fno-pic
+ifeq ($(COMPILER),clang)
+# Clang options
+KBUILD_CPPFLAGS	+= $(call cc-option,-target $(CROSS_COMPILE:-=),)
+KBUILD_CFLAGS	+= $(call cc-option,-fno-builtin,)
+KBUILD_CFLAGS	+= $(call cc-disable-warning,asm-operand-widths)
+KBUILD_CFLAGS	+= $(call cc-disable-warning,initializer-overrides)
+endif
+
+KBUILD_CFLAGS	+= $(call cc-option,-mgeneral-regs-only,)
+KBUILD_CFLAGS	+= $(call cc-option,$(lseinstr),)
+KBUILD_CFLAGS	+= $(call cc-option,-fno-pic,)
 KBUILD_AFLAGS	+= $(lseinstr)
 
 ifeq ($(CONFIG_CPU_BIG_ENDIAN), y)
-KBUILD_CPPFLAGS	+= -mbig-endian
+KBUILD_CPPFLAGS	+= $(call cc-option,-mbig-endian,)
 AS		+= -EB
 LD		+= -EB
 else
-KBUILD_CPPFLAGS	+= -mlittle-endian
+KBUILD_CPPFLAGS	+= $(call cc-option,-mlittle-endian,)
 AS		+= -EL
 LD		+= -EL
 endif
