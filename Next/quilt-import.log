@@ -1,0 +1,13 @@
+Importing jdelvare-hwmon based on 248d296d6d9df384996c2ed95676b367d876d48c
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 248d296d6d9df384996c2ed95676b367d876d48c
+HEAD is now at 248d296 Merge tag 'scsi-fixes' of git://git.kernel.org/pub/scm/linux/kernel/git/jejb/scsi
+$ git am ../quilt/jdelvare-hwmon/hwmon-w83792d-update-module-author.patch
+Applying: hwmon: (w83792d) Update module author
+$ git am ../quilt/jdelvare-hwmon/hwmon-emc6w201-do-not-declare-enum-variable.patch
+Applying: hwmon: (emc6w201) Do not declare enum variable
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + d9d5701...8384216 master     -> jdelvare-hwmon/master  (forced update)
