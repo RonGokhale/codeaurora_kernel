@@ -430,7 +430,6 @@ static void ndisc_send_skb(struct sk_buff *skb,
 	type = icmp6h->icmp6_type;
 
 	if (!dst) {
-		struct sock *sk = net->ipv6.ndisc_sk;
 		struct flowi6 fl6;
 
 		icmpv6_flow_init(sk, &fl6, type, saddr, daddr, skb->dev->ifindex);
@@ -464,10 +463,10 @@ static void ndisc_send_skb(struct sk_buff *skb,
 	rcu_read_unlock();
 }
 
-static void ndisc_send_na(struct net_device *dev, struct neighbour *neigh,
-			  const struct in6_addr *daddr,
-			  const struct in6_addr *solicited_addr,
-			  bool router, bool solicited, bool override, bool inc_opt)
+void ndisc_send_na(struct net_device *dev, struct neighbour *neigh,
+		   const struct in6_addr *daddr,
+		   const struct in6_addr *solicited_addr,
+		   bool router, bool solicited, bool override, bool inc_opt)
 {
 	struct sk_buff *skb;
 	struct in6_addr tmpaddr;
@@ -665,9 +664,7 @@ static void ndisc_solicit(struct neighbour *neigh, struct sk_buff *skb)
 		}
 		ndisc_send_ns(dev, neigh, target, target, saddr);
 	} else if ((probes -= neigh->parms->app_probes) < 0) {
-#ifdef CONFIG_ARPD
 		neigh_app_ns(neigh);
-#endif
 	} else {
 		addrconf_addr_solict_mult(target, &mcaddr);
 		ndisc_send_ns(dev, NULL, target, &mcaddr, saddr);
@@ -1521,9 +1518,26 @@ static void pndisc_redo(struct sk_buff *skb)
 	kfree_skb(skb);
 }
 
+static bool ndisc_suppress_frag_ndisc(struct sk_buff *skb)
+{
+	struct inet6_dev *idev = __in6_dev_get(skb->dev);
+
+	if (!idev)
+		return true;
+	if (IP6CB(skb)->flags & IP6SKB_FRAGMENTED &&
+	    idev->cnf.suppress_frag_ndisc) {
+		net_warn_ratelimited("Received fragmented ndisc packet. Carefully consider disabling suppress_frag_ndisc.\n");
+		return true;
+	}
+	return false;
+}
+
 int ndisc_rcv(struct sk_buff *skb)
 {
 	struct nd_msg *msg;
+
+	if (ndisc_suppress_frag_ndisc(skb))
+		return 0;
 
 	if (skb_linearize(skb))
 		return 0;

@@ -2066,7 +2066,11 @@ void bnx2x_squeeze_objects(struct bnx2x *bp)
 	rparam.mcast_obj = &bp->mcast_obj;
 	__set_bit(RAMROD_DRV_CLR_ONLY, &rparam.ramrod_flags);
 
-	/* Add a DEL command... */
+	/* Add a DEL command... - Since we're doing a driver cleanup only,
+	 * we take a lock surrounding both the initial send and the CONTs,
+	 * as we don't want a true completion to disrupt us in the middle.
+	 */
+	netif_addr_lock_bh(bp->dev);
 	rc = bnx2x_config_mcast(bp, &rparam, BNX2X_MCAST_CMD_DEL);
 	if (rc < 0)
 		BNX2X_ERR("Failed to add a new DEL command to a multi-cast object: %d\n",
@@ -2078,11 +2082,13 @@ void bnx2x_squeeze_objects(struct bnx2x *bp)
 		if (rc < 0) {
 			BNX2X_ERR("Failed to clean multi-cast object: %d\n",
 				  rc);
+			netif_addr_unlock_bh(bp->dev);
 			return;
 		}
 
 		rc = bnx2x_config_mcast(bp, &rparam, BNX2X_MCAST_CMD_CONT);
 	}
+	netif_addr_unlock_bh(bp->dev);
 }
 
 #ifndef BNX2X_STOP_ON_ERROR
@@ -2438,9 +2444,7 @@ int bnx2x_load_cnic(struct bnx2x *bp)
 	}
 
 	/* Initialize Rx filter. */
-	netif_addr_lock_bh(bp->dev);
-	bnx2x_set_rx_mode(bp->dev);
-	netif_addr_unlock_bh(bp->dev);
+	bnx2x_set_rx_mode_inner(bp);
 
 	/* re-read iscsi info */
 	bnx2x_get_iscsi_info(bp);
@@ -2710,9 +2714,7 @@ int bnx2x_nic_load(struct bnx2x *bp, int load_mode)
 	/* Start fast path */
 
 	/* Initialize Rx filter. */
-	netif_addr_lock_bh(bp->dev);
-	bnx2x_set_rx_mode(bp->dev);
-	netif_addr_unlock_bh(bp->dev);
+	bnx2x_set_rx_mode_inner(bp);
 
 	/* Start the Tx */
 	switch (load_mode) {
