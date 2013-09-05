@@ -265,9 +265,9 @@ static struct se_tpg_np *lio_target_call_addnptotpg(
 		*port_str = '\0'; /* Terminate string for IP */
 		port_str++; /* Skip over ":" */
 
-		ret = strict_strtoul(port_str, 0, &port);
+		ret = kstrtoul(port_str, 0, &port);
 		if (ret < 0) {
-			pr_err("strict_strtoul() failed for port_str: %d\n", ret);
+			pr_err("kstrtoul() failed for port_str: %d\n", ret);
 			return ERR_PTR(ret);
 		}
 		sock_in6 = (struct sockaddr_in6 *)&sockaddr;
@@ -290,9 +290,9 @@ static struct se_tpg_np *lio_target_call_addnptotpg(
 		*port_str = '\0'; /* Terminate string for IP */
 		port_str++; /* Skip over ":" */
 
-		ret = strict_strtoul(port_str, 0, &port);
+		ret = kstrtoul(port_str, 0, &port);
 		if (ret < 0) {
-			pr_err("strict_strtoul() failed for port_str: %d\n", ret);
+			pr_err("kstrtoul() failed for port_str: %d\n", ret);
 			return ERR_PTR(ret);
 		}
 		sock_in = (struct sockaddr_in *)&sockaddr;
@@ -1925,7 +1925,7 @@ static void lio_release_cmd(struct se_cmd *se_cmd)
 	struct iscsi_cmd *cmd = container_of(se_cmd, struct iscsi_cmd, se_cmd);
 
 	pr_debug("Entering lio_release_cmd for se_cmd: %p\n", se_cmd);
-	cmd->release_cmd(cmd);
+	iscsit_release_cmd(cmd);
 }
 
 /* End functions for target_core_fabric_ops */
