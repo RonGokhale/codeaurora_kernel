@@ -21,6 +21,7 @@
 #include <linux/sunrpc/stats.h>
 #include <linux/sunrpc/xdr.h>
 #include <linux/sunrpc/timer.h>
+#include <linux/sunrpc/rpc_pipe_fs.h>
 #include <asm/signal.h>
 #include <linux/path.h>
 #include <net/ipv6.h>
@@ -41,7 +42,6 @@ struct rpc_clnt {
 				cl_vers,	/* RPC version number */
 				cl_maxproc;	/* max procedure number */
 
-	const char *		cl_protname;	/* protocol name */
 	struct rpc_auth *	cl_auth;	/* authenticator */
 	struct rpc_stat *	cl_stats;	/* per-program statistics */
 	struct rpc_iostats *	cl_metrics;	/* per-client statistics */
@@ -56,12 +56,11 @@ struct rpc_clnt {
 
 	int			cl_nodelen;	/* nodename length */
 	char 			cl_nodename[UNX_MAXNODENAME];
-	struct dentry *		cl_dentry;
+	struct rpc_pipe_dir_head cl_pipedir_objects;
 	struct rpc_clnt *	cl_parent;	/* Points to parent of clones */
 	struct rpc_rtt		cl_rtt_default;
 	struct rpc_timeout	cl_timeout_default;
 	const struct rpc_program *cl_program;
-	char			*cl_principal;	/* target to authenticate to */
 };
 
 /*
