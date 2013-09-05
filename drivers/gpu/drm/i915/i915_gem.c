@@ -212,7 +212,7 @@ i915_gem_get_aperture_ioctl(struct drm_device *dev, void *data,
 void *i915_gem_object_alloc(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	return kmem_cache_alloc(dev_priv->slab, GFP_KERNEL | __GFP_ZERO);
+	return kmem_cache_zalloc(dev_priv->slab, GFP_KERNEL);
 }
 
 void i915_gem_object_free(struct drm_i915_gem_object *obj)
@@ -1774,7 +1774,6 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 
 	page_count = obj->base.size / PAGE_SIZE;
 	if (sg_alloc_table(st, page_count, GFP_KERNEL)) {
-		sg_free_table(st);
 		kfree(st);
 		return -ENOMEM;
 	}
