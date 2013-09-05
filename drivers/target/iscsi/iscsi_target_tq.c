@@ -105,8 +105,6 @@ int iscsi_allocate_thread_sets(u32 thread_pair_count)
 		ts->status = ISCSI_THREAD_SET_FREE;
 		INIT_LIST_HEAD(&ts->ts_list);
 		spin_lock_init(&ts->ts_state_lock);
-		init_completion(&ts->rx_post_start_comp);
-		init_completion(&ts->tx_post_start_comp);
 		init_completion(&ts->rx_restart_comp);
 		init_completion(&ts->tx_restart_comp);
 		init_completion(&ts->rx_start_comp);
@@ -229,13 +227,13 @@ void iscsi_activate_thread_set(struct iscsi_conn *conn, struct iscsi_thread_set 
 	conn->thread_set = ts;
 	ts->conn = conn;
 	spin_unlock_bh(&ts->ts_state_lock);
-	/*
-	 * Start up the RX thread and wait on rx_post_start_comp.  The RX
-	 * Thread will then do the same for the TX Thread in
-	 * iscsi_rx_thread_pre_handler().
-	 */
+
 	complete(&ts->rx_start_comp);
-	wait_for_completion(&ts->rx_post_start_comp);
+	complete(&ts->tx_start_comp);
+
+	spin_lock_bh(&ts->ts_state_lock);
+	ts->status = ISCSI_THREAD_SET_ACTIVE;
+	spin_unlock_bh(&ts->ts_state_lock);
 }
 
 struct iscsi_thread_set *iscsi_get_thread_set(void)
@@ -457,12 +455,10 @@ sleep:
 		goto sleep;
 	}
 	iscsi_check_to_add_additional_sets();
-	/*
-	 * The RX Thread starts up the TX Thread and sleeps.
-	 */
+
+	spin_lock_bh(&ts->ts_state_lock);
 	ts->thread_clear |= ISCSI_CLEAR_RX_THREAD;
-	complete(&ts->tx_start_comp);
-	wait_for_completion(&ts->tx_post_start_comp);
+	spin_unlock_bh(&ts->ts_state_lock);
 
 	return ts->conn;
 }
@@ -512,17 +508,9 @@ sleep:
 	}
 
 	iscsi_check_to_add_additional_sets();
-	/*
-	 * From the TX thread, up the tx_post_start_comp that the RX Thread is
-	 * sleeping on in iscsi_rx_thread_pre_handler(), then up the
-	 * rx_post_start_comp that iscsi_activate_thread_set() is sleeping on.
-	 */
-	ts->thread_clear |= ISCSI_CLEAR_TX_THREAD;
-	complete(&ts->tx_post_start_comp);
-	complete(&ts->rx_post_start_comp);
 
 	spin_lock_bh(&ts->ts_state_lock);
-	ts->status = ISCSI_THREAD_SET_ACTIVE;
+	ts->thread_clear |= ISCSI_CLEAR_TX_THREAD;
 	spin_unlock_bh(&ts->ts_state_lock);
 
 	return ts->conn;
