@@ -375,6 +375,7 @@ struct smb_version_operations {
 	bool (*is_read_op)(__u32);
 	void (*set_oplock_level)(struct cifsInodeInfo *, __u32);
 	char * (*create_lease_buf)(u8 *, u8);
+	__u8 (*parse_lease_buf)(void *);
 };
 
 struct smb_version_values {
