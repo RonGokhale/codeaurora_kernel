@@ -1541,7 +1541,7 @@ static ssize_t blkdev_read_iter(struct kiocb *iocb, struct iov_iter *iter,
 		return 0;
 
 	size -= pos;
-	if (size < iocb->ki_left)
+	if (size < iocb->ki_nbytes)
 		iov_iter_shorten(iter, size);
 	return generic_file_read_iter(iocb, iter, pos);
 }
