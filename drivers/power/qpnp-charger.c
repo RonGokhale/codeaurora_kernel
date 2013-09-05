@@ -99,6 +99,9 @@
 #define BOOST_ENABLE_CONTROL			0x46
 #define COMP_OVR1				0xEA
 #define BAT_IF_BTC_CTRL				0x49
+#define USB_OCP_THR				0x52
+#define USB_OCP_CLR				0x53
+#define BAT_IF_TEMP_STATUS			0x09
 
 #define REG_OFFSET_PERP_SUBTYPE			0x05
 
@@ -901,7 +904,8 @@ qpnp_chg_usb_usbin_valid_irq_handler(int irq, void *_chip)
 		chip->usb_present = usb_present;
 		if (!usb_present) {
 			qpnp_chg_usb_suspend_enable(chip, 1);
-			chip->chg_done = false;
+			if (!qpnp_chg_is_dc_chg_plugged_in(chip))
+				chip->chg_done = false;
 		} else {
 			schedule_delayed_work(&chip->eoc_work,
 				msecs_to_jiffies(EOC_CHECK_PERIOD_MS));
@@ -960,7 +964,7 @@ qpnp_chg_dc_dcin_valid_irq_handler(int irq, void *_chip)
 
 	if (chip->dc_present ^ dc_present) {
 		chip->dc_present = dc_present;
-		if (!dc_present)
+		if (!dc_present && !qpnp_chg_is_usb_chg_plugged_in(chip))
 			chip->chg_done = false;
 		else
 			schedule_delayed_work(&chip->eoc_work,
@@ -1286,7 +1290,7 @@ static int
 get_prop_batt_status(struct qpnp_chg_chip *chip)
 {
 	int rc;
-	u8 chgr_sts;
+	u8 chgr_sts, bat_if_sts;
 
 	if ((qpnp_chg_is_usb_chg_plugged_in(chip) ||
 		qpnp_chg_is_dc_chg_plugged_in(chip)) && chip->chg_done) {
@@ -1299,9 +1303,15 @@ get_prop_batt_status(struct qpnp_chg_chip *chip)
 		return POWER_SUPPLY_CHARGE_TYPE_NONE;
 	}
 
-	if (chgr_sts & TRKL_CHG_ON_IRQ)
+	rc = qpnp_chg_read(chip, &bat_if_sts, INT_RT_STS(chip->bat_if_base), 1);
+	if (rc) {
+		pr_err("failed to read bat_if sts %d\n", rc);
+		return POWER_SUPPLY_CHARGE_TYPE_NONE;
+	}
+
+	if (chgr_sts & TRKL_CHG_ON_IRQ && bat_if_sts & BAT_FET_ON_IRQ)
 		return POWER_SUPPLY_STATUS_CHARGING;
-	if (chgr_sts & FAST_CHG_ON_IRQ)
+	if (chgr_sts & FAST_CHG_ON_IRQ && bat_if_sts & BAT_FET_ON_IRQ)
 		return POWER_SUPPLY_STATUS_CHARGING;
 
 	return POWER_SUPPLY_STATUS_DISCHARGING;
@@ -1607,8 +1617,7 @@ qpnp_chg_ibatsafe_set(struct qpnp_chg_chip *chip, int safe_current)
 		return -EINVAL;
 	}
 
-	temp = (safe_current - QPNP_CHG_IBATSAFE_MIN_MA)
-				/ QPNP_CHG_I_STEP_MA;
+	temp = safe_current / QPNP_CHG_I_STEP_MA;
 	return qpnp_chg_masked_write(chip,
 			chip->chgr_base + CHGR_IBAT_SAFE,
 			QPNP_CHG_I_MASK, temp, 1);

@@ -136,6 +136,33 @@ static void sdhci_dumpregs(struct sdhci_host *host)
 	pr_info(DRIVER_NAME ": ===========================================\n");
 }
 
+#define MAX_PM_QOS_TIMEOUT_VALUE	100000 /* 100 ms */
+static ssize_t
+show_sdhci_pm_qos_tout(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d us\n", host->pm_qos_timeout_us);
+}
+
+static ssize_t
+store_sdhci_pm_qos_tout(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct sdhci_host *host = dev_get_drvdata(dev);
+	uint32_t value;
+	unsigned long flags;
+
+	if (!kstrtou32(buf, 0, &value)) {
+		spin_lock_irqsave(&host->lock, flags);
+		if (value <= MAX_PM_QOS_TIMEOUT_VALUE)
+			host->pm_qos_timeout_us = value;
+		spin_unlock_irqrestore(&host->lock, flags);
+	}
+	return count;
+}
+
 /*****************************************************************************\
  *                                                                           *
  * Low level functions                                                       *
@@ -1368,13 +1395,53 @@ static int sdhci_disable(struct mmc_host *mmc)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
 
-	if (host->cpu_dma_latency_us)
-		pm_qos_update_request(&host->pm_qos_req_dma,
+	if (host->cpu_dma_latency_us) {
+		/*
+		 * In performance mode, release QoS vote after a timeout to
+		 * make sure back-to-back requests don't suffer from latencies
+		 * that are involved to wake CPU from low power modes in cases
+		 * where the CPU goes into low power mode as soon as QoS vote is
+		 * released.
+		 */
+		if (host->power_policy == SDHCI_PERFORMANCE_MODE)
+			pm_qos_update_request_timeout(&host->pm_qos_req_dma,
+					host->cpu_dma_latency_us,
+					host->pm_qos_timeout_us);
+		else
+			pm_qos_update_request(&host->pm_qos_req_dma,
 					PM_QOS_DEFAULT_VALUE);
+	}
+
 	if (host->ops->platform_bus_voting)
 		host->ops->platform_bus_voting(host, 0);
 
 	return 0;
+}
+
+static inline void sdhci_update_power_policy(struct sdhci_host *host,
+		enum sdhci_power_policy policy)
+{
+	host->power_policy = policy;
+}
+
+static int sdhci_notify_load(struct mmc_host *mmc, enum mmc_load state)
+{
+	int err = 0;
+	struct sdhci_host *host = mmc_priv(mmc);
+
+	switch (state) {
+	case MMC_LOAD_HIGH:
+		sdhci_update_power_policy(host, SDHCI_PERFORMANCE_MODE);
+		break;
+	case MMC_LOAD_LOW:
+		sdhci_update_power_policy(host, SDHCI_POWER_SAVE_MODE);
+		break;
+	default:
+		err = -EINVAL;
+		break;
+	}
+
+	return err;
 }
 
 static void sdhci_pre_req(struct mmc_host *mmc, struct mmc_request *mrq,
@@ -2207,6 +2274,7 @@ static const struct mmc_host_ops sdhci_ops = {
 	.disable	= sdhci_disable,
 	.stop_request = sdhci_stop_request,
 	.get_xfer_remain = sdhci_get_xfer_remain,
+	.notify_load	= sdhci_notify_load,
 };
 
 /*****************************************************************************\
@@ -3380,9 +3448,22 @@ int sdhci_add_host(struct sdhci_host *host)
 
 	mmiowb();
 
-	if (host->cpu_dma_latency_us)
+	if (host->cpu_dma_latency_us) {
+		host->pm_qos_timeout_us = 10000; /* default value */
 		pm_qos_add_request(&host->pm_qos_req_dma,
 				PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+
+		host->pm_qos_tout.show = show_sdhci_pm_qos_tout;
+		host->pm_qos_tout.store = store_sdhci_pm_qos_tout;
+		sysfs_attr_init(&host->pm_qos_tout.attr);
+		host->pm_qos_tout.attr.name = "pm_qos_unvote_delay";
+		host->pm_qos_tout.attr.mode = S_IRUGO | S_IWUSR;
+		ret = device_create_file(mmc_dev(mmc), &host->pm_qos_tout);
+		if (ret)
+			pr_err("%s: cannot create pm_qos_unvote_delay %d\n",
+					mmc_hostname(mmc), ret);
+	}
+
 	mmc_add_host(mmc);
 
 	pr_info("%s: SDHCI controller on %s [%s] using %s\n",

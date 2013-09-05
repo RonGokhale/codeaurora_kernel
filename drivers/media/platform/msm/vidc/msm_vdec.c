@@ -21,7 +21,7 @@
 
 #define MSM_VDEC_DVC_NAME "msm_vdec_8974"
 #define MIN_NUM_OUTPUT_BUFFERS 4
-#define MAX_NUM_OUTPUT_BUFFERS 6
+#define MAX_NUM_OUTPUT_BUFFERS VIDEO_MAX_FRAME
 
 enum msm_vdec_ctrl_cluster {
 	MSM_VDEC_CTRL_CLUSTER_MAX = 1 << 0,
@@ -262,7 +262,7 @@ static u32 get_frame_size_nv12(int plane,
 static u32 get_frame_size_compressed(int plane,
 					u32 height, u32 width)
 {
-	return (width * height * 3/2)/4;
+	return (width * height * 3/2)/2;
 }
 
 struct msm_vidc_format vdec_formats[] = {
