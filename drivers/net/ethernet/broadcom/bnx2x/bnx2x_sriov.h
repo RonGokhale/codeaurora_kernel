@@ -20,6 +20,7 @@
 #define BNX2X_SRIOV_H
 
 #include "bnx2x_vfpf.h"
+#include <linux/sched.h>
 #include "bnx2x.h"
 
 enum sample_bulletin_result {

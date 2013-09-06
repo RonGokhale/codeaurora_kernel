@@ -22,6 +22,7 @@
  *  Assorted race fixes, rewrite of ext3_get_block() by Al Viro, 2000
  */
 
+#include <linux/sched.h>
 #include <linux/highuid.h>
 #include <linux/quotaops.h>
 #include <linux/writeback.h>

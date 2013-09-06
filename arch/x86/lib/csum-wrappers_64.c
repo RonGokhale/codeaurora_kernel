@@ -4,6 +4,7 @@
  *
  * Wrappers of assembly checksum functions for x86-64.
  */
+#include <linux/sched.h>
 #include <asm/checksum.h>
 #include <linux/module.h>
 #include <asm/smap.h>
