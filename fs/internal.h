@@ -132,6 +132,10 @@ extern struct dentry *__d_alloc(struct super_block *, const struct qstr *);
  */
 extern ssize_t __kernel_write(struct file *, const char *, size_t, loff_t *);
 extern int rw_verify_area(int, struct file *, const loff_t *, size_t);
+extern ssize_t do_aio_read(struct kiocb *kiocb, const struct iovec *iov,
+			   unsigned long nr_segs, loff_t pos);
+extern ssize_t do_aio_write(struct kiocb *kiocb, const struct iovec *iov,
+			    unsigned long nr_segs, loff_t pos);
 
 /*
  * splice.c
