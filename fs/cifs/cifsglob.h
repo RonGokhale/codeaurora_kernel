@@ -372,6 +372,8 @@ struct smb_version_operations {
 	int (*query_mf_symlink)(const unsigned char *path, char *pbuf,
 			unsigned int *pbytes_read, struct cifs_sb_info *cifs_sb,
 			unsigned int xid);
+	bool (*is_read_op)(__u32);
+	void (*set_oplock_level)(struct cifsInodeInfo *, __u32);
 };
 
 struct smb_version_values {
@@ -389,7 +391,6 @@ struct smb_version_values {
 	unsigned int	cap_unix;
 	unsigned int	cap_nt_find;
 	unsigned int	cap_large_files;
-	unsigned int	oplock_read;
 	__u16		signing_enabled;
 	__u16		signing_required;
 };
@@ -1036,6 +1037,7 @@ void cifsFileInfo_put(struct cifsFileInfo *cifs_file);
 #define CIFS_CACHE_WRITE_FLG	4
 
 #define CIFS_CACHE_READ(cinode) (cinode->oplock & CIFS_CACHE_READ_FLG)
+#define CIFS_CACHE_HANDLE(cinode) (cinode->oplock & CIFS_CACHE_HANDLE_FLG)
 #define CIFS_CACHE_WRITE(cinode) (cinode->oplock & CIFS_CACHE_WRITE_FLG)
 
 /*
@@ -1507,7 +1509,7 @@ extern mempool_t *cifs_mid_poolp;
 extern struct smb_version_operations smb1_operations;
 extern struct smb_version_values smb1_values;
 #define SMB20_VERSION_STRING	"2.0"
-/*extern struct smb_version_operations smb20_operations; */ /* not needed yet */
+extern struct smb_version_operations smb20_operations;
 extern struct smb_version_values smb20_values;
 #define SMB21_VERSION_STRING	"2.1"
 extern struct smb_version_operations smb21_operations;
