@@ -638,6 +638,10 @@ static void adreno_cleanup_pt(struct kgsl_device *device,
 	kgsl_mmu_put_gpuaddr(pagetable, &device->memstore);
 
 	kgsl_mmu_unmap(pagetable, &adreno_dev->profile.shared_buffer);
+	kgsl_mmu_put_gpuaddr(pagetable, &adreno_dev->profile.shared_buffer);
+
+	kgsl_mmu_unmap(pagetable, &adreno_dev->pwron_fixup);
+	kgsl_mmu_put_gpuaddr(pagetable, &adreno_dev->pwron_fixup);
 
 	kgsl_mmu_unmap(pagetable, &device->mmu.setstate_memory);
 	kgsl_mmu_put_gpuaddr(pagetable, &device->mmu.setstate_memory);
@@ -646,30 +650,35 @@ static void adreno_cleanup_pt(struct kgsl_device *device,
 static int adreno_setup_pt(struct kgsl_device *device,
 			struct kgsl_pagetable *pagetable)
 {
-	int result = 0;
+	int result;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 
 	result = kgsl_mmu_map_global(pagetable, &rb->buffer_desc);
-	if (result)
-		goto error;
 
-	result = kgsl_mmu_map_global(pagetable, &rb->memptrs_desc);
-	if (result)
-		goto unmap_buffer_desc;
+	if (!result)
+		result = kgsl_mmu_map_global(pagetable, &rb->memptrs_desc);
 
-	result = kgsl_mmu_map_global(pagetable, &device->memstore);
-	if (result)
-		goto unmap_memptrs_desc;
+	if (!result)
+		result = kgsl_mmu_map_global(pagetable, &device->memstore);
 
-	result = kgsl_mmu_map_global(pagetable,
+	if (!result)
+		result = kgsl_mmu_map_global(pagetable,
+					&adreno_dev->pwron_fixup);
+
+	if(!result)
+		result = kgsl_mmu_map_global(pagetable,
 					&adreno_dev->profile.shared_buffer);
-	if (result)
-		goto unmap_profile_shared;
 
-	result = kgsl_mmu_map_global(pagetable, &device->mmu.setstate_memory);
-	if (result)
-		goto unmap_memstore_desc;
+	if(!result)
+		result = kgsl_mmu_map_global(pagetable,
+					&device->mmu.setstate_memory);
+
+	if (result) {
+		/* On error clean up what we have wrought */
+		adreno_cleanup_pt(device, pagetable);
+		return result;
+	}
 
 	/*
 	 * Set the mpu end to the last "normal" global memory we use.
@@ -678,22 +687,8 @@ static int adreno_setup_pt(struct kgsl_device *device,
 	 */
 	device->mh.mpu_range = device->mmu.setstate_memory.gpuaddr +
 				device->mmu.setstate_memory.size;
-	return result;
 
-unmap_profile_shared:
-	kgsl_mmu_unmap(pagetable, &adreno_dev->profile.shared_buffer);
-
-unmap_memstore_desc:
-	kgsl_mmu_unmap(pagetable, &device->memstore);
-
-unmap_memptrs_desc:
-	kgsl_mmu_unmap(pagetable, &rb->memptrs_desc);
-
-unmap_buffer_desc:
-	kgsl_mmu_unmap(pagetable, &rb->buffer_desc);
-
-error:
-	return result;
+	return 0;
 }
 
 static unsigned int _adreno_iommu_setstate_v0(struct kgsl_device *device,
@@ -1769,6 +1764,11 @@ adreno_probe(struct platform_device *pdev)
 
 	adreno_coresight_init(pdev);
 
+	/* This is only for a3xx v2,
+	 * hard code in here as prob doesn't have chipID information
+	 */
+	adreno_a3xx_pwron_fixup_init(adreno_dev);
+
 	return 0;
 
 error_close_rb:
@@ -1856,6 +1856,10 @@ static int adreno_init(struct kgsl_device *device)
 	/* Power down the device */
 	kgsl_pwrctrl_disable(device);
 
+	/* Certain targets need the fixup.  You know who you are */
+	if (adreno_is_a330v2(adreno_dev))
+		adreno_a3xx_pwron_fixup_init(adreno_dev);
+
 	return 0;
 }
 
@@ -1877,6 +1881,9 @@ static int adreno_start(struct kgsl_device *device)
 
 	/* Power up the device */
 	kgsl_pwrctrl_enable(device);
+
+	/* Set the bit to indicate that we've just powered on */
+	set_bit(ADRENO_DEVICE_PWRON, &adreno_dev->priv);
 
 	/* Set up a2xx special case */
 	if (adreno_is_a2xx(adreno_dev)) {
@@ -3553,6 +3560,9 @@ struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 
 	if (kgsl_gpuaddr_in_memdesc(&device->memstore, gpuaddr, size))
 		return &device->memstore;
+
+	if (kgsl_gpuaddr_in_memdesc(&adreno_dev->pwron_fixup, gpuaddr, size))
+		return &adreno_dev->pwron_fixup;
 
 	if (kgsl_gpuaddr_in_memdesc(&device->mmu.setstate_memory, gpuaddr,
 					size))
