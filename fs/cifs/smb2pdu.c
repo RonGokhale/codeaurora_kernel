@@ -478,12 +478,20 @@ SMB2_sess_setup(const unsigned int xid, struct cifs_ses *ses,
 	}
 
 	/*
+	 * If we are here due to reconnect, free per-smb session key
+	 * in case signing was required.
+	 */
+	kfree(ses->auth_key.response);
+	ses->auth_key.response = NULL;
+
+	/*
 	 * If memory allocation is successful, caller of this function
 	 * frees it.
 	 */
 	ses->ntlmssp = kmalloc(sizeof(struct ntlmssp_auth), GFP_KERNEL);
 	if (!ses->ntlmssp)
 		return -ENOMEM;
+	ses->ntlmssp->sesskey_per_smbsess = true;
 
 	/* FIXME: allow for other auth types besides NTLMSSP (e.g. krb5) */
 	ses->sectype = RawNTLMSSP;
@@ -628,6 +636,40 @@ ssetup_exit:
 	/* if ntlmssp, and negotiate succeeded, proceed to authenticate phase */
 	if ((phase == NtLmChallenge) && (rc == 0))
 		goto ssetup_ntlmssp_authenticate;
+
+	if (!rc) {
+		mutex_lock(&server->srv_mutex);
+		if (server->sign && server->ops->generate_signingkey) {
+			rc = server->ops->generate_signingkey(ses);
+			kfree(ses->auth_key.response);
+			ses->auth_key.response = NULL;
+			if (rc) {
+				cifs_dbg(FYI,
+					"SMB3 session key generation failed\n");
+				mutex_unlock(&server->srv_mutex);
+				goto keygen_exit;
+			}
+		}
+		if (!server->session_estab) {
+			server->sequence_number = 0x2;
+			server->session_estab = true;
+		}
+		mutex_unlock(&server->srv_mutex);
+
+		cifs_dbg(FYI, "SMB2/3 session established successfully\n");
+		spin_lock(&GlobalMid_Lock);
+		ses->status = CifsGood;
+		ses->need_reconnect = false;
+		spin_unlock(&GlobalMid_Lock);
+	}
+
+keygen_exit:
+	if (!server->sign) {
+		kfree(ses->auth_key.response);
+		ses->auth_key.response = NULL;
+	}
+	kfree(ses->ntlmssp);
+
 	return rc;
 }
 
@@ -939,9 +981,7 @@ add_lease_context(struct kvec *iov, unsigned int *num_iovec, __u8 *oplock)
 		req->CreateContextsOffset = cpu_to_le32(
 				sizeof(struct smb2_create_req) - 4 +
 				iov[num - 1].iov_len);
-	req->CreateContextsLength = cpu_to_le32(
-				le32_to_cpu(req->CreateContextsLength) +
-				sizeof(struct create_lease));
+	le32_add_cpu(&req->CreateContextsLength, sizeof(struct create_lease));
 	inc_rfc1001_len(&req->hdr, sizeof(struct create_lease));
 	*num_iovec = num + 1;
 	return 0;
@@ -967,9 +1007,7 @@ add_durable_context(struct kvec *iov, unsigned int *num_iovec,
 		req->CreateContextsOffset =
 			cpu_to_le32(sizeof(struct smb2_create_req) - 4 +
 								iov[1].iov_len);
-	req->CreateContextsLength =
-			cpu_to_le32(le32_to_cpu(req->CreateContextsLength) +
-						sizeof(struct create_durable));
+	le32_add_cpu(&req->CreateContextsLength, sizeof(struct create_durable));
 	inc_rfc1001_len(&req->hdr, sizeof(struct create_durable));
 	*num_iovec = num + 1;
 	return 0;
@@ -977,7 +1015,8 @@ add_durable_context(struct kvec *iov, unsigned int *num_iovec,
 
 int
 SMB2_open(const unsigned int xid, struct cifs_open_parms *oparms, __le16 *path,
-	  __u8 *oplock, struct smb2_file_all_info *buf)
+	  __u8 *oplock, struct smb2_file_all_info *buf,
+	  struct smb2_err_rsp **err_buf)
 {
 	struct smb2_create_req *req;
 	struct smb2_create_rsp *rsp;
@@ -1082,6 +1121,9 @@ SMB2_open(const unsigned int xid, struct cifs_open_parms *oparms, __le16 *path,
 
 	if (rc != 0) {
 		cifs_stats_fail_inc(tcon, SMB2_CREATE_HE);
+		if (err_buf)
+			*err_buf = kmemdup(rsp, get_rfc1002_length(rsp) + 4,
+					   GFP_KERNEL);
 		goto creat_exit;
 	}
 

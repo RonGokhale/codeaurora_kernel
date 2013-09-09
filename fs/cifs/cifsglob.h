@@ -28,6 +28,7 @@
 #include "cifsacl.h"
 #include <crypto/internal/hash.h>
 #include <linux/scatterlist.h>
+#include <uapi/linux/cifs/cifs_mount.h>
 #ifdef CONFIG_CIFS_SMB2
 #include "smb2pdu.h"
 #endif
@@ -41,12 +42,7 @@
 #define MAX_SES_INFO 2
 #define MAX_TCON_INFO 4
 
-#define MAX_TREE_SIZE (2 + MAX_SERVER_SIZE + 1 + MAX_SHARE_SIZE + 1)
-#define MAX_SERVER_SIZE 15
-#define MAX_SHARE_SIZE 80
-#define CIFS_MAX_DOMAINNAME_LEN 256 /* max domain name length */
-#define MAX_USERNAME_SIZE 256	/* reasonable maximum for current servers */
-#define MAX_PASSWORD_SIZE 512	/* max for windows seems to be 256 wide chars */
+#define MAX_TREE_SIZE (2 + CIFS_NI_MAXHOST + 1 + CIFS_MAX_SHARE_LEN + 1)
 
 #define CIFS_MIN_RCV_POOL 4
 
@@ -135,6 +131,7 @@ struct cifs_secmech {
 
 /* per smb session structure/fields */
 struct ntlmssp_auth {
+	bool sesskey_per_smbsess; /* whether session key is per smb session */
 	__u32 client_flags; /* sent by client in type 1 ntlmsssp exchange */
 	__u32 server_flags; /* sent by server in type 2 ntlmssp exchange */
 	unsigned char ciphertext[CIFS_CPHTXT_SIZE]; /* sent to server */
@@ -308,6 +305,9 @@ struct smb_version_operations {
 	int (*create_hardlink)(const unsigned int, struct cifs_tcon *,
 			       const char *, const char *,
 			       struct cifs_sb_info *);
+	/* query symlink target */
+	int (*query_symlink)(const unsigned int, struct cifs_tcon *,
+			     const char *, char **, struct cifs_sb_info *);
 	/* open a file for non-posix mounts */
 	int (*open)(const unsigned int, struct cifs_open_parms *,
 		    __u32 *, FILE_ALL_INFO *);
@@ -366,8 +366,7 @@ struct smb_version_operations {
 	void (*set_lease_key)(struct inode *, struct cifs_fid *fid);
 	/* generate new lease key */
 	void (*new_lease_key)(struct cifs_fid *fid);
-	/* The next two functions will need to be changed to per smb session */
-	void (*generate_signingkey)(struct TCP_Server_Info *server);
+	int (*generate_signingkey)(struct cifs_ses *);
 	int (*calc_signature)(struct smb_rqst *rqst,
 				   struct TCP_Server_Info *server);
 	int (*query_mf_symlink)(const unsigned char *path, char *pbuf,
@@ -548,7 +547,6 @@ struct TCP_Server_Info {
 	int timeAdj;  /* Adjust for difference in server time zone in sec */
 	__u64 CurrentMid;         /* multiplex id - rotating counter */
 	char cryptkey[CIFS_CRYPTO_KEY_SIZE]; /* used by ntlm, ntlmv2 etc */
-	char smb3signingkey[SMB3_SIGN_KEY_SIZE]; /* for signing smb3 packets */
 	/* 16th byte of RFC1001 workstation name is always null */
 	char workstation_RFC1001_name[RFC1001_NAME_LEN_WITH_NULL];
 	__u32 sequence_number; /* for signing, protected by srv_mutex */
@@ -731,6 +729,7 @@ struct cifs_ses {
 	bool need_reconnect:1; /* connection reset, uid now invalid */
 #ifdef CONFIG_CIFS_SMB2
 	__u16 session_flags;
+	char smb3signingkey[SMB3_SIGN_KEY_SIZE]; /* for signing smb3 packets */
 #endif /* CONFIG_CIFS_SMB2 */
 };
 
