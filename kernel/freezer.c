@@ -4,6 +4,7 @@
  * Originally from kernel/power/process.c
  */
 
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/suspend.h>
 #include <linux/export.h>
