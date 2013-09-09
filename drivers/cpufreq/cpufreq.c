@@ -268,6 +268,8 @@ static inline void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	unsigned long flags;
+
 	BUG_ON(irqs_disabled());
 
 	if (cpufreq_disabled())
@@ -280,12 +282,16 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 	switch (state) {
 
 	case CPUFREQ_PRECHANGE:
-		if (WARN(policy->transition_ongoing ==
+		write_lock_irqsave(&cpufreq_driver_lock, flags);
+		if (WARN(policy->transition_ongoing >
 					cpumask_weight(policy->cpus),
-				"In middle of another frequency transition\n"))
+				"In middle of another frequency transition\n")) {
+			write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 			return;
+		}
 
 		policy->transition_ongoing++;
+		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 		/* detect if the driver reported a value as "old frequency"
 		 * which is not equal to what the cpufreq core thinks is
@@ -306,11 +312,15 @@ static void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		break;
 
 	case CPUFREQ_POSTCHANGE:
-		if (WARN(!policy->transition_ongoing,
-				"No frequency transition in progress\n"))
+		write_lock_irqsave(&cpufreq_driver_lock, flags);
+		if (WARN(policy->transition_ongoing < 2,
+				"No frequency transition in progress\n")) {
+			write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 			return;
+		}
 
 		policy->transition_ongoing--;
+		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 		adjust_jiffies(CPUFREQ_POSTCHANGE, freqs);
 		pr_debug("FREQ: %lu - CPU: %lu", (unsigned long)freqs->new,
@@ -337,6 +347,19 @@ void cpufreq_notify_transition(struct cpufreq_policy *policy,
 {
 	for_each_cpu(freqs->cpu, policy->cpus)
 		__cpufreq_notify_transition(policy, freqs, state);
+
+	if (state == CPUFREQ_POSTCHANGE) {
+		unsigned long flags;
+
+		/*
+		 * Some drivers don't send POSTCHANGE notification from their
+		 * ->target() but from some kind of bottom half and so we are
+		 * ending transaction here..
+		 */
+		write_lock_irqsave(&cpufreq_driver_lock, flags);
+		policy->transition_ongoing--;
+		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
+	}
 }
 EXPORT_SYMBOL_GPL(cpufreq_notify_transition);
 
@@ -1320,6 +1343,20 @@ static void cpufreq_out_of_sync(unsigned int cpu, unsigned int old_freq,
 	policy = per_cpu(cpufreq_cpu_data, cpu);
 	read_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
+	/*
+	 * The role of this function is to make sure that the CPU frequency we
+	 * use is the same as the CPU is actually running at. Therefore, if a
+	 * CPU frequency change notification is in progress, it will do the
+	 * update anyway, so we have nothing to do here in that case.
+	 */
+	write_lock_irqsave(&cpufreq_driver_lock, flags);
+	if (policy->transition_ongoing) {
+		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
+		return;
+	}
+	policy->transition_ongoing++;
+	write_unlock_irqrestore(&cpufreq_driver_lock, flags);
+
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 }
@@ -1607,11 +1644,18 @@ int __cpufreq_driver_target(struct cpufreq_policy *policy,
 {
 	int retval = -EINVAL;
 	unsigned int old_target_freq = target_freq;
+	unsigned long flags;
 
 	if (cpufreq_disabled())
 		return -ENODEV;
-	if (policy->transition_ongoing)
+
+	write_lock_irqsave(&cpufreq_driver_lock, flags);
+	if (policy->transition_ongoing) {
+		write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 		return -EBUSY;
+	}
+	policy->transition_ongoing++;
+	write_unlock_irqrestore(&cpufreq_driver_lock, flags);
 
 	/* Make sure that target_freq is within supported range */
 	if (target_freq > policy->max)
@@ -1692,12 +1736,15 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 						policy->cpu, event);
 
 	mutex_lock(&cpufreq_governor_lock);
-	if ((!policy->governor_enabled && (event == CPUFREQ_GOV_STOP)) ||
-	    (policy->governor_enabled && (event == CPUFREQ_GOV_START))) {
+	if (policy->governor_busy
+	    || (policy->governor_enabled && event == CPUFREQ_GOV_START)
+	    || (!policy->governor_enabled
+	    && (event == CPUFREQ_GOV_LIMITS || event == CPUFREQ_GOV_STOP))) {
 		mutex_unlock(&cpufreq_governor_lock);
 		return -EBUSY;
 	}
 
+	policy->governor_busy = true;
 	if (event == CPUFREQ_GOV_STOP)
 		policy->governor_enabled = false;
 	else if (event == CPUFREQ_GOV_START)
@@ -1726,6 +1773,9 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 			((event == CPUFREQ_GOV_POLICY_EXIT) && !ret))
 		module_put(policy->governor->owner);
 
+	mutex_lock(&cpufreq_governor_lock);
+	policy->governor_busy = false;
+	mutex_unlock(&cpufreq_governor_lock);
 	return ret;
 }
 
