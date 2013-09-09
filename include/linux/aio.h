@@ -27,16 +27,14 @@ struct kiocb;
  */
 #define KIOCB_CANCELLED		((void *) (~0ULL))
 
-typedef int (kiocb_cancel_fn)(struct kiocb *, struct io_event *);
+typedef int (kiocb_cancel_fn)(struct kiocb *);
 
 struct kiocb {
-	atomic_t		ki_users;
-
 	struct file		*ki_filp;
 	struct kioctx		*ki_ctx;	/* NULL for sync ops,
 						   -1 for kernel caller	*/
 	kiocb_cancel_fn		*ki_cancel;
-	void			(*ki_dtor)(struct kiocb *);
+	void			*private;
 
 	union {
 		void __user		*user;
@@ -46,17 +44,7 @@ struct kiocb {
 
 	__u64			ki_user_data;	/* user's data for completion */
 	loff_t			ki_pos;
-
-	void			*private;
-	/* State that we remember to be able to restart/retry  */
-	unsigned short		ki_opcode;
-	size_t			ki_nbytes; 	/* copy of iocb->aio_nbytes */
-	char 			__user *ki_buf;	/* remaining iocb->aio_buf */
-	size_t			ki_left; 	/* remaining bytes */
-	struct iovec		ki_inline_vec;	/* inline vector */
- 	struct iovec		*ki_iovec;
- 	unsigned long		ki_nr_segs;
- 	unsigned long		ki_cur_seg;
+	size_t			ki_nbytes;	/* copy of iocb->aio_nbytes */
 
 	struct list_head	ki_list;	/* the aio core uses this
 						 * for cancellation */
@@ -66,7 +54,6 @@ struct kiocb {
 	 * this is the underlying eventfd context to deliver events to.
 	 */
 	struct eventfd_ctx	*ki_eventfd;
-	struct iov_iter		*ki_iter;
 };
 
 static inline bool is_sync_kiocb(struct kiocb *kiocb)
@@ -82,7 +69,6 @@ static inline bool is_kernel_kiocb(struct kiocb *kiocb)
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 {
 	*kiocb = (struct kiocb) {
-			.ki_users = ATOMIC_INIT(1),
 			.ki_ctx = NULL,
 			.ki_filp = filp,
 			.ki_obj.tsk = current,
@@ -92,7 +78,6 @@ static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
 /* prototypes */
 #ifdef CONFIG_AIO
 extern ssize_t wait_on_sync_kiocb(struct kiocb *iocb);
-extern void aio_put_req(struct kiocb *iocb);
 extern void aio_complete(struct kiocb *iocb, long res, long res2);
 struct mm_struct;
 extern void exit_aio(struct mm_struct *mm);
@@ -109,7 +94,6 @@ void aio_kernel_init_callback(struct kiocb *iocb,
 int aio_kernel_submit(struct kiocb *iocb, unsigned short op, void *ptr);
 #else
 static inline ssize_t wait_on_sync_kiocb(struct kiocb *iocb) { return 0; }
-static inline void aio_put_req(struct kiocb *iocb) { }
 static inline void aio_complete(struct kiocb *iocb, long res, long res2) { }
 struct mm_struct;
 static inline void exit_aio(struct mm_struct *mm) { }
