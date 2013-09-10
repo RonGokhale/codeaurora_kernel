@@ -32,6 +32,7 @@
 
 */
 
+#include <linux/sched.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/module.h>

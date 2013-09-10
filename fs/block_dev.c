@@ -5,6 +5,7 @@
  *  Copyright (C) 2001  Andrea Arcangeli <andrea@suse.de> SuSE
  */
 
+#include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/fcntl.h>

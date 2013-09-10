@@ -1,6 +1,7 @@
 #ifndef __MAC80211_DRIVER_OPS
 #define __MAC80211_DRIVER_OPS
 
+#include <linux/sched.h>
 #include <net/mac80211.h>
 #include "ieee80211_i.h"
 #include "trace.h"
