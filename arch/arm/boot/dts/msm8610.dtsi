@@ -69,6 +69,15 @@
 		qcom,direct-connect-irqs = <8>;
 	};
 
+	wcd9xxx_intc: wcd9xxx_irq {
+		compatible = "qcom,wcd9xxx-irq";
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		interrupt-parent = <&intc>;
+		interrupts = <0 31 0>;
+		interrupt-names = "cdc-int";
+	};
+
 	qcom,mpm2-sleep-counter@fc4a3000 {
 		compatible = "qcom,mpm2-sleep-counter";
 		reg = <0xfc4a3000 0x1000>;
@@ -240,7 +249,7 @@
 				<87 512 60000 960000>;
 	};
 
-	android_usb@fe8050c8 {
+	android_usb: android_usb@fe8050c8 {
 		compatible = "qcom,android-usb";
 		reg = <0xfe8050c8 0xc8>;
 		qcom,android-usb-swfi-latency = <1>;
