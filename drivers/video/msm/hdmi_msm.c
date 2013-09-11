@@ -108,6 +108,7 @@ static int hdmi_msm_audio_off(int timeout);
 static int hdmi_msm_read_edid(void);
 static void hdmi_msm_hpd_off(void);
 static boolean hdmi_msm_is_dvi_mode(void);
+static void hdmi_msm_encrypt_en_no_lock(u32 enable);
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 
@@ -967,16 +968,17 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 				__func__);
 		hdmi_msm_state->reauth = FALSE;
 	}
-	mutex_unlock(&hdmi_msm_power_mutex);
 
 	if (hdmi_msm_state->full_auth_done &&
 			external_common_state->hdcp_active &&
 				external_common_state->hpd_state) {
 			/*If already in a secure session*/
 			if (mfd->sec_active && mfd->sec_mapped) {
-				hdmi_msm_encryt_en(true);
+				hdmi_msm_encrypt_en_no_lock(true);
 			}
 	}
+
+	mutex_unlock(&hdmi_msm_power_mutex);
 }
 
 int hdmi_msm_process_hdcp_interrupts(void)
@@ -1325,7 +1327,7 @@ static boolean hdmi_msm_is_dvi_mode(void)
 	return (HDMI_INP_ND(0x0000) & 0x00000002) ? FALSE : TRUE;
 }
 
-void hdmi_msm_encryt_en(u32 enable)
+static void hdmi_msm_encrypt_en_no_lock(u32 enable)
 {
 	u32 hdcp_ctrl, hdmi_ctrl, delay_time;
 	struct msm_fb_data_type *mfd;
@@ -1336,7 +1338,6 @@ void hdmi_msm_encryt_en(u32 enable)
 	/* encryption_enable = 0 | hdcp block enable = 1 */
 	if (!hdmi_msm_state->hdcp_enable)
 		return;
-	mutex_lock(&hdmi_msm_power_mutex);
 	mfd = platform_get_drvdata(hdmi_msm_pdev);
 	delay_time = mfd->disp_frame_period;
 	if (delay_time == 0)
@@ -1346,7 +1347,6 @@ void hdmi_msm_encryt_en(u32 enable)
 	if (enable) {
 		if (!hdmi_msm_state->full_auth_done ||
 			!external_common_state->hdcp_active) {
-			mutex_unlock(&hdmi_msm_power_mutex);
 			return;
 		}
 
@@ -1362,8 +1362,14 @@ void hdmi_msm_encryt_en(u32 enable)
 		usleep(delay_time);
 		HDMI_OUTP(0x0110, hdcp_ctrl);
 	}
-	mutex_unlock(&hdmi_msm_power_mutex);
 	DEV_INFO("%s: %s", __func__, enable ? "Enable" : "Disable");
+}
+
+void hdmi_msm_encrypt_en(u32 enable)
+{
+	mutex_lock(&hdmi_msm_power_mutex);
+	hdmi_msm_encrypt_en_no_lock(enable);
+	mutex_unlock(&hdmi_msm_power_mutex);
 }
 
 void hdmi_msm_set_mode(boolean power_on)
@@ -2317,6 +2323,7 @@ static void hdcp_deauthenticate(void)
 	  [8] ENCRYPTION_ENABLE
 	  [0] ENABLE */
 	/* encryption_enable = 0 | hdcp block enable = 1 */
+	hdmi_msm_encrypt_en_no_lock(false);
 	HDMI_OUTP(0x0110, 0x0);
 	msleep(20);
 
