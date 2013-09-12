@@ -328,7 +328,13 @@ static int pil_q6v4_shutdown_trusted(struct pil_desc *pil)
 	struct pil_q6v4_pdata *pdata = pil->dev->platform_data;
 
 	/* Make sure bus port is halted */
-	msm_bus_axi_porthalt(pdata->bus_port);
+	if (strcmp("modem_fw", pdata->name)) {
+		msm_bus_axi_porthalt(pdata->bus_port);
+
+		/* Halt fw bus port incase of modem */
+		if (pdata->fw_bus_port)
+			msm_bus_axi_porthalt(pdata->fw_bus_port);
+	}
 
 	ret = pas_shutdown(pdata->pas_id);
 	if (ret)
