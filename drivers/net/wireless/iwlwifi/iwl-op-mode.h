@@ -64,6 +64,7 @@
 #define __iwl_op_mode_h__
 
 #include <linux/debugfs.h>
+#include <linux/sched.h>
 
 struct iwl_op_mode;
 struct iwl_trans;

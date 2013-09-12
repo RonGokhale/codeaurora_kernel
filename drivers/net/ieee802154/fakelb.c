@@ -23,6 +23,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/timer.h>
 #include <linux/platform_device.h>
 #include <linux/netdevice.h>
