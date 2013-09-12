@@ -121,6 +121,8 @@ enum video_decoded_pictures_t {
 #define VIDEO_CMD_CLEAR_OUTPUT_BUFFER (19)
 #define VIDEO_CMD_SET_BUFFER_COUNT    (20)
 #define VIDEO_CMD_SET_DECODE_MODE     (21)
+#define VIDEO_CMD_SET_BUFFER_SIZE      (22)
+#define VIDEO_CMD_SET_USER_AND_EXTRA_DATA (23)
 
 /* Flags for VIDEO_CMD_FREEZE */
 #define VIDEO_CMD_FREEZE_TO_BLACK	(1 << 0)
