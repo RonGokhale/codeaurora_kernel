@@ -572,7 +572,6 @@ struct nand_chip {
 
 	uint8_t *oob_poi;
 	struct nand_hw_control *controller;
-	struct nand_ecclayout *ecclayout;
 
 	struct nand_ecc_ctrl ecc;
 	struct nand_buffers *buffers;
