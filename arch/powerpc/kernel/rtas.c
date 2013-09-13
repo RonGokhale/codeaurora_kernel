@@ -11,6 +11,7 @@
  *      2 of the License, or (at your option) any later version.
  */
 
+#include <linux/sched.h>
 #include <stdarg.h>
 #include <linux/kernel.h>
 #include <linux/types.h>

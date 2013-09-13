@@ -14,6 +14,7 @@
  * the dcache entry is deleted or garbage collected.
  */
 
+#include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <linux/string.h>
 #include <linux/mm.h>

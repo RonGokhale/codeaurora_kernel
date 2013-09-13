@@ -42,6 +42,7 @@
  *     pte map lock
  */
 
+#include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/pagemap.h>
 #include <linux/swap.h>

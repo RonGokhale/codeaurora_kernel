@@ -61,3 +61,8 @@ int pmd_huge_support(void)
 {
 	return 1;
 }
+
+int pmd_huge_support(void)
+{
+	return 1;
+}
