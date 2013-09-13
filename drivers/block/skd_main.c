@@ -1736,7 +1736,7 @@ static int skd_sg_io_get_and_check_args(struct skd_device *skdev,
 		return -EINVAL;
 	}
 
-	if (__copy_from_user(sksgio->cdb, sgp->cmdp, sgp->cmd_len)) {
+	if (copy_from_user(sksgio->cdb, sgp->cmdp, sgp->cmd_len)) {
 		DPRINTK(skdev, "copy_from_user cmdp failed %p\n", sgp->cmdp);
 		return -EFAULT;
 	}
@@ -1767,7 +1767,7 @@ static int skd_sg_io_get_and_check_args(struct skd_device *skdev,
 		sksgio->iov = iov;
 		sksgio->iovcnt = sgp->iovec_count;
 
-		if (__copy_from_user(iov, sgp->dxferp, nbytes)) {
+		if (copy_from_user(iov, sgp->dxferp, nbytes)) {
 			DPRINTK(skdev, "copy_from_user iovec failed %p\n",
 				sgp->dxferp);
 			return -EFAULT;
@@ -2911,7 +2911,7 @@ static void skd_do_inq_page_da(struct skd_device *skdev,
 
 	inq.page_code = DRIVER_INQ_EVPD_PAGE_CODE;
 
-	if (skdev && skdev->pdev && skdev->pdev->bus) {
+	if (skdev->pdev && skdev->pdev->bus) {
 		skd_get_link_info(skdev->pdev,
 				  &inq.pcie_link_speed, &inq.pcie_link_lanes);
 		inq.pcie_bus_number = cpu_to_be16(skdev->pdev->bus->number);
@@ -4919,8 +4919,6 @@ static void skd_destruct(struct skd_device *skdev)
 
 	VPRINTK(skdev, "skdev\n");
 	kfree(skdev);
-
-	DPRINTK(skdev, "VICTORY\n");
 }
 
 static void skd_free_skcomp(struct skd_device *skdev)
