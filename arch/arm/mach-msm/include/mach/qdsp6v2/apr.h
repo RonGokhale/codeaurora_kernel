@@ -71,6 +71,7 @@ struct apr_hdr {
 #define APR_DOMAIN_MAX	0x6
 
 /* ADSP service IDs */
+#define APR_SVC_ROUTER          0x1
 #define APR_SVC_TEST_CLIENT     0x2
 #define APR_SVC_ADSP_CORE	0x3
 #define APR_SVC_AFE		0x4

@@ -16,10 +16,14 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/mutex.h>
+#include <linux/reboot.h>
+#include <linux/delay.h>
 
 #include <asm/mach-types.h>
 #include <mach/qdsp6v2/audio_acdb.h>
 #include <mach/qdsp6v2/rtac.h>
+#include <mach/socinfo.h>
+#include <mach/mdm2.h>
 
 #include "sound/apr_audio.h"
 #include "sound/q6afe.h"
@@ -72,6 +76,7 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv);
 static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv);
 static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv);
 static int voice_send_set_device_cmd_v2(struct voice_data *v);
+static int32_t qdsp_router_callback(struct apr_client_data *data, void *priv);
 
 static u16 voice_get_mvm_handle(struct voice_data *v)
 {
@@ -4169,6 +4174,44 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 	return 0;
 }
 
+static int32_t qdsp_router_callback(struct apr_client_data *data, void *priv)
+{
+	uint32_t *ptr = NULL;
+	struct common_data *c = NULL;
+
+	if ((data == NULL) || (priv == NULL)) {
+		pr_err("%s: data or priv is NULL\n", __func__);
+
+		return -EINVAL;
+	}
+
+	c = priv;
+
+	if (data->opcode == APR_BASIC_RSP_RESULT) {
+		if (data->payload_size) {
+			ptr = data->payload;
+			pr_info("%x %x\n", ptr[0], ptr[1]);
+
+			if (ptr[1] != 0) {
+				pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
+				       __func__, ptr[0], ptr[1]);
+			}
+			switch (ptr[0]) {
+			case APRV2_CMD_HSUART_DISABLE:
+				common.router_status = CMD_STATUS_SUCCESS;
+				wake_up(&c->router_wait);
+				break;
+			default:
+				pr_debug("%s: not match cmd = 0x%x\n",
+					 __func__, ptr[0]);
+
+				break;
+			}
+		}
+}
+	return 0;
+
+}
 
 static void voice_allocate_shared_memory(void)
 {
@@ -4237,6 +4280,121 @@ err:
 	return;
 }
 
+static int lpass_qsc_powerup_notify_sys(struct notifier_block *this,
+					unsigned long code, void *unused)
+{
+	struct apr_hdr q6_hsuart_enable_cmd;
+	int ret = 0;
+	int retry = 0;
+
+	mutex_lock(&common.common_lock);
+
+	if (!common.apr_q6_router) {
+		pr_err("%s: apr_q6_router is NULL, register ADSP.\n", __func__);
+
+		common.apr_q6_router = apr_register("ADSP", "ROUTER",
+						    qdsp_router_callback,
+						    0xFFFFFFFF, &common);
+		if (common.apr_q6_router == NULL) {
+			pr_err("%s: Unable to register QSC\n", __func__);
+
+			mutex_unlock(&common.common_lock);
+			return NOTIFY_DONE;
+		}
+	}
+
+	/* Send apr msg: APRV2_CMD_HSUART_ENABLE */
+	q6_hsuart_enable_cmd.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						APR_HDR_LEN(APR_HDR_SIZE),
+						APR_PKT_VER);
+	q6_hsuart_enable_cmd.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+						sizeof(q6_hsuart_enable_cmd)
+						- APR_HDR_SIZE);
+	q6_hsuart_enable_cmd.src_port = 0;
+	q6_hsuart_enable_cmd.dest_port = 0;
+	q6_hsuart_enable_cmd.token = 0;
+	q6_hsuart_enable_cmd.opcode = APRV2_CMD_HSUART_ENABLE;
+
+	common.router_status = CMD_STATUS_FAIL;
+
+	pr_info("%s: Sending APRV2_CMD_HSUART_ENABLE to cvd\n", __func__);
+	do {
+		ret = apr_send_pkt(common.apr_q6_router,
+				   (uint32_t *) &q6_hsuart_enable_cmd);
+		if (ret < 0) {
+			pr_err("Fail: send APRV2_CMD_HSUART_ENABLE\n");
+
+			msleep(20);
+			retry = 1;
+		} else
+			retry = 0;
+	} while (retry);
+
+	mutex_unlock(&common.common_lock);
+
+	return NOTIFY_DONE;
+}
+
+static int lpass_qsc_shutdown_notify_sys(struct notifier_block *this,
+					 unsigned long code, void *unused)
+{
+	struct apr_hdr q6_hsuart_disable_cmd;
+	int ret = 0;
+
+	if (!common.apr_q6_router) {
+		pr_err("%s: apr_q6_router is NULL\n", __func__);
+
+		return  NOTIFY_DONE;
+	}
+
+	mutex_lock(&common.common_lock);
+
+	if (code == SYS_DOWN || code == SYS_HALT || code == SYS_POWER_OFF) {
+		/* Send apr msg: APRV2_CMD_HSUART_DISABLE */
+		q6_hsuart_disable_cmd.hdr_field = APR_HDR_FIELD(
+						APR_MSG_TYPE_SEQ_CMD,
+						APR_HDR_LEN(APR_HDR_SIZE),
+						APR_PKT_VER);
+		q6_hsuart_disable_cmd.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE,
+						sizeof(q6_hsuart_disable_cmd)
+						- APR_HDR_SIZE);
+		q6_hsuart_disable_cmd.src_port = 0;
+		q6_hsuart_disable_cmd.dest_port = 0;
+		q6_hsuart_disable_cmd.token = 0;
+		q6_hsuart_disable_cmd.opcode = APRV2_CMD_HSUART_DISABLE;
+
+		common.router_status = CMD_STATUS_FAIL;
+
+		ret = apr_send_pkt(common.apr_q6_router,
+				   (uint32_t *) &q6_hsuart_disable_cmd);
+		if (ret < 0) {
+			pr_err("Fail in sending APRV2_CMD_HSUART_DISABLE\n");
+		} else {
+			ret = wait_event_timeout(common.router_wait,
+				 (common.router_status == CMD_STATUS_SUCCESS),
+				 msecs_to_jiffies(TIMEOUT_MS));
+			if (!ret)
+				pr_err("%s: wait_event timeout\n", __func__);
+		}
+	}
+
+	mutex_unlock(&common.common_lock);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block lpass_qsc_shutdown_notifier = {
+	.notifier_call = lpass_qsc_shutdown_notify_sys,
+	.next = NULL,
+	.priority = INT_MAX,
+};
+
+static struct notifier_block lpass_qsc_powerup_notifier = {
+	.notifier_call = lpass_qsc_powerup_notify_sys,
+	.next = NULL,
+	.priority = INT_MAX,
+};
+
 static int __init voice_init(void)
 {
 	int rc = 0, i = 0;
@@ -4273,8 +4431,19 @@ static int __init voice_init(void)
 		init_waitqueue_head(&common.voice[i].mvm_wait);
 		init_waitqueue_head(&common.voice[i].cvs_wait);
 		init_waitqueue_head(&common.voice[i].cvp_wait);
+		init_waitqueue_head(&common.router_wait);
 
 		mutex_init(&common.voice[i].lock);
+	}
+
+	if (socinfo_get_platform_subtype() == PLATFORM_SUBTYPE_SGLTE) {
+		rc = register_reboot_notifier(&lpass_qsc_shutdown_notifier);
+		if (rc)
+			pr_err("%s: Cannot register reboot notifier (err=%d)\n",
+			       __func__, rc);
+
+		mdm_driver_register_notifier("external_modem",
+					     &lpass_qsc_powerup_notifier);
 	}
 
 	return rc;
