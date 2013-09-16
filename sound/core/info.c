@@ -19,6 +19,7 @@
  *
  */
 
+#include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/time.h>
 #include <linux/mm.h>

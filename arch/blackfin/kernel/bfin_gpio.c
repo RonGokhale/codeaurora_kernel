@@ -6,6 +6,7 @@
  * Licensed under the GPL-2 or later
  */
 
+#include <linux/sched.h>
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/err.h>

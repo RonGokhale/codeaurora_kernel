@@ -3,6 +3,7 @@
 /*
  * User space memory access functions
  */
+#include <linux/sched.h>
 #include <linux/errno.h>
 #include <linux/compiler.h>
 #include <linux/thread_info.h>

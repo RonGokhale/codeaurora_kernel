@@ -22,6 +22,7 @@
 
 #ifdef __KERNEL__
 
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <asm/kmap_types.h>
 #include <asm/tlbflush.h>

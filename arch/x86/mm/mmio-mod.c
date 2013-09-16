@@ -24,6 +24,7 @@
 
 #define DEBUG 1
 
+#include <linux/sched.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
 #include <linux/slab.h>
