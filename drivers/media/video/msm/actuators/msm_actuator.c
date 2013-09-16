@@ -493,10 +493,8 @@ int32_t msm_actuator_init(struct msm_actuator_ctrl_t *a_ctrl,
 		__func__, set_info->af_tuning_params.total_steps);
 		return -EFAULT;
 	}
-	if (set_info->af_tuning_params.region_size <= MAX_ACTUATOR_REGION) {
-		a_ctrl->region_size = set_info->af_tuning_params.region_size;
-	} else {
-		a_ctrl->region_size = 0;
+	a_ctrl->region_size = set_info->af_tuning_params.region_size;
+	if (a_ctrl->region_size > MAX_ACTUATOR_REGION) {
 		pr_err("%s: MAX_ACTUATOR_REGION is exceeded.\n", __func__);
 		return -EFAULT;
 	}
