@@ -43,7 +43,7 @@ enum bus_id {
 
 static enum bus_id str_to_busid(const char *name)
 {
-	if (!strncasecmp("msm_hsic_host", name, BUSNAME_LEN))
+	if (!strncasecmp("f9c00000.qcom,xhci-msm-hsic", name, BUSNAME_LEN))
 		return BUS_HSIC;
 	if (!strncasecmp("msm_ehci_host.0", name, BUSNAME_LEN))
 		return BUS_USB;
