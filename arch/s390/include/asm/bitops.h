@@ -129,10 +129,28 @@ extern const char _sb_findmap[];
 
 #define __BITOPS_WORDS(bits) (((bits) + BITS_PER_LONG - 1) / BITS_PER_LONG)
 
+static inline unsigned char *
+__bitops_byte(unsigned long nr, volatile unsigned long *ptr)
+{
+	return ((unsigned char *)ptr) + ((nr ^ (BITS_PER_LONG - 8)) >> 3);
+}
+
 static inline void set_bit(unsigned long nr, volatile unsigned long *ptr)
 {
 	unsigned long addr, mask;
 
+#ifdef CONFIG_HAVE_MARCH_ZEC12_FEATURES
+	if (__builtin_constant_p(nr)) {
+		unsigned char *caddr = __bitops_byte(nr, ptr);
+
+		asm volatile(
+			"oi	%0,%b1\n"
+			: "+Q" (*caddr)
+			: "i" (1 << (nr & 7))
+			: "cc");
+		return;
+	}
+#endif
 	addr = (unsigned long) ptr;
 	/* calculate address for CS */
 	addr += (nr ^ (nr & (BITS_PER_LONG - 1))) >> 3;
@@ -146,6 +164,18 @@ static inline void clear_bit(unsigned long nr, volatile unsigned long *ptr)
 {
 	unsigned long addr, mask;
 
+#ifdef CONFIG_HAVE_MARCH_ZEC12_FEATURES
+	if (__builtin_constant_p(nr)) {
+		unsigned char *caddr = __bitops_byte(nr, ptr);
+
+		asm volatile(
+			"ni	%0,%b1\n"
+			: "+Q" (*caddr)
+			: "i" (~(1 << (nr & 7)))
+			: "cc");
+		return;
+	}
+#endif
 	addr = (unsigned long) ptr;
 	/* calculate address for CS */
 	addr += (nr ^ (nr & (BITS_PER_LONG - 1))) >> 3;
@@ -159,6 +189,18 @@ static inline void change_bit(unsigned long nr, volatile unsigned long *ptr)
 {
 	unsigned long addr, mask;
 
+#ifdef CONFIG_HAVE_MARCH_ZEC12_FEATURES
+	if (__builtin_constant_p(nr)) {
+		unsigned char *caddr = __bitops_byte(nr, ptr);
+
+		asm volatile(
+			"xi	%0,%b1\n"
+			: "+Q" (*caddr)
+			: "i" (1 << (nr & 7))
+			: "cc");
+		return;
+	}
+#endif
 	addr = (unsigned long) ptr;
 	/* calculate address for CS */
 	addr += (nr ^ (nr & (BITS_PER_LONG - 1))) >> 3;
@@ -214,12 +256,6 @@ test_and_change_bit(unsigned long nr, volatile unsigned long *ptr)
 	old = __BITOPS_LOOP(addr, mask, __BITOPS_XOR);
 	barrier();
 	return (old & mask) != 0;
-}
-
-static inline unsigned char *
-__bitops_byte(unsigned long nr, volatile unsigned long *ptr)
-{
-	return ((unsigned char *)ptr) + ((nr ^ (BITS_PER_LONG - 8)) >> 3);
 }
 
 static inline void __set_bit(unsigned long nr, volatile unsigned long *ptr)
