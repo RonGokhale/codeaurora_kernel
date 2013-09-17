@@ -71,7 +71,7 @@ static inline int mips_sc_is_activated(struct cpuinfo_mips *c)
 	unsigned int tmp;
 
 	/* Check the bypass bit (L2B) */
-	switch (c->cputype) {
+	switch (current_cpu_type()) {
 	case CPU_34K:
 	case CPU_74K:
 	case CPU_1004K:
