@@ -448,9 +448,7 @@ void v9fs_evict_inode(struct inode *inode)
 	clear_inode(inode);
 	filemap_fdatawrite(inode->i_mapping);
 
-#ifdef CONFIG_9P_FSCACHE
 	v9fs_cache_inode_put_cookie(inode);
-#endif
 	/* clunk the fid stashed in writeback_fid */
 	if (v9inode->writeback_fid) {
 		p9_client_clunk(v9inode->writeback_fid);
@@ -531,9 +529,7 @@ static struct inode *v9fs_qid_iget(struct super_block *sb,
 		goto error;
 
 	v9fs_stat2inode(st, inode, sb);
-#ifdef CONFIG_9P_FSCACHE
 	v9fs_cache_inode_get_cookie(inode);
-#endif
 	unlock_new_inode(inode);
 	return inode;
 error:
