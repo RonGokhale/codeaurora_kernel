@@ -2,6 +2,7 @@
  * (C) 1997 Linus Torvalds
  * (C) 1999 Andrea Arcangeli <andrea@suse.de> (dynamic inode allocation)
  */
+#include <linux/sched.h>
 #include <linux/export.h>
 #include <linux/fs.h>
 #include <linux/mm.h>

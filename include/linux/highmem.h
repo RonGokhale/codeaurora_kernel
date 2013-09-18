@@ -2,6 +2,7 @@
 #define _LINUX_HIGHMEM_H
 
 #include <linux/fs.h>
+#include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/bug.h>
 #include <linux/mm.h>

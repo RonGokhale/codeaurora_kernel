@@ -8,6 +8,7 @@
  *   Address Translation Service 1.0
  */
 
+#include <linux/sched.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>

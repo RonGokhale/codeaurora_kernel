@@ -17,6 +17,7 @@
  *
  * Author: Anton Blanchard <anton@au.ibm.com>
  */
+#include <linux/sched.h>
 #include <linux/export.h>
 #include <linux/compiler.h>
 #include <linux/types.h>

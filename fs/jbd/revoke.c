@@ -81,6 +81,7 @@
  */
 
 #ifndef __KERNEL__
+#include <linux/sched.h>
 #include "jfs_user.h"
 #else
 #include <linux/time.h>
