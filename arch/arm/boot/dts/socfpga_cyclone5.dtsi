@@ -61,12 +61,6 @@
 			};
 		};
 
-		ethernet@ff702000 {
-			phy-mode = "rgmii";
-			phy-addr = <0xffffffff>; /* probe for phy addr */
-			status = "okay";
-		};
-
 		i2c0: i2c@ffc04000 {
 			speed-mode = <0>;
 			status = "okay";
@@ -194,4 +188,19 @@
 		compatible = "dallas,ds1339";
 		reg = <0x68>;
 	};
+};
+
+&gmac1 {
+	phy-mode = "rgmii";
+	snps,phy-addr = <0xffffffff>; /* probe for phy addr */
+	rxd0-skew-ps = <0>;
+	rxd0-skew-ps = <0>;
+	rxd1-skew-ps = <0>;
+	rxd2-skew-ps = <0>;
+	rxd3-skew-ps = <0>;
+	txen-skew-ps = <0>;
+	txc-skew-ps = <2600>;
+	rxdv-skew-ps = <0>;
+	rxc-skew-ps = <2000>;
+	status = "okay";
 };

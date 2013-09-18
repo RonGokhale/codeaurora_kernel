@@ -162,29 +162,6 @@ static void __init enable_periphs(void)
 	writel(rstval, rst_manager_base_addr + SOCFPGA_RSTMGR_MODPERRST);
 }
 
-#define MICREL_KSZ9021_EXTREG_CTRL 11
-#define MICREL_KSZ9021_EXTREG_DATA_WRITE 12
-#define MICREL_KSZ9021_RGMII_CLK_CTRL_PAD_SCEW 260
-#define MICREL_KSZ9021_RGMII_RX_DATA_PAD_SCEW 261
-
-static int ksz9021rlrn_phy_fixup(struct phy_device *phydev)
-{
-	if (IS_BUILTIN(CONFIG_PHYLIB)) {
-		/* min rx data delay */
-		phy_write(phydev, MICREL_KSZ9021_EXTREG_CTRL,
-			MICREL_KSZ9021_RGMII_RX_DATA_PAD_SCEW | 0x8000);
-		phy_write(phydev, MICREL_KSZ9021_EXTREG_DATA_WRITE, 0x0000);
-
-		/* max rx/tx clock delay, min rx/tx control delay */
-		phy_write(phydev, MICREL_KSZ9021_EXTREG_CTRL,
-			MICREL_KSZ9021_RGMII_CLK_CTRL_PAD_SCEW | 0x8000);
-		phy_write(phydev, MICREL_KSZ9021_EXTREG_DATA_WRITE, 0xa0d0);
-		phy_write(phydev, MICREL_KSZ9021_EXTREG_CTRL, 0x104);
-	}
-
-	return 0;
-}
-
 static int stmmac_plat_init(struct platform_device *pdev)
 {
 	u32 ctrl, val, shift;
@@ -300,7 +277,6 @@ static void __init socfpga_init_irq(void)
 	socfpga_sysmgr_init();
 
 	of_clk_init(NULL);
-	clocksource_of_init();
 }
 
 static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
@@ -330,9 +306,6 @@ static void __init socfpga_cyclone5_init(void)
 	enable_periphs();
 
 	socfpga_soc_device_init();
-	if (IS_BUILTIN(CONFIG_PHYLIB))
-		phy_register_fixup_for_uid(PHY_ID_KSZ9021RLRN,
-			MICREL_PHY_ID_MASK, ksz9021rlrn_phy_fixup);
 }
 
 static const char *altera_dt_match[] = {
