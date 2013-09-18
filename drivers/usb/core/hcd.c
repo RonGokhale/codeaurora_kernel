@@ -1033,6 +1033,7 @@ static int register_root_hub(struct usb_hcd *hcd)
 					dev_name(&usb_dev->dev), retval);
 			return retval;
 		}
+		usb_dev->lpm_capable = usb_device_supports_lpm(usb_dev);
 	}
 
 	retval = usb_new_device (usb_dev);
@@ -1703,7 +1704,9 @@ static void usb_giveback_urb_bh(unsigned long param)
 
 		urb = list_entry(local_list.next, struct urb, urb_list);
 		list_del_init(&urb->urb_list);
+		bh->completing_ep = urb->ep;
 		__usb_hcd_giveback_urb(urb);
+		bh->completing_ep = NULL;
 	}
 
 	/* check if there are new URBs to giveback */
@@ -2073,8 +2076,11 @@ EXPORT_SYMBOL_GPL(usb_alloc_streams);
  *
  * Reverts a group of bulk endpoints back to not using stream IDs.
  * Can fail if we are given bad arguments, or HCD is broken.
+ *
+ * Return: On success, the number of allocated streams. On failure, a negative
+ * error code.
  */
-void usb_free_streams(struct usb_interface *interface,
+int usb_free_streams(struct usb_interface *interface,
 		struct usb_host_endpoint **eps, unsigned int num_eps,
 		gfp_t mem_flags)
 {
@@ -2085,14 +2091,14 @@ void usb_free_streams(struct usb_interface *interface,
 	dev = interface_to_usbdev(interface);
 	hcd = bus_to_hcd(dev->bus);
 	if (dev->speed != USB_SPEED_SUPER)
-		return;
+		return -EINVAL;
 
 	/* Streams only apply to bulk endpoints. */
 	for (i = 0; i < num_eps; i++)
 		if (!eps[i] || !usb_endpoint_xfer_bulk(&eps[i]->desc))
-			return;
+			return -EINVAL;
 
-	hcd->driver->free_streams(hcd, dev, eps, num_eps, mem_flags);
+	return hcd->driver->free_streams(hcd, dev, eps, num_eps, mem_flags);
 }
 EXPORT_SYMBOL_GPL(usb_free_streams);
 
