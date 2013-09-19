@@ -7,6 +7,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/spinlock.h>

@@ -8,6 +8,7 @@
  * by the Free Software Foundation, incorporated herein by reference.
  */
 
+#include <linux/sched.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <linux/pci.h>
