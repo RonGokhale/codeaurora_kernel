@@ -109,6 +109,7 @@ enum {
 	HCI_SERVICE_CACHE,
 	HCI_DEBUG_KEYS,
 	HCI_UNREGISTER,
+	HCI_USER_CHANNEL,
 
 	HCI_LE_SCAN,
 	HCI_SSP_ENABLED,
@@ -693,9 +694,6 @@ struct hci_cp_sniff_subrate {
 } __packed;
 
 #define HCI_OP_SET_EVENT_MASK		0x0c01
-struct hci_cp_set_event_mask {
-	__u8     mask[8];
-} __packed;
 
 #define HCI_OP_RESET			0x0c03
 
@@ -1570,6 +1568,7 @@ struct sockaddr_hci {
 #define HCI_DEV_NONE	0xffff
 
 #define HCI_CHANNEL_RAW		0
+#define HCI_CHANNEL_USER	1
 #define HCI_CHANNEL_MONITOR	2
 #define HCI_CHANNEL_CONTROL	3
 
