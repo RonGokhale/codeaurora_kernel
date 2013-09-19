@@ -665,7 +665,8 @@ static int i915_get_vblank_timestamp(struct drm_device *dev, int pipe,
 						     crtc);
 }
 
-static int intel_hpd_irq_event(struct drm_device *dev, struct drm_connector *connector)
+static bool intel_hpd_irq_event(struct drm_device *dev,
+				struct drm_connector *connector)
 {
 	enum drm_connector_status old_status;
 
@@ -673,11 +674,16 @@ static int intel_hpd_irq_event(struct drm_device *dev, struct drm_connector *con
 	old_status = connector->status;
 
 	connector->status = connector->funcs->detect(connector, false);
-	DRM_DEBUG_KMS("[CONNECTOR:%d:%s] status updated from %d to %d\n",
+	if (old_status == connector->status)
+		return false;
+
+	DRM_DEBUG_KMS("[CONNECTOR:%d:%s] status updated from %s to %s\n",
 		      connector->base.id,
 		      drm_get_connector_name(connector),
-		      old_status, connector->status);
-	return (old_status != connector->status);
+		      drm_get_connector_status_name(old_status),
+		      drm_get_connector_status_name(connector->status));
+
+	return true;
 }
 
 /*
@@ -2021,6 +2027,8 @@ static void i915_hangcheck_elapsed(unsigned long data)
 
 		if (ring->hangcheck.seqno == seqno) {
 			if (ring_idle(ring, seqno)) {
+				ring->hangcheck.action = HANGCHECK_IDLE;
+
 				if (waitqueue_active(&ring->irq_queue)) {
 					/* Issue a wake-up to catch stuck h/w. */
 					DRM_ERROR("Hangcheck timer elapsed... %s idle\n",
@@ -2049,6 +2057,7 @@ static void i915_hangcheck_elapsed(unsigned long data)
 								    acthd);
 
 				switch (ring->hangcheck.action) {
+				case HANGCHECK_IDLE:
 				case HANGCHECK_WAIT:
 					break;
 				case HANGCHECK_ACTIVE:
@@ -2064,6 +2073,8 @@ static void i915_hangcheck_elapsed(unsigned long data)
 				}
 			}
 		} else {
+			ring->hangcheck.action = HANGCHECK_ACTIVE;
+
 			/* Gradually reduce the count so that we catch DoS
 			 * attempts across multiple batches.
 			 */
