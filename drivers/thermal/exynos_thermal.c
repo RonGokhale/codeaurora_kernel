@@ -897,7 +897,7 @@ static struct exynos_tmu_platform_data const exynos_default_tmu_data = {
 };
 #define EXYNOS_TMU_DRV_DATA (&exynos_default_tmu_data)
 static struct exynos_tmu_platform_data const exynos5420_default_tmu_data = {
-	.trigger_levels[0] = 85,	/* slow e.g. 800Mhz */
+	.trigger_levels[0] = 65,	/* slow e.g. 800Mhz */
 	.trigger_levels[1] = 103,	/* very slow e.g. 200Mhz */
 	.trigger_levels[2] = 108,	/* kernel issues shutdown */
 	.trigger_levels[3] = 110,	/* HW poweroff trigger */
@@ -912,8 +912,8 @@ static struct exynos_tmu_platform_data const exynos5420_default_tmu_data = {
 	.cal_type = TYPE_ONE_POINT_TRIMMING,
 	.efuse_value = 55,
 	.freq_tab[0] = {
-		.freq_clip_max = 700 * 1000,
-		.temp_level = 85,
+		.freq_clip_max = 1000 * 1000,
+		.temp_level = 65,
 	},
 	.freq_tab[1] = {
 		.freq_clip_max = 300 * 1000,
