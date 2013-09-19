@@ -692,8 +692,10 @@ static int gfs2_create_inode(struct inode *dir, struct dentry *dentry,
 
 	mark_inode_dirty(inode);
 	d_instantiate(dentry, inode);
-	if (file)
+	if (file) {
+		*opened |= FILE_CREATED;
 		error = finish_open(file, dentry, gfs2_open_common, opened);
+	}
 	gfs2_glock_dq_uninit(ghs);
 	gfs2_glock_dq_uninit(ghs + 1);
 	return error;
@@ -1502,13 +1504,6 @@ out:
 	return NULL;
 }
 
-static void gfs2_put_link(struct dentry *dentry, struct nameidata *nd, void *p)
-{
-	char *s = nd_get_link(nd);
-	if (!IS_ERR(s))
-		kfree(s);
-}
-
 /**
  * gfs2_permission -
  * @inode: The inode
@@ -1860,7 +1855,7 @@ const struct inode_operations gfs2_dir_iops = {
 const struct inode_operations gfs2_symlink_iops = {
 	.readlink = generic_readlink,
 	.follow_link = gfs2_follow_link,
-	.put_link = gfs2_put_link,
+	.put_link = kfree_put_link,
 	.permission = gfs2_permission,
 	.setattr = gfs2_setattr,
 	.getattr = gfs2_getattr,
