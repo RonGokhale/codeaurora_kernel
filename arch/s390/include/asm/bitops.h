@@ -320,11 +320,98 @@ unsigned long find_first_bit_left(const unsigned long *addr, unsigned long size)
 unsigned long find_next_bit_left(const unsigned long *addr, unsigned long size,
 				 unsigned long offset);
 
+#ifdef CONFIG_HAVE_MARCH_Z9_109_FEATURES
+
+static inline unsigned long __flogr(unsigned long word)
+{
+	register unsigned long bit asm("4") = word;
+	register unsigned long out asm("5");
+
+	asm volatile(
+		"       flogr   %[bit],%[bit]\n"
+		: [bit] "+d" (bit), [out] "=d" (out) : : "cc");
+	return bit;
+}
+
+/**
+ * __ffs - find first bit in word.
+ * @word: The word to search
+ *
+ * Undefined if no bit exists, so code should check against 0 first.
+ */
+static inline unsigned long __ffs(unsigned long word)
+{
+	return __flogr(-word & word) ^ (BITS_PER_LONG - 1);
+}
+
+/**
+ * ffs - find first bit set
+ * @word: the word to search
+ *
+ * This is defined the same way as
+ * the libc and compiler builtin ffs routines, therefore
+ * differs in spirit from the above ffz (man ffs).
+ */
+static inline int ffs(int word)
+{
+	if (!word)
+		return 0;
+	return 1 + __ffs(word);
+}
+
+/**
+ * __fls - find last (most-significant) set bit in a long word
+ * @word: the word to search
+ *
+ * Undefined if no set bit exists, so code should check against 0 first.
+ */
+static inline unsigned long __fls(unsigned long word)
+{
+	return __flogr(word) ^ (BITS_PER_LONG - 1);
+}
+
+/**
+ * fls - find last (most-significant) bit set
+ * @word: the word to search
+ *
+ * This is defined the same way as ffs.
+ * Note fls(0) = 0, fls(1) = 1, fls(0x80000000) = 32.
+ */
+static inline int fls(int word)
+{
+	if (!word)
+		return 0;
+	return 1 + __fls(word);
+}
+
+/**
+ * fls64 - find last set bit in a 64-bit word
+ * @word: the word to search
+ *
+ * This is defined in a similar way as the libc and compiler builtin
+ * ffsll, but returns the position of the most significant set bit.
+ *
+ * fls64(value) returns 0 if value is 0 or the position of the last
+ * set bit if value is nonzero. The last (most significant) bit is
+ * at position 64.
+ */
+static inline int fls64(__u64 word)
+{
+	if (!word)
+		return 0;
+	return 1 + __fls(word);
+}
+
+#else /* CONFIG_HAVE_MARCH_Z9_109_FEATURES */
+
 #include <asm-generic/bitops/__ffs.h>
 #include <asm-generic/bitops/ffs.h>
 #include <asm-generic/bitops/__fls.h>
 #include <asm-generic/bitops/fls.h>
 #include <asm-generic/bitops/fls64.h>
+
+#endif /* CONFIG_HAVE_MARCH_Z9_109_FEATURES */
+
 #include <asm-generic/bitops/ffz.h>
 #include <asm-generic/bitops/find.h>
 #include <asm-generic/bitops/hweight.h>
