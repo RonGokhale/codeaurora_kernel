@@ -2388,7 +2388,7 @@ intel_sdvo_dvi_init(struct intel_sdvo *intel_sdvo, int device)
 	struct intel_connector *intel_connector;
 	struct intel_sdvo_connector *intel_sdvo_connector;
 
-	intel_sdvo_connector = kzalloc(sizeof(struct intel_sdvo_connector), GFP_KERNEL);
+	intel_sdvo_connector = kzalloc(sizeof(*intel_sdvo_connector), GFP_KERNEL);
 	if (!intel_sdvo_connector)
 		return false;
 
@@ -2436,7 +2436,7 @@ intel_sdvo_tv_init(struct intel_sdvo *intel_sdvo, int type)
 	struct intel_connector *intel_connector;
 	struct intel_sdvo_connector *intel_sdvo_connector;
 
-	intel_sdvo_connector = kzalloc(sizeof(struct intel_sdvo_connector), GFP_KERNEL);
+	intel_sdvo_connector = kzalloc(sizeof(*intel_sdvo_connector), GFP_KERNEL);
 	if (!intel_sdvo_connector)
 		return false;
 
@@ -2473,7 +2473,7 @@ intel_sdvo_analog_init(struct intel_sdvo *intel_sdvo, int device)
 	struct intel_connector *intel_connector;
 	struct intel_sdvo_connector *intel_sdvo_connector;
 
-	intel_sdvo_connector = kzalloc(sizeof(struct intel_sdvo_connector), GFP_KERNEL);
+	intel_sdvo_connector = kzalloc(sizeof(*intel_sdvo_connector), GFP_KERNEL);
 	if (!intel_sdvo_connector)
 		return false;
 
@@ -2504,7 +2504,7 @@ intel_sdvo_lvds_init(struct intel_sdvo *intel_sdvo, int device)
 	struct intel_connector *intel_connector;
 	struct intel_sdvo_connector *intel_sdvo_connector;
 
-	intel_sdvo_connector = kzalloc(sizeof(struct intel_sdvo_connector), GFP_KERNEL);
+	intel_sdvo_connector = kzalloc(sizeof(*intel_sdvo_connector), GFP_KERNEL);
 	if (!intel_sdvo_connector)
 		return false;
 
@@ -2870,7 +2870,7 @@ bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob)
 	struct intel_encoder *intel_encoder;
 	struct intel_sdvo *intel_sdvo;
 	int i;
-	intel_sdvo = kzalloc(sizeof(struct intel_sdvo), GFP_KERNEL);
+	intel_sdvo = kzalloc(sizeof(*intel_sdvo), GFP_KERNEL);
 	if (!intel_sdvo)
 		return false;
 
