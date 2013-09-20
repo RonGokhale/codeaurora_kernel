@@ -225,6 +225,8 @@ struct intel_opregion {
 	struct opregion_header __iomem *header;
 	struct opregion_acpi __iomem *acpi;
 	struct opregion_swsci __iomem *swsci;
+	u32 swsci_gbda_sub_functions;
+	u32 swsci_sbcb_sub_functions;
 	struct opregion_asle __iomem *asle;
 	void __iomem *vbt;
 	u32 __iomem *lid_state;
@@ -326,6 +328,8 @@ struct drm_i915_error_state {
 	u32 *active_bo_count, *pinned_bo_count;
 	struct intel_overlay_error_state *overlay;
 	struct intel_display_error_state *display;
+	int hangcheck_score[I915_NUM_RINGS];
+	enum intel_ring_hangcheck_action hangcheck_action[I915_NUM_RINGS];
 };
 
 struct intel_crtc_config;
@@ -357,7 +361,7 @@ struct drm_i915_display_funcs {
 			  int target, int refclk,
 			  struct dpll *match_clock,
 			  struct dpll *best_clock);
-	void (*update_wm)(struct drm_device *dev);
+	void (*update_wm)(struct drm_crtc *crtc);
 	void (*update_sprite_wm)(struct drm_plane *plane,
 				 struct drm_crtc *crtc,
 				 uint32_t sprite_width, int pixel_size,
@@ -367,7 +371,6 @@ struct drm_i915_display_funcs {
 	 * fills out the pipe-config with the hw state. */
 	bool (*get_pipe_config)(struct intel_crtc *,
 				struct intel_crtc_config *);
-	void (*get_clock)(struct intel_crtc *, struct intel_crtc_config *);
 	int (*crtc_mode_set)(struct drm_crtc *crtc,
 			     int x, int y,
 			     struct drm_framebuffer *old_fb);
@@ -420,6 +423,7 @@ struct intel_uncore {
 	func(is_ivybridge) sep \
 	func(is_valleyview) sep \
 	func(is_haswell) sep \
+	func(is_preliminary) sep \
 	func(has_force_wake) sep \
 	func(has_fbc) sep \
 	func(has_pipe_cxsr) sep \
@@ -568,6 +572,13 @@ struct i915_vma {
 	/** This vma's place in the batchbuffer or on the eviction list */
 	struct list_head exec_list;
 
+	/**
+	 * Used for performing relocations during execbuffer insertion.
+	 */
+	struct hlist_node exec_node;
+	unsigned long exec_handle;
+	struct drm_i915_gem_exec_object2 *exec_entry;
+
 };
 
 struct i915_ctx_hang_stats {
@@ -576,6 +587,12 @@ struct i915_ctx_hang_stats {
 
 	/* This context had batch active when hang was declared */
 	unsigned batch_active;
+
+	/* Time when this context was last blamed for a GPU reset */
+	unsigned long guilty_ts;
+
+	/* This context is banned to submit more work */
+	bool banned;
 };
 
 /* This must match up with the value previously used for execbuf2.rsvd1. */
@@ -977,6 +994,9 @@ struct i915_gpu_error {
 	/* For hangcheck timer */
 #define DRM_I915_HANGCHECK_PERIOD 1500 /* in ms */
 #define DRM_I915_HANGCHECK_JIFFIES msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD)
+	/* Hang gpu twice in this window and your context gets banned */
+#define DRM_I915_CTX_BAN_PERIOD DIV_ROUND_UP(8*DRM_I915_HANGCHECK_PERIOD, 1000)
+
 	struct timer_list hangcheck_timer;
 
 	/* For reset and error_state handling. */
@@ -984,8 +1004,6 @@ struct i915_gpu_error {
 	/* Protected by the above dev->gpu_error.lock. */
 	struct drm_i915_error_state *first_error;
 	struct work_struct work;
-
-	unsigned long last_reset;
 
 	/**
 	 * State variable and reset counter controlling the reset flow
@@ -1057,6 +1075,11 @@ struct intel_vbt_data {
 	bool edp_support;
 	int edp_bpp;
 	struct edp_power_seq edp_pps;
+
+	/* MIPI DSI */
+	struct {
+		u16 panel_id;
+	} dsi;
 
 	int crt_ddc_pin;
 
@@ -1398,8 +1421,6 @@ struct drm_i915_gem_object {
 	struct list_head ring_list;
 	/** Used in execbuf to temporarily hold a ref */
 	struct list_head obj_exec_link;
-	/** This object's place in the batchbuffer or on the eviction list */
-	struct list_head exec_list;
 
 	/**
 	 * This is set if the object is on the active lists (has pending
@@ -1484,13 +1505,6 @@ struct drm_i915_gem_object {
 	/* prime dma-buf support */
 	void *dma_buf_vmapping;
 	int vmapping_count;
-
-	/**
-	 * Used for performing relocations during execbuffer insertion.
-	 */
-	struct hlist_node exec_node;
-	unsigned long exec_handle;
-	struct drm_i915_gem_exec_object2 *exec_entry;
 
 	struct intel_ring_buffer *ring;
 
@@ -1600,6 +1614,9 @@ struct drm_i915_file_private {
 				 ((dev)->pci_device & 0xFF00) == 0x0C00)
 #define IS_ULT(dev)		(IS_HASWELL(dev) && \
 				 ((dev)->pci_device & 0xFF00) == 0x0A00)
+#define IS_HSW_GT3(dev)		(IS_HASWELL(dev) && \
+				 ((dev)->pci_device & 0x00F0) == 0x0020)
+#define IS_PRELIMINARY_HW(intel_info) ((intel_info)->is_preliminary)
 
 /*
  * The genX designation typically refers to the render engine, so render
@@ -1828,8 +1845,6 @@ void i915_gem_object_init(struct drm_i915_gem_object *obj,
 struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 						  size_t size);
 void i915_gem_free_object(struct drm_gem_object *obj);
-struct i915_vma *i915_gem_vma_create(struct drm_i915_gem_object *obj,
-				     struct i915_address_space *vm);
 void i915_gem_vma_destroy(struct i915_vma *vma);
 
 int __must_check i915_gem_object_pin(struct drm_i915_gem_object *obj,
@@ -2090,6 +2105,7 @@ int __must_check i915_gem_evict_something(struct drm_device *dev,
 					  unsigned cache_level,
 					  bool mappable,
 					  bool nonblock);
+int i915_gem_evict_vm(struct i915_address_space *vm, bool do_idle);
 int i915_gem_evict_everything(struct drm_device *dev);
 
 /* i915_gem_stolen.c */
@@ -2182,15 +2198,30 @@ static inline bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter)
 extern void intel_i2c_reset(struct drm_device *dev);
 
 /* intel_opregion.c */
+struct intel_encoder;
 extern int intel_opregion_setup(struct drm_device *dev);
 #ifdef CONFIG_ACPI
 extern void intel_opregion_init(struct drm_device *dev);
 extern void intel_opregion_fini(struct drm_device *dev);
 extern void intel_opregion_asle_intr(struct drm_device *dev);
+extern int intel_opregion_notify_encoder(struct intel_encoder *intel_encoder,
+					 bool enable);
+extern int intel_opregion_notify_adapter(struct drm_device *dev,
+					 pci_power_t state);
 #else
 static inline void intel_opregion_init(struct drm_device *dev) { return; }
 static inline void intel_opregion_fini(struct drm_device *dev) { return; }
 static inline void intel_opregion_asle_intr(struct drm_device *dev) { return; }
+static inline int
+intel_opregion_notify_encoder(struct intel_encoder *intel_encoder, bool enable)
+{
+	return 0;
+}
+static inline int
+intel_opregion_notify_adapter(struct drm_device *dev, pci_power_t state)
+{
+	return 0;
+}
 #endif
 
 /* intel_acpi.c */
@@ -2252,8 +2283,16 @@ int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u8 mbox, u32 val)
 u32 vlv_punit_read(struct drm_i915_private *dev_priv, u8 addr);
 void vlv_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val);
 u32 vlv_nc_read(struct drm_i915_private *dev_priv, u8 addr);
-u32 vlv_dpio_read(struct drm_i915_private *dev_priv, int reg);
-void vlv_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
+u32 vlv_gpio_nc_read(struct drm_i915_private *dev_priv, u32 reg);
+void vlv_gpio_nc_write(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+u32 vlv_cck_read(struct drm_i915_private *dev_priv, u32 reg);
+void vlv_cck_write(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+u32 vlv_ccu_read(struct drm_i915_private *dev_priv, u32 reg);
+void vlv_ccu_write(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+u32 vlv_gps_core_read(struct drm_i915_private *dev_priv, u32 reg);
+void vlv_gps_core_write(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+u32 vlv_dpio_read(struct drm_i915_private *dev_priv, enum pipe pipe, int reg);
+void vlv_dpio_write(struct drm_i915_private *dev_priv, enum pipe pipe, int reg, u32 val);
 u32 intel_sbi_read(struct drm_i915_private *dev_priv, u16 reg,
 		   enum intel_sbi_destination destination);
 void intel_sbi_write(struct drm_i915_private *dev_priv, u16 reg, u32 value,
