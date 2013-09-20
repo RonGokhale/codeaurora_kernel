@@ -398,9 +398,10 @@ static ssize_t hdmi_common_wta_vendor_name(struct device *dev,
 	uint8 *s = (uint8 *) buf;
 	uint8 *d = external_common_state->spd_vendor_name;
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	ssize_t nsize = MAX_SPD_VENDER_NAME;
 	ret = (ret > 8) ? 8 : ret;
 
-	memset(external_common_state->spd_vendor_name, 0, 8);
+	memset(external_common_state->spd_vendor_name, 0, nsize);
 	while (*s) {
 		if (*s & 0x60 && *s ^ 0x7f) {
 			*d = *s;
@@ -414,7 +415,7 @@ static ssize_t hdmi_common_wta_vendor_name(struct device *dev,
 
 		d++;
 	}
-
+	external_common_state->spd_vendor_name[nsize - 1] = '\0';
 	DEV_DBG("%s: '%s'\n", __func__,
 			external_common_state->spd_vendor_name);
 
@@ -438,9 +439,9 @@ static ssize_t hdmi_common_wta_product_description(struct device *dev,
 	uint8 *s = (uint8 *) buf;
 	uint8 *d = external_common_state->spd_product_description;
 	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	ssize_t psize = MAX_SPD_PRODUCT_DESCRIPTION;
 	ret = (ret > 16) ? 16 : ret;
-
-	memset(external_common_state->spd_product_description, 0, 16);
+	memset(external_common_state->spd_product_description, 0, psize);
 	while (*s) {
 		if (*s & 0x60 && *s ^ 0x7f) {
 			*d = *s;
@@ -454,7 +455,7 @@ static ssize_t hdmi_common_wta_product_description(struct device *dev,
 
 		d++;
 	}
-
+	external_common_state->spd_product_description[psize - 1] = '\n';
 	DEV_DBG("%s: '%s'\n", __func__,
 			external_common_state->spd_product_description);
 
