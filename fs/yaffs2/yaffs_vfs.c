@@ -867,7 +867,7 @@ static int yaffs_readdir(struct file *f, void *dirent, filldir_t filldir)
 	/* If the directory has changed since the open or last call to
 	   readdir, rewind to after the 2 canned entries. */
 	if (f->f_version != inode->i_version) {
-		offset = 2;
+		//offset = 2;
 		f->f_pos = offset;
 		f->f_version = inode->i_version;
 	}
