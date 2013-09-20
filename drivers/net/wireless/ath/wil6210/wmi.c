@@ -15,6 +15,7 @@
  */
 
 #include <linux/etherdevice.h>
+#include <linux/sched.h>
 #include <linux/if_arp.h>
 
 #include "wil6210.h"

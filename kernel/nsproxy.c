@@ -13,6 +13,7 @@
  *             Pavel Emelianov <xemul@openvz.org>
  */
 
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/nsproxy.h>

@@ -26,6 +26,7 @@
 
 */
 
+#include <linux/sched.h>
 #include <linux/slab.h>
 
 #include "b43.h"

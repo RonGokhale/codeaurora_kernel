@@ -11,6 +11,7 @@
  * 	              Nauman Rafique <nauman@google.com>
  */
 #include <linux/ioprio.h>
+#include <linux/sched.h>
 #include <linux/kdev_t.h>
 #include <linux/module.h>
 #include <linux/err.h>
