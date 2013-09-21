@@ -13,25 +13,14 @@
 /dts-v1/;
 /include/ "msm8226-v2.dtsi"
 /include/ "msm8226-qrd.dtsi"
-/include/ "dsi-panel-nt35521-720p-video.dtsi"
 
 / {
 	model = "Qualcomm MSM 8226v2 QRD";
-	compatible = "qcom,msm8226-qrd", "qcom,msm8226", "qcom,qrd";
+	compatible = "qcom,msm8226-qrd", "qcom,msm8226", "qcom,skuf", "qcom,qrd";
 	qcom,board-id = <0xb 0x2>;
-	qcom,msm-id = <145 0x20000>,
-		      <158 0x20000>,
-		      <159 0x20000>,
-		      <198 0x20000>,
-		      <205 0x20000>;
 };
 
 &soc {
-	qcom,mdss_dsi_nt35521_720p_video {
-		status = "ok";
-		qcom,cont-splash-enabled;
-	};
-
 	sound {
 		qcom,model = "msm8226-tapan-skuf-snd-card";
 
@@ -185,4 +174,12 @@
 
 &pm8226_iadc {
 	qcom,rsense = <10000000>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_nt35521_720_vid>;
+};
+
+&dsi_nt35521_720_vid {
+	qcom,cont-splash-enabled;
 };

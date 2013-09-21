@@ -23,6 +23,8 @@
 
 #include <mach/iommu_domains.h>
 
+#include "mdss_panel.h"
+
 #define MDSS_REG_WRITE(addr, val) writel_relaxed(val, mdss_res->mdp_base + addr)
 #define MDSS_REG_READ(addr) readl_relaxed(mdss_res->mdp_base + addr)
 
@@ -118,6 +120,7 @@ struct mdss_data_type {
 	void *video_intf;
 	u32 nintf;
 
+	u32 pp_bus_hdl;
 	struct mdss_ad_info *ad_cfgs;
 	u32 nad_cfgs;
 	struct workqueue_struct *ad_calc_wq;
@@ -130,6 +133,7 @@ struct mdss_data_type {
 	struct mdss_debug_inf debug_inf;
 	int current_bus_idx;
 	bool mixer_switched;
+	struct mdss_panel_cfg pan_cfg;
 };
 extern struct mdss_data_type *mdss_res;
 
