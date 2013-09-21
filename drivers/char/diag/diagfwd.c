@@ -95,7 +95,7 @@ do {									\
 } while (0)
 
 #define CHK_OVERFLOW(bufStart, start, end, length) \
-((bufStart <= start) && (end - start >= length)) ? 1 : 0
+((bufStart <= start) && (end - start >= length) && (length > 0)) ? 1 : 0
 
 /* Determine if this device uses a device tree */
 #ifdef CONFIG_OF
@@ -1042,6 +1042,10 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 			*(int *)(driver->apps_rsp_buf + 4) = 0x3; /* op. ID */
 			*(int *)(driver->apps_rsp_buf + 8) = 0x0; /* success */
 			payload_length = 8 + ((*(int *)(buf + 4)) + 7)/8;
+			if (payload_length > APPS_BUF_SIZE - 12) {
+				pr_err("diag: log masks: buffer overflow\n");
+				return -EIO;
+			}
 			for (i = 0; i < payload_length; i++)
 				*(int *)(driver->apps_rsp_buf+12+i) = *(buf+i);
 			if (driver->ch_cntl)
@@ -1105,6 +1109,10 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 								 rt_last_ssid) {
 					rt_mask_size = 4 * (rt_last_ssid -
 							 rt_first_ssid + 1);
+					if (rt_mask_size > APPS_BUF_SIZE - 8) {
+						pr_err("diag: rt masks: buffer overflow\n");
+						return -EIO;
+					}
 					memcpy(driver->apps_rsp_buf+8,
 						 rt_mask_ptr, rt_mask_size);
 					ENCODE_RSP_AND_SEND(8+rt_mask_size-1);
@@ -1119,7 +1127,17 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 	else if ((*buf == 0x7d) && (*(buf+1) == 0x4)) {
 		ssid_first = *(uint16_t *)(buf + 2);
 		ssid_last = *(uint16_t *)(buf + 4);
+		if (ssid_last < ssid_first) {
+			pr_err("diag: Invalid msg mask ssid values, first: %d, last: %d\n",
+				ssid_first, ssid_last);
+			return -EIO;
+		}
 		ssid_range = 4 * (ssid_last - ssid_first + 1);
+		if (ssid_range > APPS_BUF_SIZE - 8) {
+			pr_err("diag: Not enough space for message mask, ssid_range: %d\n",
+				ssid_range);
+			return -EIO;
+		}
 		pr_debug("diag: received mask update for ssid_first = %d,"
 				" ssid_last = %d", ssid_first, ssid_last);
 		diag_update_msg_mask(ssid_first, ssid_last , buf + 8);
@@ -1221,6 +1239,7 @@ static int diag_process_apps_pkt(unsigned char *buf, int len)
 		}
 #endif
 	}
+
 	/* Check for registered clients and forward packet to apropriate proc */
 	cmd_code = (int)(*(char *)buf);
 	temp++;
@@ -1575,10 +1594,24 @@ void diag_process_hdlc(void *data, unsigned len)
 
 	ret = diag_hdlc_decode(&hdlc);
 
-	if (ret)
+	/*
+	 * If the message is 3 bytes or less in length then the message is
+	 * too short. A message will need 4 bytes minimum, since there are
+	 * 2 bytes for the CRC and 1 byte for the ending 0x7e for the hdlc
+	 * encoding
+	 */
+	if (hdlc.dest_idx < 4) {
+		pr_err_ratelimited("diag: In %s, message is too short, len: %d,"
+			" dest len: %d\n", __func__, len, hdlc.dest_idx);
+		return;
+	}
+
+	if (ret) {
 		type = diag_process_apps_pkt(driver->hdlc_buf,
 							  hdlc.dest_idx - 3);
-	else if (driver->debug_flag) {
+		if (type < 0)
+			return;
+	} else if (driver->debug_flag) {
 		printk(KERN_ERR "Packet dropped due to bad HDLC coding/CRC"
 				" errors or partial packet received, packet"
 				" length = %d\n", len);
