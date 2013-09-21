@@ -406,7 +406,8 @@ static int get_args(uint32_t kernel, uint32_t sc, remote_arg_t *pra,
 	int i, rlen, size, used, inh, bufs = 0, err = 0;
 	int inbufs = REMOTE_SCALARS_INBUFS(sc);
 	int outbufs = REMOTE_SCALARS_OUTBUFS(sc);
-	unsigned long iova, len;
+	unsigned long len;
+	dma_addr_t iova;
 
 	list = smq_invoke_buf_start(rpra, sc);
 	pages = smq_phy_page_start(sc, list);
