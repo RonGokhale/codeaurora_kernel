@@ -993,6 +993,17 @@ static void extract_buf(struct entropy_store *r, __u8 *out)
 		sha_transform(hash.w, (__u8 *)(r->pool + i), workspace);
 
 	/*
+	 * If we have a architectural hardware random number
+	 * generator, mix that in, too.
+	 */
+	for (i = 0; i < LONGS(EXTRACT_SIZE); i++) {
+		unsigned long v;
+		if (!arch_get_random_long(&v))
+			break;
+		hash.l[i] ^= v;
+	}
+
+	/*
 	 * We mix the hash back into the pool to prevent backtracking
 	 * attacks (where the attacker knows the state of the pool
 	 * plus the current outputs, and attempts to find previous
@@ -1020,17 +1031,6 @@ static void extract_buf(struct entropy_store *r, __u8 *out)
 	hash.w[0] ^= hash.w[3];
 	hash.w[1] ^= hash.w[4];
 	hash.w[2] ^= rol32(hash.w[2], 16);
-
-	/*
-	 * If we have a architectural hardware random number
-	 * generator, mix that in, too.
-	 */
-	for (i = 0; i < LONGS(EXTRACT_SIZE); i++) {
-		unsigned long v;
-		if (!arch_get_random_long(&v))
-			break;
-		hash.l[i] ^= v;
-	}
 
 	memcpy(out, &hash, EXTRACT_SIZE);
 	memset(&hash, 0, sizeof(hash));
