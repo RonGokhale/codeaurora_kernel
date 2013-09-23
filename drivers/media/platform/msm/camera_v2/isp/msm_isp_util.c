@@ -27,6 +27,8 @@ static struct msm_isp_bandwidth_mgr isp_bandwidth_mgr;
 #define MSM_ISP_MIN_AB 300000000
 #define MSM_ISP_MIN_IB 450000000
 
+#define VFE40_8974V2_VERSION 0x1001001A
+
 static struct msm_bus_vectors msm_isp_init_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_VFE,
@@ -566,6 +568,9 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 		}
 		break;
 	}
+	case GET_SOC_HW_VER:
+		*cfg_data = vfe_dev->soc_hw_version;
+		break;
 	}
 	return 0;
 }
@@ -702,6 +707,42 @@ int msm_isp_cal_word_per_line(uint32_t output_format,
 	return val;
 }
 
+enum msm_isp_pack_fmt msm_isp_get_pack_format(uint32_t output_format)
+{
+	switch (output_format) {
+	case V4L2_PIX_FMT_SBGGR8:
+	case V4L2_PIX_FMT_SGBRG8:
+	case V4L2_PIX_FMT_SGRBG8:
+	case V4L2_PIX_FMT_SRGGB8:
+	case V4L2_PIX_FMT_SBGGR10:
+	case V4L2_PIX_FMT_SGBRG10:
+	case V4L2_PIX_FMT_SGRBG10:
+	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_SBGGR12:
+	case V4L2_PIX_FMT_SGBRG12:
+	case V4L2_PIX_FMT_SGRBG12:
+	case V4L2_PIX_FMT_SRGGB12:
+		return MIPI;
+	case V4L2_PIX_FMT_QBGGR8:
+	case V4L2_PIX_FMT_QGBRG8:
+	case V4L2_PIX_FMT_QGRBG8:
+	case V4L2_PIX_FMT_QRGGB8:
+	case V4L2_PIX_FMT_QBGGR10:
+	case V4L2_PIX_FMT_QGBRG10:
+	case V4L2_PIX_FMT_QGRBG10:
+	case V4L2_PIX_FMT_QRGGB10:
+	case V4L2_PIX_FMT_QBGGR12:
+	case V4L2_PIX_FMT_QGBRG12:
+	case V4L2_PIX_FMT_QGRBG12:
+	case V4L2_PIX_FMT_QRGGB12:
+		return QCOM;
+	default:
+		pr_err("%s: Invalid output format\n", __func__);
+		break;
+	}
+	return -EINVAL;
+}
+
 int msm_isp_get_bit_per_pixel(uint32_t output_format)
 {
 	switch (output_format) {
@@ -761,6 +802,8 @@ void msm_isp_update_error_frame_count(struct vfe_device *vfe_dev)
 void msm_isp_process_error_info(struct vfe_device *vfe_dev)
 {
 	int i;
+	uint8_t num_stats_type =
+		vfe_dev->hw_info->stats_hw_info->num_stats_type;
 	struct msm_vfe_error_info *error_info = &vfe_dev->error_info;
 	static DEFINE_RATELIMIT_STATE(rs,
 		DEFAULT_RATELIMIT_INTERVAL, DEFAULT_RATELIMIT_BURST);
@@ -784,7 +827,7 @@ void msm_isp_process_error_info(struct vfe_device *vfe_dev)
 				error_info->stream_framedrop_count[i] = 0;
 			}
 		}
-		for (i = 0; i < MSM_ISP_STATS_MAX; i++) {
+		for (i = 0; i < num_stats_type; i++) {
 			if (error_info->stats_framedrop_count[i] != 0 &&
 				__ratelimit(&rs_stats)) {
 				pr_err("%s: Stats stream[%d]: dropped %d frames\n",
@@ -938,6 +981,15 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 
 	vfe_dev->buf_mgr->ops->buf_mgr_init(vfe_dev->buf_mgr, "msm_isp", 28);
+
+	switch (vfe_dev->vfe_hw_version) {
+	case VFE40_8974V2_VERSION:
+		vfe_dev->soc_hw_version = msm_camera_io_r(vfe_dev->tcsr_base);
+		break;
+	default:
+		/* SOC HARDWARE VERSION NOT SUPPORTED */
+		vfe_dev->soc_hw_version = 0x00;
+	}
 
 	memset(&vfe_dev->axi_data, 0, sizeof(struct msm_vfe_axi_shared_data));
 	memset(&vfe_dev->stats_data, 0,

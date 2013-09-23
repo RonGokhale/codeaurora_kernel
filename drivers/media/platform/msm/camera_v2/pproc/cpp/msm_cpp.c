@@ -1036,7 +1036,7 @@ static int msm_cpp_dump_frame_cmd(uint32_t *cmd, int32_t len)
 }
 #endif
 
-void msm_cpp_do_timeout_work(struct work_struct *work)
+static void msm_cpp_do_timeout_work(struct work_struct *work)
 {
 	int ret;
 	uint32_t i = 0;
@@ -1046,6 +1046,11 @@ void msm_cpp_do_timeout_work(struct work_struct *work)
 
 	pr_err("cpp_timer_callback called idx:%d. (jiffies=%lu)\n",
 		del_timer_idx, jiffies);
+	if (!work || !this_frame) {
+		pr_err("Invalid work:%p, this_frame:%p, del_idx:%d\n",
+			work, this_frame, del_timer_idx);
+		return;
+	}
 	pr_err("fatal: cpp_timer expired for identity=0x%x, frame_id=%03d",
 		this_frame->identity, this_frame->frame_id);
 	cpp_timers[del_timer_idx].used = 0;
@@ -1312,7 +1317,8 @@ static int msm_cpp_cfg(struct cpp_device *cpp_dev,
 		(cpp_frame_msg[12] & 0x3FF);
 
 	fw_version_1_2_x = 0;
-	if (cpp_dev->hw_info.cpp_hw_version == 0x10010000)
+	if ((cpp_dev->hw_info.cpp_hw_version == CPP_HW_VERSION_1_1_0) ||
+		(cpp_dev->hw_info.cpp_hw_version == CPP_HW_VERSION_1_1_1))
 		fw_version_1_2_x = 2;
 
 	for (i = 0; i < num_stripes; i++) {
