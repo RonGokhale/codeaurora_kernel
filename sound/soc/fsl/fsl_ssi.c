@@ -748,7 +748,7 @@ static void fsl_ssi_ac97_init(void)
 	fsl_ssi_setup(fsl_ac97_data);
 }
 
-void fsl_ssi_ac97_write(struct snd_ac97 *ac97, unsigned short reg,
+static void fsl_ssi_ac97_write(struct snd_ac97 *ac97, unsigned short reg,
 		unsigned short val)
 {
 	struct ccsr_ssi *ssi = fsl_ac97_data->ssi;
@@ -770,7 +770,7 @@ void fsl_ssi_ac97_write(struct snd_ac97 *ac97, unsigned short reg,
 	udelay(100);
 }
 
-unsigned short fsl_ssi_ac97_read(struct snd_ac97 *ac97,
+static unsigned short fsl_ssi_ac97_read(struct snd_ac97 *ac97,
 		unsigned short reg)
 {
 	struct ccsr_ssi *ssi = fsl_ac97_data->ssi;
@@ -1135,7 +1135,6 @@ static int fsl_ssi_remove(struct platform_device *pdev)
 	if (ssi_private->ssi_on_imx)
 		imx_pcm_dma_exit(pdev);
 	snd_soc_unregister_component(&pdev->dev);
-	dev_set_drvdata(&pdev->dev, NULL);
 	device_remove_file(&pdev->dev, &ssi_private->dev_attr);
 	if (ssi_private->ssi_on_imx)
 		clk_disable_unprepare(ssi_private->clk);
