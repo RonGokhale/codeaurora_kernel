@@ -1428,9 +1428,9 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 	       S3C64XX_SPI_INT_TX_OVERRUN_EN | S3C64XX_SPI_INT_TX_UNDERRUN_EN,
 	       sdd->regs + S3C64XX_SPI_INT_EN);
 
-	if (spi_register_master(master)) {
-		dev_err(&pdev->dev, "cannot register SPI master\n");
-		ret = -EBUSY;
+	ret = devm_spi_register_master(&pdev->dev, master);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "cannot register SPI master: %d\n", ret);
 		goto err3;
 	}
 
@@ -1461,15 +1461,11 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 
-	spi_unregister_master(master);
-
 	writel(0, sdd->regs + S3C64XX_SPI_INT_EN);
 
 	clk_disable_unprepare(sdd->src_clk);
 
 	clk_disable_unprepare(sdd->clk);
-
-	spi_master_put(master);
 
 	return 0;
 }
@@ -1633,22 +1629,13 @@ static struct platform_driver s3c64xx_spi_driver = {
 		.pm = &s3c64xx_spi_pm,
 		.of_match_table = of_match_ptr(s3c64xx_spi_dt_match),
 	},
+	.probe = s3c64xx_spi_probe,
 	.remove = s3c64xx_spi_remove,
 	.id_table = s3c64xx_spi_driver_ids,
 };
 MODULE_ALIAS("platform:s3c64xx-spi");
 
-static int __init s3c64xx_spi_init(void)
-{
-	return platform_driver_probe(&s3c64xx_spi_driver, s3c64xx_spi_probe);
-}
-subsys_initcall(s3c64xx_spi_init);
-
-static void __exit s3c64xx_spi_exit(void)
-{
-	platform_driver_unregister(&s3c64xx_spi_driver);
-}
-module_exit(s3c64xx_spi_exit);
+module_platform_driver(s3c64xx_spi_driver);
 
 MODULE_AUTHOR("Jaswinder Singh <jassi.brar@samsung.com>");
 MODULE_DESCRIPTION("S3C64XX SPI Controller Driver");
