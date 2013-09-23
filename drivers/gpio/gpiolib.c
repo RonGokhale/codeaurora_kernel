@@ -102,6 +102,39 @@ static int gpiod_export_link(struct device *dev, const char *name,
 static int gpiod_sysfs_set_active_low(struct gpio_desc *desc, int value);
 static void gpiod_unexport(struct gpio_desc *desc);
 
+#ifdef CONFIG_DEBUG_FS
+#define gpiod_emerg(desc, fmt, ...)			                \
+	pr_emerg("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label, \
+                 ##__VA_ARGS__)
+#define gpiod_crit(desc, fmt, ...)			                \
+	pr_crit("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label,  \
+                 ##__VA_ARGS__)
+#define gpiod_err(desc, fmt, ...)				        \
+	pr_err("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label,   \
+                 ##__VA_ARGS__)
+#define gpiod_warn(desc, fmt, ...)				        \
+	pr_warn("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label,  \
+                 ##__VA_ARGS__)
+#define gpiod_info(desc, fmt, ...)				        \
+	pr_info("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label,  \
+                ##__VA_ARGS__)
+#define gpiod_dbg(desc, fmt, ...)				   \
+	pr_debug("gpio-%d (%s): " fmt, desc_to_gpio(desc), desc->label, \
+                 ##__VA_ARGS__)
+#else
+#define gpiod_emerg(desc, fmt, ...)			           \
+	pr_emerg("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#define gpiod_crit(desc, fmt, ...)			           \
+	pr_crit("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#define gpiod_err(desc, fmt, ...)				   \
+	pr_err("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#define gpiod_warn(desc, fmt, ...)				   \
+	pr_warn("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#define gpiod_info(desc, fmt, ...)				   \
+	pr_info("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#define gpiod_dbg(desc, fmt, ...)				   \
+	pr_debug("gpio-%d: " fmt, desc_to_gpio(desc), ##__VA_ARGS__)
+#endif
 
 static inline void desc_set_label(struct gpio_desc *d, const char *label)
 {
@@ -1635,8 +1668,9 @@ static int gpiod_direction_input(struct gpio_desc *desc)
 
 	chip = desc->chip;
 	if (!chip->get || !chip->direction_input) {
-		pr_warn("%s: missing get() or direction_input() operations\n",
-			__func__);
+		gpiod_warn(desc,
+			"%s: missing get() or direction_input() operations\n",
+			 __func__);
 		return -EIO;
 	}
 
@@ -1656,8 +1690,7 @@ static int gpiod_direction_input(struct gpio_desc *desc)
 	if (status) {
 		status = chip->request(chip, offset);
 		if (status < 0) {
-			pr_debug("GPIO-%d: chip request fail, %d\n",
-				desc_to_gpio(desc), status);
+			gpiod_dbg(desc, "chip request fail, %d\n", status);
 			/* and it's not available to anyone else ...
 			 * gpio_request() is the fully clean solution.
 			 */
@@ -1675,8 +1708,7 @@ lose:
 fail:
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	if (status)
-		pr_debug("%s: gpio-%d status %d\n", __func__,
-			 desc_to_gpio(desc), status);
+		gpiod_dbg(desc, "%s status %d\n", __func__, status);
 	return status;
 }
 
@@ -1708,8 +1740,9 @@ static int gpiod_direction_output(struct gpio_desc *desc, int value)
 
 	chip = desc->chip;
 	if (!chip->set || !chip->direction_output) {
-		pr_warn("%s: missing set() or direction_output() operations\n",
-			__func__);
+		gpiod_warn(desc,
+		       "%s: missing set() or direction_output() operations\n",
+		       __func__);
 		return -EIO;
 	}
 
@@ -1729,8 +1762,7 @@ static int gpiod_direction_output(struct gpio_desc *desc, int value)
 	if (status) {
 		status = chip->request(chip, offset);
 		if (status < 0) {
-			pr_debug("GPIO-%d: chip request fail, %d\n",
-				desc_to_gpio(desc), status);
+			gpiod_dbg(desc, "chip request fail, %d\n", status);
 			/* and it's not available to anyone else ...
 			 * gpio_request() is the fully clean solution.
 			 */
@@ -1748,8 +1780,7 @@ lose:
 fail:
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	if (status)
-		pr_debug("%s: gpio-%d status %d\n", __func__,
-			 desc_to_gpio(desc), status);
+		gpiod_dbg(desc, "%s: gpio status %d\n", __func__, status);
 	return status;
 }
 
@@ -1781,8 +1812,9 @@ static int gpiod_set_debounce(struct gpio_desc *desc, unsigned debounce)
 
 	chip = desc->chip;
 	if (!chip->set || !chip->set_debounce) {
-		pr_debug("%s: missing set() or set_debounce() operations\n",
-			__func__);
+		gpiod_dbg(desc,
+			  "%s: missing set() or set_debounce() operations\n",
+			  __func__);
 		return -ENOTSUPP;
 	}
 
@@ -1804,8 +1836,7 @@ static int gpiod_set_debounce(struct gpio_desc *desc, unsigned debounce)
 fail:
 	spin_unlock_irqrestore(&gpio_lock, flags);
 	if (status)
-		pr_debug("%s: gpio-%d status %d\n", __func__,
-			 desc_to_gpio(desc), status);
+		gpiod_dbg(desc, "%s: status %d\n", __func__, status);
 
 	return status;
 }
@@ -1838,6 +1869,19 @@ EXPORT_SYMBOL_GPL(gpio_set_debounce);
  * that the GPIO was actually requested.
  */
 
+static int _gpiod_get_value(const struct gpio_desc *desc)
+{
+	struct gpio_chip	*chip;
+	int value;
+	int offset;
+
+	chip = desc->chip;
+	offset = gpio_chip_hwgpio(desc);
+	value = chip->get ? chip->get(chip, offset) : 0;
+	trace_gpio_value(desc_to_gpio(desc), 1, value);
+	return value;
+}
+
 /**
  * __gpio_get_value() - return a gpio's value
  * @gpio: gpio whose value will be returned
@@ -1849,19 +1893,11 @@ EXPORT_SYMBOL_GPL(gpio_set_debounce);
  */
 static int gpiod_get_value(const struct gpio_desc *desc)
 {
-	struct gpio_chip	*chip;
-	int value;
-	int offset;
-
 	if (!desc)
 		return 0;
-	chip = desc->chip;
-	offset = gpio_chip_hwgpio(desc);
 	/* Should be using gpio_get_value_cansleep() */
-	WARN_ON(chip->can_sleep);
-	value = chip->get ? chip->get(chip, offset) : 0;
-	trace_gpio_value(desc_to_gpio(desc), 1, value);
-	return value;
+	WARN_ON(desc->chip->can_sleep);
+	return _gpiod_get_value(desc);
 }
 
 int __gpio_get_value(unsigned gpio)
@@ -1893,8 +1929,9 @@ static void _gpio_set_open_drain_value(struct gpio_desc *desc, int value)
 	}
 	trace_gpio_direction(desc_to_gpio(desc), value, err);
 	if (err < 0)
-		pr_err("%s: Error in set_value for open drain gpio%d err %d\n",
-					__func__, desc_to_gpio(desc), err);
+		gpiod_err(desc,
+			  "%s: Error in set_value for open drain err %d\n",
+			  __func__, err);
 }
 
 /*
@@ -1920,8 +1957,23 @@ static void _gpio_set_open_source_value(struct gpio_desc *desc, int value)
 	}
 	trace_gpio_direction(desc_to_gpio(desc), !value, err);
 	if (err < 0)
-		pr_err("%s: Error in set_value for open source gpio%d err %d\n",
-					__func__, desc_to_gpio(desc), err);
+		gpiod_err(desc,
+			  "%s: Error in set_value for open source err %d\n",
+			  __func__, err);
+}
+
+static void _gpiod_set_value(struct gpio_desc *desc, int value)
+{
+	struct gpio_chip	*chip;
+
+	chip = desc->chip;
+	trace_gpio_value(desc_to_gpio(desc), 0, value);
+	if (test_bit(FLAG_OPEN_DRAIN, &desc->flags))
+		_gpio_set_open_drain_value(desc, value);
+	else if (test_bit(FLAG_OPEN_SOURCE, &desc->flags))
+		_gpio_set_open_source_value(desc, value);
+	else
+		chip->set(chip, gpio_chip_hwgpio(desc), value);
 }
 
 /**
@@ -1935,20 +1987,12 @@ static void _gpio_set_open_source_value(struct gpio_desc *desc, int value)
  */
 static void gpiod_set_value(struct gpio_desc *desc, int value)
 {
-	struct gpio_chip	*chip;
 
 	if (!desc)
 		return;
-	chip = desc->chip;
 	/* Should be using gpio_set_value_cansleep() */
-	WARN_ON(chip->can_sleep);
-	trace_gpio_value(desc_to_gpio(desc), 0, value);
-	if (test_bit(FLAG_OPEN_DRAIN, &desc->flags))
-		_gpio_set_open_drain_value(desc, value);
-	else if (test_bit(FLAG_OPEN_SOURCE, &desc->flags))
-		_gpio_set_open_source_value(desc, value);
-	else
-		chip->set(chip, gpio_chip_hwgpio(desc), value);
+	WARN_ON(desc->chip->can_sleep);
+	_gpiod_set_value(desc, value);
 }
 
 void __gpio_set_value(unsigned gpio, int value)
@@ -2013,18 +2057,10 @@ EXPORT_SYMBOL_GPL(__gpio_to_irq);
 
 static int gpiod_get_value_cansleep(const struct gpio_desc *desc)
 {
-	struct gpio_chip	*chip;
-	int value;
-	int offset;
-
 	might_sleep_if(extra_checks);
 	if (!desc)
 		return 0;
-	chip = desc->chip;
-	offset = gpio_chip_hwgpio(desc);
-	value = chip->get ? chip->get(chip, offset) : 0;
-	trace_gpio_value(desc_to_gpio(desc), 1, value);
-	return value;
+	return _gpiod_get_value(desc);
 }
 
 int gpio_get_value_cansleep(unsigned gpio)
@@ -2035,19 +2071,10 @@ EXPORT_SYMBOL_GPL(gpio_get_value_cansleep);
 
 static void gpiod_set_value_cansleep(struct gpio_desc *desc, int value)
 {
-	struct gpio_chip	*chip;
-
 	might_sleep_if(extra_checks);
 	if (!desc)
 		return;
-	chip = desc->chip;
-	trace_gpio_value(desc_to_gpio(desc), 0, value);
-	if (test_bit(FLAG_OPEN_DRAIN,  &desc->flags))
-		_gpio_set_open_drain_value(desc, value);
-	else if (test_bit(FLAG_OPEN_SOURCE,  &desc->flags))
-		_gpio_set_open_source_value(desc, value);
-	else
-		chip->set(chip, gpio_chip_hwgpio(desc), value);
+	_gpiod_set_value(desc, value);
 }
 
 void gpio_set_value_cansleep(unsigned gpio, int value)
