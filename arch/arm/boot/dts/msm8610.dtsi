@@ -40,7 +40,6 @@
 /include/ "msm8610-gpu.dtsi"
 /include/ "msm-gdsc.dtsi"
 /include/ "msm8610-coresight.dtsi"
-/include/ "msm8610-pm.dtsi"
 /include/ "msm8610-smp2p.dtsi"
 /include/ "msm8610-bus.dtsi"
 /include/ "msm8610-mdss.dtsi"
@@ -68,6 +67,15 @@
 		ngpio = <102>;
 		interrupts = <0 208 0>;
 		qcom,direct-connect-irqs = <8>;
+	};
+
+	wcd9xxx_intc: wcd9xxx_irq {
+		compatible = "qcom,wcd9xxx-irq";
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		interrupt-parent = <&intc>;
+		interrupts = <0 31 0>;
+		interrupt-names = "cdc-int";
 	};
 
 	qcom,mpm2-sleep-counter@fc4a3000 {
@@ -241,7 +249,7 @@
 				<87 512 60000 960000>;
 	};
 
-	android_usb@fe8050c8 {
+	android_usb: android_usb@fe8050c8 {
 		compatible = "qcom,android-usb";
 		reg = <0xfe8050c8 0xc8>;
 		qcom,android-usb-swfi-latency = <1>;
@@ -936,15 +944,11 @@
 
 &gdsc_vfe {
 	qcom,clock-names = "core_clk", "iface_clk", "bus_clk";
-	qcom,skip-logic-collapse;
-	qcom,retain-periph;
-	qcom,retain-mem;
 	status = "ok";
 };
 
 &gdsc_oxili_cx {
 	qcom,clock-names = "core_clk", "iface_clk", "mem_clk";
-	qcom,skip-logic-collapse;
 	status = "ok";
 };
 
