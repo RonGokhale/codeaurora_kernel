@@ -151,22 +151,6 @@ static long fat_generic_compat_ioctl(struct file *filp, unsigned int cmd,
 
 static int fat_file_release(struct inode *inode, struct file *filp)
 {
-
-	struct super_block *sb = inode->i_sb;
-	loff_t mmu_private_ideal;
-
-	/*
-	 * Release unwritten fallocated blocks on file release.
-	 * Do this only when the last open file descriptor is closed.
-	 */
-	mutex_lock(&inode->i_mutex);
-	mmu_private_ideal = round_up(inode->i_size, sb->s_blocksize);
-
-	if (mmu_private_ideal < MSDOS_I(inode)->mmu_private &&
-	    d_count(filp->f_dentry) == 1)
-		fat_truncate_blocks(inode, inode->i_size);
-	mutex_unlock(&inode->i_mutex);
-
 	if ((filp->f_mode & FMODE_WRITE) &&
 	     MSDOS_SB(inode->i_sb)->options.flush) {
 		fat_flush_inodes(inode->i_sb, inode, NULL);
@@ -245,8 +229,7 @@ out:
  * operation, which gets called from sys_fallocate system call. User
  * space requests len bytes at offset. If FALLOC_FL_KEEP_SIZE is set
  * we just allocate clusters without zeroing them out. Otherwise we
- * allocate and zero out clusters via an expanding truncate. The
- * allocated clusters are freed in fat_file_release().
+ * allocate and zero out clusters via an expanding truncate.
  */
 static long fat_fallocate(struct file *file, int mode,
 				loff_t offset, loff_t len)
@@ -488,9 +471,6 @@ int fat_setattr(struct dentry *dentry, struct iattr *attr)
 	struct inode *inode = dentry->d_inode;
 	unsigned int ia_valid;
 	int error;
-	loff_t mmu_private_ideal;
-
-	mmu_private_ideal = round_up(inode->i_size, dentry->d_sb->s_blocksize);
 
 	/* Check for setting the inode time. */
 	ia_valid = attr->ia_valid;
@@ -516,8 +496,7 @@ int fat_setattr(struct dentry *dentry, struct iattr *attr)
 	if (attr->ia_valid & ATTR_SIZE) {
 		inode_dio_wait(inode);
 
-		if (attr->ia_size > inode->i_size &&
-		    MSDOS_I(inode)->mmu_private <= mmu_private_ideal) {
+		if (attr->ia_size > inode->i_size) {
 			error = fat_cont_expand(inode, attr->ia_size);
 			if (error || attr->ia_valid == ATTR_SIZE)
 				goto out;
