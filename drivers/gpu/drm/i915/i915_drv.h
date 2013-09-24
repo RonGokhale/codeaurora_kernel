@@ -467,6 +467,36 @@ enum i915_cache_level {
 
 typedef uint32_t gen6_gtt_pte_t;
 
+/**
+ * A VMA represents a GEM BO that is bound into an address space. Therefore, a
+ * VMA's presence cannot be guaranteed before binding, or after unbinding the
+ * object into/from the address space.
+ *
+ * To make things as simple as possible (ie. no refcounting), a VMA's lifetime
+ * will always be <= an objects lifetime. So object refcounting should cover us.
+ */
+struct i915_vma {
+	struct drm_mm_node node;
+	struct drm_i915_gem_object *obj;
+	struct i915_address_space *vm;
+
+	/** This object's place on the active/inactive lists */
+	struct list_head mm_list;
+
+	struct list_head vma_link; /* Link in the object's VMA list */
+
+	/** This vma's place in the batchbuffer or on the eviction list */
+	struct list_head exec_list;
+
+	/**
+	 * Used for performing relocations during execbuffer insertion.
+	 */
+	struct hlist_node exec_node;
+	unsigned long exec_handle;
+	struct drm_i915_gem_exec_object2 *exec_entry;
+
+};
+
 struct i915_address_space {
 	struct drm_mm mm;
 	struct drm_device *dev;
@@ -505,9 +535,18 @@ struct i915_address_space {
 	/* FIXME: Need a more generic return type */
 	gen6_gtt_pte_t (*pte_encode)(dma_addr_t addr,
 				     enum i915_cache_level level);
+
+	/** Unmap an object from an address space. This usually consists of
+	 * setting the valid PTE entries to a reserved scratch page. */
+	void (*unbind_vma)(struct i915_vma *vma);
 	void (*clear_range)(struct i915_address_space *vm,
 			    unsigned int first_entry,
 			    unsigned int num_entries);
+	/* Map an object into an address space with the given cache flags. */
+#define GLOBAL_BIND (1<<0)
+	void (*bind_vma)(struct i915_vma *vma,
+			 enum i915_cache_level cache_level,
+			 u32 flags);
 	void (*insert_entries)(struct i915_address_space *vm,
 			       struct sg_table *st,
 			       unsigned int first_entry,
@@ -552,36 +591,6 @@ struct i915_hw_ppgtt {
 	dma_addr_t *pt_dma_addr;
 
 	int (*enable)(struct drm_device *dev);
-};
-
-/**
- * A VMA represents a GEM BO that is bound into an address space. Therefore, a
- * VMA's presence cannot be guaranteed before binding, or after unbinding the
- * object into/from the address space.
- *
- * To make things as simple as possible (ie. no refcounting), a VMA's lifetime
- * will always be <= an objects lifetime. So object refcounting should cover us.
- */
-struct i915_vma {
-	struct drm_mm_node node;
-	struct drm_i915_gem_object *obj;
-	struct i915_address_space *vm;
-
-	/** This object's place on the active/inactive lists */
-	struct list_head mm_list;
-
-	struct list_head vma_link; /* Link in the object's VMA list */
-
-	/** This vma's place in the batchbuffer or on the eviction list */
-	struct list_head exec_list;
-
-	/**
-	 * Used for performing relocations during execbuffer insertion.
-	 */
-	struct hlist_node exec_node;
-	unsigned long exec_handle;
-	struct drm_i915_gem_exec_object2 *exec_entry;
-
 };
 
 struct i915_ctx_hang_stats {
