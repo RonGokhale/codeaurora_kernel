@@ -437,15 +437,6 @@ void i915_gem_cleanup_aliasing_ppgtt(struct drm_device *dev)
 	dev_priv->mm.aliasing_ppgtt = NULL;
 }
 
-void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
-			    struct drm_i915_gem_object *obj,
-			    enum i915_cache_level cache_level)
-{
-	ppgtt->base.insert_entries(&ppgtt->base, obj->pages,
-				   i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT,
-				   cache_level);
-}
-
 static void __always_unused
 gen6_ppgtt_bind_vma(struct i915_vma *vma,
 		    enum i915_cache_level cache_level,
@@ -456,14 +447,6 @@ gen6_ppgtt_bind_vma(struct i915_vma *vma,
 	WARN_ON(flags);
 
 	gen6_ppgtt_insert_entries(vma->vm, vma->obj->pages, entry, cache_level);
-}
-
-void i915_ppgtt_unbind_object(struct i915_hw_ppgtt *ppgtt,
-			      struct drm_i915_gem_object *obj)
-{
-	ppgtt->base.clear_range(&ppgtt->base,
-				i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT,
-				obj->base.size >> PAGE_SHIFT);
 }
 
 static void __always_unused gen6_ppgtt_unbind_vma(struct i915_vma *vma)
@@ -523,8 +506,10 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 				       dev_priv->gtt.base.total / PAGE_SIZE);
 
 	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list) {
+		struct i915_vma *vma = i915_gem_obj_to_vma(obj,
+							   &dev_priv->gtt.base);
 		i915_gem_clflush_object(obj, obj->pin_display);
-		i915_gem_gtt_bind_object(obj, obj->cache_level);
+		vma->vm->bind_vma(vma, obj->cache_level, 0);
 	}
 
 	i915_gem_chipset_flush(dev);
@@ -685,33 +670,6 @@ static void gen6_ggtt_bind_vma(struct i915_vma *vma,
 					  vma->obj->pages, entry, cache_level);
 		vma->obj->has_aliasing_ppgtt_mapping = 1;
 	}
-}
-
-void i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj,
-			      enum i915_cache_level cache_level)
-{
-	struct drm_device *dev = obj->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	const unsigned long entry = i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT;
-
-	dev_priv->gtt.base.insert_entries(&dev_priv->gtt.base, obj->pages,
-					  entry,
-					  cache_level);
-
-	obj->has_global_gtt_mapping = 1;
-}
-
-void i915_gem_gtt_unbind_object(struct drm_i915_gem_object *obj)
-{
-	struct drm_device *dev = obj->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	const unsigned long entry = i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT;
-
-	dev_priv->gtt.base.clear_range(&dev_priv->gtt.base,
-				       entry,
-				       obj->base.size >> PAGE_SHIFT);
-
-	obj->has_global_gtt_mapping = 0;
 }
 
 static void gen6_ggtt_unbind_vma(struct i915_vma *vma)

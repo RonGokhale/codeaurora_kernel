@@ -2700,12 +2700,8 @@ int i915_vma_unbind(struct i915_vma *vma)
 
 	trace_i915_vma_unbind(vma);
 
-	if (obj->has_global_gtt_mapping)
-		i915_gem_gtt_unbind_object(obj);
-	if (obj->has_aliasing_ppgtt_mapping) {
-		i915_ppgtt_unbind_object(dev_priv->mm.aliasing_ppgtt, obj);
-		obj->has_aliasing_ppgtt_mapping = 0;
-	}
+	vma->vm->unbind_vma(vma);
+
 	i915_gem_gtt_finish_object(obj);
 	i915_gem_object_unpin_pages(obj);
 
@@ -3162,7 +3158,7 @@ static void i915_gem_verify_gtt(struct drm_device *dev)
 /**
  * Finds free space in the GTT aperture and binds the object there.
  */
-static int
+int
 i915_gem_object_bind_to_vm(struct drm_i915_gem_object *obj,
 			   struct i915_address_space *vm,
 			   unsigned alignment,
@@ -3431,7 +3427,6 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 				    enum i915_cache_level cache_level)
 {
 	struct drm_device *dev = obj->base.dev;
-	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct i915_vma *vma;
 	int ret;
 
@@ -3470,11 +3465,8 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 				return ret;
 		}
 
-		if (obj->has_global_gtt_mapping)
-			i915_gem_gtt_bind_object(obj, cache_level);
-		if (obj->has_aliasing_ppgtt_mapping)
-			i915_ppgtt_bind_object(dev_priv->mm.aliasing_ppgtt,
-					       obj, cache_level);
+		list_for_each_entry(vma, &obj->vma_list, vma_link)
+			vma->vm->bind_vma(vma, cache_level, 0);
 	}
 
 	list_for_each_entry(vma, &obj->vma_list, vma_link)
@@ -3802,6 +3794,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		    bool map_and_fenceable,
 		    bool nonblocking)
 {
+	const u32 flags = map_and_fenceable ? GLOBAL_BIND : 0;
 	struct i915_vma *vma;
 	int ret;
 
@@ -3830,20 +3823,22 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 	}
 
 	if (!i915_gem_obj_bound(obj, vm)) {
-		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
-
 		ret = i915_gem_object_bind_to_vm(obj, vm, alignment,
 						 map_and_fenceable,
 						 nonblocking);
 		if (ret)
 			return ret;
 
-		if (!dev_priv->mm.aliasing_ppgtt)
-			i915_gem_gtt_bind_object(obj, obj->cache_level);
-	}
+		vma = i915_gem_obj_to_vma(obj, vm);
+		vm->bind_vma(vma, obj->cache_level, flags);
+	} else
+		vma = i915_gem_obj_to_vma(obj, vm);
 
+	/* Objects are created map and fenceable. If we bind an object
+	 * the first time, and we had aliasing PPGTT (and didn't request
+	 * GLOBAL), we'll need to do this on the second bind.*/
 	if (!obj->has_global_gtt_mapping && map_and_fenceable)
-		i915_gem_gtt_bind_object(obj, obj->cache_level);
+		vm->bind_vma(vma, obj->cache_level, GLOBAL_BIND);
 
 	obj->pin_count++;
 	obj->pin_mappable |= map_and_fenceable;
