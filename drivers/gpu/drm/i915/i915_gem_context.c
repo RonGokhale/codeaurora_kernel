@@ -422,8 +422,10 @@ static int do_switch(struct i915_hw_context *to)
 		return ret;
 	}
 
-	if (!to->obj->has_global_gtt_mapping)
-		i915_gem_gtt_bind_object(to->obj, to->obj->cache_level);
+	if (!to->obj->has_global_gtt_mapping) {
+		struct i915_vma *vma = i915_gem_obj_to_ggtt(to->obj);
+		vma->vm->bind_vma(vma, to->obj->cache_level, GLOBAL_BIND);
+	}
 
 	if (!to->is_initialized || is_default_context(to))
 		hw_flags |= MI_RESTORE_INHIBIT;
