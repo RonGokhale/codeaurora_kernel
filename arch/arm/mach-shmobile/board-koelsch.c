@@ -1,6 +1,7 @@
 /*
- * APE6EVM board support
+ * Koelsch board support
  *
+ * Copyright (C) 2013  Renesas Electronics Corporation
  * Copyright (C) 2013  Renesas Solutions Corp.
  * Copyright (C) 2013  Magnus Damm
  *
@@ -18,46 +19,26 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <linux/gpio.h>
 #include <linux/kernel.h>
-#include <linux/of_platform.h>
-#include <linux/pinctrl/machine.h>
 #include <linux/platform_device.h>
-#include <linux/sh_clk.h>
 #include <mach/common.h>
-#include <mach/r8a73a4.h>
+#include <mach/r8a7791.h>
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 
-static void __init ape6evm_add_standard_devices(void)
+static void __init koelsch_add_standard_devices(void)
 {
-
-	struct clk *parent;
-	struct clk *mp;
-
-	r8a73a4_clock_init();
-
-	/* MP clock parent = extal2 */
-	parent      = clk_get(NULL, "extal2");
-	mp          = clk_get(NULL, "mp");
-	BUG_ON(IS_ERR(parent) || IS_ERR(mp));
-
-	clk_set_parent(mp, parent);
-	clk_put(parent);
-	clk_put(mp);
-
-	r8a73a4_add_dt_devices();
-	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
-	platform_device_register_simple("cpufreq-cpu0", -1, NULL, 0);
+	r8a7791_clock_init();
+	r8a7791_add_dt_devices();
 }
 
-static const char *ape6evm_boards_compat_dt[] __initdata = {
-	"renesas,ape6evm-reference",
+static const char * const koelsch_boards_compat_dt[] __initconst = {
+	"renesas,koelsch",
 	NULL,
 };
 
-DT_MACHINE_START(APE6EVM_DT, "ape6evm")
-	.init_early	= r8a73a4_init_early,
-	.init_machine	= ape6evm_add_standard_devices,
-	.dt_compat	= ape6evm_boards_compat_dt,
+DT_MACHINE_START(KOELSCH_DT, "koelsch")
+	.init_early	= r8a7791_init_early,
+	.init_machine	= koelsch_add_standard_devices,
+	.dt_compat	= koelsch_boards_compat_dt,
 MACHINE_END
