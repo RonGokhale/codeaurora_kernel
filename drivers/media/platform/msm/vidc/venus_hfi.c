@@ -1515,31 +1515,6 @@ static int venus_hfi_sys_set_idle_message(struct venus_hfi_device *device,
 	return 0;
 }
 
-static int venus_hfi_sys_set_power_control(struct venus_hfi_device *device,
-	bool enable)
-{
-	struct regulator_info *rinfo;
-	bool supported = false;
-	u8 packet[VIDC_IFACEQ_VAR_SMALL_PKT_SIZE];
-	struct hfi_cmd_sys_set_property_packet *pkt =
-		(struct hfi_cmd_sys_set_property_packet *) &packet;
-
-	venus_hfi_for_each_regulator(device, rinfo, {
-		if (rinfo->has_hw_power_collapse) {
-			supported = true;
-			break;
-		}
-	});
-
-	if (!supported)
-		return 0;
-
-	create_pkt_cmd_sys_power_control(pkt, enable);
-	if (venus_hfi_iface_cmdq_write(device, pkt))
-		return -ENOTEMPTY;
-	return 0;
-}
-
 static int venus_hfi_core_init(void *device)
 {
 	struct hfi_cmd_sys_init_packet pkt;
@@ -1957,8 +1932,6 @@ static void venus_hfi_set_default_sys_properties(
 		dprintk(VIDC_WARN, "Setting fw_debug msg ON failed\n");
 	if (venus_hfi_sys_set_idle_message(device, msm_fw_low_power_mode))
 		dprintk(VIDC_WARN, "Setting idle response ON failed\n");
-	if (venus_hfi_sys_set_power_control(device, msm_fw_low_power_mode))
-		dprintk(VIDC_WARN, "Setting h/w power collapse ON failed\n");
 }
 
 static void *venus_hfi_session_init(void *device, u32 session_id,
@@ -3322,33 +3295,6 @@ disable_regulator_failed:
 	return rc;
 }
 
-static int venus_hfi_enable_hw_power_collapse(struct venus_hfi_device *device)
-{
-	int rc = 0;
-	struct regulator_info *rinfo;
-
-	venus_hfi_for_each_regulator(device, rinfo, {
-		if (rinfo->has_hw_power_collapse) {
-			rc = regulator_set_mode(rinfo->regulator,
-					REGULATOR_MODE_FAST);
-			if (rc) {
-				/* Not fatal, we can live with
-				 * out power collapse */
-				dprintk(VIDC_WARN,
-						"Failed to enable power collapse on %s\n",
-						rinfo->name);
-				continue;
-			}
-
-			dprintk(VIDC_DBG,
-					"Enabled h/w power collapse on %s\n",
-					rinfo->name);
-		}
-	});
-
-	return 0;
-}
-
 static int venus_hfi_enable_regulators(struct venus_hfi_device *device)
 {
 	int rc = 0, c = 0;
@@ -3439,9 +3385,6 @@ static int venus_hfi_load_fw(void *dev)
 		dprintk(VIDC_ERR, "Failed to enable clocks: %d\n", rc);
 		goto fail_enable_clks;
 	}
-
-	/* Hand off control of regulators to h/w _after_ enabling clocks */
-	venus_hfi_enable_hw_power_collapse(device);
 
 	rc = protect_cp_mem(device);
 	if (rc) {
