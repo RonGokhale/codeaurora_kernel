@@ -524,9 +524,6 @@ static int wacom_set_device_mode(struct usb_interface *intf, int report_id, int 
 
 		error = wacom_set_report(intf, WAC_HID_FEATURE_REPORT,
 		                         report_id, rep_data, length, 1);
-		if (error >= 0)
-			error = wacom_get_report(intf, WAC_HID_FEATURE_REPORT,
-			                         report_id, rep_data, length, 1);
 	} while ((error < 0 || rep_data[1] != mode) && limit++ < WAC_MSG_RETRIES);
 
 	kfree(rep_data);
@@ -548,7 +545,7 @@ static int wacom_query_tablet_data(struct usb_interface *intf, struct wacom_feat
 			/* MT Tablet PC touch */
 			return wacom_set_device_mode(intf, 3, 4, 4);
 		}
-		else if (features->type == WACOM_24HDT) {
+		else if (features->type == WACOM_24HDT || features->type == CINTIQ_HYBRID) {
 			return wacom_set_device_mode(intf, 18, 3, 2);
 		}
 	} else if (features->device_type == BTN_TOOL_PEN) {
@@ -719,7 +716,7 @@ static int wacom_led_control(struct wacom *wacom)
 		return -ENOMEM;
 
 	if (wacom->wacom_wac.features.type >= INTUOS5S &&
-	    wacom->wacom_wac.features.type <= INTUOS5L)	{
+	    wacom->wacom_wac.features.type <= INTUOSPL) {
 		/*
 		 * Touch Ring and crop mark LED luminance may take on
 		 * one of four values:
@@ -981,14 +978,20 @@ static int wacom_initialize_leds(struct wacom *wacom)
 	case INTUOS5S:
 	case INTUOS5:
 	case INTUOS5L:
-		wacom->led.select[0] = 0;
-		wacom->led.select[1] = 0;
-		wacom->led.llv = 32;
-		wacom->led.hlv = 0;
-		wacom->led.img_lum = 0;
+	case INTUOSPS:
+	case INTUOSPM:
+	case INTUOSPL:
+		if (wacom->wacom_wac.features.device_type == BTN_TOOL_PEN) {
+			wacom->led.select[0] = 0;
+			wacom->led.select[1] = 0;
+			wacom->led.llv = 32;
+			wacom->led.hlv = 0;
+			wacom->led.img_lum = 0;
 
-		error = sysfs_create_group(&wacom->intf->dev.kobj,
-					   &intuos5_led_attr_group);
+			error = sysfs_create_group(&wacom->intf->dev.kobj,
+						  &intuos5_led_attr_group);
+		} else
+			return 0;
 		break;
 
 	default:
@@ -1024,8 +1027,12 @@ static void wacom_destroy_leds(struct wacom *wacom)
 	case INTUOS5S:
 	case INTUOS5:
 	case INTUOS5L:
-		sysfs_remove_group(&wacom->intf->dev.kobj,
-				   &intuos5_led_attr_group);
+	case INTUOSPS:
+	case INTUOSPM:
+	case INTUOSPL:
+		if (wacom->wacom_wac.features.device_type == BTN_TOOL_PEN)
+			sysfs_remove_group(&wacom->intf->dev.kobj,
+					   &intuos5_led_attr_group);
 		break;
 	}
 }
@@ -1298,7 +1305,7 @@ static int wacom_probe(struct usb_interface *intf, const struct usb_device_id *i
 	 * HID descriptor. If this is the touch interface (wMaxPacketSize
 	 * of WACOM_PKGLEN_BBTOUCH3), override the table values.
 	 */
-	if (features->type >= INTUOS5S && features->type <= INTUOS5L) {
+	if (features->type >= INTUOS5S && features->type <= INTUOSPL) {
 		if (endpoint->wMaxPacketSize == WACOM_PKGLEN_BBTOUCH3) {
 			features->device_type = BTN_TOOL_FINGER;
 			features->pktlen = WACOM_PKGLEN_BBTOUCH3;
