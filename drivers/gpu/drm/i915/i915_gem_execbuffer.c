@@ -286,8 +286,14 @@ i915_gem_execbuffer_relocate_entry(struct drm_i915_gem_object *obj,
 	if (unlikely(IS_GEN6(dev) &&
 	    reloc->write_domain == I915_GEM_DOMAIN_INSTRUCTION &&
 	    !target_i915_obj->has_global_gtt_mapping)) {
-		i915_gem_gtt_bind_object(target_i915_obj,
-					 target_i915_obj->cache_level);
+		/* SNB shall not support full PPGTT. This path can only be taken
+		 * when the VM is the GGTT (aliasing PPGTT is not a real VM, and
+		 * therefore doesn't count).
+		 */
+		BUG_ON(vm != obj_to_ggtt(target_i915_obj));
+		vm->bind_vma(i915_gem_obj_to_ggtt(target_i915_obj),
+			     target_i915_obj->cache_level,
+			     GLOBAL_BIND);
 	}
 
 	/* Validate that the target is in a valid r/w GPU domain */
@@ -464,11 +470,12 @@ i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 				struct intel_ring_buffer *ring,
 				bool *need_reloc)
 {
-	struct drm_i915_private *dev_priv = ring->dev->dev_private;
+	struct drm_i915_gem_object *obj = vma->obj;
 	struct drm_i915_gem_exec_object2 *entry = vma->exec_entry;
 	bool has_fenced_gpu_access = INTEL_INFO(ring->dev)->gen < 4;
 	bool need_fence, need_mappable;
-	struct drm_i915_gem_object *obj = vma->obj;
+	u32 flags = (entry->flags & EXEC_OBJECT_NEEDS_GTT) &&
+		!vma->obj->has_global_gtt_mapping ? GLOBAL_BIND : 0;
 	int ret;
 
 	need_fence =
@@ -497,14 +504,6 @@ i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 		}
 	}
 
-	/* Ensure ppgtt mapping exists if needed */
-	if (dev_priv->mm.aliasing_ppgtt && !obj->has_aliasing_ppgtt_mapping) {
-		i915_ppgtt_bind_object(dev_priv->mm.aliasing_ppgtt,
-				       obj, obj->cache_level);
-
-		obj->has_aliasing_ppgtt_mapping = 1;
-	}
-
 	if (entry->offset != vma->node.start) {
 		entry->offset = vma->node.start;
 		*need_reloc = true;
@@ -515,9 +514,7 @@ i915_gem_execbuffer_reserve_vma(struct i915_vma *vma,
 		obj->base.pending_write_domain = I915_GEM_DOMAIN_RENDER;
 	}
 
-	if (entry->flags & EXEC_OBJECT_NEEDS_GTT &&
-	    !obj->has_global_gtt_mapping)
-		i915_gem_gtt_bind_object(obj, obj->cache_level);
+	vma->vm->bind_vma(vma, obj->cache_level, flags);
 
 	return 0;
 }
@@ -936,7 +933,7 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	struct intel_ring_buffer *ring;
 	struct i915_ctx_hang_stats *hs;
 	u32 ctx_id = i915_execbuffer2_get_context_id(*args);
-	u32 exec_start, exec_len;
+	u32 exec_len, exec_start = args->batch_start_offset;
 	u32 mask, flags;
 	int ret, mode, i;
 	bool need_relocs;
@@ -1118,8 +1115,34 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 	 * batch" bit. Hence we need to pin secure batches into the global gtt.
 	 * hsw should have this fixed, but let's be paranoid and do it
 	 * unconditionally for now. */
-	if (flags & I915_DISPATCH_SECURE && !batch_obj->has_global_gtt_mapping)
-		i915_gem_gtt_bind_object(batch_obj, batch_obj->cache_level);
+	if (flags & I915_DISPATCH_SECURE) {
+		struct i915_address_space *ggtt = obj_to_ggtt(batch_obj);
+
+		/* Assuming all privileged batches are in the global GTT means
+		 * we need to make sure we have a global gtt offset, as well as
+		 * the PTEs mapped. As mentioned above, we can forego this on
+		 * HSW, but don't.
+		 */
+
+		ret = i915_gem_obj_ggtt_pin(batch_obj, 0, false, false);
+		if (ret)
+			goto err;
+
+		ggtt->bind_vma(i915_gem_obj_to_ggtt(batch_obj),
+			       batch_obj->cache_level,
+			       GLOBAL_BIND);
+
+		/* Since the active list is per VM, we need to make sure this
+		 * VMA ends up on the GGTT's active list to avoid premature
+		 * eviction.
+		 */
+		i915_vma_move_to_active(i915_gem_obj_to_ggtt(batch_obj), ring);
+
+		i915_gem_object_unpin(batch_obj);
+
+		exec_start += i915_gem_obj_ggtt_offset(batch_obj);
+	} else
+		exec_start += i915_gem_obj_offset(batch_obj, vm);
 
 	ret = i915_gem_execbuffer_move_to_gpu(ring, &eb->vmas);
 	if (ret)
@@ -1161,8 +1184,6 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			goto err;
 	}
 
-	exec_start = i915_gem_obj_offset(batch_obj, vm) +
-		args->batch_start_offset;
 	exec_len = args->batch_len;
 	if (cliprects) {
 		for (i = 0; i < args->num_cliprects; i++) {
