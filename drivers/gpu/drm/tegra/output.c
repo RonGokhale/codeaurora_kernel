@@ -290,6 +290,7 @@ int tegra_output_init(struct drm_device *drm, struct tegra_output *output)
 	drm_connector_init(drm, &output->connector, &connector_funcs,
 			   connector);
 	drm_connector_helper_add(&output->connector, &connector_helper_funcs);
+	output->connector.dpms = DRM_MODE_DPMS_OFF;
 
 	if (output->panel)
 		drm_panel_attach(output->panel, &output->connector);
