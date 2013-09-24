@@ -57,6 +57,11 @@
 #define HSW_WB_ELLC_LLC_AGE0		HSW_CACHEABILITY_CONTROL(0xb)
 #define HSW_WT_ELLC_LLC_AGE0		HSW_CACHEABILITY_CONTROL(0x6)
 
+static void gen6_ppgtt_bind_vma(struct i915_vma *vma,
+				enum i915_cache_level cache_level,
+				u32 flags);
+static void gen6_ppgtt_unbind_vma(struct i915_vma *vma);
+
 static gen6_gtt_pte_t snb_pte_encode(dma_addr_t addr,
 				     enum i915_cache_level level)
 {
@@ -332,7 +337,9 @@ static int gen6_ppgtt_init(struct i915_hw_ppgtt *ppgtt)
 	ppgtt->base.pte_encode = dev_priv->gtt.base.pte_encode;
 	ppgtt->num_pd_entries = GEN6_PPGTT_PD_ENTRIES;
 	ppgtt->enable = gen6_ppgtt_enable;
+	ppgtt->base.unbind_vma = NULL;
 	ppgtt->base.clear_range = gen6_ppgtt_clear_range;
+	ppgtt->base.bind_vma = NULL;
 	ppgtt->base.insert_entries = gen6_ppgtt_insert_entries;
 	ppgtt->base.cleanup = gen6_ppgtt_cleanup;
 	ppgtt->base.scratch = dev_priv->gtt.base.scratch;
@@ -439,12 +446,32 @@ void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
 				   cache_level);
 }
 
+static void __always_unused
+gen6_ppgtt_bind_vma(struct i915_vma *vma,
+		    enum i915_cache_level cache_level,
+		    u32 flags)
+{
+	const unsigned long entry = vma->node.start >> PAGE_SHIFT;
+
+	WARN_ON(flags);
+
+	gen6_ppgtt_insert_entries(vma->vm, vma->obj->pages, entry, cache_level);
+}
+
 void i915_ppgtt_unbind_object(struct i915_hw_ppgtt *ppgtt,
 			      struct drm_i915_gem_object *obj)
 {
 	ppgtt->base.clear_range(&ppgtt->base,
 				i915_gem_obj_ggtt_offset(obj) >> PAGE_SHIFT,
 				obj->base.size >> PAGE_SHIFT);
+}
+
+static void __always_unused gen6_ppgtt_unbind_vma(struct i915_vma *vma)
+{
+	const unsigned long entry = vma->node.start >> PAGE_SHIFT;
+
+	gen6_ppgtt_clear_range(vma->vm, entry,
+			       vma->obj->base.size >> PAGE_SHIFT);
 }
 
 extern int intel_iommu_gfx_mapped;
@@ -592,6 +619,19 @@ static void i915_ggtt_insert_entries(struct i915_address_space *vm,
 
 }
 
+static void i915_ggtt_bind_vma(struct i915_vma *vma,
+			       enum i915_cache_level cache_level,
+			       u32 unused)
+{
+	const unsigned long entry = vma->node.start >> PAGE_SHIFT;
+	unsigned int flags = (cache_level == I915_CACHE_NONE) ?
+		AGP_USER_MEMORY : AGP_USER_CACHED_MEMORY;
+
+	BUG_ON(!i915_is_ggtt(vma->vm));
+	intel_gtt_insert_sg_entries(vma->obj->pages, entry, flags);
+	vma->obj->has_global_gtt_mapping = 1;
+}
+
 static void i915_ggtt_clear_range(struct i915_address_space *vm,
 				  unsigned int first_entry,
 				  unsigned int num_entries)
@@ -599,6 +639,53 @@ static void i915_ggtt_clear_range(struct i915_address_space *vm,
 	intel_gtt_clear_range(first_entry, num_entries);
 }
 
+static void i915_ggtt_unbind_vma(struct i915_vma *vma)
+{
+	const unsigned int first = vma->node.start >> PAGE_SHIFT;
+	const unsigned int size = vma->obj->base.size >> PAGE_SHIFT;
+
+	BUG_ON(!i915_is_ggtt(vma->vm));
+	vma->obj->has_global_gtt_mapping = 0;
+	intel_gtt_clear_range(first, size);
+}
+
+static void gen6_ggtt_bind_vma(struct i915_vma *vma,
+			       enum i915_cache_level cache_level,
+			       u32 flags)
+{
+	struct drm_device *dev = vma->vm->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_gem_object *obj = vma->obj;
+	const unsigned long entry = vma->node.start >> PAGE_SHIFT;
+
+	/* If there is no aliasing PPGTT, or the caller needs a global mapping,
+	 * or we have a global mapping already but the cacheability flags have
+	 * changed, set the global PTEs.
+	 *
+	 * If there is an aliasing PPGTT it is anecdotally faster, so use that
+	 * instead if none of the above hold true.
+	 *
+	 * NB: A global mapping should only be needed for special regions like
+	 * "gtt mappable", SNB errata, or if specified via special execbuf
+	 * flags. At all other times, the GPU will use the aliasing PPGTT.
+	 */
+	if (!dev_priv->mm.aliasing_ppgtt || flags & GLOBAL_BIND) {
+		if (!obj->has_global_gtt_mapping ||
+		    (cache_level != obj->cache_level)) {
+			gen6_ggtt_insert_entries(vma->vm, obj->pages, entry,
+						 cache_level);
+			obj->has_global_gtt_mapping = 1;
+		}
+	}
+
+	if (dev_priv->mm.aliasing_ppgtt &&
+	    (!obj->has_aliasing_ppgtt_mapping ||
+	     (cache_level != obj->cache_level))) {
+		gen6_ppgtt_insert_entries(&dev_priv->mm.aliasing_ppgtt->base,
+					  vma->obj->pages, entry, cache_level);
+		vma->obj->has_aliasing_ppgtt_mapping = 1;
+	}
+}
 
 void i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj,
 			      enum i915_cache_level cache_level)
@@ -625,6 +712,27 @@ void i915_gem_gtt_unbind_object(struct drm_i915_gem_object *obj)
 				       obj->base.size >> PAGE_SHIFT);
 
 	obj->has_global_gtt_mapping = 0;
+}
+
+static void gen6_ggtt_unbind_vma(struct i915_vma *vma)
+{
+	struct drm_device *dev = vma->vm->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_gem_object *obj = vma->obj;
+	const unsigned long entry = vma->node.start >> PAGE_SHIFT;
+
+	if (obj->has_global_gtt_mapping) {
+		gen6_ggtt_clear_range(vma->vm, entry,
+				      vma->obj->base.size >> PAGE_SHIFT);
+		obj->has_global_gtt_mapping = 0;
+	}
+
+	if (obj->has_aliasing_ppgtt_mapping) {
+		gen6_ppgtt_clear_range(&dev_priv->mm.aliasing_ppgtt->base,
+				       entry,
+				       obj->base.size >> PAGE_SHIFT);
+		obj->has_aliasing_ppgtt_mapping = 0;
+	}
 }
 
 void i915_gem_gtt_finish_object(struct drm_i915_gem_object *obj)
@@ -860,7 +968,9 @@ static int gen6_gmch_probe(struct drm_device *dev,
 		DRM_ERROR("Scratch setup failed\n");
 
 	dev_priv->gtt.base.clear_range = gen6_ggtt_clear_range;
+	dev_priv->gtt.base.unbind_vma = gen6_ggtt_unbind_vma;
 	dev_priv->gtt.base.insert_entries = gen6_ggtt_insert_entries;
+	dev_priv->gtt.base.bind_vma = gen6_ggtt_bind_vma;
 
 	return ret;
 }
@@ -892,7 +1002,9 @@ static int i915_gmch_probe(struct drm_device *dev,
 
 	dev_priv->gtt.do_idle_maps = needs_idle_maps(dev_priv->dev);
 	dev_priv->gtt.base.clear_range = i915_ggtt_clear_range;
+	dev_priv->gtt.base.unbind_vma = i915_ggtt_unbind_vma;
 	dev_priv->gtt.base.insert_entries = i915_ggtt_insert_entries;
+	dev_priv->gtt.base.bind_vma = i915_ggtt_bind_vma;
 
 	return 0;
 }
