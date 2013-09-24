@@ -156,6 +156,11 @@ static void a4xx_start(struct adreno_device *adreno_dev)
 	/* Set the OCMEM base address for A4XX */
 	kgsl_regwrite(device, A4XX_RB_GMEM_BASE_ADDR,
 			(unsigned int)(adreno_dev->ocmem_base >> 14));
+
+        /* workaround around the UCHE out of bounds failure */
+        kgsl_regwrite(device, UCHE_TRAP_BASE_LO, 0xffff0000);
+        kgsl_regwrite(device, UCHE_TRAP_BASE_HI, 0xffff0000);
+
 }
 
 /* Register offset defines for A4XX, in order of enum adreno_regs */

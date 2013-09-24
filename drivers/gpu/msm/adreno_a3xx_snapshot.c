@@ -451,7 +451,7 @@ void *a3xx_snapshot(struct adreno_device *adreno_dev, void *snapshot,
 	_snapshot_hlsq_regs(regs, &list, adreno_dev);
 	if (adreno_is_a330(adreno_dev) || adreno_is_a305b(adreno_dev))
 		_snapshot_a330_regs(regs, &list);
-
+goto done;
 	/* Master set of (non debug) registers */
 	snapshot = kgsl_snapshot_add_section(device,
 		KGSL_SNAPSHOT_SECTION_REGS, snapshot, remain,
@@ -518,6 +518,6 @@ void *a3xx_snapshot(struct adreno_device *adreno_dev, void *snapshot,
 	/* Enable Clock gating */
 	kgsl_regwrite(device, A3XX_RBBM_CLOCK_CTL,
 		adreno_a3xx_rbbm_clock_ctl_default(adreno_dev));
-
+done:
 	return snapshot;
 }
