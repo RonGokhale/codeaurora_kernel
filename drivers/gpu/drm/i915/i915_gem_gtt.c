@@ -339,8 +339,8 @@ static int gen6_ppgtt_init(struct i915_hw_ppgtt *ppgtt)
 	ppgtt->enable = gen6_ppgtt_enable;
 	ppgtt->base.unbind_vma = NULL;
 	ppgtt->base.clear_range = gen6_ppgtt_clear_range;
-	ppgtt->base.bind_vma = NULL;
 	ppgtt->base.insert_entries = gen6_ppgtt_insert_entries;
+	ppgtt->base.bind_vma = NULL;
 	ppgtt->base.cleanup = gen6_ppgtt_cleanup;
 	ppgtt->base.scratch = dev_priv->gtt.base.scratch;
 	ppgtt->pt_pages = kcalloc(ppgtt->num_pd_entries, sizeof(struct page *),
@@ -589,19 +589,6 @@ static void gen6_ggtt_clear_range(struct i915_address_space *vm,
 	for (i = 0; i < num_entries; i++)
 		iowrite32(scratch_pte, &gtt_base[i]);
 	readl(gtt_base);
-}
-
-
-static void i915_ggtt_insert_entries(struct i915_address_space *vm,
-				     struct sg_table *st,
-				     unsigned int pg_start,
-				     enum i915_cache_level cache_level)
-{
-	unsigned int flags = (cache_level == I915_CACHE_NONE) ?
-		AGP_USER_MEMORY : AGP_USER_CACHED_MEMORY;
-
-	intel_gtt_insert_sg_entries(st, pg_start, flags);
-
 }
 
 static void i915_ggtt_bind_vma(struct i915_vma *vma,
@@ -927,7 +914,6 @@ static int gen6_gmch_probe(struct drm_device *dev,
 
 	dev_priv->gtt.base.clear_range = gen6_ggtt_clear_range;
 	dev_priv->gtt.base.unbind_vma = gen6_ggtt_unbind_vma;
-	dev_priv->gtt.base.insert_entries = gen6_ggtt_insert_entries;
 	dev_priv->gtt.base.bind_vma = gen6_ggtt_bind_vma;
 
 	return ret;
@@ -961,7 +947,6 @@ static int i915_gmch_probe(struct drm_device *dev,
 	dev_priv->gtt.do_idle_maps = needs_idle_maps(dev_priv->dev);
 	dev_priv->gtt.base.clear_range = i915_ggtt_clear_range;
 	dev_priv->gtt.base.unbind_vma = i915_ggtt_unbind_vma;
-	dev_priv->gtt.base.insert_entries = i915_ggtt_insert_entries;
 	dev_priv->gtt.base.bind_vma = i915_ggtt_bind_vma;
 
 	return 0;
