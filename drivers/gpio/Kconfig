@@ -129,7 +129,7 @@ config GPIO_IT8761E
 
 config GPIO_EM
 	tristate "Emma Mobile GPIO"
-	depends on ARM
+	depends on ARM && OF_GPIO
 	help
 	  Say yes here to support GPIO on Renesas Emma Mobile SoCs.
 
@@ -317,6 +317,15 @@ config GPIO_ICH
 	  ICH-based chipsets.  Currently supported devices: ICH6, ICH7, ICH8
 	  ICH9, ICH10, Series 5/3400 (eg Ibex Peak), Series 6/C200 (eg
 	  Cougar Point), NM10 (Tiger Point), and 3100 (Whitmore Lake).
+
+	  If unsure, say N.
+
+config GPIO_IOP
+	tristate "Intel IOP GPIO"
+	depends on ARM && (ARCH_IOP32X || ARCH_IOP33X)
+	help
+	  Say yes here to support the GPIO functionality of a number of Intel
+	  IOP32X or IOP33X.
 
 	  If unsure, say N.
 
@@ -703,7 +712,7 @@ config GPIO_74X164
 comment "AC97 GPIO expanders:"
 
 config GPIO_UCB1400
-	bool "Philips UCB1400 GPIO"
+	tristate "Philips UCB1400 GPIO"
 	depends on UCB1400_CORE
 	help
 	  This enables support for the Philips UCB1400 GPIO pins.
@@ -758,6 +767,12 @@ config GPIO_MSIC
 	help
 	  Enable support for GPIO on intel MSIC controllers found in
 	  intel MID devices
+
+config GPIO_BCM_KONA
+	bool "Broadcom Kona GPIO"
+	depends on OF_GPIO
+	help
+	  Turn on GPIO support for Broadcom "Kona" chips.
 
 comment "USB GPIO expanders:"
 
