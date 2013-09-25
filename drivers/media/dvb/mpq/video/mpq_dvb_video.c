@@ -1209,6 +1209,34 @@ static int mpq_int_vid_dec_get_output_format(
 	return result;
 }
 
+
+static int mpq_int_video_dec_set_extra_user_data(
+			struct video_client_ctx *client_ctx,
+			u32 *extradata_flag)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	int rc = 0;
+	struct vcd_property_meta_data_enable vcd_meta_data;
+	u32 vcd_status = VCD_ERR_FAIL;
+
+	DBG(" Inside mpq_int_video_dec_set_extra_user_data \n");
+	/*DBG("%s():*extradata_flag 0x%x\n",__func__,*extradata_flag); */
+	if (!client_ctx || !extradata_flag)
+		return -EINVAL;
+
+	vcd_property_hdr.prop_id = VCD_I_METADATA_ENABLE;
+	vcd_property_hdr.sz = sizeof(struct vcd_property_meta_data_enable);
+	vcd_meta_data.meta_data_enable_flag = *extradata_flag;
+	DBG("vcd_meta_data.meta_data_enable_flag set to 0x%x\n", vcd_meta_data.meta_data_enable_flag);
+
+	vcd_status = vcd_set_property(client_ctx->vcd_handle, &vcd_property_hdr, &vcd_meta_data);
+	if (vcd_status)
+		return -EINVAL;
+	else
+		rc = 0;
+	return rc;
+}
+
 static int mpq_int_vid_dec_set_h264_mv_buffers(
 				struct video_client_ctx *client_ctx,
 				struct video_h264_mv *mv_data)
@@ -1432,7 +1460,8 @@ static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 }
 
 static int mpq_int_vid_dec_set_buffer_req(struct video_client_ctx *client_ctx,
-				  struct video_buffer_req vdec_buf_req)
+				struct video_buffer_req vdec_buf_req,
+				u32 command_type)
 {
 	int rc = 0;
 	struct video_buffer_req vdec_req;
@@ -1441,10 +1470,22 @@ static int mpq_int_vid_dec_set_buffer_req(struct video_client_ctx *client_ctx,
 	if (rc)
 		DBG("Failed in mpq_int_vid_dec_get_buffer_req : %d\n", rc);
 
-	vdec_req.num_output_buffers = vdec_buf_req.num_output_buffers;
-	DBG(" num_output_buffers Set to %u\n", vdec_buf_req.num_output_buffers);
-	if (!vdec_buf_req.num_output_buffers)
-		return -EINVAL;
+	if(VIDEO_CMD_SET_BUFFER_COUNT == command_type)
+	{
+		if (!vdec_buf_req.num_output_buffers)
+			return -EINVAL;
+		DBG("Command VIDEO_CMD_SET_BUFFER_COUNT: input buffer count = %d\n",vdec_buf_req.num_output_buffers);
+		vdec_req.num_output_buffers = vdec_buf_req.num_output_buffers;
+	}
+	else if(VIDEO_CMD_SET_BUFFER_SIZE == command_type)
+	{
+		DBG("Command VIDEO_CMD_SET_BUFFER_SIZE: buffer size set to:%u\n", vdec_buf_req.output_buf_prop.buf_size);
+		DBG("Command VIDEO_CMD_SET_BUFFER_SIZE: input buffer size = %u\n",vdec_buf_req.output_buf_prop.buf_size);
+		vdec_req.output_buf_prop.buf_size = vdec_buf_req.output_buf_prop.buf_size;
+	}
+	DBG("num_output_buffers Set to %u\n", vdec_req.num_output_buffers);
+	DBG("vdec_req.output_buf_prop.buf_size %u\n",vdec_req.output_buf_prop.buf_size);
+
 	rc = mpq_int_set_out_buffer_req(client_ctx, &vdec_req);
 	if (rc)
 		DBG("Failed in mpq_int_set_out_buffer_req  %d\n", rc);
@@ -2200,9 +2241,13 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 		DBG("cmd : VIDEO_CMD_GET_BUFFER_REQ\n");
 		rc = mpq_int_vid_dec_get_buffer_req(client_ctx, &cmd->buf_req);
 		break;
+	case VIDEO_CMD_SET_BUFFER_SIZE:
+		DBG("cmd : VIDEO_CMD_SET_BUFFER_SIZE\n");
+		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req, VIDEO_CMD_SET_BUFFER_SIZE);
+		break;
 	case VIDEO_CMD_SET_BUFFER_COUNT:
 		DBG("cmd : VIDEO_CMD_SET_BUFFER_COUNT\n");
-		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req);
+		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req, VIDEO_CMD_SET_BUFFER_COUNT);
 		break;
 	case VIDEO_CMD_SET_DECODE_MODE:
 		DBG("cmd : VIDEO_CMD_SET_DECODE_MODE\n");
@@ -2234,6 +2279,11 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 	case VIDEO_CMD_CLEAR_OUTPUT_BUFFER:
 		DBG("cmd : VIDEO_CMD_CLEAR_OUTPUT_BUFFER\n");
 		rc = mpq_int_vid_dec_flush(client_ctx, VDEC_FLUSH_TYPE_OUTPUT);
+		break;
+	case VIDEO_CMD_SET_USER_AND_EXTRA_DATA:
+		DBG("cmd : VIDEO_CMD_SET_USER_AND_EXTRA_DATA\n");
+		DBG("mpq_dvb_video_command_handler():Extradata flag 0x%x\n",cmd->flags);
+		rc = mpq_int_video_dec_set_extra_user_data(client_ctx, &cmd->flags);
 		break;
 	default:
 		rc = -EINVAL;
