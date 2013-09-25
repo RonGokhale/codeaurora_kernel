@@ -284,7 +284,7 @@ struct msm_mctl_post_proc_cmd {
 #define MAX_ACTUATOR_INIT_SET 12
 #define MAX_ACTUATOR_TYPE_SIZE 32
 #define MAX_ACTUATOR_REG_TBL_SIZE 8
-
+#define MAX_ACTUATOR_AF_TOTAL_STEPS 1024
 
 #define MSM_MAX_CAMERA_CONFIGS 2
 
@@ -293,7 +293,9 @@ struct msm_mctl_post_proc_cmd {
 #define PP_PREV  ((0x01)<<2)
 #define PP_THUMB ((0x01)<<3)
 #define PP_RDI_PREV ((0x01)<<4)
-#define PP_MASK		(PP_SNAP|PP_RAW_SNAP|PP_PREV|PP_THUMB|PP_RDI_PREV)
+#define MSM_ACTUATOR_MOVE_SIGNED_FAR -1
+#define MSM_ACTUATOR_MOVE_SIGNED_NEAR  1
+#define PP_MASK		(PP_SNAP|PP_RAW_SNAP|PP_PREV|PP_THUMB)
 
 #define MSM_CAM_CTRL_CMD_DONE  0
 #define MSM_CAM_SENSOR_VFE_CMD 1
