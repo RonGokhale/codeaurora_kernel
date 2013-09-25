@@ -215,6 +215,24 @@ static void print_error_buffers(struct drm_i915_error_state_buf *m,
 	}
 }
 
+static const char *hangcheck_action_to_str(enum intel_ring_hangcheck_action a)
+{
+	switch (a) {
+	case HANGCHECK_IDLE:
+		return "idle";
+	case HANGCHECK_WAIT:
+		return "wait";
+	case HANGCHECK_ACTIVE:
+		return "active";
+	case HANGCHECK_KICK:
+		return "kick";
+	case HANGCHECK_HUNG:
+		return "hung";
+	}
+
+	return "unknown";
+}
+
 static void i915_ring_error_state(struct drm_i915_error_state_buf *m,
 				  struct drm_device *dev,
 				  struct drm_i915_error_state *error,
@@ -255,6 +273,9 @@ static void i915_ring_error_state(struct drm_i915_error_state_buf *m,
 	err_printf(m, "  waiting: %s\n", yesno(error->waiting[ring]));
 	err_printf(m, "  ring->head: 0x%08x\n", error->cpu_ring_head[ring]);
 	err_printf(m, "  ring->tail: 0x%08x\n", error->cpu_ring_tail[ring]);
+	err_printf(m, "  hangcheck: %s [%d]\n",
+		   hangcheck_action_to_str(error->hangcheck_action[ring]),
+		   error->hangcheck_score[ring]);
 }
 
 void i915_error_printf(struct drm_i915_error_state_buf *e, const char *f, ...)
@@ -720,6 +741,9 @@ static void i915_record_ring_state(struct drm_device *dev,
 
 	error->cpu_ring_head[ring->id] = ring->head;
 	error->cpu_ring_tail[ring->id] = ring->tail;
+
+	error->hangcheck_score[ring->id] = ring->hangcheck.score;
+	error->hangcheck_action[ring->id] = ring->hangcheck.action;
 }
 
 
@@ -769,7 +793,7 @@ static void i915_gem_record_rings(struct drm_device *dev,
 
 		error->ring[i].num_requests = count;
 		error->ring[i].requests =
-			kmalloc(count*sizeof(struct drm_i915_error_request),
+			kcalloc(count, sizeof(*error->ring[i].requests),
 				GFP_ATOMIC);
 		if (error->ring[i].requests == NULL) {
 			error->ring[i].num_requests = 0;
@@ -811,7 +835,7 @@ static void i915_gem_capture_vm(struct drm_i915_private *dev_priv,
 	error->pinned_bo_count[ndx] = i - error->active_bo_count[ndx];
 
 	if (i) {
-		active_bo = kmalloc(sizeof(*active_bo)*i, GFP_ATOMIC);
+		active_bo = kcalloc(i, sizeof(*active_bo), GFP_ATOMIC);
 		if (active_bo)
 			pinned_bo = active_bo + error->active_bo_count[ndx];
 	}
