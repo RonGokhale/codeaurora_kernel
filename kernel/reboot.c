@@ -38,7 +38,7 @@ enum reboot_mode reboot_mode DEFAULT_REBOOT_MODE;
  * been set on the command line).  This is needed so that we can
  * suppress DMI scanning for reboot quirks.  Without it, it's
  * impossible to override a faulty reboot quirk without recompiling.
-*/
+ */
 int reboot_default = 1;
 int reboot_cpu;
 enum reboot_type reboot_type = BOOT_ACPI;

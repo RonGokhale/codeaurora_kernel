@@ -443,7 +443,7 @@ sub seed_camelcase_file {
 		if ($line =~ /^[ \t]*(?:#[ \t]*define|typedef\s+$Type)\s+(\w*(?:[A-Z][a-z]|[a-z][A-Z])\w*)/) {
 			$camelcase{$1} = 1;
 		}
-	        elsif ($line =~ /^\s*$Declare\s+(\w*(?:[A-Z][a-z]|[a-z][A-Z])\w*)\s*\(/) {
+	        elsif ($line =~ /^\s*$Declare\s+(\w*(?:[A-Z][a-z]|[a-z][A-Z])\w*)\s*[\(\[,;]/) {
 			$camelcase{$1} = 1;
 		}
 	}
@@ -1611,6 +1611,8 @@ sub process {
 	#
 	my @setup_docs = ();
 	my $setup_docs = 0;
+
+	my $camelcase_file_seeded = 0;
 
 	sanitise_line_reset();
 	my $line;
@@ -2838,7 +2840,7 @@ sub process {
 				\+=|-=|\*=|\/=|%=|\^=|\|=|&=|
 				=>|->|<<|>>|<|>|=|!|~|
 				&&|\|\||,|\^|\+\+|--|&|\||\+|-|\*|\/|%|
-				\?|:
+				\?:|\?|:
 			}x;
 			my @elements = split(/($ops|;)/, $opline);
 
@@ -3061,15 +3063,13 @@ sub process {
 					    	$ok = 1;
 					}
 
-					# Ignore ?:
-					if (($opv eq ':O' && $ca =~ /\?$/) ||
-					    ($op eq '?' && $cc =~ /^:/)) {
-					    	$ok = 1;
-					}
-
+					# messages are ERROR, but ?: are CHK
 					if ($ok == 0) {
-						if (ERROR("SPACING",
-							  "spaces required around that '$op' $at\n" . $hereptr)) {
+						my $msg_type = \&ERROR;
+						$msg_type = \&CHK if (($op eq '?:' || $op eq '?' || $op eq ':') && $ctx =~ /VxV/);
+
+						if (&{$msg_type}("SPACING",
+								 "spaces required around that '$op' $at\n" . $hereptr)) {
 							$good = rtrim($fix_elements[$n]) . " " . trim($fix_elements[$n + 1]) . " ";
 							if (defined $fix_elements[$n + 2]) {
 								$fix_elements[$n + 2] =~ s/^\s+//;
@@ -3396,7 +3396,13 @@ sub process {
 				while ($var =~ m{($Ident)}g) {
 					my $word = $1;
 					next if ($word !~ /[A-Z][a-z]|[a-z][A-Z]/);
-					seed_camelcase_includes() if ($check);
+					if ($check) {
+						seed_camelcase_includes();
+						if (!$file && !$camelcase_file_seeded) {
+							seed_camelcase_file($realfile);
+							$camelcase_file_seeded = 1;
+						}
+					}
 					if (!defined $camelcase{$word}) {
 						$camelcase{$word} = 1;
 						CHK("CAMELCASE",
@@ -3975,8 +3981,8 @@ sub string_find_replace {
 # check for new externs in .h files.
 		if ($realfile =~ /\.h$/ &&
 		    $line =~ /^\+\s*(extern\s+)$Type\s*$Ident\s*\(/s) {
-			if (WARN("AVOID_EXTERNS",
-				 "extern prototypes should be avoided in .h files\n" . $herecurr) &&
+			if (CHK("AVOID_EXTERNS",
+				"extern prototypes should be avoided in .h files\n" . $herecurr) &&
 			    $fix) {
 				$fixed[$linenr - 1] =~ s/(.*)\bextern\b\s*(.*)/$1$2/;
 			}
