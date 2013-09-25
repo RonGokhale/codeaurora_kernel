@@ -764,7 +764,7 @@ static int rmnet_usb_probe(struct usb_interface *iface,
 					"mode debugfs file is not available\n");
 	}
 
-	usb_enable_autosuspend(udev);
+	//usb_enable_autosuspend(udev);
 
 	if (udev->parent && !udev->parent->parent) {
 		/* allow modem and roothub to wake up suspended system */
