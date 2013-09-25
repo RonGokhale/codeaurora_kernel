@@ -141,15 +141,8 @@ static int pci6208_do_insn_bits(struct comedi_device *dev,
 				struct comedi_insn *insn,
 				unsigned int *data)
 {
-	unsigned int mask = data[0];
-	unsigned int bits = data[1];
-
-	if (mask) {
-		s->state &= ~mask;
-		s->state |= (bits & mask);
-
+	if (comedi_dio_update_state(s, data))
 		outw(s->state, dev->iobase + PCI6208_DIO);
-	}
 
 	data[1] = s->state;
 
@@ -221,7 +214,6 @@ static int pci6208_auto_attach(struct comedi_device *dev,
 	val = inw(dev->iobase + PCI6208_DIO);
 	val = (val & PCI6208_DIO_DO_MASK) >> PCI6208_DIO_DO_SHIFT;
 	s->state	= val;
-	s->io_bits	= 0x0f;
 
 	dev_info(dev->class_dev, "%s: %s, I/O base=0x%04lx\n",
 		dev->driver->driver_name, dev->board_name, dev->iobase);
