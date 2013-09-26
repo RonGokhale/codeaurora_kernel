@@ -52,7 +52,7 @@
 	intel_ring_emit(LP_RING(dev_priv), x)
 
 #define ADVANCE_LP_RING() \
-	intel_ring_advance(LP_RING(dev_priv))
+	__intel_ring_advance(LP_RING(dev_priv))
 
 /**
  * Lock test for when it's just for synchronization of ring access.
@@ -641,7 +641,7 @@ static int i915_batchbuffer(struct drm_device *dev, void *data,
 
 	if (batch->num_cliprects) {
 		cliprects = kcalloc(batch->num_cliprects,
-				    sizeof(struct drm_clip_rect),
+				    sizeof(*cliprects),
 				    GFP_KERNEL);
 		if (cliprects == NULL)
 			return -ENOMEM;
@@ -703,7 +703,7 @@ static int i915_cmdbuffer(struct drm_device *dev, void *data,
 
 	if (cmdbuf->num_cliprects) {
 		cliprects = kcalloc(cmdbuf->num_cliprects,
-				    sizeof(struct drm_clip_rect), GFP_KERNEL);
+				    sizeof(*cliprects), GFP_KERNEL);
 		if (cliprects == NULL) {
 			ret = -ENOMEM;
 			goto fail_batch_free;
@@ -1314,13 +1314,18 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	if (ret)
 		goto cleanup_gem_stolen;
 
+	intel_init_power_well(dev);
+
+	/* Keep VGA alive until i915_disable_vga_mem() */
+	intel_display_power_get(dev, POWER_DOMAIN_VGA);
+
 	/* Important: The output setup functions called by modeset_init need
 	 * working irqs for e.g. gmbus and dp aux transfers. */
 	intel_modeset_init(dev);
 
 	ret = i915_gem_init(dev);
 	if (ret)
-		goto cleanup_irq;
+		goto cleanup_power;
 
 	INIT_WORK(&dev_priv->console_resume_work, intel_console_resume);
 
@@ -1329,8 +1334,10 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	/* Always safe in the mode setting case. */
 	/* FIXME: do pre/post-mode set stuff in core KMS code */
 	dev->vblank_disable_allowed = 1;
-	if (INTEL_INFO(dev)->num_pipes == 0)
+	if (INTEL_INFO(dev)->num_pipes == 0) {
+		intel_display_power_put(dev, POWER_DOMAIN_VGA);
 		return 0;
+	}
 
 	ret = intel_fbdev_init(dev);
 	if (ret)
@@ -1356,6 +1363,7 @@ static int i915_load_modeset_init(struct drm_device *dev)
 	 * vgacon_save_screen() works during the handover.
 	 */
 	i915_disable_vga_mem(dev);
+	intel_display_power_put(dev, POWER_DOMAIN_VGA);
 
 	/* Only enable hotplug handling once the fbdev is fully set up. */
 	dev_priv->enable_hotplug_processing = true;
@@ -1371,7 +1379,8 @@ cleanup_gem:
 	mutex_unlock(&dev->struct_mutex);
 	i915_gem_cleanup_aliasing_ppgtt(dev);
 	drm_mm_takedown(&dev_priv->gtt.base.mm);
-cleanup_irq:
+cleanup_power:
+	intel_display_power_put(dev, POWER_DOMAIN_VGA);
 	drm_irq_uninstall(dev);
 cleanup_gem_stolen:
 	i915_gem_cleanup_stolen(dev);
@@ -1478,7 +1487,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	dev->types[8] = _DRM_STAT_SECONDARY;
 	dev->types[9] = _DRM_STAT_DMA;
 
-	dev_priv = kzalloc(sizeof(drm_i915_private_t), GFP_KERNEL);
+	dev_priv = kzalloc(sizeof(*dev_priv), GFP_KERNEL);
 	if (dev_priv == NULL)
 		return -ENOMEM;
 
@@ -1783,8 +1792,6 @@ int i915_driver_unload(struct drm_device *dev)
 	list_del(&dev_priv->gtt.base.global_link);
 	WARN_ON(!list_empty(&dev_priv->vm_list));
 	drm_mm_takedown(&dev_priv->gtt.base.mm);
-	if (dev_priv->regs != NULL)
-		pci_iounmap(dev->pdev, dev_priv->regs);
 
 	intel_teardown_gmbus(dev);
 	intel_teardown_mchbar(dev);
@@ -1793,6 +1800,10 @@ int i915_driver_unload(struct drm_device *dev)
 	pm_qos_remove_request(&dev_priv->pm_qos);
 
 	dev_priv->gtt.base.cleanup(&dev_priv->gtt.base);
+
+	intel_uncore_fini(dev);
+	if (dev_priv->regs != NULL)
+		pci_iounmap(dev->pdev, dev_priv->regs);
 
 	if (dev_priv->slab)
 		kmem_cache_destroy(dev_priv->slab);

@@ -145,6 +145,13 @@ describe_obj(struct seq_file *m, struct drm_i915_gem_object *obj)
 		seq_printf(m, " (%s)", obj->ring->name);
 }
 
+static void describe_ctx(struct seq_file *m, struct i915_hw_context *ctx)
+{
+	seq_putc(m, ctx->is_initialized ? 'I' : 'i');
+	seq_putc(m, ctx->remap_slice ? 'R' : 'r');
+	seq_putc(m, ' ');
+}
+
 static int i915_gem_object_list_info(struct seq_file *m, void *data)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
@@ -1442,6 +1449,7 @@ static int i915_context_status(struct seq_file *m, void *unused)
 	struct drm_device *dev = node->minor->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct intel_ring_buffer *ring;
+	struct i915_hw_context *ctx;
 	int ret, i;
 
 	ret = mutex_lock_interruptible(&dev->mode_config.mutex);
@@ -1460,12 +1468,15 @@ static int i915_context_status(struct seq_file *m, void *unused)
 		seq_putc(m, '\n');
 	}
 
-	for_each_ring(ring, dev_priv, i) {
-		if (ring->default_context) {
-			seq_printf(m, "HW default context %s ring ", ring->name);
-			describe_obj(m, ring->default_context->obj);
-			seq_putc(m, '\n');
-		}
+	list_for_each_entry(ctx, &dev_priv->context_list, link) {
+		seq_puts(m, "HW context ");
+		describe_ctx(m, ctx);
+		for_each_ring(ring, dev_priv, i)
+			if (ring->default_context == ctx)
+				seq_printf(m, "(default context %s) ", ring->name);
+
+		describe_obj(m, ctx->obj);
+		seq_putc(m, '\n');
 	}
 
 	mutex_unlock(&dev->mode_config.mutex);
@@ -1610,27 +1621,27 @@ static int i915_dpio_info(struct seq_file *m, void *data)
 	seq_printf(m, "DPIO_CTL: 0x%08x\n", I915_READ(DPIO_CTL));
 
 	seq_printf(m, "DPIO_DIV_A: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_DIV_A));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_DIV_A));
 	seq_printf(m, "DPIO_DIV_B: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_DIV_B));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_DIV_B));
 
 	seq_printf(m, "DPIO_REFSFR_A: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_REFSFR_A));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_REFSFR_A));
 	seq_printf(m, "DPIO_REFSFR_B: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_REFSFR_B));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_REFSFR_B));
 
 	seq_printf(m, "DPIO_CORE_CLK_A: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_CORE_CLK_A));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_CORE_CLK_A));
 	seq_printf(m, "DPIO_CORE_CLK_B: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_CORE_CLK_B));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_CORE_CLK_B));
 
 	seq_printf(m, "DPIO_LPF_COEFF_A: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_LPF_COEFF_A));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_LPF_COEFF_A));
 	seq_printf(m, "DPIO_LPF_COEFF_B: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, _DPIO_LPF_COEFF_B));
+		   vlv_dpio_read(dev_priv, PIPE_A, _DPIO_LPF_COEFF_B));
 
 	seq_printf(m, "DPIO_FASTCLK_DISABLE: 0x%08x\n",
-		   vlv_dpio_read(dev_priv, DPIO_FASTCLK_DISABLE));
+		   vlv_dpio_read(dev_priv, PIPE_A, DPIO_FASTCLK_DISABLE));
 
 	mutex_unlock(&dev_priv->dpio_lock);
 
@@ -1657,9 +1668,10 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 psrstat, psrperf;
 
-	if (!IS_HASWELL(dev)) {
+	if (!HAS_PSR(dev)) {
 		seq_puts(m, "PSR not supported on this platform\n");
-	} else if (IS_HASWELL(dev) && I915_READ(EDP_PSR_CTL) & EDP_PSR_ENABLE) {
+	} else if (HAS_PSR(dev) &&
+		   I915_READ(EDP_PSR_CTL(dev)) & EDP_PSR_ENABLE) {
 		seq_puts(m, "PSR enabled\n");
 	} else {
 		seq_puts(m, "PSR disabled: ");
@@ -1701,7 +1713,7 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 		return 0;
 	}
 
-	psrstat = I915_READ(EDP_PSR_STATUS_CTL);
+	psrstat = I915_READ(EDP_PSR_STATUS_CTL(dev));
 
 	seq_puts(m, "PSR Current State: ");
 	switch (psrstat & EDP_PSR_STATUS_STATE_MASK) {
@@ -1773,7 +1785,7 @@ static int i915_edp_psr_status(struct seq_file *m, void *data)
 	seq_printf(m, "Idle Count: %u\n",
 		   psrstat & EDP_PSR_STATUS_IDLE_MASK);
 
-	psrperf = (I915_READ(EDP_PSR_PERF_CNT)) & EDP_PSR_PERF_CNT_MASK;
+	psrperf = (I915_READ(EDP_PSR_PERF_CNT(dev))) & EDP_PSR_PERF_CNT_MASK;
 	seq_printf(m, "Performance Counter: %u\n", psrperf);
 
 	return 0;
@@ -2145,7 +2157,7 @@ drm_add_fake_info_node(struct drm_minor *minor,
 {
 	struct drm_info_node *node;
 
-	node = kmalloc(sizeof(struct drm_info_node), GFP_KERNEL);
+	node = kmalloc(sizeof(*node), GFP_KERNEL);
 	if (node == NULL) {
 		debugfs_remove(ent);
 		return -ENOMEM;
