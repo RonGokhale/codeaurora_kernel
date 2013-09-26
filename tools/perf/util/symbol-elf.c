@@ -8,6 +8,22 @@
 #include "symbol.h"
 #include "debug.h"
 
+#ifndef HAVE_ELF_GETPHDRNUM
+static int elf_getphdrnum(Elf *elf, size_t *dst)
+{
+	GElf_Ehdr gehdr;
+	GElf_Ehdr *ehdr;
+
+	ehdr = gelf_getehdr(elf, &gehdr);
+	if (!ehdr)
+		return -1;
+
+	*dst = ehdr->e_phnum;
+
+	return 0;
+}
+#endif
+
 #ifndef NT_GNU_BUILD_ID
 #define NT_GNU_BUILD_ID 3
 #endif
@@ -912,8 +928,33 @@ int dso__load_sym(struct dso *dso, struct map *map,
 		 * to it...
 		 */
 		if (symbol_conf.demangle) {
-			demangled = bfd_demangle(NULL, elf_name,
+			/*
+			 * The demangler doesn't deal with cloned functions.
+			 * XXXX.clone.NUM or similar
+			 * Strip the dot part and readd it later.
+			 */
+			char *p = (char *)elf_name, *dot;
+			dot = strchr(elf_name, '.');
+			if (dot) {
+				p = strdup(elf_name);
+				if (!p)
+					goto new_symbol;
+				dot = strchr(p, '.');
+				*dot = 0;
+			}
+
+			demangled = bfd_demangle(NULL, p,
 						 DMGL_PARAMS | DMGL_ANSI);
+			if (dot)
+				*dot = '.';
+			if (demangled && dot) {
+				demangled = realloc(demangled, strlen(demangled) + strlen(dot) + 1);
+				if (!demangled)
+					goto new_symbol;
+				strcpy(demangled + (dot - p), dot);
+			}
+			if (p != elf_name)
+				free(p);
 			if (demangled != NULL)
 				elf_name = demangled;
 		}
