@@ -224,6 +224,7 @@ struct wcd9xxx_mbhc_config {
 struct wcd9xxx_cfilt_mode {
 	u8 reg_mode_val;
 	u8 cur_mode_val;
+	u8 reg_mask;
 };
 
 struct wcd9xxx_mbhc_cb {
@@ -236,6 +237,8 @@ struct wcd9xxx_mbhc_cb {
 							bool);
 	void (*select_cfilt) (struct snd_soc_codec *, struct wcd9xxx_mbhc *);
 	void (*free_irq) (struct wcd9xxx_mbhc *);
+	enum wcd9xxx_cdc_type (*get_cdc_type) (void);
+	void (*enable_clock_gate) (struct snd_soc_codec *, bool);
 };
 
 struct wcd9xxx_mbhc {
@@ -369,6 +372,7 @@ struct wcd9xxx_mbhc {
 
 int wcd9xxx_mbhc_start(struct wcd9xxx_mbhc *mbhc,
 		       struct wcd9xxx_mbhc_config *mbhc_cfg);
+void wcd9xxx_mbhc_stop(struct wcd9xxx_mbhc *mbhc);
 int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 		      struct snd_soc_codec *codec,
 		      int (*micbias_enable_cb) (struct snd_soc_codec*,  bool),
