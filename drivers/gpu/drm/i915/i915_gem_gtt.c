@@ -508,8 +508,13 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list) {
 		struct i915_vma *vma = i915_gem_obj_to_vma(obj,
 							   &dev_priv->gtt.base);
+		unsigned flags = obj->has_global_gtt_mapping ? GLOBAL_BIND : 0;
+
 		i915_gem_clflush_object(obj, obj->pin_display);
-		vma->vm->bind_vma(vma, obj->cache_level, 0);
+
+		obj->has_global_gtt_mapping = false;
+
+		vma->vm->bind_vma(vma, obj->cache_level, flags);
 	}
 
 	i915_gem_chipset_flush(dev);
