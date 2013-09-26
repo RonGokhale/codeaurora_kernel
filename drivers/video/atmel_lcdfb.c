@@ -1166,11 +1166,11 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 		ret = atmel_lcdfb_of_init(sinfo);
 		if (ret)
 			goto free_info;
-	} else if (dev->platform_data) {
+	} else if (dev_get_platdata(dev)) {
 		struct fb_monspecs *monspecs;
 		int i;
 
-		pdata = dev->platform_data;
+		pdata = dev_get_platdata(dev);
 		monspecs = pdata->default_monspecs;
 		sinfo->pdata = *pdata;
 
