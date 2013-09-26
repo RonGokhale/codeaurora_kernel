@@ -64,24 +64,31 @@ static int recover_dentry(struct page *ipage, struct inode *inode)
 	name.name = raw_inode->i_name;
 retry:
 	de = f2fs_find_entry(dir, &name, &page);
-	if (de && inode->i_ino == le32_to_cpu(de->ino)) {
-		kunmap(page);
-		f2fs_put_page(page, 0);
-		goto out;
-	}
+	if (de && inode->i_ino == le32_to_cpu(de->ino))
+		goto out_unmap_put;
 	if (de) {
 		einode = f2fs_iget(inode->i_sb, le32_to_cpu(de->ino));
 		if (IS_ERR(einode)) {
 			WARN_ON(1);
 			if (PTR_ERR(einode) == -ENOENT)
 				err = -EEXIST;
-			goto out;
+			goto out_unmap_put;
+		}
+		err = acquire_orphan_inode(F2FS_SB(inode->i_sb));
+		if (err) {
+			iput(einode);
+			goto out_unmap_put;
 		}
 		f2fs_delete_entry(de, page, einode);
 		iput(einode);
 		goto retry;
 	}
 	err = __f2fs_add_link(dir, &name, inode);
+	goto out;
+
+out_unmap_put:
+	kunmap(page);
+	f2fs_put_page(page, 0);
 out:
 	f2fs_msg(inode->i_sb, KERN_NOTICE, "recover_inode and its dentry: "
 			"ino = %x, name = %s, dir = %lx, err = %d",
@@ -419,6 +426,7 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 {
 	struct list_head inode_list;
 	int err;
+	int need_writecp = 0;
 
 	fsync_entry_slab = f2fs_kmem_cache_create("f2fs_fsync_inode_entry",
 			sizeof(struct fsync_inode_entry), NULL);
@@ -436,6 +444,8 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 	if (list_empty(&inode_list))
 		goto out;
 
+	need_writecp = 1;
+
 	/* step #2: recover data */
 	err = recover_data(sbi, &inode_list, CURSEG_WARM_NODE);
 	BUG_ON(!list_empty(&inode_list));
@@ -443,7 +453,7 @@ out:
 	destroy_fsync_dnodes(&inode_list);
 	kmem_cache_destroy(fsync_entry_slab);
 	sbi->por_doing = 0;
-	if (!err)
+	if (!err && need_writecp)
 		write_checkpoint(sbi, false);
 	return err;
 }
