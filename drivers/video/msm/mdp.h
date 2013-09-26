@@ -77,6 +77,18 @@ extern uint32 mdp_intr_mask;
 #define MDPOP_FG_PM_ALPHA       BIT(13)
 #define MDP_ALLOC(x)  kmalloc(x, GFP_KERNEL)
 
+#define PR_MEM_OFF		'0'
+#define PR_MEM_ON		'1'
+#define PR_MEM_KMSG		'2'
+
+#define pr_mem(_fmt, _args...) \
+	do { \
+		if (mdp_dbg_is_pr_mem_en() == PR_MEM_ON) \
+			mdp_dbg_pr_mem(_fmt, ##_args); \
+		else if (mdp_dbg_is_pr_mem_en() == PR_MEM_KMSG) \
+			pr_err(_fmt, ##_args); \
+	} while (0)
+
 struct mdp_buf_type {
 	struct ion_handle *ihdl;
 	u32 write_addr;
@@ -884,7 +896,19 @@ void mdp_vsync_clk_enable(void);
 
 #ifdef CONFIG_DEBUG_FS
 int mdp_debugfs_init(void);
+void mdp_dbg_pr_mem(const char*, ...);
+char mdp_dbg_is_pr_mem_en(void);
+#else
+static inline void mdp_dbg_pr_mem(const char *fmt, ...)
+{
+	/* empty */
+}
+static inline char mdp_dbg_is_pr_mem_en(void)
+{
+	return PR_MEM_OFF;
+}
 #endif
+
 
 void mdp_dma_s_update(struct msm_fb_data_type *mfd);
 int mdp_histogram_start(struct mdp_histogram_start_req *req);
