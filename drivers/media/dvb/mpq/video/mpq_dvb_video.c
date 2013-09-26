@@ -2357,6 +2357,8 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 				vdec_msg_info.msgdata.output_frame.time_stamp;
 		ev->u.buffer.offset      =
 				vdec_msg_info.msgdata.output_frame.offset;
+		ev->u.buffer.flags       =
+				vdec_msg_info.msgdata.output_frame.flags;
 		ev->u.buffer.interlaced_format = map_scan_type(vdec_msg_info.\
 				msgdata.output_frame.interlaced_format);
 		break;

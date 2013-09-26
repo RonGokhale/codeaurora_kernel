@@ -176,6 +176,7 @@ struct video_data_buffer {
 	void *client_data;
 	void *ip_buffer_tag;
 	__u64 pts;
+	__u32 flags;
 	enum scan_format interlaced_format;
 };
 
