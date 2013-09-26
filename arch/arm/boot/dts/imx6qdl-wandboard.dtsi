@@ -43,6 +43,13 @@
 		mux-int-port = <1>;
 		mux-ext-port = <3>;
 	};
+
+	sound-spdif {
+		compatible = "fsl,imx-audio-spdif";
+		model = "imx-spdif";
+		spdif-controller = <&spdif>;
+		spdif-out;
+	};
 };
 
 &audmux {
@@ -93,6 +100,12 @@
 	status = "okay";
 };
 
+&spdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_spdif_3>;
+	status = "okay";
+};
+
 &ssi1 {
 	fsl,mode = "i2s-slave";
 	status = "okay";
@@ -112,6 +125,14 @@
 };
 
 &usbh1 {
+	status = "okay";
+};
+
+&usbotg {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg_1>;
+	disable-over-current;
+	dr_mode = "peripheral";
 	status = "okay";
 };
 
