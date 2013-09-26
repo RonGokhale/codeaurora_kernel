@@ -264,6 +264,7 @@ config SPI_FSL_SPI
 config SPI_FSL_DSPI
 	tristate "Freescale DSPI controller"
 	select SPI_BITBANG
+	depends on SOC_VF610 || COMPILE_TEST
 	help
 	  This enables support for the Freescale DSPI controller in master
 	  mode. VF610 platform uses the controller.
@@ -369,7 +370,7 @@ config SPI_PXA2XX_PCI
 
 config SPI_RSPI
 	tristate "Renesas RSPI controller"
-	depends on SUPERH && SH_DMAE_BASE
+	depends on (SUPERH || ARCH_SHMOBILE) && SH_DMAE_BASE
 	help
 	  SPI driver for Renesas RSPI blocks.
 
