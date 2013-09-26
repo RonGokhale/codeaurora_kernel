@@ -253,6 +253,14 @@ struct msmfb_data {
 
 #define MSMFB_NEW_REQUEST -1
 
+struct msmfb_frc_data {
+	uint32_t enable;
+	uint32_t frame_cnt;
+	uint32_t timestamp;
+	uint32_t frame_rate;
+	uint32_t render_delay;
+};
+
 struct msmfb_overlay_data {
 	uint32_t id;
 	struct msmfb_data data;
@@ -260,6 +268,7 @@ struct msmfb_overlay_data {
 	struct msmfb_data plane1_data;
 	struct msmfb_data plane2_data;
 	struct msmfb_data dst_data;
+	struct msmfb_frc_data frc_data;
 };
 
 struct msmfb_img {

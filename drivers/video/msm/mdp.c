@@ -1399,9 +1399,31 @@ int mdp_ppp_pipe_wait(void)
 #define MAX_VSYNC_GAP		4
 #define DEFAULT_FRAME_RATE	60
 
+static u32 cal_frame_rate_by_clk(struct msm_panel_info *panel_info)
+{
+	u32 frame_rate = 0, h_pixels, v_pixels, total_pixel;
+
+	if ((panel_info->type == LVDS_PANEL) &&
+		(panel_info->lvds.channel_mode == LVDS_DUAL_CHANNEL_MODE))
+		h_pixels = panel_info->xres / 2;
+	else
+		h_pixels = panel_info->xres;
+	h_pixels += (panel_info->lcdc.h_back_porch +
+		panel_info->lcdc.h_front_porch +
+		panel_info->lcdc.h_pulse_width);
+	v_pixels = (panel_info->lcdc.v_back_porch +
+		panel_info->lcdc.v_front_porch +
+		panel_info->lcdc.v_pulse_width +
+		panel_info->yres);
+
+	total_pixel = h_pixels * v_pixels;
+	if (total_pixel)
+		frame_rate = panel_info->clk_rate / total_pixel;
+	return frame_rate;
+}
 u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 {
-	u32 frame_rate = 0, total_pixel;
+	u32 frame_rate = 0;
 	struct msm_panel_info *panel_info = &mfd->panel_info;
 	if (mfd->dest == DISPLAY_LCD) {
 		if (panel_info->type == MDDI_PANEL && panel_info->mddi.is_type1)
@@ -1411,25 +1433,9 @@ u32 mdp_get_panel_framerate(struct msm_fb_data_type *mfd)
 	} else {
 		if (panel_info->type == MIPI_VIDEO_PANEL)
 			frame_rate = panel_info->mipi.frame_rate;
-		else {
-			total_pixel = (panel_info->lcdc.h_back_porch +
-				  panel_info->lcdc.h_front_porch +
-				  panel_info->lcdc.h_pulse_width +
-				  panel_info->xres) *
-				 (panel_info->lcdc.v_back_porch +
-				  panel_info->lcdc.v_front_porch +
-				  panel_info->lcdc.v_pulse_width +
-				  panel_info->yres);
-			if (total_pixel)
-				frame_rate = panel_info->clk_rate /
-					total_pixel;
-		}
+		else
+			frame_rate = cal_frame_rate_by_clk(panel_info);
 	}
-
-	if ((panel_info->type == LVDS_PANEL) &&
-	   (panel_info->lvds.channel_mode == LVDS_DUAL_CHANNEL_MODE))
-		frame_rate = frame_rate * 2;
-
 	if (frame_rate == 0)
 		frame_rate = DEFAULT_FRAME_RATE;
 	return frame_rate;
@@ -2301,6 +2307,7 @@ static int mdp_on(struct platform_device *pdev)
 		}
 
 		mdp_clk_ctrl(0);
+		mdp4_overlay_reset(mfd);
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
 	}
 
