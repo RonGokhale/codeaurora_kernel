@@ -226,8 +226,8 @@ static void esdhc_of_set_clock(struct sdhci_host *host, unsigned int clock)
 	while (host->max_clk / pre_div / div > clock && div < 16)
 		div++;
 
-	dev_dbg(mmc_dev(host->mmc), "desired SD clock: %d, actual: %d\n",
-		clock, host_clock / pre_div / div);
+	// dev_dbg(mmc_dev(host->mmc), "desired SD clock: %d, actual: %d\n",
+	//	clock, host_clock / pre_div / div);
 
 	pre_div >>= 1;
 	div--;
