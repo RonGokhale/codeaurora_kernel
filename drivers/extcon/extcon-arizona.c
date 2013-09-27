@@ -564,11 +564,10 @@ static irqreturn_t arizona_hpdet_irq(int irq, void *data)
 	}
 
 	ret = arizona_hpdet_read(info);
-	if (ret == -EAGAIN) {
+	if (ret == -EAGAIN)
 		goto out;
-	} else if (ret < 0) {
+	else if (ret < 0)
 		goto done;
-	}
 	reading = ret;
 
 	/* Reset back to starting range */
@@ -578,11 +577,10 @@ static irqreturn_t arizona_hpdet_irq(int irq, void *data)
 			   0);
 
 	ret = arizona_hpdet_do_id(info, &reading, &mic);
-	if (ret == -EAGAIN) {
+	if (ret == -EAGAIN)
 		goto out;
-	} else if (ret < 0) {
+	else if (ret < 0)
 		goto done;
-	}
 
 	/* Report high impedence cables as line outputs */
 	if (reading >= 5000)
@@ -738,8 +736,8 @@ err:
 static void arizona_micd_timeout_work(struct work_struct *work)
 {
 	struct arizona_extcon_info *info = container_of(work,
-							struct arizona_extcon_info,
-							micd_timeout_work.work);
+						struct arizona_extcon_info,
+						micd_timeout_work.work);
 
 	mutex_lock(&info->lock);
 
@@ -756,8 +754,8 @@ static void arizona_micd_timeout_work(struct work_struct *work)
 static void arizona_micd_detect(struct work_struct *work)
 {
 	struct arizona_extcon_info *info = container_of(work,
-							struct arizona_extcon_info,
-							micd_detect_work.work);
+						struct arizona_extcon_info,
+						micd_detect_work.work);
 	struct arizona *arizona = info->arizona;
 	unsigned int val = 0, lvl;
 	int ret, i, key;
@@ -769,7 +767,8 @@ static void arizona_micd_detect(struct work_struct *work)
 	for (i = 0; i < 10 && !(val & 0x7fc); i++) {
 		ret = regmap_read(arizona->regmap, ARIZONA_MIC_DETECT_3, &val);
 		if (ret != 0) {
-			dev_err(arizona->dev, "Failed to read MICDET: %d\n", ret);
+			dev_err(arizona->dev,
+				"Failed to read MICDET: %d\n", ret);
 			mutex_unlock(&info->lock);
 			return;
 		}
@@ -777,7 +776,8 @@ static void arizona_micd_detect(struct work_struct *work)
 		dev_dbg(arizona->dev, "MICDET: %x\n", val);
 
 		if (!(val & ARIZONA_MICD_VALID)) {
-			dev_warn(arizona->dev, "Microphone detection state invalid\n");
+			dev_warn(arizona->dev,
+				 "Microphone detection state invalid\n");
 			mutex_unlock(&info->lock);
 			return;
 		}
@@ -925,8 +925,8 @@ static irqreturn_t arizona_micdet(int irq, void *data)
 static void arizona_hpdet_work(struct work_struct *work)
 {
 	struct arizona_extcon_info *info = container_of(work,
-							struct arizona_extcon_info,
-							hpdet_work.work);
+						struct arizona_extcon_info,
+						hpdet_work.work);
 
 	mutex_lock(&info->lock);
 	arizona_start_hpdet_acc_id(info);
@@ -973,10 +973,13 @@ static irqreturn_t arizona_jackdet(int irq, void *data)
 					   &info->hpdet_work,
 					   msecs_to_jiffies(HPDET_DEBOUNCE));
 
-		if (cancelled_mic)
+		if (cancelled_mic) {
+			int micd_timeout = info->micd_timeout;
+
 			queue_delayed_work(system_power_efficient_wq,
 					   &info->micd_timeout_work,
-					   msecs_to_jiffies(info->micd_timeout));
+					   msecs_to_jiffies(micd_timeout));
+		}
 
 		goto out;
 	}

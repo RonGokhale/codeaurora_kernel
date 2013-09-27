@@ -129,7 +129,6 @@ static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-int extcon_set_state(struct extcon_dev *edev, u32 state);
 static ssize_t state_store(struct device *dev, struct device_attribute *attr,
 			   const char *buf, size_t count)
 {
@@ -452,7 +451,8 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 		if (!obj->edev)
 			return -ENODEV;
 
-		obj->cable_index = extcon_find_cable_index(obj->edev, cable_name);
+		obj->cable_index = extcon_find_cable_index(obj->edev,
+							  cable_name);
 		if (obj->cable_index < 0)
 			return obj->cable_index;
 
@@ -460,7 +460,8 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 
 		obj->internal_nb.notifier_call = _call_per_cable;
 
-		return raw_notifier_chain_register(&obj->edev->nh, &obj->internal_nb);
+		return raw_notifier_chain_register(&obj->edev->nh,
+						  &obj->internal_nb);
 	} else {
 		struct class_dev_iter iter;
 		struct extcon_dev *extd;
