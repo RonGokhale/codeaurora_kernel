@@ -920,7 +920,7 @@ void Uxx_power_on_procedure(struct hw_data *pHwData)
 	Wb35Reg_WriteSync(pHwData, 0x03f8, 0x7ff);
 }
 
-static void Set_ChanIndep_RfData_al7230_24(struct hw_data *pHwData, u32 *pltmp, 
+static void Set_ChanIndep_RfData_al7230_24(struct hw_data *pHwData, u32 *pltmp,
 					char number)
 {
 	u8	i;
@@ -930,7 +930,7 @@ static void Set_ChanIndep_RfData_al7230_24(struct hw_data *pHwData, u32 *pltmp,
 	}
 }
 
-static void Set_ChanIndep_RfData_al7230_50(struct hw_data *pHwData, u32 *pltmp, 
+static void Set_ChanIndep_RfData_al7230_50(struct hw_data *pHwData, u32 *pltmp,
 					char number)
 {
 	u8	i;
@@ -1088,7 +1088,7 @@ void RFSynthesizer_initial(struct hw_data *pHwData)
 		msleep(5);
 
 		ltmp = (1 << 31) | (0 << 30) | (20 << 24) | BitReverse((0x0F << 20) | 0xF01A0, 20);
-		Wb35Reg_WriteSync(pHwData, 0x0864, ltmp) ;
+		Wb35Reg_WriteSync(pHwData, 0x0864, ltmp);
 
 		Wb35Reg_WriteSync(pHwData, 0x105c, pHwData->reg.BB5C);
 		pHwData->reg.BB50 &= ~0x13; /* (MASK_IQCAL_MODE|MASK_CALIB_START); */
@@ -1620,13 +1620,13 @@ void BBProcessor_initial(struct hw_data *pHwData)
 		reg->SQ3_filter[i] = 0x2f; /* half of Bit 0 ~ 6 */
 }
 
-static inline void set_tx_power_per_channel_max2829(struct hw_data *pHwData,  
+static inline void set_tx_power_per_channel_max2829(struct hw_data *pHwData,
 						struct chan_info Channel)
 {
 	RFSynthesizer_SetPowerIndex(pHwData, 100);
 }
 
-static void set_tx_power_per_channel_al2230(struct hw_data *pHwData,  
+static void set_tx_power_per_channel_al2230(struct hw_data *pHwData,
 					struct chan_info Channel)
 {
 	u8	index = 100;
@@ -1636,7 +1636,7 @@ static void set_tx_power_per_channel_al2230(struct hw_data *pHwData,
 	RFSynthesizer_SetPowerIndex(pHwData, index);
 }
 
-static void set_tx_power_per_channel_al7230(struct hw_data *pHwData,  
+static void set_tx_power_per_channel_al7230(struct hw_data *pHwData,
 					struct chan_info Channel)
 {
 	u8	i, index = 100;
@@ -1660,7 +1660,7 @@ static void set_tx_power_per_channel_al7230(struct hw_data *pHwData,
 	RFSynthesizer_SetPowerIndex(pHwData, index);
 }
 
-static void set_tx_power_per_channel_wb242(struct hw_data *pHwData,  
+static void set_tx_power_per_channel_wb242(struct hw_data *pHwData,
 					struct chan_info Channel)
 {
 	u8	index = 100;
@@ -2096,7 +2096,7 @@ void Mxx_initial(struct hw_data *pHwData)
 	pltmp[5] = reg->M38_MacControl;
 
 	/* M3C */
-	tmp = (DEFAULT_PIFST << 26) | (DEFAULT_EIFST << 16) | (DEFAULT_DIFST << 8) | (DEFAULT_SIFST << 4) | DEFAULT_OSIFST ;
+	tmp = (DEFAULT_PIFST << 26) | (DEFAULT_EIFST << 16) | (DEFAULT_DIFST << 8) | (DEFAULT_SIFST << 4) | DEFAULT_OSIFST;
 	reg->M3C_MacControl = tmp;
 	pltmp[6] = tmp;
 

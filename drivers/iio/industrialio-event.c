@@ -166,7 +166,7 @@ int iio_event_getfd(struct iio_dev *indio_dev)
 	iio_device_get(indio_dev);
 
 	fd = anon_inode_getfd("iio:event", &iio_event_chrdev_fileops,
-				indio_dev, O_RDONLY);
+				indio_dev, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
 		spin_lock_irq(&ev_int->wait.lock);
 		__clear_bit(IIO_BUSY_BIT_POS, &ev_int->flags);

@@ -249,7 +249,7 @@ int dgap_tty_register(struct board_t *brd)
 
 	/*
 	 * If we're doing transparent print, we have to do all of the above
-	 * again, seperately so we don't get the LD confused about what major
+	 * again, separately so we don't get the LD confused about what major
 	 * we are when we get into the dgap_tty_open() routine.
 	 */
 	brd->PrintDriver = alloc_tty_driver(MAXPORTS);
@@ -497,10 +497,8 @@ int dgap_tty_init(struct board_t *brd)
  */
 void dgap_tty_post_uninit(void)
 {
-	if (dgap_TmpWriteBuf) {
-		kfree(dgap_TmpWriteBuf);
-		dgap_TmpWriteBuf = NULL;
-	}
+	kfree(dgap_TmpWriteBuf);
+	dgap_TmpWriteBuf = NULL;
 }
 
 
@@ -522,10 +520,8 @@ void dgap_tty_uninit(struct board_t *brd)
 			tty_unregister_device(brd->SerialDriver, i);
 		}
 		tty_unregister_driver(brd->SerialDriver);
-		if (brd->SerialDriver->ttys) {
-			kfree(brd->SerialDriver->ttys);
-			brd->SerialDriver->ttys = NULL;
-		}
+		kfree(brd->SerialDriver->ttys);
+		brd->SerialDriver->ttys = NULL;
 		put_tty_driver(brd->SerialDriver);
 		brd->dgap_Major_Serial_Registered = FALSE;
 	}
@@ -538,10 +534,8 @@ void dgap_tty_uninit(struct board_t *brd)
 			tty_unregister_device(brd->PrintDriver, i);
 		}
 		tty_unregister_driver(brd->PrintDriver);
-		if (brd->PrintDriver->ttys) {
-			kfree(brd->PrintDriver->ttys);
-			brd->PrintDriver->ttys = NULL;
-	        }
+		kfree(brd->PrintDriver->ttys);
+		brd->PrintDriver->ttys = NULL;
 		put_tty_driver(brd->PrintDriver);
 		brd->dgap_Major_TransparentPrint_Registered = FALSE;
 	}
@@ -1069,7 +1063,7 @@ static int dgap_tty_open(struct tty_struct *tty, struct file *file)
 
 	DGAP_LOCK(brd->bd_lock, lock_flags);
 
-	/* The wait above should guarentee this cannot happen */
+	/* The wait above should guarantee this cannot happen */
 	if (brd->state != BOARD_READY) {
 		DGAP_UNLOCK(brd->bd_lock, lock_flags);
 		return -ENXIO;
@@ -3513,10 +3507,6 @@ static int dgap_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 			return(-EINVAL);
 		}
 
-		DGAP_UNLOCK(ch->ch_lock, lock_flags2);
-		DGAP_UNLOCK(bd->bd_lock, lock_flags);
-		return(-ENOIOCTLCMD);
-
 	case DIGI_GETA:
 		/* get information for ditty */
 		DGAP_UNLOCK(ch->ch_lock, lock_flags2);
@@ -3586,12 +3576,4 @@ static int dgap_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 
 		return(-ENOIOCTLCMD);
 	}
-
-	DGAP_UNLOCK(ch->ch_lock, lock_flags2);
-	DGAP_UNLOCK(bd->bd_lock, lock_flags);
-
-	DPR_IOCTL(("dgap_tty_ioctl end - cmd %s (%x), arg %lx\n", 
-		dgap_ioctl_name(cmd), cmd, arg));
-                        
-	return(0);
 }

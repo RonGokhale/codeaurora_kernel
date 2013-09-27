@@ -307,7 +307,26 @@ static inline bool comedi_range_is_unipolar(struct comedi_subdevice *s,
 	return s->range_table->range[range].min >= 0;
 }
 
-/* some silly little inline functions */
+static inline bool comedi_chan_range_is_bipolar(struct comedi_subdevice *s,
+						unsigned int chan,
+						unsigned int range)
+{
+	return s->range_table_list[chan]->range[range].min < 0;
+}
+
+static inline bool comedi_chan_range_is_unipolar(struct comedi_subdevice *s,
+						 unsigned int chan,
+						 unsigned int range)
+{
+	return s->range_table_list[chan]->range[range].min >= 0;
+}
+
+/* munge between offset binary and two's complement values */
+static inline unsigned int comedi_offset_munge(struct comedi_subdevice *s,
+					       unsigned int val)
+{
+	return val ^ s->maxdata ^ (s->maxdata >> 1);
+}
 
 static inline unsigned int bytes_per_sample(const struct comedi_subdevice *subd)
 {
@@ -345,6 +364,8 @@ void comedi_buf_memcpy_from(struct comedi_async *async, unsigned int offset,
 int comedi_dio_insn_config(struct comedi_device *, struct comedi_subdevice *,
 			   struct comedi_insn *, unsigned int *data,
 			   unsigned int mask);
+unsigned int comedi_dio_update_state(struct comedi_subdevice *,
+				     unsigned int *data);
 
 void *comedi_alloc_devpriv(struct comedi_device *, size_t);
 int comedi_alloc_subdevices(struct comedi_device *, int);
