@@ -187,8 +187,11 @@ phys_addr_t __init_memblock memblock_find_in_range_node(phys_addr_t start,
 	/* avoid allocating the first page */
 	start = max_t(phys_addr_t, start, PAGE_SIZE);
 	end = max(start, end);
+#ifdef CONFIG_X86
 	kernel_end = __pa_symbol(_end);
-
+#else
+	kernel_end = __pa(RELOC_HIDE((unsigned long)(_end), 0));
+#endif
 	/*
 	 * try bottom-up allocation only when bottom-up mode
 	 * is set and @end is above the kernel image.
