@@ -1859,9 +1859,8 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 		else
 			set_semotime(sma, sops);
 	}
-	if (error <= 0) {
+	if (error <= 0)
 		goto out_unlock_free;
-	}
 
 	/* We need to sleep on this operation, so we put the current
 	 * task into the pending queue and go to sleep.
