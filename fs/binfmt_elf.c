@@ -1428,7 +1428,7 @@ static int fill_files_note(struct memelfnote *note)
 	names_ofs = (2 + 3 * count) * sizeof(data[0]);
  alloc:
 	if (size >= MAX_FILE_NOTE_SIZE) /* paranoia check */
-		return -E2BIG;
+		return -EINVAL;
 	size = round_up(size, PAGE_SIZE);
 	data = vmalloc(size);
 	if (!data)
@@ -1607,7 +1607,6 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	struct elf_prpsinfo *psinfo;
 	struct core_thread *ct;
 	unsigned int i;
-	int ret;
 
 	info->size = 0;
 	info->thread = NULL;
@@ -1687,8 +1686,7 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	fill_auxv_note(&info->auxv, current->mm);
 	info->size += notesize(&info->auxv);
 
-	ret = fill_files_note(&info->files);
-	if (!ret)
+	if (fill_files_note(&info->files) == 0)
 		info->size += notesize(&info->files);
 
 	return 1;
@@ -1853,7 +1851,6 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 			  siginfo_t *siginfo, struct pt_regs *regs)
 {
 	struct list_head *t;
-	int ret;
 
 	if (!elf_note_info_init(info))
 		return 0;
@@ -1903,8 +1900,7 @@ static int fill_note_info(struct elfhdr *elf, int phdrs,
 	fill_auxv_note(info->notes + 3, current->mm);
 	info->numnote = 4;
 
-	ret = fill_files_note(info->notes + info->numnote);
-	if (!ret) {
+	if (fill_files_note(info->notes + info->numnote) == 0) {
 		info->notes_files = info->notes + info->numnote;
 		info->numnote++;
 	}
