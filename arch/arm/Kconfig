@@ -727,6 +727,7 @@ config ARCH_S3C64XX
 	select ARM_VIC
 	select CLKDEV_LOOKUP
 	select CLKSRC_SAMSUNG_PWM
+	select COMMON_CLK
 	select CPU_V6
 	select GENERIC_CLOCKEVENTS
 	select GPIO_SAMSUNG
@@ -740,7 +741,6 @@ config ARCH_S3C64XX
 	select S3C_DEV_NAND
 	select S3C_GPIO_TRACK
 	select SAMSUNG_ATAGS
-	select SAMSUNG_CLKSRC
 	select SAMSUNG_GPIOLIB_4BIT
 	select SAMSUNG_WDT_RESET
 	select USB_ARCH_HAS_OHCI
@@ -823,20 +823,6 @@ config ARCH_EXYNOS
 	select USE_OF
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
-
-config ARCH_SHARK
-	bool "Shark"
-	select ARCH_USES_GETTIMEOFFSET
-	select CPU_SA110
-	select ISA
-	select ISA_DMA
-	select NEED_MACH_MEMORY_H
-	select PCI
-	select VIRT_TO_BUS
-	select ZONE_DMA
-	help
-	  Support for the StrongARM based Digital DNARD machine, also known
-	  as "Shark" (<http://www.shark-linux.de/shark.html>).
 
 config ARCH_DAVINCI
 	bool "TI DaVinci"
@@ -1430,12 +1416,6 @@ config PCI_NANOENGINE
 
 config PCI_SYSCALL
 	def_bool PCI
-
-# Select the host bridge type
-config PCI_HOST_VIA82C505
-	bool
-	depends on PCI && ARCH_SHARK
-	default y
 
 config PCI_HOST_ITE8152
 	bool
