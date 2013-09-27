@@ -1166,11 +1166,11 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 		ret = atmel_lcdfb_of_init(sinfo);
 		if (ret)
 			goto free_info;
-	} else if (dev->platform_data) {
+	} else if (dev_get_platdata(dev)) {
 		struct fb_monspecs *monspecs;
 		int i;
 
-		pdata = dev->platform_data;
+		pdata = dev_get_platdata(dev);
 		monspecs = pdata->default_monspecs;
 		sinfo->pdata = *pdata;
 
@@ -1305,7 +1305,7 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 	ret = register_framebuffer(info);
 	if (ret < 0) {
 		dev_err(dev, "failed to register framebuffer device: %d\n", ret);
-		goto reset_drvdata;
+		goto free_cmap;
 	}
 
 	/* Power up the LCDC screen */
@@ -1316,8 +1316,7 @@ static int __init atmel_lcdfb_probe(struct platform_device *pdev)
 
 	return 0;
 
-reset_drvdata:
-	dev_set_drvdata(dev, NULL);
+free_cmap:
 	fb_dealloc_cmap(&info->cmap);
 unregister_irqs:
 	cancel_work_sync(&sinfo->task);
@@ -1378,7 +1377,6 @@ static int __exit atmel_lcdfb_remove(struct platform_device *pdev)
 		atmel_lcdfb_free_video_memory(sinfo);
 	}
 
-	dev_set_drvdata(dev, NULL);
 	framebuffer_release(info);
 
 	return 0;
