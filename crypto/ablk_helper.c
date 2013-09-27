@@ -28,10 +28,11 @@
 #include <linux/crypto.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/hardirq.h>
 #include <crypto/algapi.h>
 #include <crypto/cryptd.h>
-#include <asm/i387.h>
-#include <asm/crypto/ablk_helper.h>
+#include <crypto/ablk_helper.h>
+#include <asm/simd.h>
 
 int ablk_set_key(struct crypto_ablkcipher *tfm, const u8 *key,
 		 unsigned int key_len)
@@ -70,7 +71,7 @@ int ablk_encrypt(struct ablkcipher_request *req)
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct async_helper_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 
-	if (!irq_fpu_usable()) {
+	if (!may_use_simd()) {
 		struct ablkcipher_request *cryptd_req =
 			ablkcipher_request_ctx(req);
 
@@ -89,7 +90,7 @@ int ablk_decrypt(struct ablkcipher_request *req)
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct async_helper_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 
-	if (!irq_fpu_usable()) {
+	if (!may_use_simd()) {
 		struct ablkcipher_request *cryptd_req =
 			ablkcipher_request_ctx(req);
 
