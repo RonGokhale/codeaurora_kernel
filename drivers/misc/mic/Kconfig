@@ -5,6 +5,7 @@ config INTEL_MIC_HOST
 	depends on 64BIT && PCI
 	select VHOST_RING
 	default N
+	depends on BROKEN
 	help
 	  This enables Host Driver support for the Intel Many Integrated
 	  Core (MIC) family of PCIe form factor coprocessor devices that
@@ -26,6 +27,7 @@ config INTEL_MIC_CARD
 	depends on 64BIT
 	select VIRTIO
 	default N
+	depends on BROKEN
 	help
 	  This enables card driver support for the Intel Many Integrated
 	  Core (MIC) device family. The card driver communicates shutdown/
