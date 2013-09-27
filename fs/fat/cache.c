@@ -328,10 +328,10 @@ int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 	if (sector >= last_block) {
 		if (!create) {
 			/*
- 			 * to map cluster in case of read request
+			 * to map cluster in case of read request
 			 * for a block in fallocated region
- 			 */
-  			if (MSDOS_I(inode)->mmu_private >
+			 */
+			if (MSDOS_I(inode)->mmu_private >
 				round_up(i_size, sb->s_blocksize))
 				goto out_map_cluster;
 
