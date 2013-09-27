@@ -823,6 +823,7 @@ static struct sh_mmcif_plat_data sh_mmcif_plat = {
 	.caps		= MMC_CAP_4_BIT_DATA |
 			  MMC_CAP_8_BIT_DATA |
 			  MMC_CAP_NONREMOVABLE,
+	.ccs_unsupported = true,
 	.slave_id_tx	= SHDMA_SLAVE_MMCIF_TX,
 	.slave_id_rx	= SHDMA_SLAVE_MMCIF_RX,
 };
@@ -1108,9 +1109,9 @@ static const struct pinctrl_map eva_pinctrl_map[] = {
 	PIN_MAP_MUX_GROUP_DEFAULT("asoc-simple-card.1", "pfc-r8a7740",
 				  "fsib_mclk_in", "fsib"),
 	/* GETHER */
-	PIN_MAP_MUX_GROUP_DEFAULT("sh-eth", "pfc-r8a7740",
+	PIN_MAP_MUX_GROUP_DEFAULT("r8a7740-gether", "pfc-r8a7740",
 				  "gether_mii", "gether"),
-	PIN_MAP_MUX_GROUP_DEFAULT("sh-eth", "pfc-r8a7740",
+	PIN_MAP_MUX_GROUP_DEFAULT("r8a7740-gether", "pfc-r8a7740",
 				  "gether_int", "gether"),
 	/* HDMI */
 	PIN_MAP_MUX_GROUP_DEFAULT("sh-mobile-hdmi", "pfc-r8a7740",
