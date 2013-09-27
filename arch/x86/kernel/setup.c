@@ -1120,8 +1120,6 @@ void __init setup_arch(char **cmdline_p)
 	acpi_initrd_override((void *)initrd_start, initrd_end - initrd_start);
 #endif
 
-	reserve_crashkernel();
-
 	vsmp_init();
 
 	io_delay_init();
@@ -1134,7 +1132,20 @@ void __init setup_arch(char **cmdline_p)
 	early_acpi_boot_init();
 
 	initmem_init();
+
+	/*
+	 * When ACPI SRAT is parsed, which is done in initmem_init(),
+	 * set memblock back to the top-down direction.
+	 */
+	memblock_set_bottom_up(false);
+
 	memblock_find_dma_reserve();
+
+	/*
+	 * Reserve memory for crash kernel after SRAT is parsed so that it
+	 * won't consume hotpluggable memory.
+	 */
+	reserve_crashkernel();
 
 #ifdef CONFIG_KVM_GUEST
 	kvmclock_init();
