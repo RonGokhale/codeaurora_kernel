@@ -163,8 +163,8 @@ static inline bool balloon_page_movable(struct page *page)
  *			   compaction/migration page lists.
  *
  * After a compaction thread isolates a balloon page for migration, it raises
- * the page refcount to avoid concurrent compaction threads on re-isolating the
- * same page. For that reason putback_movable_pages(), or other routines
+ * the page refcount to prevent concurrent compaction threads from re-isolating
+ * the same page. For that reason putback_movable_pages(), or other routines
  * that need to identify isolated balloon pages on private pagelists, cannot
  * rely on balloon_page_movable() to accomplish the task.
  */
