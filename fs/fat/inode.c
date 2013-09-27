@@ -171,15 +171,15 @@ static int fat_zero_falloc_area(struct file *file,
 		bytes = min(bytes, count);
 
 		err = pagecache_write_begin(NULL, mapping, curpos, bytes,
-					AOP_FLAG_UNINTERRUPTIBLE,
-					&page, &fsdata);
+				AOP_FLAG_UNINTERRUPTIBLE,
+				&page, &fsdata);
 		if (err)
 			break;
 
 		zero_user(page, offset, bytes);
 
 		err = pagecache_write_end(NULL, mapping, curpos, bytes, bytes,
-					page, fsdata);
+				page, fsdata);
 		if (err < 0)
 			break;
 		curpos += bytes;
@@ -195,15 +195,12 @@ static int fat_write_begin(struct file *file, struct address_space *mapping,
 			struct page **pagep, void **fsdata)
 {
 	int err;
-	loff_t mmu_private_ideal, mmu_private_actual;
-	loff_t size;
 	struct inode *inode = mapping->host;
 	struct super_block *sb = inode->i_sb;
+	loff_t i_size = i_size_read(inode);
 
-	size = i_size_read(inode);
-	mmu_private_actual = MSDOS_I(inode)->mmu_private;
-	mmu_private_ideal = round_up(size, sb->s_blocksize);
-	if ((mmu_private_actual > mmu_private_ideal) && (pos > size)) {
+	if (MSDOS_I(inode)->mmu_private > round_up(i_size, sb->s_blocksize)
+			&& pos > i_size) {
 		err = fat_zero_falloc_area(file, mapping, pos);
 		if (err) {
 			fat_msg(sb, KERN_ERR,
@@ -215,7 +212,7 @@ static int fat_write_begin(struct file *file, struct address_space *mapping,
 	*pagep = NULL;
 	err = cont_write_begin(file, mapping, pos, len, flags,
 				pagep, fsdata, fat_get_block,
-				&MSDOS_I(mapping->host)->mmu_private);
+				&MSDOS_I(inode)->mmu_private);
 	if (err < 0)
 		fat_write_failed(mapping, pos + len);
 	return err;
@@ -260,6 +257,14 @@ static ssize_t fat_direct_IO(int rw, struct kiocb *iocb,
 		loff_t size = offset + iov_length(iov, nr_segs);
 		if (MSDOS_I(inode)->mmu_private < size)
 			return 0;
+		/*
+ 		 * In case of writing in fallocated region, return 0 and
+ 		 * fallback to buffered write.
+ 		 */
+		if (MSDOS_I(inode)->mmu_private >
+			round_up(i_size_read(inode), inode->i_sb->s_blocksize))
+			return 0;
+
 	}
 
 	/*
@@ -544,6 +549,19 @@ EXPORT_SYMBOL_GPL(fat_build_inode);
 
 static void fat_evict_inode(struct inode *inode)
 {
+
+	struct super_block *sb = inode->i_sb;
+
+	/*
+	 * Release unwritten fallocated blocks on file release.
+	 * Do this only when the inode evict and i_count becomes 0.
+	 */
+	mutex_lock(&inode->i_mutex);
+	if (round_up(inode->i_size, sb->s_blocksize) <
+	    MSDOS_I(inode)->mmu_private && atomic_read(&inode->i_count) == 0)
+		fat_truncate_blocks(inode, inode->i_size);
+	mutex_unlock(&inode->i_mutex);
+
 	truncate_inode_pages(&inode->i_data, 0);
 	if (!inode->i_nlink) {
 		inode->i_size = 0;
