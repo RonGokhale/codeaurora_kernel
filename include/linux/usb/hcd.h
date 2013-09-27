@@ -73,6 +73,7 @@ struct giveback_urb_bh {
 	spinlock_t lock;
 	struct list_head  head;
 	struct tasklet_struct bh;
+	struct usb_host_endpoint *completing_ep;
 };
 
 struct usb_hcd {
@@ -140,6 +141,7 @@ struct usb_hcd {
 	unsigned		wireless:1;	/* Wireless USB HCD */
 	unsigned		authorized_default:1;
 	unsigned		has_tt:1;	/* Integrated TT in root hub */
+	unsigned		amd_resume_bug:1; /* AMD remote wakeup quirk */
 
 	unsigned int		irq;		/* irq allocated */
 	void __iomem		*regs;		/* device memory/io */
@@ -378,6 +380,12 @@ static inline int hcd_giveback_urb_in_bh(struct usb_hcd *hcd)
 	return hcd->driver->flags & HCD_BH;
 }
 
+static inline bool hcd_periodic_completion_in_progress(struct usb_hcd *hcd,
+		struct usb_host_endpoint *ep)
+{
+	return hcd->high_prio_bh.completing_ep == ep;
+}
+
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);
 extern int usb_hcd_check_unlink_urb(struct usb_hcd *hcd, struct urb *urb,
 		int status);
@@ -427,6 +435,8 @@ extern int usb_hcd_pci_probe(struct pci_dev *dev,
 				const struct pci_device_id *id);
 extern void usb_hcd_pci_remove(struct pci_dev *dev);
 extern void usb_hcd_pci_shutdown(struct pci_dev *dev);
+
+extern int usb_hcd_amd_remote_wakeup_quirk(struct pci_dev *dev);
 
 #ifdef CONFIG_PM
 extern const struct dev_pm_ops usb_hcd_pci_pm_ops;

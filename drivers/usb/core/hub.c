@@ -135,7 +135,7 @@ struct usb_hub *usb_hub_to_struct_hub(struct usb_device *hdev)
 	return usb_get_intfdata(hdev->actconfig->interface[0]);
 }
 
-static int usb_device_supports_lpm(struct usb_device *udev)
+int usb_device_supports_lpm(struct usb_device *udev)
 {
 	/* USB 2.1 (and greater) devices indicate LPM support through
 	 * their USB 2.0 Extended Capabilities BOS descriptor.
@@ -156,6 +156,11 @@ static int usb_device_supports_lpm(struct usb_device *udev)
 				"Power management will be impacted.\n");
 		return 0;
 	}
+
+	/* udev is root hub */
+	if (!udev->parent)
+		return 1;
+
 	if (udev->parent->lpm_capable)
 		return 1;
 
@@ -310,9 +315,9 @@ static void usb_set_lpm_parameters(struct usb_device *udev)
 		return;
 
 	udev_u1_del = udev->bos->ss_cap->bU1devExitLat;
-	udev_u2_del = udev->bos->ss_cap->bU2DevExitLat;
+	udev_u2_del = le16_to_cpu(udev->bos->ss_cap->bU2DevExitLat);
 	hub_u1_del = udev->parent->bos->ss_cap->bU1devExitLat;
-	hub_u2_del = udev->parent->bos->ss_cap->bU2DevExitLat;
+	hub_u2_del = le16_to_cpu(udev->parent->bos->ss_cap->bU2DevExitLat);
 
 	usb_set_lpm_mel(udev, &udev->u1_params, udev_u1_del,
 			hub, &udev->parent->u1_params, hub_u1_del);
@@ -2018,8 +2023,8 @@ static void hub_free_dev(struct usb_device *udev)
  * Something got disconnected. Get rid of it and all of its children.
  *
  * If *pdev is a normal device then the parent hub must already be locked.
- * If *pdev is a root hub then this routine will acquire the
- * usb_bus_list_lock on behalf of the caller.
+ * If *pdev is a root hub then the caller must hold the usb_bus_list_lock,
+ * which protects the set of root hubs as well as the list of buses.
  *
  * Only hub drivers (including virtual root hub drivers for host
  * controllers) should ever call this.

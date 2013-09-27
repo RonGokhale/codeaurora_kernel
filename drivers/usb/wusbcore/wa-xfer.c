@@ -114,8 +114,8 @@ static void wa_xfer_delayed_run(struct wa_rpipe *);
  * struct).
  */
 struct wa_seg {
-	struct urb urb;
-	struct urb *dto_urb;		/* for data output? */
+	struct urb tr_urb;		/* transfer request urb. */
+	struct urb *dto_urb;		/* for data output. */
 	struct list_head list_node;	/* for rpipe->req_list */
 	struct wa_xfer *xfer;		/* out xfer */
 	u8 index;			/* which segment we are */
@@ -127,11 +127,11 @@ struct wa_seg {
 
 static inline void wa_seg_init(struct wa_seg *seg)
 {
-	usb_init_urb(&seg->urb);
+	usb_init_urb(&seg->tr_urb);
 
 	/* set the remaining memory to 0. */
-	memset(((void *)seg) + sizeof(seg->urb), 0,
-		sizeof(*seg) - sizeof(seg->urb));
+	memset(((void *)seg) + sizeof(seg->tr_urb), 0,
+		sizeof(*seg) - sizeof(seg->tr_urb));
 }
 
 /*
@@ -178,9 +178,15 @@ static void wa_xfer_destroy(struct kref *_xfer)
 	if (xfer->seg) {
 		unsigned cnt;
 		for (cnt = 0; cnt < xfer->segs; cnt++) {
-			usb_free_urb(xfer->seg[cnt]->dto_urb);
-			usb_free_urb(&xfer->seg[cnt]->urb);
+			if (xfer->seg[cnt]) {
+				if (xfer->seg[cnt]->dto_urb) {
+					kfree(xfer->seg[cnt]->dto_urb->sg);
+					usb_free_urb(xfer->seg[cnt]->dto_urb);
+				}
+				usb_free_urb(&xfer->seg[cnt]->tr_urb);
+			}
 		}
+		kfree(xfer->seg);
 	}
 	kfree(xfer);
 }
@@ -494,12 +500,12 @@ static void __wa_xfer_setup_hdr0(struct wa_xfer *xfer,
 /*
  * Callback for the OUT data phase of the segment request
  *
- * Check wa_seg_cb(); most comments also apply here because this
+ * Check wa_seg_tr_cb(); most comments also apply here because this
  * function does almost the same thing and they work closely
  * together.
  *
  * If the seg request has failed but this DTO phase has succeeded,
- * wa_seg_cb() has already failed the segment and moved the
+ * wa_seg_tr_cb() has already failed the segment and moved the
  * status to WA_SEG_ERROR, so this will go through 'case 0' and
  * effectively do nothing.
  */
@@ -513,6 +519,10 @@ static void wa_seg_dto_cb(struct urb *urb)
 	unsigned long flags;
 	unsigned rpipe_ready = 0;
 	u8 done = 0;
+
+	/* free the sg if it was used. */
+	kfree(urb->sg);
+	urb->sg = NULL;
 
 	switch (urb->status) {
 	case 0:
@@ -576,7 +586,7 @@ static void wa_seg_dto_cb(struct urb *urb)
  * as in that case, wa_seg_dto_cb will do it when the OUT data phase
  * finishes.
  */
-static void wa_seg_cb(struct urb *urb)
+static void wa_seg_tr_cb(struct urb *urb)
 {
 	struct wa_seg *seg = urb->context;
 	struct wa_xfer *xfer = seg->xfer;
@@ -629,9 +639,11 @@ static void wa_seg_cb(struct urb *urb)
 	}
 }
 
-/* allocate an SG list to store bytes_to_transfer bytes and copy the
+/*
+ * Allocate an SG list to store bytes_to_transfer bytes and copy the
  * subset of the in_sg that matches the buffer subset
- * we are about to transfer. */
+ * we are about to transfer.
+ */
 static struct scatterlist *wa_xfer_create_subset_sg(struct scatterlist *in_sg,
 	const unsigned int bytes_transferred,
 	const unsigned int bytes_to_transfer, unsigned int *out_num_sgs)
@@ -710,6 +722,55 @@ static struct scatterlist *wa_xfer_create_subset_sg(struct scatterlist *in_sg,
 }
 
 /*
+ * Populate buffer ptr and size, DMA buffer or SG list for the dto urb.
+ */
+static int __wa_populate_dto_urb(struct wa_xfer *xfer,
+	struct wa_seg *seg, size_t buf_itr_offset, size_t buf_itr_size)
+{
+	int result = 0;
+
+	if (xfer->is_dma) {
+		seg->dto_urb->transfer_dma =
+			xfer->urb->transfer_dma + buf_itr_offset;
+		seg->dto_urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+		seg->dto_urb->sg = NULL;
+		seg->dto_urb->num_sgs = 0;
+	} else {
+		/* do buffer or SG processing. */
+		seg->dto_urb->transfer_flags &=
+			~URB_NO_TRANSFER_DMA_MAP;
+		/* this should always be 0 before a resubmit. */
+		seg->dto_urb->num_mapped_sgs = 0;
+
+		if (xfer->urb->transfer_buffer) {
+			seg->dto_urb->transfer_buffer =
+				xfer->urb->transfer_buffer +
+				buf_itr_offset;
+			seg->dto_urb->sg = NULL;
+			seg->dto_urb->num_sgs = 0;
+		} else {
+			seg->dto_urb->transfer_buffer = NULL;
+
+			/*
+			 * allocate an SG list to store seg_size bytes
+			 * and copy the subset of the xfer->urb->sg that
+			 * matches the buffer subset we are about to
+			 * read.
+			 */
+			seg->dto_urb->sg = wa_xfer_create_subset_sg(
+				xfer->urb->sg,
+				buf_itr_offset, buf_itr_size,
+				&(seg->dto_urb->num_sgs));
+			if (!(seg->dto_urb->sg))
+				result = -ENOMEM;
+		}
+	}
+	seg->dto_urb->transfer_buffer_length = buf_itr_size;
+
+	return result;
+}
+
+/*
  * Allocate the segs array and initialize each of them
  *
  * The segments are freed by wa_xfer_destroy() when the xfer use count
@@ -740,11 +801,11 @@ static int __wa_xfer_setup_segs(struct wa_xfer *xfer, size_t xfer_hdr_size)
 		wa_seg_init(seg);
 		seg->xfer = xfer;
 		seg->index = cnt;
-		usb_fill_bulk_urb(&seg->urb, usb_dev,
+		usb_fill_bulk_urb(&seg->tr_urb, usb_dev,
 				  usb_sndbulkpipe(usb_dev,
 						  dto_epd->bEndpointAddress),
 				  &seg->xfer_hdr, xfer_hdr_size,
-				  wa_seg_cb, seg);
+				  wa_seg_tr_cb, seg);
 		buf_itr_size = min(buf_size, xfer->seg_size);
 		if (xfer->is_inbound == 0 && buf_size > 0) {
 			/* outbound data. */
@@ -756,48 +817,13 @@ static int __wa_xfer_setup_segs(struct wa_xfer *xfer, size_t xfer_hdr_size)
 				usb_sndbulkpipe(usb_dev,
 						dto_epd->bEndpointAddress),
 				NULL, 0, wa_seg_dto_cb, seg);
-			if (xfer->is_dma) {
-				seg->dto_urb->transfer_dma =
-					xfer->urb->transfer_dma + buf_itr;
-				seg->dto_urb->transfer_flags |=
-					URB_NO_TRANSFER_DMA_MAP;
-				seg->dto_urb->transfer_buffer = NULL;
-				seg->dto_urb->sg = NULL;
-				seg->dto_urb->num_sgs = 0;
-			} else {
-				/* do buffer or SG processing. */
-				seg->dto_urb->transfer_flags &=
-					~URB_NO_TRANSFER_DMA_MAP;
-				/* this should always be 0 before a resubmit. */
-				seg->dto_urb->num_mapped_sgs = 0;
 
-				if (xfer->urb->transfer_buffer) {
-					seg->dto_urb->transfer_buffer =
-						xfer->urb->transfer_buffer +
-						buf_itr;
-					seg->dto_urb->sg = NULL;
-					seg->dto_urb->num_sgs = 0;
-				} else {
-					/* allocate an SG list to store seg_size
-					    bytes and copy the subset of the
-					    xfer->urb->sg that matches the
-					    buffer subset we are about to read.
-					*/
-					seg->dto_urb->sg =
-						wa_xfer_create_subset_sg(
-						xfer->urb->sg,
-						buf_itr, buf_itr_size,
-						&(seg->dto_urb->num_sgs));
+			/* fill in the xfer buffer information. */
+			result = __wa_populate_dto_urb(xfer, seg,
+						buf_itr, buf_itr_size);
 
-					if (!(seg->dto_urb->sg)) {
-						seg->dto_urb->num_sgs	= 0;
-						goto error_sg_alloc;
-					}
-
-					seg->dto_urb->transfer_buffer = NULL;
-				}
-			}
-			seg->dto_urb->transfer_buffer_length = buf_itr_size;
+			if (result < 0)
+				goto error_seg_outbound_populate;
 		}
 		seg->status = WA_SEG_READY;
 		buf_itr += buf_itr_size;
@@ -805,20 +831,17 @@ static int __wa_xfer_setup_segs(struct wa_xfer *xfer, size_t xfer_hdr_size)
 	}
 	return 0;
 
-error_sg_alloc:
+	/*
+	 * Free the memory for the current segment which failed to init.
+	 * Use the fact that cnt is left at were it failed.  The remaining
+	 * segments will be cleaned up by wa_xfer_destroy.
+	 */
+error_seg_outbound_populate:
 	usb_free_urb(xfer->seg[cnt]->dto_urb);
 error_dto_alloc:
 	kfree(xfer->seg[cnt]);
-	cnt--;
+	xfer->seg[cnt] = NULL;
 error_seg_kmalloc:
-	/* use the fact that cnt is left at were it failed */
-	for (; cnt >= 0; cnt--) {
-		if (xfer->seg[cnt] && xfer->is_inbound == 0) {
-			usb_free_urb(xfer->seg[cnt]->dto_urb);
-			kfree(xfer->seg[cnt]->dto_urb->sg);
-		}
-		kfree(xfer->seg[cnt]);
-	}
 error_segs_kzalloc:
 	return result;
 }
@@ -888,12 +911,14 @@ static int __wa_seg_submit(struct wa_rpipe *rpipe, struct wa_xfer *xfer,
 			   struct wa_seg *seg)
 {
 	int result;
-	result = usb_submit_urb(&seg->urb, GFP_ATOMIC);
+	/* submit the transfer request. */
+	result = usb_submit_urb(&seg->tr_urb, GFP_ATOMIC);
 	if (result < 0) {
 		printk(KERN_ERR "xfer %p#%u: REQ submit failed: %d\n",
 		       xfer, seg->index, result);
 		goto error_seg_submit;
 	}
+	/* submit the out data if this is an out request. */
 	if (seg->dto_urb) {
 		result = usb_submit_urb(seg->dto_urb, GFP_ATOMIC);
 		if (result < 0) {
@@ -907,7 +932,7 @@ static int __wa_seg_submit(struct wa_rpipe *rpipe, struct wa_xfer *xfer,
 	return 0;
 
 error_dto_submit:
-	usb_unlink_urb(&seg->urb);
+	usb_unlink_urb(&seg->tr_urb);
 error_seg_submit:
 	seg->status = WA_SEG_ERROR;
 	seg->result = result;
@@ -1313,7 +1338,7 @@ int wa_urb_dequeue(struct wahc *wa, struct urb *urb)
 			break;
 		case WA_SEG_SUBMITTED:
 			seg->status = WA_SEG_ABORTED;
-			usb_unlink_urb(&seg->urb);
+			usb_unlink_urb(&seg->tr_urb);
 			if (xfer->is_inbound == 0)
 				usb_unlink_urb(seg->dto_urb);
 			xfer->segs_done++;
@@ -1416,7 +1441,8 @@ static int wa_xfer_status_to_errno(u8 status)
  *
  * FIXME: this function needs to be broken up in parts
  */
-static void wa_xfer_result_chew(struct wahc *wa, struct wa_xfer *xfer)
+static void wa_xfer_result_chew(struct wahc *wa, struct wa_xfer *xfer,
+		struct wa_xfer_result *xfer_result)
 {
 	int result;
 	struct device *dev = &wa->usb_iface->dev;
@@ -1424,8 +1450,7 @@ static void wa_xfer_result_chew(struct wahc *wa, struct wa_xfer *xfer)
 	u8 seg_idx;
 	struct wa_seg *seg;
 	struct wa_rpipe *rpipe;
-	struct wa_xfer_result *xfer_result = wa->xfer_result;
-	u8 done = 0;
+	unsigned done = 0;
 	u8 usb_status;
 	unsigned rpipe_ready = 0;
 
@@ -1535,6 +1560,7 @@ error_submit_buf_in:
 			xfer, seg_idx, result);
 	seg->result = result;
 	kfree(wa->buf_in_urb->sg);
+	wa->buf_in_urb->sg = NULL;
 error_sg_alloc:
 	__wa_xfer_abort(xfer);
 error_complete:
@@ -1552,10 +1578,8 @@ error_complete:
 
 		dev_info(dev, "Control EP stall.  Queue delayed work.\n");
 		spin_lock_irq(&wa->xfer_list_lock);
-		/* remove xfer from xfer_list. */
-		list_del(&xfer->list_node);
-		/* add xfer to xfer_errored_list. */
-		list_add_tail(&xfer->list_node, &wa->xfer_errored_list);
+		/* move xfer from xfer_list to xfer_errored_list. */
+		list_move_tail(&xfer->list_node, &wa->xfer_errored_list);
 		spin_unlock_irq(&wa->xfer_list_lock);
 		spin_unlock_irqrestore(&xfer->lock, flags);
 		queue_work(wusbd, &wa->xfer_error_work);
@@ -1687,7 +1711,7 @@ static void wa_buf_in_cb(struct urb *urb)
  * We go back to OFF when we detect a ENOENT or ESHUTDOWN (or too many
  * errors) in the URBs.
  */
-static void wa_xfer_result_cb(struct urb *urb)
+static void wa_dti_cb(struct urb *urb)
 {
 	int result;
 	struct wahc *wa = urb->context;
@@ -1709,7 +1733,7 @@ static void wa_xfer_result_cb(struct urb *urb)
 				urb->actual_length, sizeof(*xfer_result));
 			break;
 		}
-		xfer_result = wa->xfer_result;
+		xfer_result = (struct wa_xfer_result *)(wa->dti_buf);
 		if (xfer_result->hdr.bLength != sizeof(*xfer_result)) {
 			dev_err(dev, "DTI Error: xfer result--"
 				"bad header length %u\n",
@@ -1735,7 +1759,7 @@ static void wa_xfer_result_cb(struct urb *urb)
 				xfer_id, usb_status);
 			break;
 		}
-		wa_xfer_result_chew(wa, xfer);
+		wa_xfer_result_chew(wa, xfer, xfer_result);
 		wa_xfer_put(xfer);
 		break;
 	case -ENOENT:		/* (we killed the URB)...so, no broadcast */
@@ -1777,7 +1801,7 @@ out:
  * don't really set it up and start it until the first xfer complete
  * notification arrives, which is what we do here.
  *
- * Follow up in wa_xfer_result_cb(), as that's where the whole state
+ * Follow up in wa_dti_cb(), as that's where the whole state
  * machine starts.
  *
  * So here we just initialize the DTI URB for reading transfer result
@@ -1813,8 +1837,8 @@ void wa_handle_notif_xfer(struct wahc *wa, struct wa_notif_hdr *notif_hdr)
 	usb_fill_bulk_urb(
 		wa->dti_urb, wa->usb_dev,
 		usb_rcvbulkpipe(wa->usb_dev, 0x80 | notif_xfer->bEndpoint),
-		wa->xfer_result, wa->xfer_result_size,
-		wa_xfer_result_cb, wa);
+		wa->dti_buf, wa->dti_buf_size,
+		wa_dti_cb, wa);
 
 	wa->buf_in_urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (wa->buf_in_urb == NULL) {
@@ -1836,6 +1860,7 @@ out:
 
 error_dti_urb_submit:
 	usb_put_urb(wa->buf_in_urb);
+	wa->buf_in_urb = NULL;
 error_buf_in_urb_alloc:
 	usb_put_urb(wa->dti_urb);
 	wa->dti_urb = NULL;
