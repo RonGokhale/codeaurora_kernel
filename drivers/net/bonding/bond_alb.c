@@ -1674,7 +1674,8 @@ void bond_alb_handle_active_change(struct bonding *bond, struct slave *new_slave
 	}
 
 	swap_slave = bond->curr_active_slave;
-	rcu_assign_pointer(bond->curr_active_slave, new_slave);
+	rcu_assign_pointer(bond->curr_active_slave,
+			   rcu_access_pointer(new_slave));
 
 	if (!new_slave || !bond_has_slaves(bond))
 		return;
