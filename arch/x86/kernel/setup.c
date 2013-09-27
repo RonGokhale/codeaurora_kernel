@@ -1132,6 +1132,13 @@ void __init setup_arch(char **cmdline_p)
 	early_acpi_boot_init();
 
 	initmem_init();
+
+	/*
+	 * When ACPI SRAT is parsed, which is done in initmem_init(),
+	 * set memblock back to the top-down direction.
+	 */
+	memblock_set_bottom_up(false);
+
 	memblock_find_dma_reserve();
 
 	/*
