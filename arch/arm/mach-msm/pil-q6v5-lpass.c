@@ -178,6 +178,7 @@ static int pil_lpass_reset_trusted(struct pil_desc *pil)
 	int ret;
 
 	ret = clk_prepare_enable(drv->axi_clk);
+	ret = clk_prepare_enable(drv->core_clk);
 	if (ret)
 		return ret;
 	return pas_auth_and_reset(PAS_Q6);
@@ -191,6 +192,7 @@ static int pil_lpass_shutdown_trusted(struct pil_desc *pil)
 	ret = pas_shutdown(PAS_Q6);
 	if (ret)
 		return ret;
+	clk_disable_unprepare(drv->core_clk);
 	clk_disable_unprepare(drv->axi_clk);
 	return 0;
 }
