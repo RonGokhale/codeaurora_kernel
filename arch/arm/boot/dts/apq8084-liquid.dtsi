@@ -119,6 +119,14 @@
 			debounce-interval = <15>;
 		};
 	};
+
+	gnss_qca1530: qcom,qca1530@0 {
+		compatible = "qcom,qca1530";
+		gpios = <&msmgpio 128 0>;	/* Reset line */
+		pwr-supply = <&qca1530_vreg>;	/* Power regulator */
+		pwr-gpio = <&msmgpio 66 0>;	/* Power GPIO */
+		xlna-supply = <&pma8084_l22>;	/* xLNA power supply */
+	};
 };
 
 /include/ "dsi-panel-jdi-dualmipi0-video.dtsi"
@@ -391,7 +399,7 @@
 		qcom,output-type = <0>;		/* CMOS logic */
 		qcom,invert = <0>;		/* Output low initially */
 		qcom,vin-sel = <2>;		/* VIN 2 */
-		qcom,src-sel = <2>;		/* Function 1 */
+		qcom,src-sel = <3>;		/* Function 2 */
 		qcom,out-strength = <2>;	/* Medium */
 		qcom,master-en = <1>;		/* Enable GPIO */
 	};
