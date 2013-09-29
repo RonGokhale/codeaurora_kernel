@@ -69,6 +69,10 @@
 #define A4XX_VPC_DEBUG_RAM_SEL		0xe60
 #define A4XX_VPC_DEBUG_RAM_READ		0xe61
 
+/* UCHE register */
+#define UCHE_TRAP_BASE_LO               0xe83
+#define UCHE_TRAP_BASE_HI               0xe84
+
 /* VSC registers */
 #define A4XX_VSC_SIZE_ADDRESS		0xc01
 #define A4XX_VSC_PIPE_DATA_ADDRESS_0	0xc10

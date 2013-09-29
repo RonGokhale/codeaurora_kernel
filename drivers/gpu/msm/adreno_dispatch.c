@@ -940,7 +940,8 @@ static int dispatcher_do_fault(struct kgsl_device *device)
 		if (device->pm_dump_enable)
 			kgsl_postmortem_dump(device, 0);
 
-		kgsl_device_snapshot(device, 1);
+		/* Disable snapshot */
+		//kgsl_device_snapshot(device, 1);
 	}
 
 	mutex_unlock(&device->mutex);
