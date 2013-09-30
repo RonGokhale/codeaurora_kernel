@@ -2415,6 +2415,10 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 		ev->u.buffer.client_data =
 				vdec_msg_info.msgdata.input_frame_clientdata;
 		break;
+	case VDEC_MSG_EVT_HW_ERROR:
+		DBG("VIDEO_EVENT_HW_ERROR\n");
+		ev->type = VIDEO_EVENT_STREAM_TIMEOUT_ERROR;
+		break;
 	}
 	return 0;
 }
