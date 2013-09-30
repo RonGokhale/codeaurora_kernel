@@ -64,6 +64,7 @@ struct msm_sync_pt_data {
 	int timeline_value;
 	u32 threshold;
 	struct mutex sync_mutex;
+	atomic_t commit_cnt;
 };
 
 struct msm_fb_data_type;
@@ -157,6 +158,7 @@ struct msm_fb_data_type {
 	struct completion commit_comp;
 	u32 is_committing;
 	struct work_struct commit_work;
+	wait_queue_head_t commit_wait_q;
 	void *msm_fb_backup;
 	struct completion power_set_comp;
 	u32 is_power_setting;
