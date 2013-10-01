@@ -1860,7 +1860,7 @@ kgsl_drm_irq_postinstall(struct drm_device *dev)
 		MDSS_MDP_REG_INTR_EN);
 
 	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
-		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_0_DONE;
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_2_DONE;
 
 	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
 		(int)dev_priv->regs, enable);
@@ -1891,7 +1891,7 @@ kgsl_drm_irq_uninstall(struct drm_device *dev)
 		MDSS_MDP_REG_INTR_EN);
 
 	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
-		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_0_DONE;
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_2_DONE;
 
 	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
 		(int)dev_priv->regs, enable);
