@@ -88,6 +88,7 @@
 #define MDSS_MDP_INTR_INTF_1_VSYNC		BIT(27)
 #define MDSS_MDP_INTR_INTF_3_VSYNC		BIT(31)
 #define MDSS_MDP_INTR_WB_0_DONE		BIT(0)
+#define MDSS_MDP_INTR_WB_1_DONE		BIT(1)
 #define MDSS_MDP_INTR_WB_2_DONE		BIT(4)
 
 struct drm_kgsl_gem_object_wait_list_entry {
@@ -1799,7 +1800,8 @@ kgsl_drm_irq_handler(DRM_IRQ_ARGS)
 		drm_handle_vblank(dev, DRM_KGSL_CRTC_HDMI);
 	}
 
-	if (isr & MDSS_MDP_INTR_WB_0_DONE) {
+	if (isr & (MDSS_MDP_INTR_WB_0_DONE |
+		MDSS_MDP_INTR_WB_1_DONE)) {
 		DRM_DEBUG("%s:Rotator\n", __func__);
 		drm_handle_vblank(dev, DRM_KGSL_CRTC_ROTATOR);
 	}
@@ -1860,7 +1862,8 @@ kgsl_drm_irq_postinstall(struct drm_device *dev)
 		MDSS_MDP_REG_INTR_EN);
 
 	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
-		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_2_DONE;
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_1_DONE |
+		MDSS_MDP_INTR_WB_2_DONE;
 
 	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
 		(int)dev_priv->regs, enable);
@@ -1891,7 +1894,8 @@ kgsl_drm_irq_uninstall(struct drm_device *dev)
 		MDSS_MDP_REG_INTR_EN);
 
 	enable = MDSS_MDP_INTR_INTF_1_VSYNC | MDSS_MDP_INTR_INTF_3_VSYNC |
-		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_2_DONE;
+		MDSS_MDP_INTR_WB_0_DONE | MDSS_MDP_INTR_WB_1_DONE |
+		MDSS_MDP_INTR_WB_2_DONE;
 
 	DRM_DEBUG("%s:regs[0x%x]enable[0x%x]\n", __func__,
 		(int)dev_priv->regs, enable);
