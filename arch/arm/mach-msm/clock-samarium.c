@@ -151,12 +151,6 @@ static DEFINE_VDD_REGULATORS(vdd_dig, VDD_DIG_NUM, 1, vdd_corner, NULL);
 #define GPLL4_STATUS                                       (0x1DDC)
 #define MSS_CFG_AHB_CBCR                                   (0x0280)
 #define MSS_Q6_BIMC_AXI_CBCR                               (0x0284)
-#define USB_HS_HSIC_BCR                                    (0x0400)
-#define USB_HSIC_AHB_CBCR                                  (0x0408)
-#define USB_HSIC_SYSTEM_CMD_RCGR                           (0x041C)
-#define USB_HSIC_SYSTEM_CBCR                               (0x040C)
-#define USB_HSIC_IO_CAL_CMD_RCGR                           (0x0458)
-#define USB_HSIC_IO_CAL_CBCR                               (0x0414)
 #define USB_HS_BCR                                         (0x0480)
 #define USB_HS_SYSTEM_CBCR                                 (0x0484)
 #define USB_HS_AHB_CBCR                                    (0x0488)
@@ -378,6 +372,7 @@ DEFINE_CLK_RPM_SMD(mmssnoc_ahb, mmssnoc_ahb_a_clk, RPM_BUS_CLK_TYPE,
 DEFINE_CLK_RPM_SMD(ocmemgx, ocmemgx_a_clk, RPM_MEM_CLK_TYPE, OCMEM_ID, NULL);
 
 DEFINE_CLK_RPM_SMD_XO_BUFFER(bb_clk1, bb_clk1_a, BB_CLK1_ID);
+DEFINE_CLK_RPM_SMD_XO_BUFFER(bb_clk2, bb_clk2_a, BB_CLK2_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER(rf_clk1, rf_clk1_a, RF_CLK1_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER(rf_clk2, rf_clk2_a, RF_CLK2_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER(rf_clk3, rf_clk3_a, RF_CLK3_ID);
@@ -387,6 +382,7 @@ DEFINE_CLK_RPM_SMD_XO_BUFFER(div_clk2, div_clk2_a, DIV_CLK2_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER(div_clk3, div_clk3_a, DIV_CLK3_ID);
 
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(bb_clk1_pin, bb_clk1_a_pin, BB_CLK1_ID);
+DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(bb_clk2_pin, bb_clk2_a_pin, BB_CLK2_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(rf_clk1_pin, rf_clk1_a_pin, RF_CLK1_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(rf_clk2_pin, rf_clk2_a_pin, RF_CLK2_ID);
 DEFINE_CLK_RPM_SMD_XO_BUFFER_PINCTRL(rf_clk3_pin, rf_clk3_a_pin, RF_CLK3_ID);
@@ -460,7 +456,7 @@ static struct pll_vote_clk gpll4 = {
 	.status_mask = BIT(17),
 	.base = &virt_bases[GCC_BASE],
 	.c = {
-		.rate = 400000000,
+		.rate = 768000000,
 		.parent = &xo.c,
 		.dbg_name = "gpll4",
 		.ops = &clk_ops_pll_vote,
@@ -910,7 +906,7 @@ static struct clk_freq_tbl ftbl_gcc_sdcc1_4_apps_clk[] = {
 	F(  50000000,      gpll0,   12,    0,     0),
 	F( 100000000,      gpll0,    6,    0,     0),
 	F( 200000000,      gpll0,    3,    0,     0),
-	F( 400000000,      gpll4,    1,    0,     0),
+	F( 384000000,      gpll4,    2,    0,     0),
 	F_END
 };
 
@@ -1005,44 +1001,6 @@ static struct rcg_clk usb_hs_system_clk_src = {
 		.ops = &clk_ops_rcg,
 		VDD_DIG_FMAX_MAP2(LOW, 37500000, NOMINAL, 75000000),
 		CLK_INIT(usb_hs_system_clk_src.c),
-	},
-};
-
-static struct clk_freq_tbl ftbl_gcc_usb_hsic_io_cal_clk[] = {
-	F(   9600000,         xo,    2,    0,     0),
-	F_END
-};
-
-static struct rcg_clk usb_hsic_io_cal_clk_src = {
-	.cmd_rcgr_reg = USB_HSIC_IO_CAL_CMD_RCGR,
-	.set_rate = set_rate_hid,
-	.freq_tbl = ftbl_gcc_usb_hsic_io_cal_clk,
-	.current_freq = &rcg_dummy_freq,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.dbg_name = "usb_hsic_io_cal_clk_src",
-		.ops = &clk_ops_rcg,
-		VDD_DIG_FMAX_MAP1(LOW, 9600000),
-		CLK_INIT(usb_hsic_io_cal_clk_src.c),
-	},
-};
-
-static struct clk_freq_tbl ftbl_gcc_usb_hsic_system_clk[] = {
-	F(  75000000,      gpll0,    8,    0,     0),
-	F_END
-};
-
-static struct rcg_clk usb_hsic_system_clk_src = {
-	.cmd_rcgr_reg = USB_HSIC_SYSTEM_CMD_RCGR,
-	.set_rate = set_rate_hid,
-	.freq_tbl = ftbl_gcc_usb_hsic_system_clk,
-	.current_freq = &rcg_dummy_freq,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.dbg_name = "usb_hsic_system_clk_src",
-		.ops = &clk_ops_rcg,
-		VDD_DIG_FMAX_MAP2(LOW, 60000000, NOMINAL, 75000000),
-		CLK_INIT(usb_hsic_system_clk_src.c),
 	},
 };
 
@@ -1690,42 +1648,6 @@ static struct branch_clk gcc_usb_hs_system_clk = {
 		.parent = &usb_hs_system_clk_src.c,
 		.ops = &clk_ops_branch,
 		CLK_INIT(gcc_usb_hs_system_clk.c),
-	},
-};
-
-static struct branch_clk gcc_usb_hsic_ahb_clk = {
-	.cbcr_reg = USB_HSIC_AHB_CBCR,
-	.has_sibling = 1,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.dbg_name = "gcc_usb_hsic_ahb_clk",
-		.ops = &clk_ops_branch,
-		CLK_INIT(gcc_usb_hsic_ahb_clk.c),
-	},
-};
-
-static struct branch_clk gcc_usb_hsic_io_cal_clk = {
-	.cbcr_reg = USB_HSIC_IO_CAL_CBCR,
-	.has_sibling = 0,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.dbg_name = "gcc_usb_hsic_io_cal_clk",
-		.parent = &usb_hsic_io_cal_clk_src.c,
-		.ops = &clk_ops_branch,
-		CLK_INIT(gcc_usb_hsic_io_cal_clk.c),
-	},
-};
-
-static struct branch_clk gcc_usb_hsic_system_clk = {
-	.cbcr_reg = USB_HSIC_SYSTEM_CBCR,
-	.bcr_reg = USB_HS_HSIC_BCR,
-	.has_sibling = 0,
-	.base = &virt_bases[GCC_BASE],
-	.c = {
-		.dbg_name = "gcc_usb_hsic_system_clk",
-		.parent = &usb_hsic_system_clk_src.c,
-		.ops = &clk_ops_branch,
-		CLK_INIT(gcc_usb_hsic_system_clk.c),
 	},
 };
 
@@ -2950,9 +2872,6 @@ static struct measure_mux_entry measure_mux[] = {
 
 	{&gcc_mss_cfg_ahb_clk.c,	GCC_BASE, 0x0030},
 	{&gcc_mss_q6_bimc_axi_clk.c,	GCC_BASE, 0x0031},
-	{&gcc_usb_hsic_ahb_clk.c,	GCC_BASE, 0x0058},
-	{&gcc_usb_hsic_system_clk.c,	GCC_BASE, 0x0059},
-	{&gcc_usb_hsic_io_cal_clk.c,	GCC_BASE, 0x005b},
 	{&gcc_usb_hs_system_clk.c,	GCC_BASE, 0x0060},
 	{&gcc_usb_hs_ahb_clk.c,	GCC_BASE, 0x0061},
 	{&gcc_usb2a_phy_sleep_clk.c,	GCC_BASE, 0x0063},
@@ -3395,6 +3314,8 @@ static struct clk_lookup msm_clocks_samarium[] = {
 
 	CLK_LOOKUP("", bb_clk1.c, ""),
 	CLK_LOOKUP("", bb_clk1_a.c, ""),
+	CLK_LOOKUP("", bb_clk2.c, ""),
+	CLK_LOOKUP("", bb_clk2_a.c, ""),
 	CLK_LOOKUP("", rf_clk1.c, ""),
 	CLK_LOOKUP("", rf_clk1_a.c, ""),
 	CLK_LOOKUP("", rf_clk2.c, ""),
@@ -3410,6 +3331,8 @@ static struct clk_lookup msm_clocks_samarium[] = {
 	CLK_LOOKUP("", diff_clk1_a.c, ""),
 	CLK_LOOKUP("", bb_clk1_pin.c, ""),
 	CLK_LOOKUP("", bb_clk1_a_pin.c, ""),
+	CLK_LOOKUP("", bb_clk2_pin.c, ""),
+	CLK_LOOKUP("ref_clk", bb_clk2_a_pin.c, "3-000e"),
 	CLK_LOOKUP("", rf_clk1_pin.c, ""),
 	CLK_LOOKUP("", rf_clk1_a_pin.c, ""),
 	CLK_LOOKUP("", rf_clk2_pin.c, ""),
@@ -3590,9 +3513,6 @@ static struct clk_lookup msm_clocks_samarium[] = {
 	CLK_LOOKUP("", gcc_usb2a_phy_sleep_clk.c, ""),
 	CLK_LOOKUP("iface_clk", gcc_usb_hs_ahb_clk.c, "msm_otg"),
 	CLK_LOOKUP("core_clk", gcc_usb_hs_system_clk.c, "msm_otg"),
-	CLK_LOOKUP("", gcc_usb_hsic_ahb_clk.c, ""),
-	CLK_LOOKUP("", gcc_usb_hsic_io_cal_clk.c, ""),
-	CLK_LOOKUP("", gcc_usb_hsic_system_clk.c, ""),
 
 	/* MM sensor clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6e.qcom,camera"),
@@ -3895,6 +3815,9 @@ static void __init reg_init(void)
 
 static void __init msmsamarium_clock_post_init(void)
 {
+	clk_set_rate(&axi_clk_src.c, 133330000);
+	clk_set_rate(&ocmemnoc_clk_src.c, 150000000);
+
 	/*
 	 * Hold an active set vote at a rate of 40MHz for the MMSS NOC AHB
 	 * source. Sleep set vote is 0.

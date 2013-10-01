@@ -205,35 +205,35 @@ spm_failed_malloc:
  * msm_spm_turn_on_cpu_rail(): Power on cpu rail before turning on core
  * @cpu: core id
  */
-int msm_spm_turn_on_cpu_rail(unsigned int cpu)
+int msm_spm_turn_on_cpu_rail(unsigned long base, unsigned int cpu)
 {
 	uint32_t val = 0;
 	uint32_t timeout = 0;
 	void *reg = NULL;
-	void *saw_bases[] = {
-		0,
-		MSM_SAW1_BASE,
-		MSM_SAW2_BASE,
-		MSM_SAW3_BASE
-	};
 
 	if (cpu == 0 || cpu >= num_possible_cpus())
 		return -EINVAL;
 
-	reg = saw_bases[cpu];
+	reg = ioremap_nocache(base + (cpu * 0x10000), SZ_4K);
+	if (!reg)
+		return -ENOMEM;
 
-	if (soc_class_is_msm8960() || soc_class_is_msm8930() ||
-	    soc_class_is_apq8064()) {
-		val = 0xA4;
-		reg += 0x14;
-		timeout = 512;
-	} else {
-		return -ENOSYS;
-	}
+	reg += 0x1C;
+	timeout = 512;
 
+	/* Voltage value */
+	val = 0x74;
 	writel_relaxed(val, reg);
 	mb();
 	udelay(timeout);
+
+	/* Enable/disable regulator */
+	val = 0x2030080;
+	writel_relaxed(val, reg);
+	mb();
+	udelay(timeout);
+
+	iounmap(reg);
 
 	return 0;
 }

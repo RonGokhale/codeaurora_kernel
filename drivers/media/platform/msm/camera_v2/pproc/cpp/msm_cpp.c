@@ -1992,6 +1992,7 @@ static struct platform_driver cpp_driver = {
 
 static int __init msm_cpp_init_module(void)
 {
+	return -ENODEV;
 	return platform_driver_register(&cpp_driver);
 }
 

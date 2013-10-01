@@ -104,7 +104,7 @@ static int __cpuinit msm8960_release_secondary(unsigned long base,
 	if (!base_ptr)
 		return -ENODEV;
 
-	msm_spm_turn_on_cpu_rail(cpu);
+	msm_spm_turn_on_cpu_rail(0x02089000, cpu);
 
 	writel_relaxed(0x109, base_ptr+0x04);
 	writel_relaxed(0x101, base_ptr+0x04);
@@ -138,6 +138,33 @@ static int __cpuinit msm8974_release_secondary(unsigned long base,
 		return -ENODEV;
 
 	secondary_cpu_hs_init(base_ptr, cpu);
+
+	writel_relaxed(0x021, base_ptr+0x04);
+	mb();
+	udelay(2);
+
+	writel_relaxed(0x020, base_ptr+0x04);
+	mb();
+	udelay(2);
+
+	writel_relaxed(0x000, base_ptr+0x04);
+	mb();
+
+	writel_relaxed(0x080, base_ptr+0x04);
+	mb();
+	iounmap(base_ptr);
+	return 0;
+}
+
+static int __cpuinit msm8962_release_secondary(unsigned long base,
+						unsigned int cpu)
+{
+	void *base_ptr = ioremap_nocache(base + (cpu * 0x10000), SZ_4K);
+
+	if (!base_ptr)
+		return -ENODEV;
+
+	msm_spm_turn_on_cpu_rail(0xf9089000, cpu);
 
 	writel_relaxed(0x021, base_ptr+0x04);
 	mb();
@@ -279,6 +306,21 @@ int __cpuinit msm8974_boot_secondary(unsigned int cpu, struct task_struct *idle)
 	return release_from_pen(cpu);
 }
 
+int __cpuinit msm8962_boot_secondary(unsigned int cpu, struct task_struct *idle)
+{
+	pr_debug("Starting secondary CPU %d\n", cpu);
+
+	if (per_cpu(cold_boot_done, cpu) == false) {
+		if (of_board_is_sim())
+			release_secondary_sim(0xf9088000, cpu);
+		else if (!of_board_is_rumi())
+			msm8962_release_secondary(0xf9088000, cpu);
+
+		per_cpu(cold_boot_done, cpu) = true;
+	}
+	return release_from_pen(cpu);
+}
+
 int __cpuinit arm_boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
 	pr_debug("Starting secondary CPU %d\n", cpu);
@@ -370,6 +412,17 @@ struct smp_operations msm8974_smp_ops __initdata = {
 	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
 	.smp_secondary_init = msm_secondary_init,
 	.smp_boot_secondary = msm8974_boot_secondary,
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
+};
+
+struct smp_operations msm8962_smp_ops __initdata = {
+	.smp_init_cpus = msm_smp_init_cpus,
+	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
+	.smp_secondary_init = msm_secondary_init,
+	.smp_boot_secondary = msm8962_boot_secondary,
 #ifdef CONFIG_HOTPLUG
 	.cpu_die = msm_cpu_die,
 	.cpu_kill = msm_cpu_kill,
