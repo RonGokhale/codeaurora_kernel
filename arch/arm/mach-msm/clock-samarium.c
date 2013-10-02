@@ -3966,6 +3966,11 @@ static void __init msmsamarium_clock_post_init(void)
 	 * to remain on whenever CPUs aren't power collapsed.
 	 */
 	clk_prepare_enable(&xo_a_clk.c);
+
+	clk_prepare_enable(&gcc_lpass_sys_noc_mport_clk.c);
+	clk_prepare_enable(&gcc_lpass_sys_noc_sway_clk.c);
+	clk_prepare_enable(&gcc_blsp1_uart3_apps_clk.c);
+	clk_prepare_enable(&gcc_blsp1_uart4_apps_clk.c);
 }
 
 #define GCC_CC_PHYS		0xFC400000
