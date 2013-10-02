@@ -2047,6 +2047,8 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	int rc = 0;
 	int i;
 	struct hfi_device *hdev;
+	struct hal_buffer_requirements *buff_req = NULL;
+
 	if (!inst || !f) {
 		dprintk(VIDC_ERR,
 			"Invalid input, inst = %p, format = %p\n", inst, f);
@@ -2073,7 +2075,6 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		struct hal_uncompressed_format_select hal_fmt = {0};
 		struct hal_frame_size frame_sz;
-
 		inst->prop.width = f->fmt.pix_mp.width;
 		inst->prop.height = f->fmt.pix_mp.height;
 		rc = msm_vidc_check_session_supported(inst);
@@ -2112,7 +2113,7 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			rc = -EINVAL;
 			goto exit;
 		}
-
+		buff_req = get_buff_req_buffer(inst, HAL_BUFFER_INPUT);
 		switch (fmt->fourcc) {
 		case V4L2_PIX_FMT_NV12:
 			hal_fmt.format = HAL_COLOR_FORMAT_NV12;
@@ -2140,9 +2141,14 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	if (fmt) {
 		f->fmt.pix_mp.num_planes = fmt->num_planes;
 		for (i = 0; i < fmt->num_planes; ++i) {
-			f->fmt.pix_mp.plane_fmt[i].sizeimage =
-				fmt->get_frame_size(i, f->fmt.pix_mp.height,
-						f->fmt.pix_mp.width);
+			if (buff_req)
+				f->fmt.pix_mp.plane_fmt[i].sizeimage =
+				ALIGN(fmt->get_frame_size(i, f->fmt.pix_mp.height,
+					f->fmt.pix_mp.width), buff_req->buffer_alignment);
+			else
+				f->fmt.pix_mp.plane_fmt[i].sizeimage =
+				ALIGN(fmt->get_frame_size(i, f->fmt.pix_mp.height,
+					f->fmt.pix_mp.width), SZ_4K);
 		}
 		inst->fmts[fmt->type] = fmt;
 		if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -2167,15 +2173,22 @@ int msm_venc_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	int rc = 0;
 	int i;
 	int extra_idx = 0;
+	struct hal_buffer_requirements *buff_req;
+
 	if (!inst || !f) {
 		dprintk(VIDC_ERR,
 			"Invalid input, inst = %p, format = %p\n", inst, f);
 		return -EINVAL;
 	}
-	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		fmt = inst->fmts[CAPTURE_PORT];
-	else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		buff_req = get_buff_req_buffer(
+		   inst, HAL_BUFFER_OUTPUT);
+	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		fmt = inst->fmts[OUTPUT_PORT];
+		buff_req = get_buff_req_buffer(
+		   inst, HAL_BUFFER_INPUT);
+	}
 
 	if (fmt) {
 		f->fmt.pix_mp.pixelformat = fmt->fourcc;
@@ -2183,9 +2196,14 @@ int msm_venc_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		f->fmt.pix_mp.width = inst->prop.width;
 		f->fmt.pix_mp.num_planes = fmt->num_planes;
 		for (i = 0; i < fmt->num_planes; ++i) {
-			f->fmt.pix_mp.plane_fmt[i].sizeimage =
-			fmt->get_frame_size(i, inst->prop.height,
-					inst->prop.width);
+			if (buff_req)
+				f->fmt.pix_mp.plane_fmt[i].sizeimage =
+				ALIGN(fmt->get_frame_size(i, inst->prop.height,
+					inst->prop.width), buff_req->buffer_alignment);
+			else
+				f->fmt.pix_mp.plane_fmt[i].sizeimage =
+				ALIGN(fmt->get_frame_size(i, inst->prop.height,
+					inst->prop.width), SZ_4K);
 		}
 		extra_idx = EXTRADATA_IDX(fmt->num_planes);
 		if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
