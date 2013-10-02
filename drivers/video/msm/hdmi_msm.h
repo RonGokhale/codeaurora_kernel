@@ -145,4 +145,5 @@ void hdmi_msm_cec_msg_send(struct hdmi_msm_cec_msg *msg);
 void mhl_connect_api(boolean on);
 void hdmi_msm_en_gc_packet(boolean do_av_mute);
 void hdmi_msm_encrypt_en(u32 enable);
+void mdp4_dtv_mute(u32 enable);
 #endif /* __HDMI_MSM_H__ */
