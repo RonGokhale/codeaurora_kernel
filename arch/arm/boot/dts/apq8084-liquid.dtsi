@@ -412,7 +412,7 @@
 	gpio@d300 { /* GPIO 20 */
 		qcom,mode = <1>;		/* Digital output */
 		qcom,output-type = <0>;		/* CMOS logic */
-		qcom,invert = <0>;		/* Output low initially */
+		qcom,invert = <1>;		/* Output high initially */
 		qcom,vin-sel = <0>;		/* VPH_PWR */
 		qcom,src-sel = <0>;		/* Constant */
 		qcom,out-strength = <1>;	/* Low */
