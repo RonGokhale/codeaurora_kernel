@@ -428,6 +428,9 @@ static int wait_for_err_ready(struct subsys_device *subsys)
 	if (!subsys->desc->err_ready_irq || enable_debug == 1)
 		return 0;
 
+	pr_err("NOT WAITING FOR THE ERROR READY INTERRUPT! DEBUG AWAY...\n");
+	return 0;
+
 	ret = wait_for_completion_timeout(&subsys->err_ready,
 					  msecs_to_jiffies(10000));
 	if (!ret) {
