@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -52,10 +52,12 @@ static irqreturn_t handle_msi_irq(int irq, void *data)
 	struct msm_pcie_dev_t *dev = data;
 	void __iomem *ctrl_status;
 
+	PCIE_DBG("\n");
+
 	/* check for set bits, clear it by setting that bit
 	   and trigger corresponding irq */
 	for (i = 0; i < PCIE20_MSI_CTRL_MAX; i++) {
-		ctrl_status = dev->pcie20 +
+		ctrl_status = dev->dm_core +
 				PCIE20_MSI_CTRL_INTR_STATUS + (i * 12);
 
 		val = readl_relaxed(ctrl_status);
@@ -73,28 +75,34 @@ static irqreturn_t handle_msi_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-uint32_t __init msm_pcie_irq_init(struct msm_pcie_dev_t *dev)
+void msm_pcie_config_msi_controller(struct msm_pcie_dev_t *dev)
 {
-	int i, rc;
+	int i;
 
 	PCIE_DBG("\n");
 
 	/* program MSI controller and enable all interrupts */
-	writel_relaxed(MSM_PCIE_MSI_PHY, dev->pcie20 + PCIE20_MSI_CTRL_ADDR);
-	writel_relaxed(0, dev->pcie20 + PCIE20_MSI_CTRL_UPPER_ADDR);
+	writel_relaxed(MSM_PCIE_MSI_PHY, dev->dm_core + PCIE20_MSI_CTRL_ADDR);
+	writel_relaxed(0, dev->dm_core + PCIE20_MSI_CTRL_UPPER_ADDR);
 
 	for (i = 0; i < PCIE20_MSI_CTRL_MAX; i++)
-		writel_relaxed(~0, dev->pcie20 +
+		writel_relaxed(~0, dev->dm_core +
 			       PCIE20_MSI_CTRL_INTR_EN + (i * 12));
 
 	/* ensure that hardware is configured before proceeding */
 	wmb();
+}
 
+uint32_t msm_pcie_irq_init(struct msm_pcie_dev_t *dev)
+{
+	int rc;
+
+	PCIE_DBG("\n");
 	/* register handler for physical MSI interrupt line */
-	rc = request_irq(PCIE20_INT_MSI, handle_msi_irq, IRQF_TRIGGER_RISING,
-			 "msm_pcie_msi", dev);
+	rc = request_irq(dev->irq[MSM_PCIE_INT_MSI].num, handle_msi_irq,
+		IRQF_TRIGGER_RISING, dev->irq[MSM_PCIE_INT_MSI].name, dev);
 	if (rc) {
-		pr_err("Unable to allocate msi interrupt\n");
+		pr_err("PCIe: Unable to allocate msi interrupt\n");
 		goto out;
 	}
 
@@ -102,28 +110,39 @@ uint32_t __init msm_pcie_irq_init(struct msm_pcie_dev_t *dev)
 	rc = request_irq(dev->wake_n, handle_wake_irq, IRQF_TRIGGER_FALLING,
 			 "msm_pcie_wake", dev);
 	if (rc) {
-		pr_err("Unable to allocate wake interrupt\n");
-		free_irq(PCIE20_INT_MSI, dev);
+		pr_err("PCIe: Unable to allocate wake interrupt\n");
+		free_irq(dev->irq[MSM_PCIE_INT_MSI].num, dev);
 		goto out;
 	}
 
-	enable_irq_wake(dev->wake_n);
+	rc = enable_irq_wake(dev->wake_n);
+	if (rc) {
+		pr_err("PCIe: Unable to enable wake interrupt\n");
+		free_irq(dev->wake_n, dev);
+		free_irq(dev->irq[MSM_PCIE_INT_MSI].num, dev);
+		goto out;
+	}
 
 	/* PCIE_WAKE_N should be enabled only during system suspend */
 	disable_irq(dev->wake_n);
+
 out:
 	return rc;
 }
 
-void __exit msm_pcie_irq_deinit(struct msm_pcie_dev_t *dev)
+void msm_pcie_irq_deinit(struct msm_pcie_dev_t *dev)
 {
-	free_irq(PCIE20_INT_MSI, dev);
+	PCIE_DBG("\n");
+
+	free_irq(dev->irq[MSM_PCIE_INT_MSI].num, dev);
 	free_irq(dev->wake_n, dev);
 }
 
 void msm_pcie_destroy_irq(unsigned int irq)
 {
 	int pos = irq - MSM_PCIE_MSI_INT(0);
+
+	PCIE_DBG("\n");
 
 	dynamic_irq_cleanup(irq);
 	clear_bit(pos, msi_irq_in_use);
@@ -154,6 +173,8 @@ static int msm_pcie_create_irq(void)
 {
 	int irq, pos;
 
+	PCIE_DBG("\n");
+
 again:
 	pos = find_first_zero_bit(msi_irq_in_use, NR_PCIE_MSI_IRQS);
 	irq = MSM_PCIE_MSI_INT(pos);
@@ -172,6 +193,8 @@ int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
 	int irq;
 	struct msi_msg msg;
+
+	PCIE_DBG("\n");
 
 	irq = msm_pcie_create_irq();
 	if (irq < 0)
