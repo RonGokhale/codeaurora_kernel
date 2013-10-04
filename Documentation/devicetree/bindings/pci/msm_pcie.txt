@@ -1,6 +1,6 @@
-Qualcomm PCIe
+MSM PCIe
 
-Qualcomm PCI express root complex
+MSM PCI express root complex
 
 Required properties:
   - compatible: should be "qcom,msm-pcie"
