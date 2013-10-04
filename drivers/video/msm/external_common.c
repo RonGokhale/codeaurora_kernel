@@ -2088,16 +2088,16 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 
 	if (hdmi_prim_resolution) {
 		format = hdmi_prim_resolution - 1;
-		DEV_INFO("%s: selecting resolution from fastboot param %d\n",
-			__func__, hdmi_prim_resolution);
+		/*DEV_INFO("%s: selecting resolution from fastboot param %d\n",
+			__func__, hdmi_prim_resolution);*/
 	} else if (var->reserved[3]) {
 		format = var->reserved[3] - 1;
-		DEV_INFO("%s: selecting resolution from reserved format %d\n",
-			__func__, format);
+		/*DEV_INFO("%s: selecting resolution from reserved format %d\n",
+			__func__, format);*/
 	} else {
-		DEV_INFO("%s: selecting resolution from %dx%d, framerate %d\n",
+		/*DEV_INFO("%s: selecting resolution from %dx%d, framerate %d\n",
 			__func__, mfd->var_xres, mfd->var_yres,
-			mfd->var_frame_rate);
+			mfd->var_frame_rate);*/
 		switch (mfd->var_xres) {
 		default:
 		case  640:
