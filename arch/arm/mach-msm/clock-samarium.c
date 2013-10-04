@@ -3543,6 +3543,7 @@ static struct clk_lookup msm_clocks_samarium[] = {
 	CLK_LOOKUP("camss_top_ahb_clk", camss_top_ahb_clk.c,
 						"fda0c000.qcom,cci"),
 	CLK_LOOKUP("cci_ahb_clk", camss_cci_cci_ahb_clk.c, "fda0c000.qcom,cci"),
+	CLK_LOOKUP("camss_ahb_clk", camss_ahb_clk.c, "fda0c000.qcom,cci"),
 	CLK_LOOKUP("cci_src_clk", cci_clk_src.c, "fda0c000.qcom,cci"),
 	CLK_LOOKUP("cci_clk", camss_cci_cci_clk.c, "fda0c000.qcom,cci"),
 

@@ -161,7 +161,7 @@
 		reg = <0xfda00000 0x100>;
 		reg-names = "irqrouter";
 	};
-
+/*
 	qcom,cpp@fda04000 {
 		cell-index = <0>;
 		compatible = "qcom,cpp";
@@ -173,7 +173,7 @@
 		interrupt-names = "cpp";
 		vdd-supply = <&gdsc_vfe>;
 	};
-
+*/
 	cci: qcom,cci@fda0C000 {
 		cell-index = <0>;
 		compatible = "qcom,cci";

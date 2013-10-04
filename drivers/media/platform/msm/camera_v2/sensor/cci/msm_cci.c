@@ -701,8 +701,13 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 	enable_irq(cci_dev->irq->start);
 	cci_dev->hw_version = msm_camera_io_r(cci_dev->base +
 		CCI_HW_VERSION_ADDR);
+<<<<<<< HEAD
 	pr_info("%s:%d: hw_version = 0x%x\n", __func__, __LINE__,
 		cci_dev->hw_version);
+=======
+	pr_err("%s:  %d hw_version =0x%X\n",
+			 __func__, __LINE__, cci_dev->hw_version);
+>>>>>>> 12a8355... msm: camera: msmsamarium camera bring up
 	cci_dev->cci_master_info[MASTER_0].reset_pending = TRUE;
 	msm_camera_io_w(CCI_RESET_CMD_RMSK, cci_dev->base + CCI_RESET_CMD_ADDR);
 	msm_camera_io_w(0x1, cci_dev->base + CCI_RESET_CMD_ADDR);
