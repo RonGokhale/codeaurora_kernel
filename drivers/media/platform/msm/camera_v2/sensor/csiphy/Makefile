@@ -8,5 +8,7 @@ else ifeq ($(CONFIG_MSM_CSI30_HEADER),y)
   ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/csiphy/include/csi3.0
 else ifeq ($(CONFIG_MSM_CSI31_HEADER),y)
   ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/csiphy/include/csi3.1
+else ifeq ($(CONFIG_MSM_CSI32_HEADER),y)
+  ccflags-y += -Idrivers/media/platform/msm/camera_v2/sensor/csiphy/include/csi3.2
 endif
 obj-$(CONFIG_MSM_CSIPHY) += msm_csiphy.o
