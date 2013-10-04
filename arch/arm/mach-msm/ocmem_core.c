@@ -981,6 +981,9 @@ static int switch_power_state(int id, unsigned long offset, unsigned long len,
 			break;
 		}
 
+		if (id == OCMEM_VIDEO)
+			region_size = region_size / 2;
+
 		if (len >= region_size) {
 			pr_debug("switch: entire region (%d)\n", i);
 			start_m = 0;
@@ -1013,6 +1016,9 @@ static int switch_power_state(int id, unsigned long offset, unsigned long len,
 		}
 
 	}
+	if (id == OCMEM_VIDEO)
+		region_size = region_size * 2;
+
 	mutex_unlock(&region_ctrl_lock);
 	ocmem_disable_core_clock();
 	return 0;
