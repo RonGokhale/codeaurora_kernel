@@ -167,11 +167,11 @@ struct drm_kgsl_gem_cache_ops)
 
 enum drm_kgsl_crtc_id {
 	DRM_KGSL_CRTC_PRIMARY,
-	DRM_KGSL_CRTC_HDMI,
-	DRM_KGSL_CRTC_ROTATOR,
-	DRM_KGSL_CRTC_WFD,
 	DRM_KGSL_CRTC_FAKE,
 	DRM_KGSL_CRTC_MAX,
+	DRM_KGSL_CRTC_HDMI,
+	DRM_KGSL_CRTC_ROTATOR,
+	DRM_KGSL_CRTC_WFD
 };
 
 struct drm_kgsl_gem_create {
@@ -276,6 +276,7 @@ struct drm_kgsl_gem_cache_ops {
 
 #ifdef __KERNEL__
 extern void mdss_mdp_clk_ctrl(int enable, int isr);
+extern void mdp3_clk_enable(int enable);
 #endif /* __KERNEL__ */
 
 #endif

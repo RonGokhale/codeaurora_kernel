@@ -81,15 +81,11 @@
 	((_t & DRM_KGSL_GEM_TYPE_MEM_MASK) == DRM_KGSL_GEM_TYPE_MEM_SECURE)
 
 /* MDP register information from mdss_mdp_hwio.h */
-#define MDSS_MDP_REG_DRM_INTR_STATUS    0x14
-#define MDSS_MDP_REG_INTR_EN			0x00110
-#define MDSS_MDP_REG_INTR_STATUS		0x00114
-#define MDSS_MDP_REG_INTR_CLEAR		0x00118
-#define MDSS_MDP_VSYNC_IRQ		0x08000000
-#define MDSS_MDP_INTR_INTF_1_VSYNC		BIT(27)
-#define MDSS_MDP_INTR_INTF_3_VSYNC		BIT(31)
-#define MDSS_MDP_INTR_WB_0_DONE		BIT(0)
-#define MDSS_MDP_INTR_WB_2_DONE		BIT(4)
+#define MDP3_REG_DRM_INTR_STATUS	0xA0000
+#define MDP3_REG_INTR_ENABLE		0x0020
+#define MDP3_REG_INTR_STATUS		0x0024
+#define MDP3_REG_INTR_CLEAR		0x0028
+#define MDP3_REG_VSYNC_IRQ		BIT(15)
 
 struct drm_kgsl_gem_object_wait_list_entry {
 	struct list_head list;
@@ -1783,31 +1779,15 @@ kgsl_drm_irq_handler(DRM_IRQ_ARGS)
 		(struct drm_kgsl_private *)dev->dev_private;
 	u32 isr;
 
-	isr = readl_relaxed(dev_priv->regs + MDSS_MDP_REG_DRM_INTR_STATUS);
-
+	isr = readl_relaxed(dev_priv->regs + MDP3_REG_DRM_INTR_STATUS);
 	DRM_DEBUG("%s:isr[0x%x]\n", __func__, isr);
 
 	if (isr == 0)
 		goto irq_done;
 
-	if (isr & MDSS_MDP_INTR_INTF_1_VSYNC) {
+	if (isr & MDP3_REG_VSYNC_IRQ) {
 		DRM_DEBUG("%s:DSI0\n", __func__);
 		drm_handle_vblank(dev, DRM_KGSL_CRTC_PRIMARY);
-	}
-
-	if (isr & MDSS_MDP_INTR_INTF_3_VSYNC) {
-		DRM_DEBUG("%s:HDMI\n", __func__);
-		drm_handle_vblank(dev, DRM_KGSL_CRTC_HDMI);
-	}
-
-	if (isr & MDSS_MDP_INTR_WB_0_DONE) {
-		DRM_DEBUG("%s:Rotator\n", __func__);
-		drm_handle_vblank(dev, DRM_KGSL_CRTC_ROTATOR);
-	}
-
-	if (isr & MDSS_MDP_INTR_WB_2_DONE) {
-		DRM_DEBUG("%s:WFD\n", __func__);
-		drm_handle_vblank(dev, DRM_KGSL_CRTC_WFD);
 	}
 
 irq_done:
@@ -1855,22 +1835,22 @@ kgsl_drm_irq_postinstall(struct drm_device *dev)
 		(struct drm_kgsl_private *)dev->dev_private;
 	u32 mask;
 
-	mdss_mdp_clk_ctrl(1, false);
+	mdp3_clk_enable(1);
 
 	mask = readl_relaxed(dev_priv->regs +
-		MDSS_MDP_REG_INTR_EN);
+		MDP3_REG_INTR_ENABLE);
 
 	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
 
-	mask |= MDSS_MDP_VSYNC_IRQ;
-	writel_relaxed(MDSS_MDP_VSYNC_IRQ,
-		dev_priv->regs + MDSS_MDP_REG_INTR_CLEAR);
+	mask |= MDP3_REG_VSYNC_IRQ;
+	writel_relaxed(MDP3_REG_VSYNC_IRQ,
+		dev_priv->regs + MDP3_REG_INTR_CLEAR);
 	writel_relaxed(mask,
-		dev_priv->regs + MDSS_MDP_REG_INTR_EN);
+		dev_priv->regs + MDP3_REG_INTR_ENABLE);
 
 	dev->irq_enabled = 1;
 
-	mdss_mdp_clk_ctrl(0, false);
+	mdp3_clk_enable(0);
 
 	return 0;
 }
@@ -1882,19 +1862,18 @@ kgsl_drm_irq_uninstall(struct drm_device *dev)
 		(struct drm_kgsl_private *)dev->dev_private;
 	u32 mask;
 
-	mdss_mdp_clk_ctrl(1, false);
+	mdp3_clk_enable(1);
 
 	mask = readl_relaxed(dev_priv->regs +
-		MDSS_MDP_REG_INTR_EN);
+		MDP3_REG_INTR_ENABLE);
 
 	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
 
-	mask &= ~MDSS_MDP_VSYNC_IRQ;
-	writel_relaxed(mask, dev_priv->regs + MDSS_MDP_REG_INTR_EN);
+	mask &= ~MDP3_REG_VSYNC_IRQ;
+	writel_relaxed(mask, dev_priv->regs + MDP3_REG_INTR_ENABLE);
 
 	dev->irq_enabled = 0;
-
-	mdss_mdp_clk_ctrl(0, false);
+	mdp3_clk_enable(0);
 }
 
 int kgsl_gem_prime_handle_to_fd(struct drm_device *dev,

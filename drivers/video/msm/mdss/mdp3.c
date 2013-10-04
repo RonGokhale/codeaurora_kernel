@@ -168,15 +168,20 @@ static irqreturn_t mdp3_irq_handler(int irq, void *ptr)
 	int i = 0;
 	struct mdp3_hw_resource *mdata = (struct mdp3_hw_resource *)ptr;
 	u32 mdp_interrupt = 0;
+	u32 mask = 0;
 
 	spin_lock(&mdata->irq_lock);
-	if (!mdata->irq_mask) {
+	mask = MDP3_REG_READ(MDP3_REG_INTR_ENABLE);
+	mdp_interrupt = MDP3_REG_READ(MDP3_REG_INTR_STATUS);
+	mdp_interrupt &= mask;
+
+	if (!mdp_interrupt) {
 		pr_err("spurious interrupt\n");
 		spin_unlock(&mdata->irq_lock);
 		return IRQ_HANDLED;
 	}
 
-	mdp_interrupt = MDP3_REG_READ(MDP3_REG_INTR_STATUS);
+	MDP3_REG_WRITE(KGSL_DRM_VSYNC_INTR_STATUS, mdp_interrupt);
 	MDP3_REG_WRITE(MDP3_REG_INTR_CLEAR, mdp_interrupt);
 	pr_debug("mdp3_irq_handler irq=%d\n", mdp_interrupt);
 
@@ -196,6 +201,7 @@ static irqreturn_t mdp3_irq_handler(int irq, void *ptr)
 void mdp3_irq_enable(int type)
 {
 	unsigned long flag;
+	u32 mask = 0;
 
 	pr_debug("mdp3_irq_enable type=%d\n", type);
 	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
@@ -206,8 +212,12 @@ void mdp3_irq_enable(int type)
 		return;
 	}
 
+	// Preserve VSYNC interrupt enablement by KGSL DRM VBLANK.
+	mask = MDP3_REG_READ(MDP3_REG_INTR_ENABLE) &
+				MDP3_INTR_LCDC_START_OF_FRAME_BIT;
+
 	mdp3_res->irq_mask |= BIT(type);
-	MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
+	MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask | mask);
 
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 }
@@ -223,14 +233,20 @@ void mdp3_irq_disable(int type)
 
 void mdp3_irq_disable_nosync(int type)
 {
+	u32 mask = 0;
 	if (mdp3_res->irq_ref_count[type] <= 0) {
 		pr_debug("interrupt %d not enabled\n", type);
 		return;
 	}
+
+	// Preserve VSYNC interrupt enablement by KGSL DRM VBLANK.
+	mask = MDP3_REG_READ(MDP3_REG_INTR_ENABLE) &
+				MDP3_INTR_LCDC_START_OF_FRAME_BIT;
+
 	mdp3_res->irq_ref_count[type] -= 1;
 	if (mdp3_res->irq_ref_count[type] == 0) {
 		mdp3_res->irq_mask &= ~BIT(type);
-		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
+		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask | mask);
 	}
 }
 
@@ -554,6 +570,7 @@ int mdp3_clk_enable(int enable)
 	mutex_unlock(&mdp3_res->res_mutex);
 	return rc;
 }
+EXPORT_SYMBOL(mdp3_clk_enable);
 
 static int mdp3_irq_setup(void)
 {
@@ -562,7 +579,7 @@ static int mdp3_irq_setup(void)
 	ret = devm_request_irq(&mdp3_res->pdev->dev,
 				mdp3_res->irq,
 				mdp3_irq_handler,
-				IRQF_DISABLED, "MDP", mdp3_res);
+				IRQF_DISABLED | IRQF_SHARED, "MDP", mdp3_res);
 	if (ret) {
 		pr_err("mdp request_irq() failed!\n");
 		return ret;
