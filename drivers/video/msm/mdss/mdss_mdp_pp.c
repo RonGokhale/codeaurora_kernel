@@ -2072,6 +2072,8 @@ int mdss_mdp_dither_config(struct mdp_dither_cfg_data *config,
 {
 	u32 disp_num;
 
+	return 0;
+
 	if ((config->block < MDP_LOGICAL_BLOCK_DISP_0) ||
 		(config->block >= MDP_BLOCK_MAX))
 		return -EINVAL;
