@@ -268,4 +268,5 @@ void __init msmsamarium_init_gpiomux(void)
 	msm_gpiomux_install(msm_lcd_configs, ARRAY_SIZE(msm_lcd_configs));
 	msm_gpiomux_install(msm_touch_configs, ARRAY_SIZE(msm_touch_configs));
 	msm_gpiomux_install(sd_card_det, ARRAY_SIZE(sd_card_det));
+	msm_gpiomux_install(msm_sensor_configs, ARRAY_SIZE(msm_sensor_configs));
 }
