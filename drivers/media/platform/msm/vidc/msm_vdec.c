@@ -656,7 +656,7 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 						inst->capability.height.max,
 						inst->capability.width.max),
 						  inst->buff_req.buffer
-						[HAL_BUFFER_OUTPUT].buffer_alignment);
+						[HAL_BUFFER_INPUT].buffer_alignment);
 				inst->bufq[OUTPUT_PORT].
 					vb2_bufq.plane_sizes[i] =
 					f->fmt.pix_mp.plane_fmt[i].sizeimage;
@@ -682,7 +682,6 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			else
 				f->fmt.pix_mp.plane_fmt[0].sizeimage =
 				ALIGN(buff_req_buffer->buffer_size, SZ_4K);
-
 			extra_idx = EXTRADATA_IDX(fmt->num_planes);
 			if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
 				buff_req_buffer =
