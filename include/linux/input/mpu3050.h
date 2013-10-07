@@ -25,7 +25,6 @@ struct mpu3050_gyro_platform_data {
 	int (*power_off)(void);
 
 	int gpio_int;
-	int gpio_en;
 	int gpio_fsync;
 };
 

@@ -75,11 +75,6 @@
    (_t == DRM_KGSL_GEM_TYPE_KMEM) || \
    (TYPE_IS_MEM(_t) && (_t & DRM_KGSL_GEM_CACHE_WCOMBINE)))
 
-/* Returns true if memory type is secure */
-
-#define TYPE_IS_SECURE(_t) \
-	((_t & DRM_KGSL_GEM_TYPE_MEM_MASK) == DRM_KGSL_GEM_TYPE_MEM_SECURE)
-
 struct drm_kgsl_gem_object_wait_list_entry {
 	struct list_head list;
 	int pid;
@@ -229,23 +224,10 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 				return result;
 			}
 
-			result = kgsl_mmu_get_gpuaddr(priv->pagetable,
-							&priv->memdesc);
-			if (result) {
-				DRM_ERROR(
-				"kgsl_mmu_get_gpuaddr failed. result = %d\n",
-				result);
-				ion_free(kgsl_drm_ion_client,
-					priv->ion_handle);
-				priv->ion_handle = NULL;
-				return result;
-			}
 			result = kgsl_mmu_map(priv->pagetable, &priv->memdesc);
 			if (result) {
 				DRM_ERROR(
 				"kgsl_mmu_map failed.  result = %d\n", result);
-				kgsl_mmu_put_gpuaddr(priv->pagetable,
-							&priv->memdesc);
 				ion_free(kgsl_drm_ion_client,
 					priv->ion_handle);
 				priv->ion_handle = NULL;
@@ -291,41 +273,13 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 			priv->memdesc.sglen++;
 		}
 
-		result = kgsl_mmu_get_gpuaddr(priv->pagetable, &priv->memdesc);
-		if (result) {
-			DRM_ERROR(
-			"kgsl_mmu_get_gpuaddr failed.  result = %d\n", result);
-			goto memerr;
-		}
 		result = kgsl_mmu_map(priv->pagetable, &priv->memdesc);
 		if (result) {
 			DRM_ERROR(
 			"kgsl_mmu_map failed.  result = %d\n", result);
-			kgsl_mmu_put_gpuaddr(priv->pagetable, &priv->memdesc);
 			goto memerr;
 		}
-	} else if (TYPE_IS_SECURE(priv->type)) {
-		priv->memdesc.pagetable = priv->pagetable;
-		priv->ion_handle = ion_alloc(kgsl_drm_ion_client,
-				obj->size * priv->bufcount, PAGE_SIZE,
-				ION_HEAP(ION_CP_MM_HEAP_ID), ION_FLAG_SECURE);
-		if (IS_ERR_OR_NULL(priv->ion_handle)) {
-			DRM_ERROR("Unable to allocate ION_SECURE memory\n");
-			return -ENOMEM;
-		}
-		sg_table = ion_sg_table(kgsl_drm_ion_client,
-				priv->ion_handle);
-		if (IS_ERR_OR_NULL(priv->ion_handle)) {
-			DRM_ERROR("Unable to get ION sg table\n");
-			goto memerr;
-		}
-		priv->memdesc.sg = sg_table->sgl;
-		priv->memdesc.sglen = 0;
-		for (s = priv->memdesc.sg; s != NULL; s = sg_next(s)) {
-			priv->memdesc.size += s->length;
-			priv->memdesc.sglen++;
-		}
-		/* Skip GPU map for secure buffer */
+
 	} else
 		return -EINVAL;
 
@@ -357,10 +311,8 @@ kgsl_gem_free_memory(struct drm_gem_object *obj)
 	if (!kgsl_gem_memory_allocated(obj) || TYPE_IS_FD(priv->type))
 		return;
 
-	if (priv->memdesc.gpuaddr) {
+	if (priv->memdesc.gpuaddr)
 		kgsl_mmu_unmap(priv->memdesc.pagetable, &priv->memdesc);
-		kgsl_mmu_put_gpuaddr(priv->memdesc.pagetable, &priv->memdesc);
-	}
 
 	/* ION will take care of freeing the sg table. */
 	priv->memdesc.sg = NULL;
@@ -411,7 +363,6 @@ kgsl_gem_free_object(struct drm_gem_object *obj)
 	kgsl_gem_free_memory(obj);
 	drm_gem_object_release(obj);
 	kfree(obj->driver_private);
-	kfree(obj);
 }
 
 int
@@ -694,21 +645,9 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 		priv->memdesc.sglen++;
 	}
 
-	ret = kgsl_mmu_get_gpuaddr(priv->pagetable, &priv->memdesc);
-	if (ret) {
-		DRM_ERROR("kgsl_mmu_get_gpuaddr failed.  ret = %d\n", ret);
-		ion_free(kgsl_drm_ion_client,
-			priv->ion_handle);
-		priv->ion_handle = NULL;
-		kgsl_mmu_putpagetable(priv->pagetable);
-		drm_gem_object_release(obj);
-		kfree(priv);
-		return -ENOMEM;
-	}
 	ret = kgsl_mmu_map(priv->pagetable, &priv->memdesc);
 	if (ret) {
 		DRM_ERROR("kgsl_mmu_map failed.  ret = %d\n", ret);
-		kgsl_mmu_put_gpuaddr(priv->pagetable, &priv->memdesc);
 		ion_free(kgsl_drm_ion_client,
 			priv->ion_handle);
 		priv->ion_handle = NULL;
@@ -747,10 +686,9 @@ kgsl_gem_get_ion_fd_ioctl(struct drm_device *dev, void *data,
 
 	if (TYPE_IS_FD(priv->type))
 		ret = -EINVAL;
-	else if (TYPE_IS_PMEM(priv->type) || TYPE_IS_MEM(priv->type) ||
-			TYPE_IS_SECURE(priv->type)) {
+	else if (TYPE_IS_PMEM(priv->type) || TYPE_IS_MEM(priv->type)) {
 		if (priv->ion_handle) {
-			args->ion_fd = ion_share_dma_buf_fd(
+			args->ion_fd = ion_share_dma_buf(
 				kgsl_drm_ion_client, priv->ion_handle);
 			if (args->ion_fd < 0) {
 				DRM_ERROR(
@@ -792,8 +730,7 @@ kgsl_gem_setmemtype_ioctl(struct drm_device *dev, void *data,
 	if (TYPE_IS_FD(priv->type))
 		ret = -EINVAL;
 	else {
-		if (TYPE_IS_PMEM(args->type) || TYPE_IS_MEM(args->type) ||
-			TYPE_IS_SECURE(args->type))
+		if (TYPE_IS_PMEM(args->type) || TYPE_IS_MEM(args->type))
 			priv->type = args->type;
 		else
 			ret = -EINVAL;

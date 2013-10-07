@@ -1643,9 +1643,6 @@ static int ci13xxx_wakeup(struct usb_gadget *_gadget)
 	if (udc->transceiver)
 		usb_phy_set_suspend(udc->transceiver, 0);
 
-	while (udc->udc_driver->in_lpm(udc))
-		usleep(1);
-
 	spin_lock_irqsave(udc->lock, flags);
 	if (!skip_fpr) {
 		if (!hw_cread(CAP_PORTSC, PORTSC_SUSP)) {
@@ -3907,8 +3904,8 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 	udc->gadget.dev.release  = udc_release;
 
 	if (udc->udc_driver->flags & CI13XXX_REQUIRE_TRANSCEIVER) {
-		udc->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
-		if (IS_ERR_OR_NULL(udc->transceiver)) {
+		udc->transceiver = usb_get_transceiver();
+		if (udc->transceiver == NULL) {
 			retval = -ENODEV;
 			goto free_udc;
 		}
@@ -3969,7 +3966,7 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 remove_trans:
 	if (udc->transceiver) {
 		otg_set_peripheral(udc->transceiver->otg, &udc->gadget);
-		usb_put_phy(udc->transceiver);
+		usb_put_transceiver(udc->transceiver);
 	}
 
 	err("error = %i", retval);
@@ -3981,7 +3978,7 @@ unreg_device:
 	device_unregister(&udc->gadget.dev);
 put_transceiver:
 	if (udc->transceiver)
-		usb_put_phy(udc->transceiver);
+		usb_put_transceiver(udc->transceiver);
 free_udc:
 	kfree(udc);
 	_udc = NULL;
@@ -4011,7 +4008,7 @@ static void udc_remove(void)
 
 	if (udc->transceiver) {
 		otg_set_peripheral(udc->transceiver->otg, &udc->gadget);
-		usb_put_phy(udc->transceiver);
+		usb_put_transceiver(udc->transceiver);
 	}
 #ifdef CONFIG_USB_GADGET_DEBUG_FILES
 	dbg_remove_files(&udc->gadget.dev);

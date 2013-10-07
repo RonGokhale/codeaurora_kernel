@@ -174,8 +174,8 @@ struct ocmem_req {
 	/* Request Power State */
 	unsigned power_state;
 	struct ocmem_eviction_data *edata;
-	/* Eviction data of the request being evicted */
-	struct ocmem_eviction_data *eviction_info;
+	/* Request that triggered eviction */
+	struct ocmem_req *e_handle;
 };
 
 struct ocmem_handle {

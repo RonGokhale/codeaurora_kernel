@@ -27,9 +27,6 @@
 #define MAX_AUDIO_DATA_BLOCK_SIZE	30
 #define MAX_SPKR_ALLOC_DATA_BLOCK_SIZE	3
 
-/* Support for first 5 EDID blocks */
-#define MAX_EDID_BLOCK_SIZE (0x80 * 5)
-
 struct hdmi_edid_sink_data {
 	u32 disp_mode_list[HDMI_VFRMT_MAX];
 	u32 disp_3d_mode_list[HDMI_VFRMT_MAX];
@@ -53,7 +50,6 @@ struct hdmi_edid_ctrl {
 	int adb_size;
 	u8 spkr_alloc_data_block[MAX_SPKR_ALLOC_DATA_BLOCK_SIZE];
 	int sadb_size;
-	u8 edid_buf[MAX_EDID_BLOCK_SIZE];
 
 	struct hdmi_edid_sink_data sink_data;
 	struct hdmi_edid_init_data init_data;
@@ -353,30 +349,11 @@ static ssize_t hdmi_edid_sysfs_rda_3d_modes(struct device *dev,
 } /* hdmi_edid_sysfs_rda_3d_modes */
 static DEVICE_ATTR(edid_3d_modes, S_IRUGO, hdmi_edid_sysfs_rda_3d_modes, NULL);
 
-static ssize_t hdmi_common_rda_edid_raw_data(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct hdmi_edid_ctrl *edid_ctrl =
-		hdmi_get_featuredata_from_sysfs_dev(dev, HDMI_TX_FEAT_EDID);
-
-	if (!edid_ctrl) {
-		DEV_ERR("%s: invalid input\n", __func__);
-		return -EINVAL;
-	}
-
-	memcpy(buf, edid_ctrl->edid_buf,
-		sizeof(edid_ctrl->edid_buf));
-
-	return sizeof(edid_ctrl->edid_buf);
-} /* hdmi_common_rda_edid_raw_data */
-static DEVICE_ATTR(edid_raw_data, S_IRUGO, hdmi_common_rda_edid_raw_data, NULL);
-
 static struct attribute *hdmi_edid_fs_attrs[] = {
 	&dev_attr_edid_modes.attr,
 	&dev_attr_pa.attr,
 	&dev_attr_scan_info.attr,
 	&dev_attr_edid_3d_modes.attr,
-	&dev_attr_edid_raw_data.attr,
 	NULL,
 };
 
@@ -389,9 +366,8 @@ static int hdmi_edid_read_block(struct hdmi_edid_ctrl *edid_ctrl, int block,
 {
 	const u8 *b = NULL;
 	u32 ndx, check_sum, print_len;
-	int block_size;
+	int block_size = 0x80;
 	int i, status;
-	int retry_cnt = 0;
 	struct hdmi_tx_ddc_data ddc_data;
 	b = edid_buf;
 
@@ -400,9 +376,6 @@ static int hdmi_edid_read_block(struct hdmi_edid_ctrl *edid_ctrl, int block,
 		return -EINVAL;
 	}
 
-read_retry:
-	block_size = 0x80;
-	status = 0;
 	do {
 		DEV_DBG("EDID: reading block(%d) with block-size=%d\n",
 			block, block_size);
@@ -449,10 +422,6 @@ read_retry:
 				ndx, ndx+3,
 				b[ndx+0], b[ndx+1], b[ndx+2], b[ndx+3]);
 		status = -EPROTO;
-		if (retry_cnt++ < 3) {
-			DEV_DBG("Retrying reading EDID %d time\n", retry_cnt);
-			goto read_retry;
-		}
 		goto error;
 	}
 
@@ -885,8 +854,7 @@ static void hdmi_edid_add_sink_video_format(
 static void hdmi_edid_get_display_vsd_3d_mode(const u8 *data_buf,
 	struct hdmi_edid_sink_data *sink_data, u32 num_of_cea_blocks)
 {
-	u8 len, offset, present_multi_3d, hdmi_vic_len;
-	int hdmi_3d_len;
+	u8 len, offset, present_multi_3d, hdmi_vic_len, hdmi_3d_len;
 	u16 structure_all, structure_mask;
 	const u8 *vsd = num_of_cea_blocks ?
 		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
@@ -1325,7 +1293,7 @@ static void hdmi_edid_get_display_mode(struct hdmi_edid_ctrl *edid_ctrl,
 int hdmi_edid_read(void *input)
 {
 	/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
-	u8 *edid_buf = NULL;
+	u8 edid_buf[0x80 * 4];
 	u32 cea_extension_ver = 0;
 	u32 num_of_cea_blocks = 0;
 	u32 ieee_reg_id = 0;
@@ -1339,14 +1307,12 @@ int hdmi_edid_read(void *input)
 		return -EINVAL;
 	}
 
-	edid_buf = edid_ctrl->edid_buf;
-
 	edid_ctrl->pt_scan_info = 0;
 	edid_ctrl->it_scan_info = 0;
 	edid_ctrl->ce_scan_info = 0;
 	edid_ctrl->present_3d = 0;
 	memset(&edid_ctrl->sink_data, 0, sizeof(edid_ctrl->sink_data));
-	memset(edid_buf, 0, sizeof(edid_ctrl->edid_buf));
+	memset(edid_buf, 0, sizeof(edid_buf));
 	memset(edid_ctrl->audio_data_block, 0,
 		sizeof(edid_ctrl->audio_data_block));
 	memset(edid_ctrl->spkr_alloc_data_block, 0,
@@ -1413,7 +1379,7 @@ int hdmi_edid_read(void *input)
 		for (i = 1; i <= num_of_cea_blocks; i++) {
 			if (!(i % 2)) {
 				status = hdmi_edid_read_block(
-					edid_ctrl, i, edid_buf + (0x80 * i));
+					edid_ctrl, i, edid_buf+0x00);
 				if (status) {
 					DEV_ERR("%s: read blk(%d) failed:%d\n",
 						__func__, i, status);
@@ -1421,7 +1387,7 @@ int hdmi_edid_read(void *input)
 				}
 			} else {
 				status = hdmi_edid_read_block(
-					edid_ctrl, i, edid_buf + (0x80 * i));
+					edid_ctrl, i, edid_buf+0x80);
 				if (status) {
 					DEV_ERR("%s: read blk(%d) failed:%d\n",
 						__func__, i, status);

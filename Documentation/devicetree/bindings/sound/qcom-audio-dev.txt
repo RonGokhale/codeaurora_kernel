@@ -137,9 +137,15 @@ Required properties:
 
 * msm-auxpcm
 
+[First Level Nodes]
+
 Required properties:
 
- - compatible :                           "qcom,msm-auxpcm-dev"
+ - compatible :                           "qcom,msm-auxpcm-resource"
+
+ - qcom,msm-cpudai-auxpcm-clk:            clock for auxpcm. The first value is
+                                          for 8khz mode, the second is for
+                                          16khz
 
  - qcom,msm-cpudai-auxpcm-mode:           mode information. The first value is
                                           for 8khz mode, the second is for
@@ -174,10 +180,16 @@ Required properties:
                                           first value is for 8khz mode, the
                                           second is for auxpcm
 
- - qcom,msm-auxpcm-interface:             name of AUXPCM interface "primary"
-                                          indicates primary AUXPCM interface
-                                          "secondary" indicates secondary
-                                          AUXPCM interface
+[Second Level Nodes]
+
+Required Properties:
+
+ - qcom,msm-auxpcm-dev-id:                This property specifies the device
+                                          port id.
+                                          For Rx device, the port id is 4106
+                                          and for Tx device, the port id is 4107
+
+ - compatible:                            "qcom,msm-auxpcm-dev"
 
 * msm-pcm-hostless
 
@@ -376,17 +388,37 @@ Example:
 		};
 	};
 
-	qcom,msm-pri-auxpcm {
-		qcom,msm-cpudai-auxpcm-mode = <1>, <1>;
-		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
-		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
-		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
-		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
-		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
-		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
-		qcom,msm-auxpcm-interface = "primary";
-		compatible = "qcom,msm-auxpcm-dev";
-	};
+        qcom,msm-auxpcm {
+                compatible = "qcom,msm-auxpcm-resource";
+                qcom,msm-cpudai-auxpcm-clk = "pcm_clk";
+                qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+                qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+                qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+                qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+                qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+                qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+                qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+
+                qcom,msm-prim-auxpcm-rx {
+                        qcom,msm-auxpcm-dev-id = <4106>;
+                        compatible = "qcom,msm-auxpcm-dev";
+                };
+
+                qcom,msm-prim-auxpcm-tx {
+                        qcom,msm-auxpcm-dev-id = <4107>;
+                        compatible = "qcom,msm-auxpcm-dev";
+                };
+
+		qcom,msm-sec-auxpcm-rx {
+			qcom,msm-auxpcm-dev-id = <4108>;
+			compatible = "qcom,msm-auxpcm-dev";
+		};
+
+		qcom,msm-sec-auxpcm-tx {
+			qcom,msm-auxpcm-dev-id = <4109>;
+			compatible = "qcom,msm-auxpcm-dev";
+		};
+        };
 
         qcom,msm-pcm-hostless {
                 compatible = "qcom,msm-pcm-hostless";
@@ -444,8 +476,7 @@ Optional properties:
 			    amplifier.
 
 - qcom,headset-jack-type-NO: Adjust GPIO level based on the headset jack type.
-- qcom,tapan-codec-9302: Indicates that this device node is for WCD9302 audio
-			    codec.
+
 
 * APQ8074 ASoC Machine driver
 
@@ -672,10 +703,7 @@ Required properties:
 		 prim-gpio-tert : Primary AUXPCM shares GPIOs with Tertiary MI2S
 
 Optional Properties:
-- qcom,cdc-us-euro-gpios : GPIO on which gnd/mic swap signal is coming.
-- qcom,cdc-lineout-spkr-gpios : GPIO which controls external PAs to enable Lineout1/2 speaker
-- qcom,cdc-vdd-spkr-gpios : GPIO which controls PA for VDD speaker
-- qcom,headset-jack-type-NC: Set if the headset jack type is NC (Normally Closed)
+- qcom,us-euro-gpios : GPIO on which gnd/mic swap signal is coming.
 
 Example:
 
@@ -689,6 +717,4 @@ sound {
 	qcom,prim-auxpcm-gpio-dout = <&msmgpio 66 0>;
 	qcom,prim-auxpcm-gpio-set = "prim-gpio-prim";
 	qcom,cdc-us-euro-gpios = <&msmgpio 69 0>;
-	qcom,cdc-lineout-spkr-gpios = <&pm8226_gpios 2 0>;
-	qcom,cdc-vdd-spkr-gpios = <&pm8226_gpios 3 0>;
 };

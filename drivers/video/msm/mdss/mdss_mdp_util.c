@@ -41,11 +41,9 @@ enum {
 	MDP_INTR_PING_PONG_0,
 	MDP_INTR_PING_PONG_1,
 	MDP_INTR_PING_PONG_2,
-	MDP_INTR_PING_PONG_3,
 	MDP_INTR_PING_PONG_0_RD_PTR,
 	MDP_INTR_PING_PONG_1_RD_PTR,
 	MDP_INTR_PING_PONG_2_RD_PTR,
-	MDP_INTR_PING_PONG_3_RD_PTR,
 	MDP_INTR_WB_0,
 	MDP_INTR_WB_1,
 	MDP_INTR_WB_2,
@@ -165,9 +163,6 @@ irqreturn_t mdss_mdp_isr(int irq, void *ptr)
 	if (isr & MDSS_MDP_INTR_PING_PONG_2_DONE)
 		mdss_mdp_intr_done(MDP_INTR_PING_PONG_2);
 
-	if (isr & MDSS_MDP_INTR_PING_PONG_3_DONE)
-		mdss_mdp_intr_done(MDP_INTR_PING_PONG_3);
-
 	if (isr & MDSS_MDP_INTR_PING_PONG_0_RD_PTR)
 		mdss_mdp_intr_done(MDP_INTR_PING_PONG_0_RD_PTR);
 
@@ -176,9 +171,6 @@ irqreturn_t mdss_mdp_isr(int irq, void *ptr)
 
 	if (isr & MDSS_MDP_INTR_PING_PONG_2_RD_PTR)
 		mdss_mdp_intr_done(MDP_INTR_PING_PONG_2_RD_PTR);
-
-	if (isr & MDSS_MDP_INTR_PING_PONG_3_RD_PTR)
-		mdss_mdp_intr_done(MDP_INTR_PING_PONG_3_RD_PTR);
 
 	if (isr & MDSS_MDP_INTR_INTF_0_VSYNC) {
 		mdss_mdp_intr_done(MDP_INTR_VSYNC_INTF_0);
@@ -383,7 +375,7 @@ int mdss_mdp_data_check(struct mdss_mdp_data *data,
 	if (!data || data->num_planes == 0)
 		return -ENOMEM;
 
-	pr_debug("srcp0=%pa len=%u frame_size=%u\n", &data->p[0].addr,
+	pr_debug("srcp0=%x len=%u frame_size=%u\n", data->p[0].addr,
 		data->p[0].len, ps->total_size);
 
 	for (i = 0; i < ps->num_planes; i++) {
@@ -402,8 +394,8 @@ int mdss_mdp_data_check(struct mdss_mdp_data *data,
 			       curr->len, i, ps->plane_size[i]);
 			return -ENOMEM;
 		}
-		pr_debug("plane[%d] addr=%pa len=%u\n", i,
-				&curr->addr, curr->len);
+		pr_debug("plane[%d] addr=%x len=%u\n", i,
+				curr->addr, curr->len);
 	}
 	data->num_planes = ps->num_planes;
 
@@ -439,15 +431,14 @@ int mdss_mdp_put_img(struct mdss_mdp_img_data *data)
 {
 	struct ion_client *iclient = mdss_get_ionclient();
 	if (data->flags & MDP_MEMORY_ID_TYPE_FB) {
-		pr_debug("fb mem buf=0x%pa\n", &data->addr);
+		pr_debug("fb mem buf=0x%x\n", data->addr);
 		fput_light(data->srcp_file, data->p_need);
 		data->srcp_file = NULL;
 	} else if (data->srcp_file) {
-		pr_debug("pmem buf=0x%pa\n", &data->addr);
+		pr_debug("pmem buf=0x%x\n", data->addr);
 		data->srcp_file = NULL;
 	} else if (!IS_ERR_OR_NULL(data->srcp_ihdl)) {
-		pr_debug("ion hdl=%p buf=0x%pa\n", data->srcp_ihdl,
-							&data->addr);
+		pr_debug("ion hdl=%p buf=0x%x\n", data->srcp_ihdl, data->addr);
 
 		if (is_mdss_iommu_attached()) {
 			int domain;
@@ -478,11 +469,10 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 	struct file *file;
 	int ret = -EINVAL;
 	int fb_num;
-	unsigned long *len;
-	dma_addr_t *start;
+	unsigned long *start, *len;
 	struct ion_client *iclient = mdss_get_ionclient();
 
-	start = &data->addr;
+	start = (unsigned long *) &data->addr;
 	len = (unsigned long *) &data->len;
 	data->flags |= img->flags;
 	data->p_need = 0;
@@ -537,9 +527,6 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 			ret = ion_map_iommu(iclient, data->srcp_ihdl,
 					    mdss_get_iommu_domain(domain),
 					    0, SZ_4K, 0, start, len, 0, 0);
-			if (ret && (domain == MDSS_IOMMU_DOMAIN_SECURE))
-				msm_ion_unsecure_buffer(iclient,
-						data->srcp_ihdl);
 		} else {
 			ret = ion_phys(iclient, data->srcp_ihdl, start,
 				       (size_t *) len);
@@ -554,7 +541,6 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 
 	if (!*start) {
 		pr_err("start address is zero!\n");
-		mdss_mdp_put_img(data);
 		return -ENOMEM;
 	}
 
@@ -562,32 +548,11 @@ int mdss_mdp_get_img(struct msmfb_data *img, struct mdss_mdp_img_data *data)
 		data->addr += img->offset;
 		data->len -= img->offset;
 
-		pr_debug("mem=%d ihdl=%p buf=0x%pa len=0x%x\n", img->memory_id,
-			 data->srcp_ihdl, &data->addr, data->len);
+		pr_debug("mem=%d ihdl=%p buf=0x%x len=0x%x\n", img->memory_id,
+			 data->srcp_ihdl, data->addr, data->len);
 	} else {
-		mdss_mdp_put_img(data);
-		return ret ? : -EOVERFLOW;
+		return -EINVAL;
 	}
 
 	return ret;
-}
-
-int mdss_mdp_calc_phase_step(u32 src, u32 dst, u32 *out_phase)
-{
-	u32 unit, residue;
-
-	if (dst == 0)
-		return -EINVAL;
-
-	unit = 1 << PHASE_STEP_SHIFT;
-	*out_phase = mult_frac(src, unit, dst);
-
-	/* check if overflow is possible */
-	if (src > dst) {
-		residue = *out_phase & (unit - 1);
-		if (residue && ((residue * dst) < (unit - residue)))
-			return -EOVERFLOW;
-	}
-
-	return 0;
 }

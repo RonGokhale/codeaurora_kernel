@@ -29,7 +29,7 @@ int diag_event_num_bytes;
 #define ALL_EQUIP_ID		100
 #define ALL_SSID		-1
 
-#define FEATURE_MASK_LEN_BYTES		2
+#define FEATURE_MASK_LEN_BYTES		1
 
 struct mask_info {
 	int equip_id;
@@ -326,8 +326,7 @@ void diag_mask_update_fn(struct work_struct *work)
 	diag_send_event_mask_update(smd_info->ch, diag_event_num_bytes);
 
 	if (smd_info->notify_context == SMD_EVENT_OPEN)
-		diag_send_diag_mode_update_by_smd(smd_info,
-						driver->real_time_mode);
+		diag_send_diag_mode_update_by_smd(smd_info, MODE_REALTIME);
 
 	smd_info->notify_context = 0;
 }
@@ -368,7 +367,7 @@ void diag_send_log_mask_update(smd_channel_t *ch, int equip_id)
 			driver->log_mask->status = DIAG_CTRL_MASK_INVALID;
 		}
 
-		if (driver->msg_mask->status == DIAG_CTRL_MASK_INVALID) {
+		if (driver->log_mask->status == DIAG_CTRL_MASK_INVALID) {
 			mutex_unlock(&driver->diag_cntl_mutex);
 			return;
 		}
@@ -563,7 +562,7 @@ void diag_send_feature_mask_update(struct diag_smd_info *smd_info)
 	void *buf = driver->buf_feature_mask_update;
 	int header_size = sizeof(struct diag_ctrl_feature_mask);
 	int wr_size = -ENOMEM, retry_count = 0;
-	uint8_t feature_bytes[FEATURE_MASK_LEN_BYTES] = {0, 0};
+	uint8_t feature_byte = 0;
 	int total_len = 0;
 
 	if (!smd_info) {
@@ -584,14 +583,13 @@ void diag_send_feature_mask_update(struct diag_smd_info *smd_info)
 	driver->feature_mask->ctrl_pkt_data_len = 4 + FEATURE_MASK_LEN_BYTES;
 	driver->feature_mask->feature_mask_len = FEATURE_MASK_LEN_BYTES;
 	memcpy(buf, driver->feature_mask, header_size);
-	feature_bytes[0] |= F_DIAG_INT_FEATURE_MASK;
-	feature_bytes[0] |= F_DIAG_LOG_ON_DEMAND_RSP_ON_MASTER;
-	feature_bytes[0] |= driver->supports_separate_cmdrsp ?
+	feature_byte |= F_DIAG_INT_FEATURE_MASK;
+	feature_byte |= F_DIAG_LOG_ON_DEMAND_RSP_ON_MASTER;
+	feature_byte |= driver->supports_separate_cmdrsp ?
 				F_DIAG_REQ_RSP_CHANNEL : 0;
-	feature_bytes[0] |= driver->supports_apps_hdlc_encoding ?
+	feature_byte |= driver->supports_apps_hdlc_encoding ?
 				F_DIAG_HDLC_ENCODE_IN_APPS_MASK : 0;
-	feature_bytes[1] |= F_DIAG_OVER_STM;
-	memcpy(buf+header_size, &feature_bytes, FEATURE_MASK_LEN_BYTES);
+	memcpy(buf+header_size, &feature_byte, FEATURE_MASK_LEN_BYTES);
 	total_len = header_size + FEATURE_MASK_LEN_BYTES;
 
 	while (retry_count < 3) {

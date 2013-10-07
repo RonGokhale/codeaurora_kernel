@@ -4018,12 +4018,11 @@ static char *master_names[] = {
 
 static struct msm_rpm_master_stats_platform_data msm_rpm_master_stat_pdata = {
 	.masters = master_names,
-	.num_masters = ARRAY_SIZE(master_names),
-	.master_offset = 32,
+	.nomasters = ARRAY_SIZE(master_names),
 };
 
 struct platform_device msm8960_rpm_master_stat_device = {
-	.name = "msm_rpm_master_stats",
+	.name = "msm_rpm_master_stat",
 	.id = -1,
 	.num_resources	= ARRAY_SIZE(resources_rpm_master_stats),
 	.resource	= resources_rpm_master_stats,

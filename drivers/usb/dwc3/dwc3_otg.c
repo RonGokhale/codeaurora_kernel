@@ -13,7 +13,6 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/module.h>
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 #include <linux/platform_device.h>
@@ -24,10 +23,6 @@
 #include "io.h"
 #include "xhci.h"
 
-#define MAX_INVALID_CHRGR_RETRY 3
-static int max_chgr_retry_count = MAX_INVALID_CHRGR_RETRY;
-module_param(max_chgr_retry_count, int, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(max_chgr_retry_count, "Max invalid charger retry count");
 static void dwc3_otg_reset(struct dwc3_otg *dotg);
 
 static void dwc3_otg_notify_host_mode(struct usb_otg *otg, int host_mode);
@@ -56,19 +51,6 @@ static void dwc3_otg_set_host_regs(struct dwc3_otg *dotg)
 		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 		reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
 		reg |= DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_HOST);
-		/*
-		 * Allow ITP generated off of ref clk based counter instead
-		 * of UTMI/ULPI clk based counter, when superspeed only is
-		 * active so that UTMI/ULPI can be suspened.
-		 */
-		reg |= DWC3_GCTL_SOFITPSYNC;
-		/*
-		 * Set this bit so that device attempts three more times at SS,
-		 * even if it failed previously to operate in SS mode.
-		 */
-		reg |= DWC3_GCTL_U2RSTECN;
-		reg &= ~(DWC3_GCTL_PWRDNSCALEMASK);
-		reg |= DWC3_GCTL_PWRDNSCALE(2);
 		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 	}
 }
@@ -139,14 +121,6 @@ static void dwc3_otg_set_peripheral_regs(struct dwc3_otg *dotg)
 		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 		reg &= ~(DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_OTG));
 		reg |= DWC3_GCTL_PRTCAPDIR(DWC3_GCTL_PRTCAP_DEVICE);
-		/*
-		 * Set this bit so that device attempts three more times at SS,
-		 * even if it failed previously to operate in SS mode.
-	 */
-		reg |= DWC3_GCTL_U2RSTECN;
-		reg &= ~(DWC3_GCTL_PWRDNSCALEMASK);
-		reg |= DWC3_GCTL_PWRDNSCALE(2);
-		reg &= ~(DWC3_GCTL_SOFITPSYNC);
 		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 	}
 }
@@ -239,7 +213,7 @@ static int dwc3_otg_start_host(struct usb_otg *otg, int on)
 		 */
 		if (ext_xceiv && ext_xceiv->otg_capability &&
 						ext_xceiv->ext_block_reset)
-			ext_xceiv->ext_block_reset(ext_xceiv, true);
+			ext_xceiv->ext_block_reset(true);
 
 		dwc3_otg_set_peripheral_regs(dotg);
 
@@ -306,7 +280,7 @@ static int dwc3_otg_start_peripheral(struct usb_otg *otg, int on)
 		 * DBM reset is required, hence perform only DBM reset here */
 		if (ext_xceiv && ext_xceiv->otg_capability &&
 						ext_xceiv->ext_block_reset)
-			ext_xceiv->ext_block_reset(ext_xceiv, false);
+			ext_xceiv->ext_block_reset(false);
 
 		dwc3_otg_set_peripheral_regs(dotg);
 		usb_gadget_vbus_connect(otg->gadget);
@@ -712,7 +686,6 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 			dev_dbg(phy->dev, "!id\n");
 			phy->state = OTG_STATE_A_IDLE;
 			work = 1;
-			dotg->charger_retry_count = 0;
 			if (charger) {
 				if (charger->chg_type == DWC3_INVALID_CHARGER)
 					charger->start_detection(dotg->charger,
@@ -747,28 +720,6 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					phy->state = OTG_STATE_B_PERIPHERAL;
 					work = 1;
 					break;
-				case DWC3_FLOATED_CHARGER:
-					if (dotg->charger_retry_count <
-							max_chgr_retry_count)
-						dotg->charger_retry_count++;
-					/*
-					 * In case of floating charger, if
-					 * retry count equal to max retry count
-					 * notify PMIC about floating charger
-					 * and put Hw in low power mode. Else
-					 * perform charger detection again by
-					 * calling start_detection() with false
-					 * and then with true argument.
-					 */
-					if (dotg->charger_retry_count ==
-						max_chgr_retry_count) {
-						dwc3_otg_set_power(phy, 0);
-						pm_runtime_put_sync(phy->dev);
-						break;
-					}
-					charger->start_detection(dotg->charger,
-									false);
-
 				default:
 					dev_dbg(phy->dev, "chg_det started\n");
 					charger->start_detection(charger, true);
@@ -793,7 +744,6 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 			if (charger)
 				charger->start_detection(dotg->charger, false);
 
-			dotg->charger_retry_count = 0;
 			dwc3_otg_set_power(phy, 0);
 			dev_dbg(phy->dev, "No device, trying to suspend\n");
 			pm_runtime_put_sync(phy->dev);
@@ -827,7 +777,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				 */
 				dev_dbg(phy->dev, "enter lpm as\n"
 					"unable to start A-device\n");
-				phy->state = OTG_STATE_A_IDLE;
+				phy->state = OTG_STATE_UNDEFINED;
 				pm_runtime_put_sync(phy->dev);
 				return;
 			}
@@ -868,8 +818,7 @@ static void dwc3_otg_reset(struct dwc3_otg *dotg)
 	 * OCFG[1] - HNPCap = 0
 	 * OCFG[0] - SRPCap = 0
 	 */
-	if (ext_xceiv && !ext_xceiv->otg_capability)
-		dwc3_writel(dotg->regs, DWC3_OCFG, 0x4);
+	dwc3_writel(dotg->regs, DWC3_OCFG, 0x4);
 
 	/*
 	 * OCTL[6] - PeriMode = 1
@@ -881,8 +830,7 @@ static void dwc3_otg_reset(struct dwc3_otg *dotg)
 	 * OCTL[0] - HstSetHNPEn = 0
 	 */
 	if (!once) {
-		if (ext_xceiv && !ext_xceiv->otg_capability)
-			dwc3_writel(dotg->regs, DWC3_OCTL, 0x40);
+		dwc3_writel(dotg->regs, DWC3_OCTL, 0x40);
 		once++;
 	}
 
@@ -962,7 +910,7 @@ int dwc3_otg_init(struct dwc3 *dwc)
 	dotg->otg.phy->set_power = dwc3_otg_set_power;
 	dotg->otg.phy->set_suspend = dwc3_otg_set_suspend;
 
-	ret = usb_add_phy(dotg->otg.phy, USB_PHY_TYPE_USB2);
+	ret = usb_set_transceiver(dotg->otg.phy);
 	if (ret) {
 		dev_err(dotg->otg.phy->dev,
 			"%s: failed to set transceiver, already exists\n",
@@ -989,7 +937,7 @@ int dwc3_otg_init(struct dwc3 *dwc)
 
 err3:
 	cancel_work_sync(&dotg->sm_work);
-	usb_remove_phy(dotg->otg.phy);
+	usb_set_transceiver(NULL);
 err2:
 	kfree(dotg->otg.phy);
 err1:
@@ -1014,7 +962,7 @@ void dwc3_otg_exit(struct dwc3 *dwc)
 		if (dotg->charger)
 			dotg->charger->start_detection(dotg->charger, false);
 		cancel_work_sync(&dotg->sm_work);
-		usb_remove_phy(dotg->otg.phy);
+		usb_set_transceiver(NULL);
 		pm_runtime_put(dwc->dev);
 		free_irq(dotg->irq, dotg);
 		kfree(dotg->otg.phy);

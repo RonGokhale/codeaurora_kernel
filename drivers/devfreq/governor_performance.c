@@ -32,7 +32,7 @@ static int devfreq_performance_handler(struct devfreq *devfreq,
 {
 	int ret = 0;
 
-	if (event == DEVFREQ_GOV_START || event == DEVFREQ_GOV_RESUME) {
+	if (event == DEVFREQ_GOV_START) {
 		mutex_lock(&devfreq->lock);
 		ret = update_devfreq(devfreq);
 		mutex_unlock(&devfreq->lock);

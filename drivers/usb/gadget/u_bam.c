@@ -226,9 +226,6 @@ static void gbam_write_data_tohost(struct gbam_port *port)
 			req->no_interrupt = 1;
 		}
 
-		/* Send ZLP in case packet length is multiple of maxpacksize */
-		req->zero = 1;
-
 		list_del(&req->list);
 
 		spin_unlock(&port->port_lock_dl);
@@ -666,7 +663,6 @@ static void gbam_start_io(struct gbam_port *port)
 			gbam_epout_complete, GFP_ATOMIC);
 	if (ret) {
 		pr_err("%s: rx req allocation failed\n", __func__);
-		spin_unlock_irqrestore(&port->port_lock_ul, flags);
 		return;
 	}
 
@@ -683,7 +679,6 @@ static void gbam_start_io(struct gbam_port *port)
 	if (ret) {
 		pr_err("%s: tx req allocation failed\n", __func__);
 		gbam_free_requests(ep, &d->rx_idle);
-		spin_unlock_irqrestore(&port->port_lock_dl, flags);
 		return;
 	}
 
@@ -739,10 +734,8 @@ static void gbam_disconnect_work(struct work_struct *w)
 			container_of(w, struct gbam_port, disconnect_w);
 	struct bam_ch_info *d = &port->data_ch;
 
-	if (!test_bit(BAM_CH_OPENED, &d->flags)) {
-		pr_err("%s: Bam channel is not opened\n", __func__);
+	if (!test_bit(BAM_CH_OPENED, &d->flags))
 		return;
-	}
 
 	msm_bam_dmux_close(d->id);
 	clear_bit(BAM_CH_OPENED, &d->flags);
@@ -781,10 +774,8 @@ static void gbam_connect_work(struct work_struct *w)
 	spin_unlock(&port->port_lock_dl);
 	spin_unlock_irqrestore(&port->port_lock_ul, flags);
 
-	if (!test_bit(BAM_CH_READY, &d->flags)) {
-		pr_err("%s: Bam channel is not ready\n", __func__);
+	if (!test_bit(BAM_CH_READY, &d->flags))
 		return;
-	}
 
 	ret = msm_bam_dmux_open(d->id, port, gbam_notify);
 	if (ret) {
@@ -1428,17 +1419,6 @@ int gbam_connect(struct grmnet *gr, u8 port_num,
 	return 0;
 }
 
-int gbam_destroy(unsigned int no_bam2bam_port, enum transport_type trans)
-{
-	pr_debug("bam_destroy: Freeing ports\n");
-	gbam2bam_port_free(no_bam2bam_port);
-	if (gbam_wq)
-		destroy_workqueue(gbam_wq);
-	gbam_wq = NULL;
-
-	return 0;
-}
-
 int gbam_setup(unsigned int no_bam_port, unsigned int no_bam2bam_port)
 {
 	int	i;
@@ -1452,10 +1432,6 @@ int gbam_setup(unsigned int no_bam_port, unsigned int no_bam2bam_port)
 		pr_err("%s: Invalid num of ports count:%d,%d\n",
 				__func__, no_bam_port, no_bam2bam_port);
 		return -EINVAL;
-	}
-	if (gbam_wq) {
-		pr_debug("bam is already setup");
-		return 0;
 	}
 
 	gbam_wq = alloc_workqueue("k_gbam", WQ_UNBOUND | WQ_MEM_RECLAIM, 1);

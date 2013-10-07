@@ -10,7 +10,7 @@
  * GNU General Public License for more details.
  */
 
-&soc {
+/ {
 	qcom,dsi_v2_hx8379a_wvga_video {
 		compatible = "qcom,dsi-panel-v2";
 		label = "HX8379A WVGA video mode dsi panel";
@@ -21,7 +21,7 @@
 		qcom,mdss-pan-res = <480 800>;
 		qcom,mdss-pan-bpp = <24>;
 		qcom,mdss-pan-dest = "display_1";
-		qcom,mdss-pan-porch-values = <100 40 70 6 4 6>;
+		qcom,mdss-pan-porch-values = <90 17 90 2 3 11>;
 		qcom,mdss-pan-underflow-clr = <0xff>;
 		qcom,mdss-pan-bl-levels = <1 255>;
 		qcom,mdss-pan-bl-ctrl = "bl_ctrl_wled";
@@ -40,9 +40,9 @@
 		qcom,mdss-pan-dsi-mdp-tr = <0x0>;/*todo*/
 		qcom,mdss-pan-dsi-dma-tr = <0x04>;
 		qcom,mdss-pan-dsi-frame-rate = <60>;
-		qcom,panel-phy-regulatorSettings =[02 08 05 00 20 03];
-		qcom,panel-phy-timingSettings = [75 1A 11  00 3D 45
-						 15 1D 1C  03 04 00];
+		qcom,panel-phy-regulatorSettings =[09 08 05 00 20 03];
+		qcom,panel-phy-timingSettings = [5D 12 0C  00 33 39
+						 10 16 15  03 04 00];
 		qcom,panel-phy-strengthCtrl = [ff 06];
 		qcom,panel-phy-bistCtrl = [03 03 00 00 0f 00];
 		qcom,panel-phy-laneConfig =
@@ -54,32 +54,34 @@
 
 		qcom,on-cmds-dsi-state = "DSI_LP_MODE";
 		qcom,panel-on-cmds = [
-					39 01 00 00 00 04
+					29 01 00 00 01 04
 						B9 FF 83 79
-					39 01 00 00 00 03
-						BA 51 93
-					39 01 00 00 00 14
+					23 01 00 00 01 02
+						BA 51
+					29 01 00 00 01 14
 						B1 00 50 44
 						EA 8D 08 11
-						11 11 27 2F
+						0F 0F 24 2C
 						9A 1A 42 0B
 						6E F1 00 E6
-					39 01 00 00 00 0E
+					29 01 00 00 01 0e
 						B2 00 00 3C
 						08 04 19 22
 						00 FF 08 04
 						19 20
-					39 01 00 00 00 20
-						B4 82 08 00
+					29 01 00 00 01 20
+						B4 80 08 00
 						32 10 03 32
 						13 70 32 10
 						08 37 01 28
-						07 37 08 3C
-						08 44 44 08
+						05 37 08 3C
+						20 44 44 08
 						00 40 08 28
 						08 30 30 04
-					39 01 00 00 00 30
-						D5 00 00 0A
+					23 01 00 00 01 02
+						cc 02
+					29 01 00 00 01 30
+						D5 00 00 08
 						00 01 05 00
 						03 00 88 88
 						88 88 23 01
@@ -91,20 +93,18 @@
 						88 88 88 88
 						88 88 00 00
 						00 00 00 00
-					39 01 00 00 00 24
-						E0 79 05 0F
-						14 26 29 3F
-						2B 44 04 0E
-						12 15 18 16
-						16 12 15 05
-						0F 14 26 29
-						3F 2B 44 04
-						0E 12 15 18
-						16 16 12 15
-					23 01 00 00 00 02
-						cc 02
-					39 01 00 00 00 05
-						B6 00 9C 00 9C
+					29 01 00 00 01 24
+						E0 79 00 00
+						02 1C 1F 33
+						28 3E 07 0E
+						0F 15 17 16
+						16 13 19 00
+						00 02 1C 1F
+						33 28 3E 07
+						0E 0F 15 17
+						16 16 13 19
+					29 01 00 00 01 05
+						B6 00 A6 00 A6
 					05 01 00 00 96 02
 						11 00
 					05 01 00 00 78 02

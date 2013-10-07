@@ -27,12 +27,6 @@
 
 #include "sps_map.h"
 
-#ifdef CONFIG_ARM_LPAE
-#define SPS_LPAE (true)
-#else
-#define SPS_LPAE (false)
-#endif
-
 #define BAM_MAX_PIPES              31
 #define BAM_MAX_P_LOCK_GROUP_NUM   31
 
@@ -49,8 +43,6 @@
 #define MAX_MSG_LEN 80
 
 extern u32 d_type;
-extern bool enhd_pipe;
-extern bool imem;
 
 #ifdef CONFIG_DEBUG_FS
 extern u8 debugfs_record_enabled;
@@ -173,9 +165,8 @@ struct sps_connection {
 	/* Dynamically allocated resouces, if required */
 	u32 alloc_src_pipe;	/* Source pipe index */
 	u32 alloc_dest_pipe;	/* Destination pipe index */
-	/* Physical address of descriptor FIFO */
-	phys_addr_t alloc_desc_base;
-	phys_addr_t alloc_data_base;	/* Physical address of data FIFO */
+	u32 alloc_desc_base;	/* Physical address of descriptor FIFO */
+	u32 alloc_data_base;	/* Physical address of data FIFO */
 };
 
 /* Event bookkeeping descriptor struct */
@@ -227,7 +218,7 @@ void print_bam_test_bus_reg(void *, u32);
  * @return virtual memory pointer
  *
  */
-void *spsi_get_mem_ptr(phys_addr_t phys_addr);
+void *spsi_get_mem_ptr(u32 phys_addr);
 
 /**
  * Allocate I/O (pipe) memory
@@ -238,7 +229,7 @@ void *spsi_get_mem_ptr(phys_addr_t phys_addr);
  *
  * @return physical address of allocated memory, or SPS_ADDR_INVALID on error
  */
-phys_addr_t sps_mem_alloc_io(u32 bytes);
+u32 sps_mem_alloc_io(u32 bytes);
 
 /**
  * Free I/O (pipe) memory
@@ -249,7 +240,7 @@ phys_addr_t sps_mem_alloc_io(u32 bytes);
  *
  * @bytes - number of bytes to free.
  */
-void sps_mem_free_io(phys_addr_t phys_addr, u32 bytes);
+void sps_mem_free_io(u32 phys_addr, u32 bytes);
 
 /**
  * Find matching connection mapping
@@ -333,7 +324,7 @@ int sps_dma_pipe_free(void *bam, u32 pipe_index);
  * @return 0 on success, negative value on error
  *
  */
-int sps_mem_init(phys_addr_t pipemem_phys_base, u32 pipemem_size);
+int sps_mem_init(u32 pipemem_phys_base, u32 pipemem_size);
 
 /**
  * De-initialize driver memory module

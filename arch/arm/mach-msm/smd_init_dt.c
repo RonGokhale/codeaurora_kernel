@@ -21,7 +21,7 @@
 #include <linux/io.h>
 
 #include <mach/msm_ipc_logging.h>
-#include "smd_private.h"
+#include <smd_private.h>
 
 #define MODULE_NAME "msm_smd"
 #define IPC_LOG(level, x...) do { \
@@ -127,7 +127,7 @@ static int msm_smsm_probe(struct platform_device *pdev)
 	ret = request_irq(irq_line,
 				private_irq->irq_handler,
 				IRQF_TRIGGER_RISING,
-				node->name,
+				"smsm_dev",
 				NULL);
 	if (ret < 0) {
 		pr_err("%s: request_irq() failed on %d\n", __func__, irq_line);
@@ -243,7 +243,7 @@ static int msm_smd_probe(struct platform_device *pdev)
 	ret = request_irq(irq_line,
 				private_irq->irq_handler,
 				irq_flags,
-				node->name,
+				"smd_dev",
 				NULL);
 	if (ret < 0) {
 		pr_err("%s: request_irq() failed on %d\n", __func__, irq_line);

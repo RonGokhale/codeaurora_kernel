@@ -128,12 +128,11 @@ static ssize_t mdss_debug_base_reg_write(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
 	struct mdss_debug_base *dbg = file->private_data;
-	struct mdss_data_type *mdata = mdss_res;
 	size_t off;
 	u32 data, cnt;
 	char buf[24];
 
-	if (!dbg || !mdata)
+	if (!dbg)
 		return -ENODEV;
 
 	if (count >= sizeof(buf))
@@ -152,13 +151,9 @@ static ssize_t mdss_debug_base_reg_write(struct file *file,
 	if (off >= dbg->max_offset)
 		return -EFAULT;
 
-	if (mdata->debug_inf.debug_enable_clock)
-		mdata->debug_inf.debug_enable_clock(1);
-
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 	writel_relaxed(data, dbg->base + off);
-
-	if (mdata->debug_inf.debug_enable_clock)
-		mdata->debug_inf.debug_enable_clock(0);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 	pr_debug("addr=%x data=%x\n", off, data);
 
@@ -169,10 +164,9 @@ static ssize_t mdss_debug_base_reg_read(struct file *file,
 			char __user *user_buf, size_t count, loff_t *ppos)
 {
 	struct mdss_debug_base *dbg = file->private_data;
-	struct mdss_data_type *mdata = mdss_res;
 	size_t len;
 
-	if (!dbg || !mdata) {
+	if (!dbg) {
 		pr_err("invalid handle\n");
 		return -ENODEV;
 	}
@@ -194,9 +188,7 @@ static ssize_t mdss_debug_base_reg_read(struct file *file,
 		ptr = dbg->base + dbg->off;
 		tot = 0;
 
-		if (mdata->debug_inf.debug_enable_clock)
-			mdata->debug_inf.debug_enable_clock(1);
-
+		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 		for (cnt = dbg->cnt; cnt > 0; cnt -= ROW_BYTES) {
 			hex_dump_to_buffer(ptr, min(cnt, ROW_BYTES),
 					   ROW_BYTES, GROUP_BYTES, dump_buf,
@@ -211,8 +203,7 @@ static ssize_t mdss_debug_base_reg_read(struct file *file,
 			if (tot >= dbg->buf_len)
 				break;
 		}
-		if (mdata->debug_inf.debug_enable_clock)
-			mdata->debug_inf.debug_enable_clock(0);
+		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 		dbg->buf_len = tot;
 	}
@@ -255,10 +246,10 @@ int mdss_debug_register_base(const char *name, void __iomem *base,
 	char dn[80] = "";
 	int prefix_len = 0;
 
-	if (!mdata || !mdata->debug_inf.debug_data)
+	if (!mdata || !mdata->debug_data)
 		return -ENODEV;
 
-	mdd = mdata->debug_inf.debug_data;
+	mdd = mdata->debug_data;
 
 	dbg = kzalloc(sizeof(*dbg), GFP_KERNEL);
 	if (!dbg)
@@ -310,11 +301,33 @@ static int mdss_debug_stat_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static int mdss_debug_stat_ctl_dump(struct mdss_mdp_ctl *ctl,
+		char *bp, int len)
+{
+	int tot = 0;
+
+	if (!ctl->ref_cnt)
+		return 0;
+
+	if (ctl->intf_num) {
+		tot = scnprintf(bp, len,
+			"intf%d: play: %08u \tvsync: %08u \tunderrun: %08u\n",
+				ctl->intf_num, ctl->play_cnt,
+				ctl->vsync_cnt, ctl->underrun_cnt);
+	} else {
+		tot = scnprintf(bp, len, "wb: \tmode=%x \tplay: %08u\n",
+				ctl->opmode, ctl->play_cnt);
+	}
+
+	return tot;
+}
+
 static ssize_t mdss_debug_stat_read(struct file *file, char __user *buff,
 		size_t count, loff_t *ppos)
 {
 	struct mdss_data_type *mdata = file->private_data;
-	int len, tot;
+	struct mdss_mdp_pipe *pipe;
+	int i, len, tot;
 	char bp[512];
 
 	if (*ppos)
@@ -324,11 +337,30 @@ static ssize_t mdss_debug_stat_read(struct file *file, char __user *buff,
 
 	tot = scnprintf(bp, len, "\nmdp:\n");
 
-	if (mdata->debug_inf.debug_dump_stats)
-		tot += mdata->debug_inf.debug_dump_stats(mdata,
-						bp + tot, len - tot);
+	for (i = 0; i < mdata->nctl; i++)
+		tot += mdss_debug_stat_ctl_dump(mdata->ctl_off + i,
+				bp + tot, len - tot);
+	tot += scnprintf(bp + tot, len - tot, "\n");
 
+	for (i = 0; i < mdata->nvig_pipes; i++) {
+		pipe = mdata->vig_pipes + i;
+		tot += scnprintf(bp + tot, len - tot,
+			"VIG%d :   %08u\t", i, pipe->play_cnt);
+	}
+	tot += scnprintf(bp + tot, len - tot, "\n");
 
+	for (i = 0; i < mdata->nrgb_pipes; i++) {
+		pipe = mdata->rgb_pipes + i;
+		tot += scnprintf(bp + tot, len - tot,
+			"RGB%d :   %08u\t", i, pipe->play_cnt);
+	}
+	tot += scnprintf(bp + tot, len - tot, "\n");
+
+	for (i = 0; i < mdata->ndma_pipes; i++) {
+		pipe = mdata->dma_pipes + i;
+		tot += scnprintf(bp + tot, len - tot,
+			"DMA%d :   %08u\t", i, pipe->play_cnt);
+	}
 	tot += scnprintf(bp + tot, len - tot, "\n");
 
 	if (copy_to_user(buff, bp, tot))
@@ -369,7 +401,7 @@ int mdss_debugfs_init(struct mdss_data_type *mdata)
 {
 	struct mdss_debug_data *mdd;
 
-	if (mdata->debug_inf.debug_data) {
+	if (mdata->debug_data) {
 		pr_warn("mdss debugfs already initialized\n");
 		return -EBUSY;
 	}
@@ -392,19 +424,18 @@ int mdss_debugfs_init(struct mdss_data_type *mdata)
 	debugfs_create_file("stat", 0644, mdd->root, mdata, &mdss_stat_fops);
 
 	debugfs_create_u32("min_mdp_clk", 0644, mdd->root,
-			(u32 *)&mdata->min_mdp_clk);
+		(u32 *)&mdata->min_mdp_clk);
 
-	mdata->debug_inf.debug_data = mdd;
+	mdata->debug_data = mdd;
 
 	return 0;
 }
 
 int mdss_debugfs_remove(struct mdss_data_type *mdata)
 {
-	struct mdss_debug_data *mdd = mdata->debug_inf.debug_data;
+	struct mdss_debug_data *mdd = mdata->debug_data;
 
 	mdss_debugfs_cleanup(mdd);
-	mdata->debug_inf.debug_data = NULL;
 
 	return 0;
 }

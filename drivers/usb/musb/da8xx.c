@@ -29,11 +29,9 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/clk.h>
-#include <linux/err.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
-#include <linux/usb/nop-usb-xceiv.h>
 
 #include <mach/da8xx.h>
 #include <mach/usb.h>
@@ -427,8 +425,8 @@ static int da8xx_musb_init(struct musb *musb)
 		goto fail;
 
 	usb_nop_xceiv_register();
-	musb->xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
-	if (IS_ERR_OR_NULL(musb->xceiv))
+	musb->xceiv = usb_get_transceiver();
+	if (!musb->xceiv)
 		goto fail;
 
 	if (is_host_enabled(musb))
@@ -460,7 +458,7 @@ static int da8xx_musb_exit(struct musb *musb)
 
 	phy_off();
 
-	usb_put_phy(musb->xceiv);
+	usb_put_transceiver(musb->xceiv);
 	usb_nop_xceiv_unregister();
 
 	return 0;

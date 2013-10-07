@@ -328,10 +328,6 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 
 		pr_debug("%s: num planes :%c\n", __func__,
 					user_fmt->num_planes);
-		/*num_planes need to bound checked, otherwise for loop
-		can execute forever */
-		if (WARN_ON(user_fmt->num_planes > VIDEO_MAX_PLANES))
-			return -EINVAL;
 		for (i = 0; i < user_fmt->num_planes; i++)
 			pr_debug("%s: plane size[%d]\n", __func__,
 					user_fmt->plane_sizes[i]);
@@ -353,7 +349,6 @@ static int camera_v4l2_s_fmt_vid_cap_mplane(struct file *filep, void *fh,
 
 set_fmt_fail:
 	kzfree(sp->vb2_q.drv_priv);
-	sp->vb2_q.drv_priv = NULL;
 	return rc;
 }
 
@@ -467,7 +462,7 @@ static int camera_v4l2_fh_open(struct file *filep)
 	filep->private_data = &sp->fh;
 
 	/* stream_id = open id */
-	sp->stream_id = atomic_read(&pvdev->stream_cnt);
+	sp->stream_id = atomic_read(&pvdev->opened);
 
 	v4l2_fh_init(&sp->fh, pvdev->vdev);
 	v4l2_fh_add(&sp->fh);
@@ -558,13 +553,12 @@ static int camera_v4l2_open(struct file *filep)
 			goto post_fail;
 	} else {
 		rc = msm_create_command_ack_q(pvdev->vdev->num,
-			atomic_read(&pvdev->stream_cnt));
+			atomic_read(&pvdev->opened));
 		if (rc < 0)
 			goto session_fail;
 	}
 
 	atomic_add(1, &pvdev->opened);
-	atomic_add(1, &pvdev->stream_cnt);
 	return rc;
 
 post_fail:
@@ -621,7 +615,6 @@ static int camera_v4l2_close(struct file *filep)
 		/* This should take care of both normal close
 		 * and application crashes */
 		msm_destroy_session(pvdev->vdev->num);
-		atomic_set(&pvdev->stream_cnt, 0);
 
 	} else {
 		camera_pack_event(filep, MSM_CAMERA_SET_PARM,
@@ -721,7 +714,6 @@ int camera_init_v4l2(struct device *dev, unsigned int *session)
 
 	*session = pvdev->vdev->num;
 	atomic_set(&pvdev->opened, 0);
-	atomic_set(&pvdev->stream_cnt, 0);
 	video_set_drvdata(pvdev->vdev, pvdev);
 	goto init_end;
 

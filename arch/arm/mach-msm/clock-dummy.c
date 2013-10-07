@@ -1,4 +1,4 @@
-/* Copyright (c) 2011,2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,7 +19,6 @@ static int dummy_clk_reset(struct clk *clk, enum clk_reset_action action)
 
 static int dummy_clk_set_rate(struct clk *clk, unsigned long rate)
 {
-	clk->rate = rate;
 	return 0;
 }
 
@@ -35,7 +34,7 @@ static int dummy_clk_set_flags(struct clk *clk, unsigned flags)
 
 static unsigned long dummy_clk_get_rate(struct clk *clk)
 {
-	return clk->rate;
+	return 0;
 }
 
 static long dummy_clk_round_rate(struct clk *clk, unsigned long rate)
@@ -43,7 +42,7 @@ static long dummy_clk_round_rate(struct clk *clk, unsigned long rate)
 	return rate;
 }
 
-struct clk_ops clk_ops_dummy = {
+static struct clk_ops clk_ops_dummy = {
 	.reset = dummy_clk_reset,
 	.set_rate = dummy_clk_set_rate,
 	.set_max_rate = dummy_clk_set_max_rate,

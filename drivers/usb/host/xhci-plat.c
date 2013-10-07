@@ -37,15 +37,9 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 
 	if (!pdata)
 		return;
-
-	if (pdata->vendor == SYNOPSIS_DWC3_VENDOR && pdata->revision < 0x230A)
+	else if (pdata->vendor == SYNOPSIS_DWC3_VENDOR &&
+			pdata->revision < 0x230A)
 		xhci->quirks |= XHCI_PORTSC_DELAY;
-
-	if (pdata->vendor == SYNOPSIS_DWC3_VENDOR && pdata->revision <= 0x250A)
-		xhci->quirks |= XHCI_TR_DEQ_ERR_QUIRK;
-
-	if (pdata->vendor == SYNOPSIS_DWC3_VENDOR && pdata->revision == 0x250A)
-		xhci->quirks |= XHCI_RESET_DELAY;
 }
 
 /* called during probe() after chip reset completes */
@@ -176,16 +170,15 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		goto put_usb3_hcd;
 
-	phy = usb_get_phy(USB_PHY_TYPE_USB2);
+	phy = usb_get_transceiver();
 	/* Register with OTG if present, ignore USB2 OTG using other PHY */
-	if (!IS_ERR_OR_NULL(phy)
-		&& phy->otg && !(phy->flags & ENABLE_SECONDARY_PHY)) {
+	if (phy && phy->otg && !(phy->flags & ENABLE_SECONDARY_PHY)) {
 		dev_dbg(&pdev->dev, "%s otg support available\n", __func__);
 		ret = otg_set_host(phy->otg, &hcd->self);
 		if (ret) {
 			dev_err(&pdev->dev, "%s otg_set_host failed\n",
 				__func__);
-			usb_put_phy(phy);
+			usb_put_transceiver(phy);
 			goto put_usb3_hcd;
 		}
 	} else {
@@ -231,7 +224,7 @@ static int xhci_plat_remove(struct platform_device *dev)
 
 	if (phy && phy->otg) {
 		otg_set_host(phy->otg, NULL);
-		usb_put_phy(phy);
+		usb_put_transceiver(phy);
 	}
 
 	return 0;

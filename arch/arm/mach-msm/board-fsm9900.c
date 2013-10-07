@@ -31,14 +31,6 @@
 #include "devices.h"
 #include "platsmp.h"
 
-static struct of_dev_auxdata fsm9900_auxdata_lookup[] __initdata = {
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9824000, \
-			"msm_sdcc.1", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98A4000, \
-			"msm_sdcc.2", NULL),
-	{}
-};
-
 void __init fsm9900_reserve(void)
 {
 }
@@ -68,35 +60,6 @@ static struct clk_lookup msm_clocks_dummy[] = {
 	CLK_DUMMY("iface_clk",  NULL,           "f9824900.sdhci_msm", OFF),
 	CLK_DUMMY("core_clk",   NULL,           "f98a4900.sdhci_msm", OFF),
 	CLK_DUMMY("iface_clk",  NULL,           "f98a4900.sdhci_msm", OFF),
-	CLK_DUMMY("core_clk",	SDC1_CLK,	"msm_sdcc.1", OFF),
-	CLK_DUMMY("iface_clk",	SDC1_P_CLK,	"msm_sdcc.1", OFF),
-	CLK_DUMMY("core_clk",	SDC2_CLK,	"msm_sdcc.2", OFF),
-	CLK_DUMMY("iface_clk",	SDC2_P_CLK,	"msm_sdcc.2", OFF),
-	CLK_DUMMY("core_clk",   BLSP1_UART_CLK, "f991f000.serial", OFF),
-	CLK_DUMMY("iface_clk",  BLSP1_UART_CLK, "f991f000.serial", OFF),
-
-	CLK_DUMMY("core_clk",     NULL,	        "fd400000.qcom,qcrypto", OFF),
-	CLK_DUMMY("iface_clk",    NULL,	        "fd400000.qcom,qcrypto", OFF),
-	CLK_DUMMY("bus_clk",      NULL,	        "fd400000.qcom,qcrypto", OFF),
-	CLK_DUMMY("core_clk_src", NULL,	        "fd400000.qcom,qcrypto", OFF),
-
-	CLK_DUMMY("core_clk",     NULL,         "fd440000.qcom,qcrypto", OFF),
-	CLK_DUMMY("iface_clk",    NULL,         "fd440000.qcom,qcrypto", OFF),
-	CLK_DUMMY("bus_clk",      NULL,         "fd440000.qcom,qcrypto", OFF),
-	CLK_DUMMY("core_clk_src", NULL,         "fd440000.qcom,qcrypto", OFF),
-
-	CLK_DUMMY("core_clk",     NULL,         "fe140000.qcom,qcota", OFF),
-	CLK_DUMMY("iface_clk",    NULL,         "fe140000.qcom,qctoa", OFF),
-	CLK_DUMMY("bus_clk",      NULL,         "fe140000.qcom,qcota", OFF),
-	CLK_DUMMY("core_clk_src", NULL,         "fe140000.qcom,qcota", OFF),
-
-	CLK_DUMMY("core_clk",     NULL,         "fe100000.qcom,qcota", OFF),
-	CLK_DUMMY("iface_clk",    NULL,         "fe100000.qcom,qcota", OFF),
-	CLK_DUMMY("bus_clk",      NULL,         "fe100000.qcom,qcota", OFF),
-	CLK_DUMMY("core_clk_src", NULL,         "fe100000.qcom,qcota", OFF),
-
-	CLK_DUMMY("dma_bam_pclk", NULL,         "msm_sps",             OFF),
-	CLK_DUMMY("dfab_clk",     NULL,         "msm_sps",             OFF),
 };
 
 static struct clock_init_data msm_dummy_clock_init_data __initdata = {
@@ -123,13 +86,11 @@ static void __init fsm9900_map_io(void)
 
 void __init fsm9900_init(void)
 {
-	struct of_dev_auxdata *adata = fsm9900_auxdata_lookup;
-
 	if (socinfo_init() < 0)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
 	fsm9900_init_gpiomux();
-	board_dt_populate(adata);
+	board_dt_populate(NULL);
 	fsm9900_add_drivers();
 }
 

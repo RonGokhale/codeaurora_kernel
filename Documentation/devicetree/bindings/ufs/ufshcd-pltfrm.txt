@@ -4,72 +4,13 @@ UFSHC nodes are defined to describe on-chip UFS host controllers.
 Each UFS controller instance should have its own node.
 
 Required properties:
-- compatible        : compatible list, contains "jedec,ufs-1.1", "qcom,ufshc"
+- compatible        : compatible list, contains "jedec,ufs-1.1"
 - interrupts        : <interrupt mapping for UFS host controller IRQ>
 - reg               : <registers mapping>
-
-Optional properties:
-- ufs-phy               : phandle to UFS PHY node
-- vcc-supply            : phandle to VCC supply regulator node
-- vccq-supply           : phandle to VCCQ supply regulator node
-- vccq2-supply          : phandle to VCCQ2 supply regulator node
-- vcc-supply-1p8        : For embedded UFS devices, valid VCC range is 1.7-1.95V
-                          or 2.7-3.6V. This boolean property when set, specifies
-			  to use low voltage range of 1.7-1.95V. Note for external
-			  UFS cards this property is invalid and valid VCC range is
-			  always 2.7-3.6V.
-- vcc-max-microamp      : specifies max. load that can be drawn from vcc supply
-- vccq-max-microamp     : specifies max. load that can be drawn from vccq supply
-- vccq2-max-microamp    : specifies max. load that can be drawn from vccq2 supply
-
-- clocks                : List of phandle and clock specifier pairs
-- clock-names           : List of clock input name strings sorted in the same
-                          order as the clocks property.
-- max-clock-frequency-hz : List of maximum operating frequency stored in the same
-                           order as the clocks property. If this property is not
-			   defined or a value in the array is "0" then it is assumed
-			   that the frequency is set by the parent clock or a
-			   fixed rate clock source.
-
-Note: If above properties are not defined it can be assumed that the supply
-regulators or clocks are always on.
 
 Example:
 	ufshc@0xfc598000 {
 		compatible = "jedec,ufs-1.1";
 		reg = <0xfc598000 0x800>;
 		interrupts = <0 28 0>;
-
-		ufs-phy = <&ufsphy>;
-		vcc-supply = <&xxx_reg1>;
-		vcc-supply-1p8;
-		vccq-supply = <&xxx_reg2>;
-		vccq2-supply = <&xxx_reg3>;
-		vcc-max-microamp = 500000;
-		vccq-max-microamp = 200000;
-		vccq2-max-microamp = 200000;
-
-		clocks = <&core 0>, <&ref 0>, <&iface 0>;
-		clock-names = "core_clk", "ref_clk", "iface_clk";
-		max-clock-frequency-hz = <100000000 19200000 0>;
 	};
-
-For UFS host controller in MSM platform following clocks are required -
-    Controller clock source -
-        "core_clk_src", max-clock-frequency-hz = 200MHz
-
-    Controller System clock branch:
-        "core_clk" - Controller core clock
-
-    AHB/AXI interface clocks:
-        "iface_clk" - AHB interface clock
-        "bus_clk" - AXI bus master clock
-
-    PHY to controller symbol synchronization clocks:
-        "rx_lane0_sync_clk" - RX Lane 0
-        "rx_lane1_sync_clk" - RX Lane 1
-        "tx_lane0_sync_clk" - TX Lane 0
-        "tx_lane1_sync_clk" - TX Lane 1
-
-    Optional reference clock input to UFS device
-        "ref_clk", max-clock-frequency-hz = 19.2MHz

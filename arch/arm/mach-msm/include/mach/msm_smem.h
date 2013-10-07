@@ -26,18 +26,6 @@ enum {
 	NUM_SMEM_SUBSYSTEMS,
 };
 
-/*
- * Flag options for the XXX_to_proc() API
- *
- * SMEM_ITEM_CACHED_FLAG - Indicates this operation should use cachable smem
- *
- * SMEM_ANY_HOST_FLAG - Indicates this operation should not apply to smem items
- *                      which are limited to a specific host pairing.  Will
- *                      cause this operation to ignore the to_proc parameter.
- */
-#define SMEM_ITEM_CACHED_FLAG 1
-#define SMEM_ANY_HOST_FLAG 2
-
 #define SMEM_NUM_SMD_STREAM_CHANNELS        64
 
 enum {
@@ -147,7 +135,6 @@ enum {
 	SMEM_BAM_PIPE_MEMORY,     /* 468 */
 	SMEM_IMAGE_VERSION_TABLE, /* 469 */
 	SMEM_LC_DEBUGGER, /* 470 */
-	SMEM_FLASH_NAND_DEV_INFO, /* 471 */
 	SMEM_NUM_ITEMS,
 };
 
@@ -156,29 +143,6 @@ void *smem_alloc(unsigned id, unsigned size);
 void *smem_alloc2(unsigned id, unsigned size_in);
 void *smem_get_entry(unsigned id, unsigned *size);
 void *smem_find(unsigned id, unsigned size);
-
-void *smem_alloc2_to_proc(unsigned id, unsigned size_in, unsigned to_proc,
-								unsigned flags);
-void *smem_alloc_to_proc(unsigned id, unsigned size, unsigned to_proc,
-								unsigned flags);
-void *smem_find_to_proc(unsigned id, unsigned size_in, unsigned to_proc,
-								unsigned flags);
-void *smem_get_entry_to_proc(unsigned id, unsigned *size, unsigned to_proc,
-								unsigned flags);
-
-/**
- * smem_get_entry_no_rlock - Get existing item without using remote spinlock
- *
- * @id:       ID of SMEM item
- * @size_out: Pointer to size variable for storing the result
- * @returns:  Pointer to SMEM item or NULL if it doesn't exist
- *
- * This function does not lock the remote spinlock and should only be used in
- * failure-recover cases such as retrieving the subsystem failure reason during
- * subsystem restart.
- */
-void *smem_get_entry_no_rlock(unsigned id, unsigned *size_out);
-
 /**
  * smem_virt_to_phys() - Convert SMEM address to physical address.
  *
@@ -211,30 +175,6 @@ static inline void *smem_get_entry(unsigned id, unsigned *size)
 	return NULL;
 }
 static inline void *smem_find(unsigned id, unsigned size)
-{
-	return NULL;
-}
-void *smem_alloc2_to_proc(unsigned id, unsigned size_in, unsigned to_proc,
-								unsigned flags)
-{
-	return NULL;
-}
-static void *smem_alloc_to_proc(unsigned id, unsigned size, unsigned to_proc,
-								unsigned flags)
-{
-	return NULL;
-}
-static void *smem_find_to_proc(unsigned id, unsigned size_in, unsigned to_proc,
-								unsigned flags)
-{
-	return NULL;
-}
-static void *smem_get_entry_to_proc(unsigned id, unsigned *size,
-					unsigned to_proc, unsigned flags)
-{
-	return NULL;
-}
-void *smem_get_entry_no_rlock(unsigned id, unsigned *size_out)
 {
 	return NULL;
 }

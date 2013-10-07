@@ -102,23 +102,16 @@ struct mdss_mdp_data *mdss_mdp_wb_debug_buffer(struct msm_fb_data_type *mfd)
 			rc = ion_map_iommu(iclient, ihdl,
 					   mdss_get_iommu_domain(domain),
 					   0, SZ_4K, 0,
-					   &img->addr,
+					   (unsigned long *) &img->addr,
 					   (unsigned long *) &img->len,
 					   0, 0);
 		} else {
-			if (MDSS_LPAE_CHECK(mdss_wb_mem)) {
-				pr_err("Can't use phys mem %pa>4Gb w/o IOMMU\n",
-					&mdss_wb_mem);
-				ion_free(iclient, ihdl);
-				return NULL;
-			}
-
 			img->addr = mdss_wb_mem;
 			img->len = img_size;
 		}
 
-		pr_debug("ihdl=%p virt=%p phys=0x%pa iova=0x%pa size=%u\n",
-			 ihdl, videomemory, &mdss_wb_mem, &img->addr, img_size);
+		pr_debug("ihdl=%p virt=%p phys=0x%lx iova=0x%x size=%u\n",
+			 ihdl, videomemory, mdss_wb_mem, img->addr, img_size);
 	}
 	return &mdss_wb_buffer;
 }
@@ -325,8 +318,8 @@ static struct mdss_mdp_wb_data *get_local_node(struct mdss_mdp_wb *wb,
 	if (!list_empty(&wb->register_queue)) {
 		list_for_each_entry(node, &wb->register_queue, registered_entry)
 		if (node->buf_info.iova == data->iova) {
-			pr_debug("found node iova=%pa addr=%pa\n",
-				 &data->iova, &node->buf_data.p[0].addr);
+			pr_debug("found node iova=%x addr=%x\n",
+				 data->iova, node->buf_data.p[0].addr);
 			return node;
 		}
 	}
@@ -351,8 +344,7 @@ static struct mdss_mdp_wb_data *get_local_node(struct mdss_mdp_wb *wb,
 		return NULL;
 	}
 
-	pr_debug("register node iova=0x%pa addr=0x%pa\n", &data->iova,
-								&buf->addr);
+	pr_debug("register node iova=0x%x addr=0x%x\n", data->iova, buf->addr);
 
 	return node;
 }
@@ -389,8 +381,8 @@ static struct mdss_mdp_wb_data *get_user_node(struct msm_fb_data_type *mfd,
 		goto register_fail;
 	}
 
-	pr_debug("register node mem_id=%d offset=%u addr=0x%pa len=%d\n",
-		 data->memory_id, data->offset, &buf->addr, buf->len);
+	pr_debug("register node mem_id=%d offset=%u addr=0x%x len=%d\n",
+		 data->memory_id, data->offset, buf->addr, buf->len);
 
 	return node;
 
@@ -475,7 +467,7 @@ static int mdss_mdp_wb_dequeue(struct msm_fb_data_type *mfd,
 		memcpy(data, &node->buf_info, sizeof(*data));
 
 		buf = &node->buf_data.p[0];
-		pr_debug("found node addr=%pa len=%d\n", &buf->addr, buf->len);
+		pr_debug("found node addr=%x len=%d\n", buf->addr, buf->len);
 	} else {
 		pr_debug("node is NULL, wait for next\n");
 		ret = -ENOBUFS;
@@ -535,18 +527,13 @@ int mdss_mdp_wb_kickoff(struct msm_fb_data_type *mfd)
 		goto kickoff_fail;
 	}
 
-	ret = mdss_mdp_writeback_display_commit(ctl, &wb_args);
+	ret = mdss_mdp_display_commit(ctl, &wb_args);
 	if (ret) {
 		pr_err("error on commit ctl=%d\n", ctl->num);
 		goto kickoff_fail;
 	}
 
-	ret = wait_for_completion_timeout(&comp, KOFF_TIMEOUT);
-	if (ret == 0)
-		WARN(1, "wfd kick off time out=%d ctl=%d", ret, ctl->num);
-	else
-		ret = 0;
-
+	wait_for_completion_interruptible(&comp);
 	if (wb && node) {
 		mutex_lock(&wb->lock);
 		list_add_tail(&node->active_entry, &wb->busy_queue);
@@ -585,39 +572,6 @@ int mdss_mdp_wb_set_mirr_hint(struct msm_fb_data_type *mfd, int hint)
 	}
 }
 
-int mdss_mdp_wb_get_format(struct msm_fb_data_type *mfd,
-					struct mdp_mixer_cfg *mixer_cfg)
-{
-	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
-
-	if (!ctl) {
-		pr_err("No panel data!\n");
-		return -EINVAL;
-	} else {
-		mixer_cfg->writeback_format = ctl->dst_format;
-	}
-
-	return 0;
-}
-
-int mdss_mdp_wb_set_format(struct msm_fb_data_type *mfd, u32 dst_format)
-{
-	struct mdss_mdp_ctl *ctl = mfd_to_ctl(mfd);
-
-	if (!ctl) {
-		pr_err("No panel data!\n");
-		return -EINVAL;
-	} else if (dst_format >= MDP_IMGTYPE_LIMIT2) {
-		pr_err("Invalid dst format=%u\n", dst_format);
-		return -EINVAL;
-	} else {
-		ctl->dst_format = dst_format;
-	}
-
-	pr_debug("wfd format %d\n", ctl->dst_format);
-	return 0;
-}
-
 int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd,
 				void *arg)
 {
@@ -636,8 +590,7 @@ int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd,
 		break;
 	case MSMFB_WRITEBACK_QUEUE_BUFFER:
 		if (!copy_from_user(&data, arg, sizeof(data))) {
-			ret = mdss_mdp_wb_queue(mfd, &data, false);
-			ret = copy_to_user(arg, &data, sizeof(data));
+			ret = mdss_mdp_wb_queue(mfd, arg, false);
 		} else {
 			pr_err("wb queue buf failed on copy_from_user\n");
 			ret = -EFAULT;
@@ -645,8 +598,7 @@ int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd,
 		break;
 	case MSMFB_WRITEBACK_DEQUEUE_BUFFER:
 		if (!copy_from_user(&data, arg, sizeof(data))) {
-			ret = mdss_mdp_wb_dequeue(mfd, &data);
-			ret = copy_to_user(arg, &data, sizeof(data));
+			ret = mdss_mdp_wb_dequeue(mfd, arg);
 		} else {
 			pr_err("wb dequeue buf failed on copy_from_user\n");
 			ret = -EFAULT;

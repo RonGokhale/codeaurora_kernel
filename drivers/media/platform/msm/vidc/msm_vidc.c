@@ -477,14 +477,14 @@ void *msm_vidc_open(int core_id, int session_type)
 	if (rc) {
 		dprintk(VIDC_ERR,
 			"Failed to initialize vb2 queue on capture port\n");
-		goto fail_bufq_capture;
+		goto fail_init;
 	}
 	rc = vb2_bufq_init(inst, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE,
 			session_type);
 	if (rc) {
 		dprintk(VIDC_ERR,
 			"Failed to initialize vb2 queue on capture port\n");
-		goto fail_bufq_output;
+		goto fail_init;
 	}
 	rc = msm_comm_try_state(inst, MSM_VIDC_CORE_INIT);
 	if (rc) {
@@ -497,19 +497,11 @@ void *msm_vidc_open(int core_id, int session_type)
 
 	setup_event_queue(inst, &core->vdev[core_id].vdev);
 
-	mutex_lock(&core->sync_lock);
+	mutex_lock(&core->lock);
 	list_add_tail(&inst->list, &core->instances);
-	mutex_unlock(&core->sync_lock);
+	mutex_unlock(&core->lock);
 	return inst;
 fail_init:
-	vb2_queue_release(&inst->bufq[OUTPUT_PORT].vb2_bufq);
-fail_bufq_output:
-	vb2_queue_release(&inst->bufq[CAPTURE_PORT].vb2_bufq);
-fail_bufq_capture:
-	if (session_type == MSM_VIDC_DECODER)
-		msm_vdec_ctrl_deinit(inst);
-	else if (session_type == MSM_VIDC_ENCODER)
-		msm_venc_ctrl_deinit(inst);
 	msm_smem_delete_client(inst->mem_client);
 fail_mem_client:
 	kfree(inst);

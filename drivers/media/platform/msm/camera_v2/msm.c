@@ -402,15 +402,12 @@ void msm_delete_command_ack_q(unsigned int session_id, unsigned int stream_id)
 		list, __msm_queue_find_session, &session_id);
 	if (!session)
 		return;
-	mutex_lock(&session->lock);
 
 	cmd_ack = msm_queue_find(&session->command_ack_q,
 		struct msm_command_ack,	list, __msm_queue_find_command_ack_q,
 		&stream_id);
-	if (!cmd_ack) {
-		mutex_unlock(&session->lock);
+	if (!cmd_ack)
 		return;
-	}
 
 	msm_queue_drain(&cmd_ack->command_q, struct msm_command, list);
 
@@ -419,7 +416,6 @@ void msm_delete_command_ack_q(unsigned int session_id, unsigned int stream_id)
 	kzfree(cmd_ack);
 	session->command_ack_q.len--;
 	spin_unlock_irqrestore(&(session->command_ack_q.lock), flags);
-	mutex_unlock(&session->lock);
 }
 
 static inline int __msm_sd_close_subdevs(struct msm_sd_subdev *msm_sd,
@@ -472,7 +468,6 @@ static void msm_remove_session_cmd_ack_q(struct msm_session *session)
 	if ((!session) || !(&session->command_ack_q))
 		return;
 
-	mutex_lock(&session->lock);
 	/* to ensure error handling purpose, it needs to detach all subdevs
 	 * which are being connected to streams */
 	msm_queue_traverse_action(&session->command_ack_q,
@@ -480,8 +475,6 @@ static void msm_remove_session_cmd_ack_q(struct msm_session *session)
 		__msm_remove_session_cmd_ack_q, NULL);
 
 	msm_queue_drain(&session->command_ack_q, struct msm_command_ack, list);
-
-	mutex_unlock(&session->lock);
 }
 
 int msm_destroy_session(unsigned int session_id)
@@ -526,7 +519,6 @@ static long msm_private_ioctl(struct file *file, void *fh,
 	struct msm_session *session;
 	unsigned int session_id;
 	unsigned int stream_id;
-	unsigned long spin_flags = 0;
 
 	event_data = (struct msm_v4l2_event_data *)
 		((struct v4l2_event *)arg)->u.data;
@@ -572,13 +564,9 @@ static long msm_private_ioctl(struct file *file, void *fh,
 			break;
 		}
 
-		spin_lock_irqsave(&(session->command_ack_q.lock),
-		   spin_flags);
 		ret_cmd->event = *(struct v4l2_event *)arg;
 		msm_enqueue(&cmd_ack->command_q, &ret_cmd->list);
 		wake_up(&cmd_ack->wait);
-		spin_unlock_irqrestore(&(session->command_ack_q.lock),
-		   spin_flags);
 	}
 		break;
 
@@ -864,19 +852,16 @@ static struct v4l2_subdev *msm_sd_find(const char *name)
 {
 	unsigned long flags;
 	struct v4l2_subdev *subdev = NULL;
-	struct v4l2_subdev *subdev_out = NULL;
 
 	spin_lock_irqsave(&msm_v4l2_dev->lock, flags);
 	if (!list_empty(&msm_v4l2_dev->subdevs)) {
 		list_for_each_entry(subdev, &msm_v4l2_dev->subdevs, list)
-			if (!strcmp(name, subdev->name)) {
-				subdev_out = subdev;
+			if (!strcmp(name, subdev->name))
 				break;
-			}
 	}
 	spin_unlock_irqrestore(&msm_v4l2_dev->lock, flags);
 
-	return subdev_out;
+	return subdev;
 }
 
 static void msm_sd_notify(struct v4l2_subdev *sd,

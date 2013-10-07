@@ -110,10 +110,6 @@ struct mdp3_hw_resource {
 	struct ion_client *ion_client;
 	struct mdp3_iommu_domain_map *domains;
 	struct mdp3_iommu_ctx_map *iommu_contexts;
-	struct ion_handle *ion_handle;
-	void *virt;
-	unsigned long phys;
-	size_t size;
 
 	struct mdp3_dma dma[MDP3_DMA_MAX];
 	struct mdp3_intf intf[MDP3_DMA_OUTPUT_SEL_MAX];
@@ -129,7 +125,7 @@ struct mdp3_hw_resource {
 };
 
 struct mdp3_img_data {
-	dma_addr_t addr;
+	u32 addr;
 	u32 len;
 	u32 flags;
 	int p_need;
@@ -145,8 +141,6 @@ void mdp3_irq_enable(int type);
 void mdp3_irq_disable(int type);
 void mdp3_irq_disable_nosync(int type);
 int mdp3_set_intr_callback(u32 type, struct mdp3_intr_cb *cb);
-void mdp3_irq_register(void);
-void mdp3_irq_deregister(void);
 int mdp3_clk_set_rate(int clk_type, unsigned long clk_rate, int client);
 int mdp3_clk_enable(int enable);
 int mdp3_bus_scale_set_quota(int client, u64 ab_quota, u64 ib_quota);
@@ -154,8 +148,6 @@ int mdp3_put_img(struct mdp3_img_data *data);
 int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data);
 int mdp3_iommu_enable(int client);
 int mdp3_iommu_disable(int client);
-int mdp3_iommu_is_attached(int client);
-void mdp3_free(void);
 
 #define MDP3_REG_WRITE(addr, val) writel_relaxed(val, mdp3_res->mdp_base + addr)
 #define MDP3_REG_READ(addr) readl_relaxed(mdp3_res->mdp_base + addr)

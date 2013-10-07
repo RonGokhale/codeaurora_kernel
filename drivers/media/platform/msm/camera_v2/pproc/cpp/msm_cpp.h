@@ -21,15 +21,6 @@
 #include <media/v4l2-subdev.h>
 #include "msm_sd.h"
 
-/* hw version info:
-  31:28  Major version
-  27:16  Minor version
-  15:0   Revision bits
-**/
-#define CPP_HW_VERSION_1_1_0  0x10010000
-#define CPP_HW_VERSION_1_1_1  0x10010001
-#define CPP_HW_VERSION_2_0_0  0x20000000
-
 #define MAX_ACTIVE_CPP_INSTANCE 8
 #define MAX_CPP_PROCESSING_FRAME 2
 #define MAX_CPP_V4l2_EVENTS 30
@@ -138,7 +129,7 @@ struct msm_cpp_tasklet_queue_cmd {
 
 struct msm_cpp_buffer_map_info_t {
 	unsigned long len;
-	dma_addr_t phy_addr;
+	unsigned long phy_addr;
 	struct ion_handle *ion_handle;
 	struct msm_cpp_buffer_info_t buff_info;
 };
@@ -154,11 +145,6 @@ struct msm_cpp_buff_queue_info_t {
 	uint16_t stream_id;
 	struct list_head vb2_buff_head;
 	struct list_head native_buff_head;
-};
-
-struct msm_cpp_work_t {
-	struct work_struct my_work;
-	struct cpp_device *cpp_dev;
 };
 
 struct cpp_device {
@@ -179,9 +165,6 @@ struct cpp_device {
 	struct mutex mutex;
 	enum cpp_state state;
 	uint8_t is_firmware_loaded;
-	char *fw_name_bin;
-	struct workqueue_struct *timer_wq;
-	struct msm_cpp_work_t *work;
 
 	int domain_num;
 	struct iommu_domain *domain;

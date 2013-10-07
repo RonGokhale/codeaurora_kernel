@@ -16,7 +16,6 @@
 
 #include <linux/platform_device.h>
 #include <media/msm_vidc.h>
-#define MAX_BUFFER_TYPES 32
 
 struct load_freq_table {
 	u32 load;
@@ -40,11 +39,11 @@ struct addr_range {
 
 struct iommu_info {
 	const char *name;
-	u32 buffer_type[MAX_BUFFER_TYPES];
+	u32 buffer_type;
 	struct iommu_group *group;
 	int domain;
 	bool is_secure;
-	struct addr_range addr_range[MAX_BUFFER_TYPES];
+	struct addr_range addr_range[2];
 	int npartitions;
 };
 

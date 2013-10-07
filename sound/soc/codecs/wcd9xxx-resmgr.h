@@ -13,20 +13,12 @@
 #define __WCD9XXX_COMMON_H__
 
 #include <linux/notifier.h>
-#include <linux/mfd/wcd9xxx/core-resource.h>
 #include <linux/mfd/wcd9xxx/wcd9xxx_registers.h>
 
 enum wcd9xxx_bandgap_type {
 	WCD9XXX_BANDGAP_OFF,
 	WCD9XXX_BANDGAP_AUDIO_MODE,
 	WCD9XXX_BANDGAP_MBHC_MODE,
-};
-
-enum wcd9xxx_cdc_type {
-	WCD9XXX_CDC_TYPE_INVALID = 0,
-	WCD9XXX_CDC_TYPE_TAIKO,
-	WCD9XXX_CDC_TYPE_TAPAN,
-	WCD9XXX_CDC_TYPE_HELICON,
 };
 
 enum wcd9xxx_clock_type {
@@ -110,22 +102,14 @@ enum wcd9xxx_notify_event {
 
 struct wcd9xxx_resmgr {
 	struct snd_soc_codec *codec;
-	struct wcd9xxx_core_resource *core_res;
+	struct wcd9xxx *core;
 
 	u32 rx_bias_count;
 
-	/*
-	 * bandgap_type, bg_audio_users and bg_mbhc_users have to be
-	 * referred/manipulated after acquiring codec_bg_clk_lock mutex
-	 */
 	enum wcd9xxx_bandgap_type bandgap_type;
 	u16 bg_audio_users;
 	u16 bg_mbhc_users;
 
-	/*
-	 * clk_type, clk_rco_users and clk_mclk_users have to be
-	 * referred/manipulated after acquiring codec_bg_clk_lock mutex
-	 */
 	enum wcd9xxx_clock_type clk_type;
 	u16 clk_rco_users;
 	u16 clk_mclk_users;
@@ -142,7 +126,6 @@ struct wcd9xxx_resmgr {
 	struct wcd9xxx_mbhc *mbhc;
 
 	unsigned long cond_flags;
-	unsigned long cond_avail_flags;
 	struct list_head update_bit_cond_h;
 	struct mutex update_bit_cond_lock;
 
@@ -153,21 +136,16 @@ struct wcd9xxx_resmgr {
 	 * general lock to protect codec resource
 	 */
 	struct mutex codec_resource_lock;
-	struct mutex codec_bg_clk_lock;
-
-	enum wcd9xxx_cdc_type codec_type;
 };
 
 int wcd9xxx_resmgr_init(struct wcd9xxx_resmgr *resmgr,
 			struct snd_soc_codec *codec,
-			struct wcd9xxx_core_resource *core_res,
+			struct wcd9xxx *wcd9xxx,
 			struct wcd9xxx_pdata *pdata,
-			struct wcd9xxx_reg_address *reg_addr,
-			enum wcd9xxx_cdc_type cdc_type);
+			struct wcd9xxx_reg_address *reg_addr);
 void wcd9xxx_resmgr_deinit(struct wcd9xxx_resmgr *resmgr);
 
-int wcd9xxx_resmgr_enable_config_mode(struct wcd9xxx_resmgr *resmgr,
-				int enable);
+int wcd9xxx_resmgr_enable_config_mode(struct snd_soc_codec *codec, int enable);
 
 void wcd9xxx_resmgr_enable_rx_bias(struct wcd9xxx_resmgr *resmgr, u32 enable);
 void wcd9xxx_resmgr_get_clk_block(struct wcd9xxx_resmgr *resmgr,
@@ -205,27 +183,6 @@ void wcd9xxx_resmgr_bcl_unlock(struct wcd9xxx_resmgr *resmgr);
 		  "%s: BCL should have acquired\n", __func__); \
 }
 
-#define WCD9XXX_BG_CLK_LOCK(resmgr)			\
-{							\
-	struct wcd9xxx_resmgr *__resmgr = resmgr;	\
-	pr_debug("%s: Acquiring BG_CLK\n", __func__);	\
-	mutex_lock(&__resmgr->codec_bg_clk_lock);	\
-	pr_debug("%s: Acquiring BG_CLK done\n", __func__);	\
-}
-
-#define WCD9XXX_BG_CLK_UNLOCK(resmgr)			\
-{							\
-	struct wcd9xxx_resmgr *__resmgr = resmgr;	\
-	pr_debug("%s: Releasing BG_CLK\n", __func__);	\
-	mutex_unlock(&__resmgr->codec_bg_clk_lock);	\
-}
-
-#define WCD9XXX_BG_CLK_ASSERT_LOCKED(resmgr)		\
-{							\
-	WARN_ONCE(!mutex_is_locked(&resmgr->codec_bg_clk_lock), \
-		  "%s: BG_CLK lock should have acquired\n", __func__); \
-}
-
 const char *wcd9xxx_get_event_string(enum wcd9xxx_notify_event type);
 int wcd9xxx_resmgr_get_k_val(struct wcd9xxx_resmgr *resmgr,
 			     unsigned int cfilt_mv);
@@ -240,10 +197,6 @@ enum wcd9xxx_resmgr_cond {
 	WCD9XXX_COND_HPH = 0x01, /* Headphone */
 	WCD9XXX_COND_HPH_MIC = 0x02, /* Microphone on the headset */
 };
-void wcd9xxx_regmgr_cond_register(struct wcd9xxx_resmgr *resmgr,
-				  unsigned long condbits);
-void wcd9xxx_regmgr_cond_deregister(struct wcd9xxx_resmgr *resmgr,
-				    unsigned long condbits);
 int wcd9xxx_resmgr_rm_cond_update_bits(struct wcd9xxx_resmgr *resmgr,
 				       enum wcd9xxx_resmgr_cond cond,
 				       unsigned short reg, int shift,

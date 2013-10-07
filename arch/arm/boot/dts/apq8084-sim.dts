@@ -17,7 +17,7 @@
 / {
 	model = "Qualcomm APQ 8084 Simulator";
 	compatible = "qcom,apq8084-sim", "qcom,apq8084", "qcom,sim";
-	qcom,board-id = <16 0>;
+	qcom,msm-id = <178 0 0>;
 
 	aliases {
 		serial0 = &uart0;
@@ -170,12 +170,4 @@
 
 &usb3 {
 	qcom,skip-charger-detection;
-};
-
-&ufsphy1 {
-	status = "ok";
-};
-
-&ufs1 {
-	status = "ok";
 };

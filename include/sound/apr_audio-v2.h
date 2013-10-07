@@ -82,14 +82,13 @@ struct adm_cmd_matrix_map_routings_v5 {
 */
 #define ADM_CMD_DEVICE_OPEN_V5                          0x00010326
 
-/* Definition for a low latency stream session. */
-#define ADM_LOW_LATENCY_DEVICE_SESSION			0x2000
-
-/* Definition for a ultra low latency stream session. */
-#define ADM_ULTRA_LOW_LATENCY_DEVICE_SESSION		0x4000
+#define ADM_BIT_SHIFT_DEVICE_PERF_MODE_FLAG                           13
 
 /* Definition for a legacy device session. */
 #define ADM_LEGACY_DEVICE_SESSION                                      0
+
+/* Definition for a low latency stream session. */
+#define ADM_LOW_LATENCY_DEVICE_SESSION                                 1
 
 /* Indicates that endpoint_id_2 is to be ignored.*/
 #define ADM_CMD_COPP_OPEN_END_POINT_ID_2_IGNORE				0xFFFF
@@ -290,9 +289,8 @@ struct adm_param_data_v5 {
 	 */
 } __packed;
 
-/* set customized mixing on matrix mixer */
-#define ADM_CMD_SET_PSPD_MTMX_STRTR_PARAMS_V5                        0x00010344
-struct adm_cmd_set_pspd_mtmx_strtr_params_v5 {
+/* Defined specifically for in-band use, includes params */
+struct adm_cmd_set_pp_params_inband_v5 {
 	struct apr_hdr hdr;
 	/* LSW of parameter data payload address.*/
 	u32		payload_addr_lsw;
@@ -306,30 +304,10 @@ struct adm_cmd_set_pspd_mtmx_strtr_params_v5 {
 	/* message or in shared memory. This is used for parsing the */
 	/* parameter payload. */
 	u32		payload_size;
-	u16		direction;
-	u16		sessionid;
-	u16		deviceid;
-	u16		reserved;
+	/* Parameters passed for in band payload */
+	struct adm_param_data_v5	params;
 } __packed;
 
-/* Defined specifically for in-band use, includes params */
-struct adm_cmd_set_pp_params_inband_v5 {
-	struct apr_hdr hdr;
-	/* LSW of parameter data payload address.*/
-	u32             payload_addr_lsw;
-	/* MSW of parameter data payload address.*/
-	u32             payload_addr_msw;
-	/* Memory map handle returned by ADM_CMD_SHARED_MEM_MAP_REGIONS */
-	/* command. If mem_map_handle is zero implies the message is in */
-	/* the payload */
-	u32             mem_map_handle;
-	/* Size in bytes of the variable payload accompanying this */
-	/* message or in shared memory. This is used for parsing the */
-	/* parameter payload. */
-	u32             payload_size;
-	/* Parameters passed for in band payload */
-	struct adm_param_data_v5        params;
-} __packed;
 
 /* Returns the status and COPP ID to an #ADM_CMD_DEVICE_OPEN_V5 command.
  */
@@ -600,15 +578,6 @@ struct adm_cmd_matrix_mute_v5 {
 	/* Clients must set this field to zero.*/
 } __packed;
 
-#define ASM_PARAM_ID_AAC_STEREO_MIX_COEFF_SELECTION_FLAG_V2 (0x00010DD8)
-
-struct asm_aac_stereo_mix_coeff_selection_param_v2 {
-	struct apr_hdr          hdr;
-	u32                     param_id;
-	u32                     param_size;
-	u32                     aac_stereo_mix_coeff_flag;
-} __packed;
-
 /* Allows a client to connect the desired stream to
  * the desired AFE port through the stream router
  *
@@ -663,44 +632,43 @@ struct adm_cmd_connect_afe_port_v5 {
 
 /* Port ID. Update afe_get_port_index
  *	when a new port is added here. */
-#define PRIMARY_I2S_RX 0
-#define PRIMARY_I2S_TX 1
-#define SECONDARY_I2S_RX 4
-#define SECONDARY_I2S_TX 5
-#define MI2S_RX 6
-#define MI2S_TX 7
-#define HDMI_RX 8
-#define RSVD_2 9
-#define RSVD_3 10
-#define DIGI_MIC_TX 11
-#define VOICE2_PLAYBACK_TX 0x8002
-#define VOICE_RECORD_RX 0x8003
-#define VOICE_RECORD_TX 0x8004
-#define VOICE_PLAYBACK_TX 0x8005
+#define PRIMARY_I2S_RX 0		/* index = 0 */
+#define PRIMARY_I2S_TX 1		/* index = 1 */
+#define SECONDARY_I2S_RX 4		/* index = 4 */
+#define SECONDARY_I2S_TX 5		/* index = 5 */
+#define MI2S_RX 6			/* index = 6 */
+#define MI2S_TX 7			/* index = 7 */
+#define HDMI_RX 8			/* index = 8 */
+#define RSVD_2 9			/* index = 9 */
+#define RSVD_3 10			/* index = 10 */
+#define DIGI_MIC_TX 11			/* index = 11 */
+#define VOICE_RECORD_RX 0x8003		/* index = 12 */
+#define VOICE_RECORD_TX 0x8004		/* index = 13 */
+#define VOICE_PLAYBACK_TX 0x8005	/* index = 14 */
 
 /* Slimbus Multi channel port id pool  */
-#define SLIMBUS_0_RX		0x4000
-#define SLIMBUS_0_TX		0x4001
-#define SLIMBUS_1_RX		0x4002
-#define SLIMBUS_1_TX		0x4003
+#define SLIMBUS_0_RX		0x4000		/* index = 15 */
+#define SLIMBUS_0_TX		0x4001		/* index = 16 */
+#define SLIMBUS_1_RX		0x4002		/* index = 17 */
+#define SLIMBUS_1_TX		0x4003		/* index = 18 */
 #define SLIMBUS_2_RX		0x4004
 #define SLIMBUS_2_TX		0x4005
 #define SLIMBUS_3_RX		0x4006
 #define SLIMBUS_3_TX		0x4007
 #define SLIMBUS_4_RX		0x4008
-#define SLIMBUS_4_TX		0x4009
+#define SLIMBUS_4_TX		0x4009		/* index = 24 */
 #define SLIMBUS_5_RX		0x400a
 #define SLIMBUS_5_TX		0x400b
 #define SLIMBUS_6_RX		0x400c
 #define SLIMBUS_6_TX		0x400d
 #define SLIMBUS_PORT_LAST	SLIMBUS_6_TX
-#define INT_BT_SCO_RX 0x3000
-#define INT_BT_SCO_TX 0x3001
-#define INT_BT_A2DP_RX 0x3002
-#define INT_FM_RX 0x3004
-#define INT_FM_TX 0x3005
-#define RT_PROXY_PORT_001_RX	0x2000
-#define RT_PROXY_PORT_001_TX	0x2001
+#define INT_BT_SCO_RX 0x3000		/* index = 25 */
+#define INT_BT_SCO_TX 0x3001		/* index = 26 */
+#define INT_BT_A2DP_RX 0x3002		/* index = 27 */
+#define INT_FM_RX 0x3004		/* index = 28 */
+#define INT_FM_TX 0x3005		/* index = 29 */
+#define RT_PROXY_PORT_001_RX	0x2000    /* index = 30 */
+#define RT_PROXY_PORT_001_TX	0x2001    /* index = 31 */
 
 #define AFE_PORT_INVALID 0xFFFF
 #define SLIMBUS_INVALID AFE_PORT_INVALID
@@ -850,7 +818,6 @@ struct adm_cmd_connect_afe_port_v5 {
  * to this port from where the voice path delivers them on the
  * Rx path.
  */
-#define AFE_PORT_ID_VOICE2_PLAYBACK_TX  0x8002
 #define AFE_PORT_ID_VOICE_PLAYBACK_TX   0x8005
 #define AFE_PORT_ID_INVALID             0xFFFF
 
@@ -3847,12 +3814,11 @@ struct asm_session_cmdrsp_get_path_delay_v2 {
 #define ASM_STREAM_CMD_OPEN_WRITE_V2       0x00010D8F
 #define ASM_STREAM_CMD_OPEN_WRITE_V3       0x00010DB3
 
-#define ASM_LOW_LATENCY_STREAM_SESSION				0x10000000
-
-#define ASM_ULTRA_LOW_LATENCY_STREAM_SESSION			0x20000000
+#define ASM_SHIFT_STREAM_PERF_MODE_FLAG_IN_OPEN_WRITE                     28
 
 #define ASM_LEGACY_STREAM_SESSION                                      0
 
+#define ASM_LOW_LATENCY_STREAM_SESSION                                  1
 
 struct asm_stream_cmd_open_write_v3 {
 	struct apr_hdr			hdr;
@@ -6956,22 +6922,6 @@ struct afe_port_cmd_set_aanc_acdb_table {
 /* Dolby DAP topology */
 #define DOLBY_ADM_COPP_TOPOLOGY_ID	0x0001033B
 
-/* RMS value from DSP */
-#define RMS_MODULEID_APPI_PASSTHRU  0x10009011
-#define RMS_PARAM_FIRST_SAMPLE 0x10009012
-#define RMS_PAYLOAD_LEN 4
-
-/* Customized mixing in matix mixer */
-#define MTMX_MODULE_ID_DEFAULT_CHMIXER  0x00010341
-#define DEFAULT_CHMIXER_PARAM_ID_COEFF  0x00010342
-#define CUSTOM_STEREO_PAYLOAD_SIZE	9
-#define CUSTOM_STEREO_CMD_PARAM_SIZE	24
-#define CUSTOM_STEREO_NUM_OUT_CH	0x0002
-#define CUSTOM_STEREO_NUM_IN_CH		0x0002
-#define CUSTOM_STEREO_INDEX_PARAM	0x0002
-#define Q14_GAIN_ZERO_POINT_FIVE	0x2000
-#define Q14_GAIN_UNITY			0x4000
-
 struct afe_svc_cmd_set_clip_bank_selection {
 	struct apr_hdr hdr;
 	struct afe_svc_cmd_set_param param;
@@ -6980,8 +6930,8 @@ struct afe_svc_cmd_set_clip_bank_selection {
 } __packed;
 
 /* Ultrasound supported formats */
-#define US_POINT_EPOS_FORMAT_V2 0x0001272D
-#define US_RAW_FORMAT_V2        0x0001272C
-#define US_PROX_FORMAT_V2       0x0001272E
+#define US_POINT_EPOS_FORMAT 0x00012310
+#define US_RAW_FORMAT        0x0001127C
+#define US_PROX_FORMAT       0x0001272B
 
 #endif /*_APR_AUDIO_V2_H_ */

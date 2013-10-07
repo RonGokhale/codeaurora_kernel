@@ -296,13 +296,24 @@ abort_dequeue:
 static long set_default_properties(struct venc_inst *inst)
 {
 	struct v4l2_control ctrl = {0};
+	int rc;
 
 	/* Set the IDR period as 1.  The venus core doesn't give
 	 * the sps/pps for I-frames, only IDR. */
 	ctrl.id = V4L2_CID_MPEG_VIDC_VIDEO_IDR_PERIOD;
 	ctrl.value = 1;
+	rc = msm_vidc_s_ctrl(inst->vidc_context, &ctrl);
+	if (rc)
+		WFD_MSG_WARN("Failed to set IDR period\n");
 
-	return msm_vidc_s_ctrl(inst->vidc_context, &ctrl);
+	/* Set the default rc mode to VBR/VFR, client can change later */
+	ctrl.id = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL;
+	ctrl.value = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_VBR_VFR;
+	rc = msm_vidc_s_ctrl(inst->vidc_context, &ctrl);
+	if (rc)
+		WFD_MSG_WARN("Failed to set rc mode\n");
+
+	return 0;
 }
 
 static int subscribe_events(struct venc_inst *inst)
@@ -667,7 +678,7 @@ static long venc_set_input_buffer(struct v4l2_subdev *sd, void *arg)
 
 	*mregion = *(struct mem_region *)arg;
 	populate_planes(planes, inst->num_input_planes,
-			(void *)mregion->paddr, mregion->size);
+			mregion->paddr, mregion->size);
 
 	buf = (struct v4l2_buffer) {
 		.index = get_list_len(&inst->registered_input_bufs),
@@ -778,7 +789,7 @@ static int venc_map_user_to_kernel(struct venc_inst *inst,
 
 	rc = ion_map_iommu(venc_ion_client, mregion->ion_handle,
 			domain, partition, align_req, 0,
-			&mregion->paddr, &size, 0, 0);
+			(unsigned long *)&mregion->paddr, &size, 0, 0);
 	if (rc) {
 		WFD_MSG_ERR("Failed to map into iommu\n");
 		goto venc_map_iommu_map_fail;
@@ -826,7 +837,7 @@ static int venc_unmap_user_to_kernel(struct venc_inst *inst,
 	if (mregion->paddr) {
 		ion_unmap_iommu(venc_ion_client, mregion->ion_handle,
 				domain, partition);
-		mregion->paddr = 0;
+		mregion->paddr = NULL;
 	}
 
 	if (!IS_ERR_OR_NULL(mregion->kvaddr)) {
@@ -886,7 +897,7 @@ static long venc_set_output_buffer(struct v4l2_subdev *sd, void *arg)
 	}
 
 	populate_planes(planes, inst->num_output_planes,
-			(void *)mregion->paddr, mregion->size);
+			mregion->paddr, mregion->size);
 
 	buf = (struct v4l2_buffer) {
 		.index = get_list_len(&inst->registered_output_bufs),
@@ -1321,7 +1332,7 @@ long venc_mmap(struct v4l2_subdev *sd, void *arg)
 	struct mem_region *mregion = NULL;
 	unsigned long size = 0, align_req = 0, flags = 0;
 	int domain = 0, partition = 0, rc = 0;
-	dma_addr_t paddr = 0;
+	void *paddr = NULL;
 	struct venc_inst *inst = NULL;
 
 	if (!sd) {
@@ -1367,10 +1378,10 @@ long venc_mmap(struct v4l2_subdev *sd, void *arg)
 
 	rc = ion_map_iommu(mmap->ion_client, mregion->ion_handle,
 			domain, partition, align_req, 0,
-			&paddr, &size, 0, 0);
+			(unsigned long *)&paddr, &size, 0, 0);
 	if (rc) {
 		WFD_MSG_ERR("Failed to get physical addr %d\n", rc);
-		paddr = 0;
+		paddr = NULL;
 		goto venc_map_bad_align;
 	} else if (size < mregion->size) {
 		WFD_MSG_ERR("Failed to map enough memory\n");
@@ -1427,7 +1438,7 @@ long venc_munmap(struct v4l2_subdev *sd, void *arg)
 	if (mregion->paddr) {
 		ion_unmap_iommu(mmap->ion_client, mregion->ion_handle,
 			domain, partition);
-		mregion->paddr = 0;
+		mregion->paddr = NULL;
 	}
 
 	if (inst->secure)

@@ -1688,7 +1688,9 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 
 	heap->dev = dev;
 	down_write(&dev->lock);
-	plist_node_init(&heap->node, heap->id);
+	/* use negative heap->id to reverse the priority -- when traversing
+	   the list later attempt higher id numbers first */
+	plist_node_init(&heap->node, -heap->id);
 	plist_add(&heap->node, &dev->heaps);
 	debugfs_create_file(heap->name, 0664, dev->debug_root, heap,
 			    &debug_heap_fops);
@@ -1788,28 +1790,6 @@ int ion_secure_heap(struct ion_device *dev, int heap_id, int version,
 	return ret_val;
 }
 EXPORT_SYMBOL(ion_secure_heap);
-
-int ion_walk_heaps(struct ion_client *client, int heap_id, void *data,
-			int (*f)(struct ion_heap *heap, void *data))
-{
-	int ret_val = -EINVAL;
-	struct ion_heap *heap;
-	struct ion_device *dev = client->dev;
-	/*
-	 * traverse the list of heaps available in this system
-	 * and find the heap that is specified.
-	 */
-	down_write(&dev->lock);
-	plist_for_each_entry(heap, &dev->heaps, node) {
-		if (ION_HEAP(heap->id) != heap_id)
-			continue;
-		ret_val = f(heap, data);
-		break;
-	}
-	up_write(&dev->lock);
-	return ret_val;
-}
-EXPORT_SYMBOL(ion_walk_heaps);
 
 int ion_unsecure_heap(struct ion_device *dev, int heap_id, int version,
 			void *data)

@@ -67,8 +67,7 @@ int kgsl_sharedmem_set(struct kgsl_device *device,
 
 void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op);
 
-int kgsl_process_init_sysfs(struct kgsl_device *device,
-		struct kgsl_process_private *private);
+void kgsl_process_init_sysfs(struct kgsl_process_private *private);
 void kgsl_process_uninit_sysfs(struct kgsl_process_private *private);
 
 int kgsl_sharedmem_init_sysfs(void);
@@ -261,11 +260,6 @@ kgsl_allocate(struct kgsl_memdesc *memdesc,
 	ret = kgsl_sharedmem_page_alloc(memdesc, pagetable, size);
 	if (ret)
 		return ret;
-	ret = kgsl_mmu_get_gpuaddr(pagetable, memdesc);
-	if (ret) {
-		kgsl_sharedmem_free(memdesc);
-		return ret;
-	}
 	ret = kgsl_mmu_map(pagetable, memdesc);
 	if (ret)
 		kgsl_sharedmem_free(memdesc);

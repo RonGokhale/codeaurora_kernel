@@ -21,9 +21,6 @@
 
 #include "mdss_panel.h"
 
-#define MDSS_LPAE_CHECK(phys)	\
-	((sizeof(phys) > sizeof(unsigned long)) ? ((phys >> 32) & 0xFF) : (0))
-
 #define MSM_FB_DEFAULT_PAGE_SIZE 2
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
@@ -56,19 +53,6 @@ struct disp_info_notify {
 	int value;
 };
 
-struct msm_sync_pt_data {
-	char *fence_name;
-	u32 acq_fen_cnt;
-	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
-	int cur_rel_fen_fd;
-	struct sync_pt *cur_rel_sync_pt;
-	struct sync_fence *cur_rel_fence;
-	struct sw_sync_timeline *timeline;
-	int timeline_value;
-	u32 threshold;
-	struct mutex sync_mutex;
-};
-
 struct msm_fb_data_type;
 
 struct msm_mdp_interface {
@@ -77,8 +61,6 @@ struct msm_mdp_interface {
 	int (*init_fnc)(struct msm_fb_data_type *mfd);
 	int (*on_fnc)(struct msm_fb_data_type *mfd);
 	int (*off_fnc)(struct msm_fb_data_type *mfd);
-	/* called to release resources associated to the process */
-	int (*release_fnc)(struct msm_fb_data_type *mfd);
 	int (*kickoff_fnc)(struct msm_fb_data_type *mfd);
 	int (*ioctl_handler)(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
 	void (*dma_fnc)(struct msm_fb_data_type *mfd);
@@ -90,8 +72,6 @@ struct msm_mdp_interface {
 	int (*update_ad_input)(struct msm_fb_data_type *mfd);
 	int (*panel_register_done)(struct mdss_panel_data *pdata);
 	u32 (*fb_stride)(u32 fb_index, u32 xres, int bpp);
-	struct msm_sync_pt_data *(*get_sync_fnc)(struct msm_fb_data_type *mfd,
-				const struct mdp_buf_sync *buf_sync);
 	void *private1;
 };
 
@@ -100,12 +80,6 @@ struct msm_mdp_interface {
 					out = (2 * (v) * (bl_max) + max_bright)\
 					/ (2 * max_bright);\
 					} while (0)
-
-struct mdss_fb_proc_info {
-	int pid;
-	u32 ref_cnt;
-	struct list_head list;
-};
 
 struct msm_fb_data_type {
 	u32 key;
@@ -116,8 +90,6 @@ struct msm_fb_data_type {
 	struct panel_id panel;
 	struct mdss_panel_info *panel_info;
 	int split_display;
-	int split_fb_left;
-	int split_fb_right;
 
 	u32 dest;
 	struct fb_info *fbi;
@@ -131,19 +103,16 @@ struct msm_fb_data_type {
 	struct disp_info_type_suspend suspend;
 
 	struct ion_handle *ihdl;
-	dma_addr_t iova;
+	unsigned long iova;
 	void *cursor_buf;
-	phys_addr_t cursor_buf_phys;
-	dma_addr_t cursor_buf_iova;
+	unsigned long cursor_buf_phys;
+	unsigned long cursor_buf_iova;
 
 	u32 ext_bl_ctrl;
 	u32 calib_mode;
 	u32 bl_level;
 	u32 bl_scale;
 	u32 bl_min_lvl;
-	u32 unset_bl_level;
-	u32 bl_updated;
-	u32 bl_level_old;
 	struct mutex bl_lock;
 	struct mutex lock;
 
@@ -153,12 +122,20 @@ struct msm_fb_data_type {
 
 	struct disp_info_notify update;
 	struct disp_info_notify no_update;
-	struct completion power_off_comp;
 
 	struct msm_mdp_interface mdp;
 
-	struct msm_sync_pt_data mdp_sync_pt_data;
-
+	u32 acq_fen_cnt;
+	struct sync_fence *acq_fen[MDP_MAX_FENCE_FD];
+	int cur_rel_fen_fd;
+	struct sync_pt *cur_rel_sync_pt;
+	struct sync_fence *cur_rel_fence;
+	struct sync_fence *last_rel_fence;
+	struct sw_sync_timeline *timeline;
+	int timeline_value;
+	u32 last_acq_fen_cnt;
+	struct sync_fence *last_acq_fen[MDP_MAX_FENCE_FD];
+	struct mutex sync_mutex;
 	/* for non-blocking */
 	struct completion commit_comp;
 	u32 is_committing;
@@ -166,9 +143,6 @@ struct msm_fb_data_type {
 	void *msm_fb_backup;
 	struct completion power_set_comp;
 	u32 is_power_setting;
-
-	u32 dcm_state;
-	struct list_head proc_list;
 };
 
 struct msm_fb_backup_type {
@@ -195,11 +169,10 @@ static inline void mdss_fb_update_notify_update(struct msm_fb_data_type *mfd)
 	}
 }
 
-int mdss_fb_get_phys_info(dma_addr_t *start, unsigned long *len, int fb_num);
+int mdss_fb_get_phys_info(unsigned long *start, unsigned long *len, int fb_num);
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl);
 void mdss_fb_update_backlight(struct msm_fb_data_type *mfd);
-void mdss_fb_wait_for_fence(struct msm_sync_pt_data *sync_pt_data);
-void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data);
+void mdss_fb_wait_for_fence(struct msm_fb_data_type *mfd);
+void mdss_fb_signal_timeline(struct msm_fb_data_type *mfd);
 int mdss_fb_register_mdp_instance(struct msm_mdp_interface *mdp);
-int mdss_fb_dcm(struct msm_fb_data_type *mfd, int req_state);
 #endif /* MDSS_FB_H */

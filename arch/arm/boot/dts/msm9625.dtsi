@@ -193,7 +193,6 @@
 		qcom,pool-64-bit-align;
 		qcom,enable-hbm;
 		hsic,consider-ipa-handshake;
-		hsic,log2-itc = <3>;
 		qcom,ahb-async-bridge-bypass;
 		hsic,disable-cerr;
 	};
@@ -410,38 +409,20 @@
 			    "bam_phys";
 		interrupts = <0 247 0>;
 		interrupt-names = "bam_irq";
-
-		qcom,msm-bus,name = "qpic_nand";
-		qcom,msm-bus,num-cases = <2>;
-		qcom,msm-bus,num-paths = <1>;
-
-		qcom,msm-bus,vectors-KBps =
-			<91 512 0 0>,
-			/* Voting for max b/w on PNOC bus for now */
-			<91 512 400000 800000>;
-
 	};
 
-	spi_0: spi@f9924000 { /* BLSP1 QUP2 */
+	spi_0: spi@f9924000 {
 		compatible = "qcom,spi-qup-v2";
+		reg = <0xf9924000 0x1000>;
+		interrupts = <0 96 0>;
+		spi-max-frequency = <25000000>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		reg-names = "spi_physical", "spi_bam_physical";
-		reg = <0xf9924000 0x1000>,
-		      <0xf9904000 0x11000>;
-		interrupt-names = "spi_irq", "spi_bam_irq";
-		interrupts = <0 96 0>, <0 238 0>;
-		spi-max-frequency = <19200000>;
-		qcom,gpio-mosi = <&msmgpio 4 0>;
-		qcom,gpio-miso = <&msmgpio 5 0>;
-		qcom,gpio-clk  = <&msmgpio 7 0>;
-		qcom,gpio-cs0  = <&msmgpio 6 0>;
+		gpios = <&msmgpio 7 0>, /* CLK  */
+			<&msmgpio 5 0>, /* MISO */
+			<&msmgpio 4 0>; /* MOSI */
 
-		qcom,infinite-mode = <0>;
-		qcom,ver-reg-exists;
-		qcom,bam-consumer-pipe-index = <14>;
-		qcom,bam-producer-pipe-index = <15>;
-		qcom,master-id = <86>;
+		cs-gpios = <&msmgpio 6 0>;
 
 		ethernet-switch@0 {
 			compatible = "simtec,ks8851";
@@ -613,7 +594,7 @@
 	tsens@fc4a8000 {
 		compatible = "qcom,msm-tsens";
 		reg = <0xfc4a8000 0x2000>,
-		      <0xfc4bc000 0x1000>;
+		      <0xfc4b8000 0x1000>;
 		reg-names = "tsens_physical", "tsens_eeprom_physical";
 		interrupts = <0 184 0>;
 		qcom,sensors = <5>;
@@ -871,8 +852,9 @@
 		compatible = "qcom,msm-stub-codec";
 	};
 
-	qcom,msm-pri-auxpcm {
-		compatible = "qcom,msm-auxpcm-dev";
+	qcom,msm-auxpcm {
+		compatible = "qcom,msm-auxpcm-resource";
+		qcom,msm-cpudai-auxpcm-clk = "pcm_clk";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
@@ -880,7 +862,16 @@
 		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
-		qcom,msm-auxpcm-interface = "primary";
+
+		qcom,msm-auxpcm-rx {
+			qcom,msm-auxpcm-dev-id = <4106>;
+			compatible = "qcom,msm-auxpcm-dev";
+		};
+
+		qcom,msm-auxpcm-tx {
+			qcom,msm-auxpcm-dev-id = <4107>;
+			compatible = "qcom,msm-auxpcm-dev";
+		};
 	};
 
 	qcom,msm-dai-mi2s {
@@ -979,12 +970,6 @@
 		reg-names = "crypto-base","crypto-bam-base";
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <2>;
-	};
-
-	jtag_fuse: jtagfuse@fc4be024 {
-		compatible = "qcom,jtag-fuse";
-		reg = <0xfc4be024 0x8>;
-		reg-names = "fuse-base";
 	};
 
 	jtag_mm: jtagmm@fc332000 {

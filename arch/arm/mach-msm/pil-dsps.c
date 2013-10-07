@@ -23,7 +23,6 @@
 #include <mach/msm_smsm.h>
 #include <mach/ramdump.h>
 #include <mach/msm_smem.h>
-#include <mach/msm_bus_board.h>
 
 #include "peripheral-loader.h"
 #include "scm-pas.h"
@@ -317,8 +316,6 @@ static int __devinit pil_dsps_driver_probe(struct platform_device *pdev)
 		ret = PTR_ERR(drv->subsys);
 		goto err_subsys;
 	}
-
-	scm_pas_init(MSM_BUS_MASTER_SPS);
 
 	ret = smsm_state_cb_register(SMSM_DSPS_STATE, SMSM_RESET,
 				     dsps_smsm_state_cb, drv);

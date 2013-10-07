@@ -81,8 +81,8 @@ struct hfi_mem_map_table {
 };
 
 struct hfi_mem_map {
-	dma_addr_t virtual_addr;
-	phys_addr_t physical_addr;
+	u32 virtual_addr;
+	u32 physical_addr;
 	u32 size;
 	u32 attr;
 };
@@ -114,14 +114,6 @@ enum vidc_hw_reg {
 	VIDC_HWREG_VHI_SOFTINTSTATUS =  0x8,
 	VIDC_HWREG_VHI_SOFTINTCLR =  0x9,
 	VIDC_HWREG_HVI_SOFTINTEN =  0xA,
-};
-
-enum bus_index {
-	BUS_IDX_ENC_OCMEM,
-	BUS_IDX_DEC_OCMEM,
-	BUS_IDX_ENC_DDR,
-	BUS_IDX_DEC_DDR,
-	BUS_IDX_MAX
 };
 
 struct vidc_mem_addr {
@@ -188,7 +180,6 @@ struct venus_hfi_device {
 	struct mutex read_lock;
 	struct mutex write_lock;
 	struct mutex clock_lock;
-	struct mutex session_lock;
 	msm_vidc_callback callback;
 	struct vidc_mem_addr iface_q_table;
 	struct vidc_mem_addr qdss;

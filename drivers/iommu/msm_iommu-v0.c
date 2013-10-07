@@ -34,6 +34,14 @@
 #include <mach/msm_smem.h>
 #include <mach/msm_bus.h>
 
+#define MRC(reg, processor, op1, crn, crm, op2)				\
+__asm__ __volatile__ (							\
+"   mrc   "   #processor "," #op1 ", %0,"  #crn "," #crm "," #op2 "\n"  \
+: "=r" (reg))
+
+#define RCP15_PRRR(reg)		MRC(reg, p15, 0, c10, c2, 0)
+#define RCP15_NMRR(reg)		MRC(reg, p15, 0, c10, c2, 1)
+
 /* Sharability attributes of MSM IOMMU mappings */
 #define MSM_IOMMU_ATTR_NON_SH		0x0
 #define MSM_IOMMU_ATTR_SH		0x4
@@ -347,8 +355,8 @@ static void __program_context(void __iomem *base, void __iomem *glb_base,
 	SET_TRE(base, ctx, 1);
 
 	/* Set TEX remap attributes */
-	prrr = msm_iommu_get_prrr();
-	nmrr = msm_iommu_get_nmrr();
+	RCP15_PRRR(prrr);
+	RCP15_NMRR(nmrr);
 	SET_PRRR(base, ctx, prrr);
 	SET_NMRR(base, ctx, nmrr);
 
@@ -496,7 +504,7 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 	++ctx_drvdata->attach_count;
 
 	if (ctx_drvdata->attach_count > 1)
-		goto already_attached;
+		goto unlock;
 
 	if (!list_empty(&ctx_drvdata->attached_elm)) {
 		ret = -EBUSY;
@@ -528,7 +536,6 @@ static int msm_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
 
 	ctx_drvdata->attached_domain = domain;
 
-already_attached:
 	mutex_unlock(&msm_iommu_lock);
 
 	msm_iommu_attached(dev->parent);
@@ -1386,8 +1393,8 @@ static int __init get_tex_class(int icp, int ocp, int mt, int nos)
 	unsigned int nmrr = 0;
 	int c_icp, c_ocp, c_mt, c_nos;
 
-	prrr = msm_iommu_get_prrr();
-	nmrr = msm_iommu_get_nmrr();
+	RCP15_PRRR(prrr);
+	RCP15_NMRR(nmrr);
 
 	for (i = 0; i < NUM_TEX_CLASS; i++) {
 		c_nos = PRRR_NOS(prrr, i);

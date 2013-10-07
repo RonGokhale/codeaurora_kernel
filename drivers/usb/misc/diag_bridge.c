@@ -45,7 +45,6 @@ struct diag_bridge {
 	struct diag_bridge_ops	*ops;
 	struct platform_device	*pdev;
 	unsigned		default_autosusp_delay;
-	int			id;
 
 	/* debugging counters */
 	unsigned long		bytes_to_host;
@@ -93,7 +92,7 @@ EXPORT_SYMBOL(diag_bridge_open);
 static void diag_bridge_delete(struct kref *kref)
 {
 	struct diag_bridge *dev = container_of(kref, struct diag_bridge, kref);
-	int id = dev->id;
+	int id = dev->pdev->id;
 
 	usb_put_dev(dev->udev);
 	__dev[id] = 0;
@@ -471,7 +470,6 @@ diag_bridge_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 		return -ENOMEM;
 	}
 	__dev[devid] = dev;
-	dev->id = devid;
 
 	dev->udev = usb_get_dev(interface_to_usbdev(ifc));
 	dev->ifc = ifc;
@@ -574,8 +572,6 @@ static const struct usb_device_id diag_bridge_ids[] = {
 	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
 	{ USB_DEVICE(0x5c6, 0x9079),
 	.driver_info = VALID_INTERFACE_NUM | DEV_ID(1), },
-	{ USB_DEVICE(0x5c6, 0x908A),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
 
 	{} /* terminating entry */
 };

@@ -285,10 +285,7 @@ static const struct debugfs_entry debugfs_tspp_regs[] = {
 	{"pid_filter_table0",   S_IRUGO | S_IWUSR, TSPP_PID_FILTER_TABLE0},
 	{"pid_filter_table1",   S_IRUGO | S_IWUSR, TSPP_PID_FILTER_TABLE1},
 	{"pid_filter_table2",   S_IRUGO | S_IWUSR, TSPP_PID_FILTER_TABLE2},
-	{"tsp_total_num",       S_IRUGO | S_IWUSR, TSPP_GLOBAL_PERFORMANCE},
-	{"tsp_ignored_num",     S_IRUGO | S_IWUSR, TSPP_GLOBAL_PERFORMANCE + 4},
-	{"tsp_err_ind_num",     S_IRUGO | S_IWUSR, TSPP_GLOBAL_PERFORMANCE + 8},
-	{"tsp_sync_err_num",   S_IRUGO | S_IWUSR, TSPP_GLOBAL_PERFORMANCE + 16},
+	{"global_performance",  S_IRUGO | S_IWUSR, TSPP_GLOBAL_PERFORMANCE},
 	{"pipe_context",        S_IRUGO | S_IWUSR, TSPP_PIPE_CONTEXT},
 	{"pipe_performance",    S_IRUGO | S_IWUSR, TSPP_PIPE_PERFORMANCE},
 	{"data_key",            S_IRUGO | S_IWUSR, TSPP_DATA_KEY}
@@ -620,8 +617,8 @@ static void tspp_sps_complete_tlet(unsigned long data)
 				break;
 
 			if (iovec.addr != channel->waiting->sps.phys_base)
-				pr_err("tspp: buffer mismatch %pa",
-					&channel->waiting->sps.phys_base);
+				pr_err("tspp: buffer mismatch 0x%08x",
+					channel->waiting->sps.phys_base);
 
 			complete = 1;
 			channel->waiting->state = TSPP_BUF_STATE_DATA;
@@ -805,7 +802,7 @@ static int tspp_clock_start(struct tspp_device *device)
 
 		if (device->tsif_vreg) {
 			regulator_set_voltage(device->tsif_vreg,
-					RPM_REGULATOR_CORNER_NONE,
+					RPM_REGULATOR_CORNER_SVS_SOC,
 					RPM_REGULATOR_CORNER_SUPER_TURBO);
 		}
 
@@ -821,7 +818,7 @@ static int tspp_clock_start(struct tspp_device *device)
 		clk_disable_unprepare(device->tsif_pclk);
 		if (device->tsif_vreg) {
 			regulator_set_voltage(device->tsif_vreg,
-					RPM_REGULATOR_CORNER_NONE,
+					RPM_REGULATOR_CORNER_SVS_SOC,
 					RPM_REGULATOR_CORNER_SUPER_TURBO);
 		}
 
@@ -851,7 +848,7 @@ static void tspp_clock_stop(struct tspp_device *device)
 
 	if (device->tsif_vreg) {
 		rc = regulator_set_voltage(device->tsif_vreg,
-					RPM_REGULATOR_CORNER_NONE,
+					RPM_REGULATOR_CORNER_SVS_SOC,
 					RPM_REGULATOR_CORNER_SUPER_TURBO);
 		if (rc)
 			pr_err("Unable to set CX voltage.\n");
@@ -884,10 +881,7 @@ static int tspp_start_tsif(struct tspp_tsif_device *tsif_device)
 
 	if (start_hardware) {
 		ctl = TSIF_STS_CTL_EN_IRQ |
-				TSIF_STS_CTL_EN_DM |
-				TSIF_STS_CTL_PACK_AVAIL |
-				TSIF_STS_CTL_OVERFLOW |
-				TSIF_STS_CTL_LOST_SYNC;
+				TSIF_STS_CTL_EN_DM;
 
 		if (tsif_device->clock_inverse)
 			ctl |= TSIF_STS_CTL_INV_CLOCK;
@@ -2634,62 +2628,14 @@ static long tspp_ioctl(struct file *filp,
 /*** debugfs ***/
 static int debugfs_iomem_x32_set(void *data, u64 val)
 {
-	int rc;
-	int clock_started = 0;
-	struct tspp_device *pdev;
-
-	pdev = tspp_find_by_id(0);
-	if (!pdev) {
-		pr_err("%s: can't find device 0\n", __func__);
-		return 0;
-	}
-
-	if (tspp_channels_in_use(pdev) == 0) {
-		rc = tspp_clock_start(pdev);
-		if (rc) {
-			pr_err("%s: tspp_clock_start failed %d\n",
-				__func__, rc);
-			return 0;
-		}
-		clock_started = 1;
-	}
-
 	writel_relaxed(val, data);
 	wmb();
-
-	if (clock_started)
-		tspp_clock_stop(pdev);
 	return 0;
 }
 
 static int debugfs_iomem_x32_get(void *data, u64 *val)
 {
-	int rc;
-	int clock_started = 0;
-	struct tspp_device *pdev;
-
-	pdev = tspp_find_by_id(0);
-	if (!pdev) {
-		pr_err("%s: can't find device 0\n", __func__);
-		*val = 0;
-		return 0;
-	}
-
-	if (tspp_channels_in_use(pdev) == 0) {
-		rc = tspp_clock_start(pdev);
-		if (rc) {
-			pr_err("%s: tspp_clock_start failed %d\n",
-				__func__, rc);
-			*val = 0;
-			return 0;
-		}
-		clock_started = 1;
-	}
-
 	*val = readl_relaxed(data);
-
-	if (clock_started)
-		tspp_clock_stop(pdev);
 	return 0;
 }
 
@@ -2999,7 +2945,7 @@ static int __devinit msm_tspp_probe(struct platform_device *pdev)
 
 		/* Set an initial voltage and enable the regulator */
 		rc = regulator_set_voltage(device->tsif_vreg,
-					RPM_REGULATOR_CORNER_NONE,
+					RPM_REGULATOR_CORNER_SVS_SOC,
 					RPM_REGULATOR_CORNER_SUPER_TURBO);
 		if (rc) {
 			dev_err(&pdev->dev, "Unable to set CX voltage.\n");

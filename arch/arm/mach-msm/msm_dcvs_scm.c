@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,7 +17,6 @@
 #include <linux/slab.h>
 #include <linux/mm.h>
 #include <linux/memory_alloc.h>
-#include <asm/cacheflush.h>
 #include <mach/memory.h>
 #include <mach/scm.h>
 #include <mach/msm_dcvs_scm.h>
@@ -84,12 +83,6 @@ int msm_dcvs_scm_init(size_t size)
 }
 EXPORT_SYMBOL(msm_dcvs_scm_init);
 
-static void __msm_dcvs_flush_cache(void *v, size_t size)
-{
-	__cpuc_flush_dcache_area(v, size);
-	outer_flush_range(virt_to_phys(v), virt_to_phys(v) + size);
-}
-
 int msm_dcvs_scm_register_core(uint32_t core_id,
 		struct msm_dcvs_core_param *param)
 {
@@ -105,8 +98,6 @@ int msm_dcvs_scm_register_core(uint32_t core_id,
 
 	reg_data.core_id = core_id;
 	reg_data.core_param_phy = virt_to_phys(p);
-
-	__msm_dcvs_flush_cache(p, sizeof(struct msm_dcvs_core_param));
 
 	ret = scm_call(SCM_SVC_DCVS, DCVS_CMD_REGISTER_CORE,
 			&reg_data, sizeof(reg_data), NULL, 0);
@@ -134,8 +125,6 @@ int msm_dcvs_scm_set_algo_params(uint32_t core_id,
 	algo.core_id = core_id;
 	algo.algo_phy = virt_to_phys(p);
 
-	__msm_dcvs_flush_cache(p, sizeof(struct msm_algo_param));
-
 	ret = scm_call(SCM_SVC_DCVS, DCVS_CMD_SET_ALGO_PARAM,
 			&algo, sizeof(algo), NULL, 0);
 
@@ -160,8 +149,6 @@ int msm_mpd_scm_set_algo_params(struct msm_mpd_algo_param *param)
 
 	algo.core_id = 0;
 	algo.algo_phy = virt_to_phys(p);
-
-	__msm_dcvs_flush_cache(p, sizeof(struct msm_algo_param));
 
 	ret = scm_call(SCM_SVC_DCVS, DCVS_CMD_SET_ALGO_PARAM,
 			&algo, sizeof(algo), NULL, 0);
@@ -209,12 +196,6 @@ int msm_dcvs_scm_set_power_params(uint32_t core_id,
 	memcpy(freqt, freq_entry,
 			sizeof(struct msm_dcvs_freq_entry)*pwr_param->num_freq);
 	memcpy(coefft, coeffs, sizeof(struct msm_dcvs_energy_curve_coeffs));
-
-	__msm_dcvs_flush_cache(pwrt, sizeof(struct msm_dcvs_power_params));
-	__msm_dcvs_flush_cache(freqt,
-		sizeof(struct msm_dcvs_freq_entry) * pwr_param->num_freq);
-	__msm_dcvs_flush_cache(coefft,
-				sizeof(struct msm_dcvs_energy_curve_coeffs));
 
 	pwr.core_id = core_id;
 	pwr.pwr_param_phy = virt_to_phys(pwrt);

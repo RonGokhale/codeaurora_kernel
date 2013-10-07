@@ -18,7 +18,6 @@
 #include <linux/jiffies.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
-#include <linux/err.h>
 #include <linux/gpio.h>
 
 #include <mach/hardware.h>
@@ -211,14 +210,15 @@ static int ohci_omap_init(struct usb_hcd *hcd)
 
 #ifdef	CONFIG_USB_OTG
 	if (need_transceiver) {
-		ohci->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
-		if (!IS_ERR_OR_NULL(ohci->transceiver)) {
+		ohci->transceiver = usb_get_transceiver();
+		if (ohci->transceiver) {
 			int	status = otg_set_host(ohci->transceiver->otg,
 						&ohci_to_hcd(ohci)->self);
 			dev_dbg(hcd->self.controller, "init %s transceiver, status %d\n",
 					ohci->transceiver->label, status);
 			if (status) {
-				usb_put_phy(ohci->transceiver);
+				if (ohci->transceiver)
+					put_device(ohci->transceiver->dev);
 				return status;
 			}
 		} else {
@@ -403,9 +403,9 @@ usb_hcd_omap_remove (struct usb_hcd *hcd, struct platform_device *pdev)
 	struct ohci_hcd		*ohci = hcd_to_ohci (hcd);
 
 	usb_remove_hcd(hcd);
-	if (!IS_ERR_OR_NULL(ohci->transceiver)) {
+	if (ohci->transceiver) {
 		(void) otg_set_host(ohci->transceiver->otg, 0);
-		usb_put_phy(ohci->transceiver);
+		put_device(ohci->transceiver->dev);
 	}
 	if (machine_is_omap_osk())
 		gpio_free(9);

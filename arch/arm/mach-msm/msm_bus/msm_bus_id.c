@@ -35,22 +35,16 @@ static void msm_bus_assign_iids(struct msm_bus_fabric_registration
 		if (!fabreg->info[i].gateway) {
 			fabreg->info[i].priv_id = fabid + fabreg->info[i].id;
 			if (fabreg->info[i].id < SLAVE_ID_KEY) {
-				if (fabreg->info[i].id >= MSM_BUS_MASTER_LAST) {
-					WARN(1, "id %d exceeds array size!\n",
-						fabreg->info[i].id);
-					continue;
-				}
-
+				WARN(fabreg->info[i].id >= MSM_BUS_MASTER_LAST,
+					"id %d exceeds array size!\n",
+					fabreg->info[i].id);
 				master_iids[fabreg->info[i].id] =
 					fabreg->info[i].priv_id;
 			} else {
-				if ((fabreg->info[i].id - SLAVE_ID_KEY) >=
-					(MSM_BUS_SLAVE_LAST - SLAVE_ID_KEY)) {
-					WARN(1, "id %d exceeds array size!\n",
-						fabreg->info[i].id);
-					continue;
-				}
-
+				WARN((fabreg->info[i].id - SLAVE_ID_KEY) >=
+					(MSM_BUS_SLAVE_LAST - SLAVE_ID_KEY),
+					"id %d exceeds array size!\n",
+					fabreg->info[i].id);
 				slave_iids[fabreg->info[i].id - (SLAVE_ID_KEY)]
 					= fabreg->info[i].priv_id;
 			}
@@ -72,6 +66,7 @@ static int msm_bus_get_iid(int id)
 		slave_iids[id - SLAVE_ID_KEY]), id);
 }
 
+
 static struct msm_bus_board_algorithm msm_bus_id_algo = {
 	.get_iid = msm_bus_get_iid,
 	.assign_iids = msm_bus_assign_iids,
@@ -90,13 +85,4 @@ void msm_bus_board_init(struct msm_bus_fabric_registration *pdata)
 		msm_bus_id_algo.board_nfab = NFAB_MSM8610;
 
 	pdata->board_algo = &msm_bus_id_algo;
-}
-
-void msm_bus_board_set_nfab(struct msm_bus_fabric_registration *pdata,
-	int nfab)
-{
-	if (nfab <= 0)
-		return;
-
-	msm_bus_id_algo.board_nfab = nfab;
 }

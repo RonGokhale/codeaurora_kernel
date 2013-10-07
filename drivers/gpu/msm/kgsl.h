@@ -49,7 +49,7 @@
 #ifndef CONFIG_MSM_KGSL_CFF_DUMP
 #define KGSL_PAGETABLE_BASE	0x10000000
 #else
-#define KGSL_PAGETABLE_BASE	SZ_4M
+#define KGSL_PAGETABLE_BASE	0xE0000000
 #endif
 
 /* Extra accounting entries needed in the pagetable */
@@ -77,8 +77,6 @@
 
 
 #define KGSL_MEMFREE_HIST_SIZE	((int)(PAGE_SIZE * 2))
-
-#define KGSL_MAX_NUMIBS 100000
 
 struct kgsl_memfree_hist_elem {
 	unsigned int pid;
@@ -143,15 +141,13 @@ extern struct kgsl_driver kgsl_driver;
 
 struct kgsl_pagetable;
 struct kgsl_memdesc;
-struct kgsl_cmdbatch;
 
 struct kgsl_memdesc_ops {
 	int (*vmflags)(struct kgsl_memdesc *);
 	int (*vmfault)(struct kgsl_memdesc *, struct vm_area_struct *,
 		       struct vm_fault *);
 	void (*free)(struct kgsl_memdesc *memdesc);
-	int (*map_kernel)(struct kgsl_memdesc *);
-	void (*unmap_kernel)(struct kgsl_memdesc *);
+	int (*map_kernel_mem)(struct kgsl_memdesc *);
 };
 
 /* Internal definitions for memdesc->priv */
@@ -160,8 +156,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_GLOBAL BIT(1)
 /* The memdesc is frozen during a snapshot */
 #define KGSL_MEMDESC_FROZEN BIT(2)
-/* The memdesc is mapped into a pagetable */
-#define KGSL_MEMDESC_MAPPED BIT(3)
+/* The memdesc is scheduled to be freed on a timestamp */
+#define KGSL_MEMDESC_FREE_PENDING BIT(3)
 
 /* shared memory allocation */
 struct kgsl_memdesc {
@@ -199,8 +195,6 @@ struct kgsl_mem_entry {
 	/* back pointer to private structure under whose context this
 	* allocation is made */
 	struct kgsl_process_private *priv;
-	/* Initialized to 0, set to 1 when entry is marked for freeing */
-	int pending_free;
 };
 
 #ifdef CONFIG_MSM_KGSL_MMU_PAGE_FAULT
@@ -209,6 +203,7 @@ struct kgsl_mem_entry {
 #define MMU_CONFIG 1
 #endif
 
+void kgsl_hang_check(struct work_struct *work);
 void kgsl_mem_entry_destroy(struct kref *kref);
 int kgsl_postmortem_dump(struct kgsl_device *device, int manual);
 
@@ -221,15 +216,15 @@ struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 
 void kgsl_get_memory_usage(char *str, size_t len, unsigned int memflags);
 
-void kgsl_signal_event(struct kgsl_device *device,
-		struct kgsl_context *context, unsigned int timestamp,
-		unsigned int type);
-
-void kgsl_signal_events(struct kgsl_device *device,
-		struct kgsl_context *context, unsigned int type);
+int kgsl_add_event(struct kgsl_device *device, u32 id, u32 ts,
+	void (*cb)(struct kgsl_device *, void *, u32, u32), void *priv,
+	void *owner);
 
 void kgsl_cancel_events(struct kgsl_device *device,
 	void *owner);
+
+void kgsl_cancel_events_ctxt(struct kgsl_device *device,
+	struct kgsl_context *context);
 
 extern const struct dev_pm_ops kgsl_pm_ops;
 
@@ -240,7 +235,7 @@ void kgsl_trace_regwrite(struct kgsl_device *device, unsigned int offset,
 		unsigned int value);
 
 void kgsl_trace_issueibcmds(struct kgsl_device *device, int id,
-		struct kgsl_cmdbatch *cmdbatch,
+		struct kgsl_ibdesc *ibdesc, int numibs,
 		unsigned int timestamp, unsigned int flags,
 		int result, unsigned int type);
 
@@ -283,16 +278,10 @@ static inline int kgsl_gpuaddr_in_memdesc(const struct kgsl_memdesc *memdesc,
 static inline void *kgsl_memdesc_map(struct kgsl_memdesc *memdesc)
 {
 	if (memdesc->hostptr == NULL && memdesc->ops &&
-		memdesc->ops->map_kernel)
-		memdesc->ops->map_kernel(memdesc);
+		memdesc->ops->map_kernel_mem)
+		memdesc->ops->map_kernel_mem(memdesc);
 
 	return memdesc->hostptr;
-}
-
-static inline void kgsl_memdesc_unmap(struct kgsl_memdesc *memdesc)
-{
-	if (memdesc->ops && memdesc->ops->unmap_kernel)
-		memdesc->ops->unmap_kernel(memdesc);
 }
 
 static inline uint8_t *kgsl_gpuaddr_to_vaddr(struct kgsl_memdesc *memdesc,
@@ -327,34 +316,16 @@ static inline int timestamp_cmp(unsigned int a, unsigned int b)
 	return ((a > b) && (a - b <= KGSL_TIMESTAMP_WINDOW)) ? 1 : -1;
 }
 
-static inline int
+static inline void
 kgsl_mem_entry_get(struct kgsl_mem_entry *entry)
 {
-	return kref_get_unless_zero(&entry->refcount);
+	kref_get(&entry->refcount);
 }
 
 static inline void
 kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
 {
 	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
-}
-
-/*
- * kgsl_addr_range_overlap() - Checks if 2 ranges overlap
- * @gpuaddr1: Start of first address range
- * @size1: Size of first address range
- * @gpuaddr2: Start of second address range
- * @size2: Size of second address range
- *
- * Function returns true if the 2 given address ranges overlap
- * else false
- */
-static inline bool kgsl_addr_range_overlap(unsigned int gpuaddr1,
-		unsigned int size1,
-		unsigned int gpuaddr2, unsigned int size2)
-{
-	return !(((gpuaddr1 + size1) < gpuaddr2) ||
-		(gpuaddr1 > (gpuaddr2 + size2)));
 }
 
 #endif /* __KGSL_H */

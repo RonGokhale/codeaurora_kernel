@@ -19,7 +19,6 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/errno.h>
-#include <linux/err.h>
 #include <linux/init.h>
 #include <linux/timer.h>
 #include <linux/list.h>
@@ -1383,7 +1382,7 @@ static int mv_udc_start(struct usb_gadget_driver *driver,
 		return retval;
 	}
 
-	if (!IS_ERR_OR_NULL(udc->transceiver)) {
+	if (udc->transceiver) {
 		retval = otg_set_peripheral(udc->transceiver->otg,
 					&udc->gadget);
 		if (retval) {
@@ -2109,7 +2108,7 @@ static int __devexit mv_udc_remove(struct platform_device *dev)
 	 * then vbus irq will not be requested in udc driver.
 	 */
 	if (udc->pdata && udc->pdata->vbus
-		&& udc->clock_gating && IS_ERR_OR_NULL(udc->transceiver))
+		&& udc->clock_gating && udc->transceiver == NULL)
 		free_irq(udc->pdata->vbus->irq, &dev->dev);
 
 	/* free memory allocated in probe */
@@ -2182,7 +2181,7 @@ static int __devinit mv_udc_probe(struct platform_device *dev)
 
 #ifdef CONFIG_USB_OTG_UTILS
 	if (pdata->mode == MV_USB_MODE_OTG)
-		udc->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
+		udc->transceiver = usb_get_transceiver();
 #endif
 
 	udc->clknum = pdata->clknum;
@@ -2327,7 +2326,7 @@ static int __devinit mv_udc_probe(struct platform_device *dev)
 	eps_init(udc);
 
 	/* VBUS detect: we can disable/enable clock on demand.*/
-	if (!IS_ERR_OR_NULL(udc->transceiver))
+	if (udc->transceiver)
 		udc->clock_gating = 1;
 	else if (pdata->vbus) {
 		udc->clock_gating = 1;
@@ -2371,7 +2370,7 @@ static int __devinit mv_udc_probe(struct platform_device *dev)
 
 err_unregister:
 	if (udc->pdata && udc->pdata->vbus
-		&& udc->clock_gating && IS_ERR_OR_NULL(udc->transceiver))
+		&& udc->clock_gating && udc->transceiver == NULL)
 		free_irq(pdata->vbus->irq, &dev->dev);
 	device_unregister(&udc->gadget.dev);
 err_free_irq:
@@ -2406,7 +2405,7 @@ static int mv_udc_suspend(struct device *_dev)
 	struct mv_udc *udc = the_controller;
 
 	/* if OTG is enabled, the following will be done in OTG driver*/
-	if (!IS_ERR_OR_NULL(udc->transceiver))
+	if (udc->transceiver)
 		return 0;
 
 	if (udc->pdata->vbus && udc->pdata->vbus->poll)
@@ -2439,7 +2438,7 @@ static int mv_udc_resume(struct device *_dev)
 	int retval;
 
 	/* if OTG is enabled, the following will be done in OTG driver*/
-	if (!IS_ERR_OR_NULL(udc->transceiver))
+	if (udc->transceiver)
 		return 0;
 
 	if (!udc->clock_gating) {

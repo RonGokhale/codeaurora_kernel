@@ -41,13 +41,19 @@ static struct msm_dsi_io_private *dsi_io_private;
 void msm_dsi_ahb_ctrl(int enable)
 {
 	if (enable) {
-		dsi_io_private->msm_dsi_ahb_clk_on++;
-		if (dsi_io_private->msm_dsi_ahb_clk_on == 1)
-			clk_enable(dsi_io_private->dsi_ahb_clk);
+		if (dsi_io_private->msm_dsi_ahb_clk_on) {
+			pr_debug("ahb clks already ON\n");
+			return;
+		}
+		clk_enable(dsi_io_private->dsi_ahb_clk);
+		dsi_io_private->msm_dsi_ahb_clk_on = 1;
 	} else {
-		dsi_io_private->msm_dsi_ahb_clk_on--;
-		if (dsi_io_private->msm_dsi_ahb_clk_on == 0)
-			clk_disable(dsi_io_private->dsi_ahb_clk);
+		if (dsi_io_private->msm_dsi_ahb_clk_on == 0) {
+			pr_debug("ahb clk already OFF\n");
+			return;
+		}
+		clk_disable(dsi_io_private->dsi_ahb_clk);
+		dsi_io_private->msm_dsi_ahb_clk_on = 0;
 	}
 }
 
@@ -314,7 +320,7 @@ static void msm_dsi_phy_ctrl_init(unsigned char *ctrl_base,
 static void msm_dsi_phy_regulator_init(unsigned char *ctrl_base,
 					struct mdss_dsi_phy_ctrl *pd)
 {
-	MIPI_OUTP(ctrl_base + DSI_DSIPHY_LDO_CNTRL, 0x25);
+	MIPI_OUTP(ctrl_base + DSI_DSIPHY_LDO_CNTRL, 0x04);
 	MIPI_OUTP(ctrl_base + DSI_DSIPHY_REGULATOR_CTRL_0, pd->regulator[0]);
 	MIPI_OUTP(ctrl_base + DSI_DSIPHY_REGULATOR_CTRL_1, pd->regulator[1]);
 	MIPI_OUTP(ctrl_base + DSI_DSIPHY_REGULATOR_CTRL_2, pd->regulator[2]);
@@ -431,9 +437,5 @@ void msm_dsi_phy_sw_reset(unsigned char *ctrl_base)
 
 void msm_dsi_phy_off(unsigned char *ctrl_base)
 {
-	MIPI_OUTP(ctrl_base + DSI_DSIPHY_PLL_CTRL_5, 0x05f);
-	MIPI_OUTP(ctrl_base + DSI_DSIPHY_REGULATOR_CTRL_0, 0x02);
 	MIPI_OUTP(ctrl_base + DSI_DSIPHY_CTRL_0, 0x00);
-	MIPI_OUTP(ctrl_base + DSI_DSIPHY_CTRL_1, 0x7f);
-	MIPI_OUTP(ctrl_base + DSI_CLK_CTRL, 0);
 }

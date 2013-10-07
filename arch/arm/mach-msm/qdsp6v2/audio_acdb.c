@@ -647,7 +647,7 @@ static int deregister_memory(void)
 static int register_memory(void)
 {
 	int			result;
-	dma_addr_t		paddr;
+	unsigned long		paddr;
 	void                    *kvptr;
 	unsigned long		kvaddr;
 	unsigned long		mem_len;

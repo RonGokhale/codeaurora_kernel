@@ -24,7 +24,6 @@
 #include <linux/ioport.h>
 #include <linux/types.h>
 #include <linux/errno.h>
-#include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/list.h>
@@ -1211,7 +1210,7 @@ static int fsl_vbus_draw(struct usb_gadget *gadget, unsigned mA)
 	struct fsl_udc *udc;
 
 	udc = container_of(gadget, struct fsl_udc, gadget);
-	if (!IS_ERR_OR_NULL(udc->transceiver))
+	if (udc->transceiver)
 		return usb_phy_set_power(udc->transceiver, mA);
 	return -ENOTSUPP;
 }
@@ -1965,13 +1964,13 @@ static int fsl_start(struct usb_gadget_driver *driver,
 		goto out;
 	}
 
-	if (!IS_ERR_OR_NULL(udc_controller->transceiver)) {
+	if (udc_controller->transceiver) {
 		/* Suspend the controller until OTG enable it */
 		udc_controller->stopped = 1;
 		printk(KERN_INFO "Suspend udc for OTG auto detect\n");
 
 		/* connect to bus through transceiver */
-		if (!IS_ERR_OR_NULL(udc_controller->transceiver)) {
+		if (udc_controller->transceiver) {
 			retval = otg_set_peripheral(
 					udc_controller->transceiver->otg,
 						    &udc_controller->gadget);
@@ -2012,7 +2011,7 @@ static int fsl_stop(struct usb_gadget_driver *driver)
 	if (!driver || driver != udc_controller->driver || !driver->unbind)
 		return -EINVAL;
 
-	if (!IS_ERR_OR_NULL(udc_controller->transceiver))
+	if (udc_controller->transceiver)
 		otg_set_peripheral(udc_controller->transceiver->otg, NULL);
 
 	/* stop DR, disable intr */
@@ -2437,8 +2436,8 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_USB_OTG
 	if (pdata->operating_mode == FSL_USB2_DR_OTG) {
-		udc_controller->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
-		if (IS_ERR_OR_NULL(udc_controller->transceiver)) {
+		udc_controller->transceiver = usb_get_transceiver();
+		if (!udc_controller->transceiver) {
 			ERR("Can't find OTG driver!\n");
 			ret = -ENODEV;
 			goto err_kfree;
@@ -2522,7 +2521,7 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
 		goto err_free_irq;
 	}
 
-	if (IS_ERR_OR_NULL(udc_controller->transceiver)) {
+	if (!udc_controller->transceiver) {
 		/* initialize usb hw reg except for regs for EP,
 		 * leave usbintr reg untouched */
 		dr_controller_setup(udc_controller);
@@ -2546,7 +2545,7 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_free_irq;
 
-	if (!IS_ERR_OR_NULL(udc_controller->transceiver))
+	if (udc_controller->transceiver)
 		udc_controller->gadget.is_otg = 1;
 
 	/* setup QH and epctrl for ep0 */

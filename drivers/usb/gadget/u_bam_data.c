@@ -391,8 +391,8 @@ void bam_data_disconnect(struct data_port *gr, u8 port_num)
 	if (port->port_usb && port->port_usb->in &&
 	  port->port_usb->in->driver_data) {
 		/* disable endpoints */
-               usb_ep_disable(port->port_usb->out);
-               usb_ep_disable(port->port_usb->in);
+		usb_ep_disable(port->port_usb->out);
+		usb_ep_disable(port->port_usb->in);
 
 		port->port_usb->in->driver_data = NULL;
 		port->port_usb->out->driver_data = NULL;

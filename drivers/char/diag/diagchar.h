@@ -44,28 +44,6 @@
 #define POOL_TYPE_HSIC_WRITE	11
 #define POOL_TYPE_HSIC_2_WRITE	12
 #define POOL_TYPE_ALL		10
-#define POOL_TYPE_DCI		20
-
-#define POOL_COPY_IDX		0
-#define POOL_HDLC_IDX		1
-#define POOL_USER_IDX		2
-#define POOL_WRITE_STRUCT_IDX	3
-#define POOL_DCI_IDX		4
-#define POOL_BRIDGE_BASE	POOL_DCI_IDX
-#define POOL_HSIC_IDX		(POOL_BRIDGE_BASE + 1)
-#define POOL_HSIC_2_IDX		(POOL_BRIDGE_BASE + 2)
-#define POOL_HSIC_3_IDX		(POOL_BRIDGE_BASE + 3)
-#define POOL_HSIC_4_IDX		(POOL_BRIDGE_BASE + 4)
-#define POOL_HSIC_WRITE_IDX	(POOL_BRIDGE_BASE + 5)
-#define POOL_HSIC_2_WRITE_IDX	(POOL_BRIDGE_BASE + 6)
-#define POOL_HSIC_3_WRITE_IDX	(POOL_BRIDGE_BASE + 7)
-#define POOL_HSIC_4_WRITE_IDX	(POOL_BRIDGE_BASE + 8)
-
-#ifdef CONFIG_DIAGFWD_BRIDGE_CODE
-#define NUM_MEMORY_POOLS	13
-#else
-#define NUM_MEMORY_POOLS	5
-#endif
 
 #define MAX_SSID_PER_RANGE	200
 
@@ -100,13 +78,6 @@
 #define DIAG_CON_LPASS (0x0004)	/* Bit mask for LPASS */
 #define DIAG_CON_WCNSS (0x0008)	/* Bit mask for WCNSS */
 
-#define NUM_STM_PROCESSORS	4
-
-#define DIAG_STM_MODEM	0x01
-#define DIAG_STM_LPASS	0x02
-#define DIAG_STM_WCNSS	0x04
-#define DIAG_STM_APPS	0x08
-
 /*
  * The status bit masks when received in a signal handler are to be
  * used in conjunction with the peripheral list bit mask to determine the
@@ -130,16 +101,6 @@
 #define SMD_DCI_TYPE 2
 #define SMD_CMD_TYPE 3
 #define SMD_DCI_CMD_TYPE 4
-
-#define DIAG_PROC_DCI			1
-#define DIAG_PROC_MEMORY_DEVICE		2
-
-/* Flags to vote the DCI or Memory device process up or down
-   when it becomes active or inactive */
-#define VOTE_DOWN			0
-#define VOTE_UP				1
-
-#define DIAG_TS_SIZE	50
 
 /* Maximum number of pkt reg supported at initialization*/
 extern int diag_max_reg;
@@ -208,11 +169,6 @@ struct diag_nrt_wake_lock {
 	spinlock_t read_spinlock;
 };
 
-struct real_time_vote_t {
-	uint16_t proc;
-	uint8_t real_time_vote;
-};
-
 /* This structure is defined in USB header file */
 #ifndef CONFIG_DIAG_OVER_USB
 struct diag_request {
@@ -249,13 +205,9 @@ struct diag_smd_info {
 
 	struct diag_nrt_wake_lock nrt_lock;
 
-	struct workqueue_struct *wq;
-
 	struct work_struct diag_read_smd_work;
 	struct work_struct diag_notify_update_smd_work;
 	int notify_context;
-	struct work_struct diag_general_smd_work;
-	int general_context;
 
 	/*
 	 * Function ptr for function to call to process the data that
@@ -288,12 +240,6 @@ struct diagchar_dev {
 	int use_device_tree;
 	int supports_separate_cmdrsp;
 	int supports_apps_hdlc_encoding;
-	/* The state requested in the STM command */
-	int stm_state_requested[NUM_STM_PROCESSORS];
-	/* The current STM state */
-	int stm_state[NUM_STM_PROCESSORS];
-	/* Whether or not the peripheral supports STM */
-	int peripheral_supports_stm[NUM_SMD_CONTROL_CHANNELS];
 	/* DCI related variables */
 	struct dci_pkt_req_tracking_tbl *req_tracking_tbl;
 	struct diag_dci_client_tbl *dci_client_tbl;
@@ -313,21 +259,17 @@ struct diagchar_dev {
 	unsigned int poolsize_user;
 	unsigned int itemsize_write_struct;
 	unsigned int poolsize_write_struct;
-	unsigned int itemsize_dci;
-	unsigned int poolsize_dci;
 	unsigned int debug_flag;
 	/* State for the mempool for the char driver */
 	mempool_t *diagpool;
 	mempool_t *diag_hdlc_pool;
 	mempool_t *diag_user_pool;
 	mempool_t *diag_write_struct_pool;
-	mempool_t *diag_dci_pool;
-	spinlock_t diag_mem_lock;
+	struct mutex diagmem_mutex;
 	int count;
 	int count_hdlc_pool;
 	int count_user_pool;
 	int count_write_struct_pool;
-	int count_dci_pool;
 	int used;
 	/* Buffers for masks */
 	struct mutex diag_cntl_mutex;
@@ -336,6 +278,7 @@ struct diagchar_dev {
 	struct diag_ctrl_msg_mask *msg_mask;
 	struct diag_ctrl_feature_mask *feature_mask;
 	/* State for diag forwarding */
+	int real_time_mode;
 	struct diag_smd_info smd_data[NUM_SMD_DATA_CHANNELS];
 	struct diag_smd_info smd_cntl[NUM_SMD_CONTROL_CHANNELS];
 	struct diag_smd_info smd_dci[NUM_SMD_DCI_CHANNELS];
@@ -355,16 +298,6 @@ struct diagchar_dev {
 	unsigned hdlc_count;
 	unsigned hdlc_escape;
 	int in_busy_pktdata;
-	struct device *dci_device;
-	struct device *dci_cmd_device;
-	/* Variables for non real time mode */
-	int real_time_mode;
-	int real_time_update_busy;
-	uint16_t proc_active_mask;
-	uint16_t proc_rt_vote_mask;
-	struct mutex real_time_mutex;
-	struct work_struct diag_real_time_work;
-	struct workqueue_struct *diag_real_time_wq;
 #ifdef CONFIG_DIAG_OVER_USB
 	int usb_connected;
 	struct usb_diag_ch *legacy_ch;
@@ -409,6 +342,7 @@ struct diagchar_dev {
 	struct diag_request *write_ptr_mdm;
 #endif
 #ifdef CONFIG_DIAGFWD_BRIDGE_CODE
+	spinlock_t hsic_ready_spinlock;
 	/* common for all bridges */
 	struct work_struct diag_connect_work;
 	struct work_struct diag_disconnect_work;
@@ -428,9 +362,5 @@ extern struct diagchar_dev *driver;
 
 extern int wrap_enabled;
 extern uint16_t wrap_count;
-
-void diag_get_timestamp(char *time_str);
-int diag_find_polling_reg(int i);
-void check_drain_timer(void);
 
 #endif

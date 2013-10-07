@@ -28,6 +28,8 @@
 
 struct tz_priv {
 	int governor;
+	unsigned int no_switch_cnt;
+	unsigned int skip_cnt;
 	struct kgsl_power_stats bin;
 	unsigned int idle_dcvs;
 };
@@ -41,6 +43,9 @@ spinlock_t tz_lock;
  * frame length, but less than the idle timer.
  */
 #define CEILING			50000
+#define SWITCH_OFF		200
+#define SWITCH_OFF_RESET_TH	40
+#define SKIP_COUNTER		500
 #define TZ_RESET_ID		0x3
 #define TZ_UPDATE_ID		0x4
 #define TZ_INIT_ID		0x6
@@ -159,6 +164,22 @@ static void tz_idle(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 		(priv->bin.total_time < FLOOR))
 		return;
 
+	/* If the GPU has stayed in turbo mode for a while, *
+	 * stop writing out values. */
+	if (pwr->active_pwrlevel == 0) {
+		if (priv->no_switch_cnt > SWITCH_OFF) {
+			priv->skip_cnt++;
+			if (priv->skip_cnt > SKIP_COUNTER) {
+				priv->no_switch_cnt -= SWITCH_OFF_RESET_TH;
+				priv->skip_cnt = 0;
+			}
+			return;
+		}
+		priv->no_switch_cnt++;
+	} else {
+		priv->no_switch_cnt = 0;
+	}
+
 	/* If there is an extended block of busy processing,
 	 * increase frequency.  Otherwise run the normal algorithm.
 	 */
@@ -204,6 +225,7 @@ static void tz_sleep(struct kgsl_device *device,
 	struct tz_priv *priv = pwrscale->priv;
 
 	__secure_tz_entry2(TZ_RESET_ID, 0, 0);
+	priv->no_switch_cnt = 0;
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
 }
@@ -235,10 +257,8 @@ static int tz_init(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 	tz_pwrlevels[0] = j;
 	ret = scm_call(SCM_SVC_DCVS, TZ_INIT_ID, tz_pwrlevels,
 				sizeof(tz_pwrlevels), NULL, 0);
-	if (ret) {
-		KGSL_DRV_ERR(device, "Fall back to idle based GPU DCVS algo");
+	if (ret)
 		priv->idle_dcvs = 1;
-	}
 	return 0;
 }
 #else

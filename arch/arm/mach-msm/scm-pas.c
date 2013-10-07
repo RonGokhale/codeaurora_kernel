@@ -17,8 +17,6 @@
 #include <linux/string.h>
 #include <linux/clk.h>
 
-#include <asm/cacheflush.h>
-
 #include <mach/scm.h>
 #include <mach/socinfo.h>
 #include <mach/msm_bus.h>
@@ -152,10 +150,6 @@ int pas_init_image(enum pas_id id, const u8 *metadata, size_t size)
 	request.proc = id;
 	request.image_addr = virt_to_phys(mdata_buf);
 
-	/* Flush metadata to ensure secure world doesn't read stale data */
-	__cpuc_flush_dcache_area(mdata_buf, size);
-	outer_flush_range(request.image_addr, request.image_addr + size);
-
 	ret = scm_call(SCM_SVC_PIL, PAS_INIT_IMAGE_CMD, &request,
 			sizeof(request), &scm_ret, sizeof(scm_ret));
 
@@ -255,14 +249,9 @@ int pas_supported(enum pas_id id)
 }
 EXPORT_SYMBOL(pas_supported);
 
-void scm_pas_init(enum msm_bus_fabric_master_type id)
+static int __init scm_pas_init(void)
 {
 	int i, rate;
-	static int is_inited;
-
-	if (is_inited)
-		return;
-
 	for (i = 0; i < NUM_CLKS; i++) {
 		scm_clocks[i] = clk_get_sys("scm", scm_clock_names[i]);
 		if (IS_ERR(scm_clocks[i]))
@@ -273,14 +262,20 @@ void scm_pas_init(enum msm_bus_fabric_master_type id)
 	rate = clk_round_rate(scm_clocks[CORE_CLK_SRC], 1);
 	clk_set_rate(scm_clocks[CORE_CLK_SRC], rate);
 
-	scm_pas_bw_tbl[0].vectors[0].src = id;
-	scm_pas_bw_tbl[1].vectors[0].src = id;
-
-	clk_set_rate(scm_clocks[BUS_CLK], 64000000);
+	if (cpu_is_msm8974() || cpu_is_msm8226() || cpu_is_msm8610()) {
+		scm_pas_bw_tbl[0].vectors[0].src = MSM_BUS_MASTER_CRYPTO_CORE0;
+		scm_pas_bw_tbl[1].vectors[0].src = MSM_BUS_MASTER_CRYPTO_CORE0;
+	} else {
+		if (!IS_ERR(scm_clocks[BUS_CLK]))
+			clk_set_rate(scm_clocks[BUS_CLK], 64000000);
+		else
+			pr_warn("unable to get bus clock\n");
+	}
 
 	scm_perf_client = msm_bus_scale_register_client(&scm_pas_bus_pdata);
 	if (!scm_perf_client)
 		pr_warn("unable to register bus client\n");
 
-	is_inited = 1;
+	return 0;
 }
+module_init(scm_pas_init);

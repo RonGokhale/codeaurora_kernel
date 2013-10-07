@@ -13,10 +13,8 @@
 
 #include <linux/kernel.h>
 #include <linux/errno.h>
-#include <linux/err.h>
-#include <linux/clk.h>
-#include <linux/io.h>
 
+#include <linux/clk.h>
 #include <mach/clk-provider.h>
 #include <mach/clock-generic.h>
 
@@ -39,23 +37,8 @@ static int mux_set_parent(struct clk *c, struct clk *p)
 	struct mux_clk *mux = to_mux_clk(c);
 	int sel = parent_to_src_sel(mux, p);
 	struct clk *old_parent;
-	int rc = 0, i;
+	int rc = 0;
 	unsigned long flags;
-
-	if (sel < 0 && mux->rec_set_par) {
-		for (i = 0; i < mux->num_parents; i++) {
-			rc = clk_set_parent(mux->parents[i].src, p);
-			if (!rc) {
-				sel = mux->parents[i].sel;
-				/*
-				 * This is necessary to ensure prepare/enable
-				 * counts get propagated correctly.
-				 */
-				p = mux->parents[i].src;
-				break;
-			}
-		}
-	}
 
 	if (sel < 0)
 		return sel;
@@ -84,12 +67,10 @@ static long mux_round_rate(struct clk *c, unsigned long rate)
 {
 	struct mux_clk *mux = to_mux_clk(c);
 	int i;
-	unsigned long prate, max_prate = 0, rrate = ULONG_MAX;
+	long prate, max_prate = 0, rrate = LONG_MAX;
 
 	for (i = 0; i < mux->num_parents; i++) {
 		prate = clk_round_rate(mux->parents[i].src, rate);
-		if (IS_ERR_VALUE(prate))
-			continue;
 		if (prate < rate) {
 			max_prate = max(prate, max_prate);
 			continue;
@@ -97,7 +78,7 @@ static long mux_round_rate(struct clk *c, unsigned long rate)
 
 		rrate = min(rrate, prate);
 	}
-	if (rrate == ULONG_MAX)
+	if (rrate == LONG_MAX)
 		rrate = max_prate;
 
 	return rrate ? rrate : -EINVAL;
@@ -109,7 +90,6 @@ static int mux_set_rate(struct clk *c, unsigned long rate)
 	struct clk *new_parent = NULL;
 	int rc = 0, i;
 	unsigned long new_par_curr_rate;
-	unsigned long flags;
 
 	for (i = 0; i < mux->num_parents; i++) {
 		if (clk_round_rate(mux->parents[i].src, rate) == rate) {
@@ -125,16 +105,8 @@ static int mux_set_rate(struct clk *c, unsigned long rate)
 	 * same and the parent might temporarily turn off while switching
 	 * rates.
 	 */
-	if (mux->safe_sel >= 0) {
-		/*
-		 * Some mux implementations might switch to/from a low power
-		 * parent as part of their disable/enable ops. Grab the
-		 * enable lock to avoid racing with these implementations.
-		 */
-		spin_lock_irqsave(&c->lock, flags);
+	if (mux->safe_sel >= 0)
 		rc = mux->ops->set_mux_sel(mux, mux->safe_sel);
-		spin_unlock_irqrestore(&c->lock, flags);
-	}
 	if (rc)
 		return rc;
 
@@ -221,72 +193,6 @@ struct clk_ops clk_ops_gen_mux = {
 	.get_parent = mux_get_parent,
 };
 
-static DEFINE_SPINLOCK(mux_reg_lock);
-
-static int mux_reg_enable(struct mux_clk *clk)
-{
-	u32 regval;
-	unsigned long flags;
-
-	spin_lock_irqsave(&mux_reg_lock, flags);
-	regval = readl_relaxed(*clk->base + clk->offset);
-	regval |= clk->en_mask;
-	writel_relaxed(regval, *clk->base + clk->offset);
-	/* Ensure enable request goes through before returning */
-	mb();
-	spin_unlock_irqrestore(&mux_reg_lock, flags);
-
-	return 0;
-}
-
-static void mux_reg_disable(struct mux_clk *clk)
-{
-	u32 regval;
-	unsigned long flags;
-
-	spin_lock_irqsave(&mux_reg_lock, flags);
-	regval = readl_relaxed(*clk->base + clk->offset);
-	regval &= ~clk->en_mask;
-	writel_relaxed(regval, *clk->base + clk->offset);
-	spin_unlock_irqrestore(&mux_reg_lock, flags);
-}
-
-static int mux_reg_set_mux_sel(struct mux_clk *clk, int sel)
-{
-	u32 regval;
-	unsigned long flags;
-
-	spin_lock_irqsave(&mux_reg_lock, flags);
-	regval = readl_relaxed(*clk->base + clk->offset);
-	regval &= ~(clk->mask << clk->shift);
-	regval |= (sel & clk->mask) << clk->shift;
-	writel_relaxed(regval, *clk->base + clk->offset);
-	/* Ensure switch request goes through before returning */
-	mb();
-	spin_unlock_irqrestore(&mux_reg_lock, flags);
-
-	return 0;
-}
-
-static int mux_reg_get_mux_sel(struct mux_clk *clk)
-{
-	u32 regval = readl_relaxed(*clk->base + clk->offset);
-	return !!((regval >> clk->shift) & clk->mask);
-}
-
-static bool mux_reg_is_enabled(struct mux_clk *clk)
-{
-	u32 regval = readl_relaxed(*clk->base + clk->offset);
-	return !!(regval & clk->en_mask);
-}
-
-struct clk_mux_ops mux_reg_ops = {
-	.enable = mux_reg_enable,
-	.disable = mux_reg_disable,
-	.set_mux_sel = mux_reg_set_mux_sel,
-	.get_mux_sel = mux_reg_get_mux_sel,
-	.is_enabled = mux_reg_is_enabled,
-};
 
 /* ==================== Divider clock ==================== */
 
@@ -294,7 +200,7 @@ static long __div_round_rate(struct clk *c, unsigned long rate, int *best_div)
 {
 	struct div_clk *d = to_div_clk(c);
 	unsigned int div, min_div, max_div;
-	unsigned long p_rrate, rrate = ULONG_MAX;
+	long p_rrate, rrate = LONG_MAX;
 
 	rate = max(rate, 1UL);
 
@@ -302,12 +208,12 @@ static long __div_round_rate(struct clk *c, unsigned long rate, int *best_div)
 		min_div = max_div = d->div;
 	else {
 		min_div = max(d->min_div, 1U);
-		max_div = min(d->max_div, (unsigned int) (ULONG_MAX / rate));
+		max_div = min(d->max_div, (unsigned int) (LONG_MAX / rate));
 	}
 
 	for (div = min_div; div <= max_div; div++) {
 		p_rrate = clk_round_rate(c->parent, rate * div);
-		if (IS_ERR_VALUE(p_rrate))
+		if (p_rrate < 0)
 			break;
 
 		p_rrate /= div;
@@ -319,7 +225,7 @@ static long __div_round_rate(struct clk *c, unsigned long rate, int *best_div)
 		 * for a higher divider. So, stop trying higher dividers.
 		 */
 		if (p_rrate < rate) {
-			if (rrate == ULONG_MAX) {
+			if (rrate == LONG_MAX) {
 				rrate = p_rrate;
 				if (best_div)
 					*best_div = div;
@@ -336,7 +242,7 @@ static long __div_round_rate(struct clk *c, unsigned long rate, int *best_div)
 			break;
 	}
 
-	if (rrate == ULONG_MAX)
+	if (rrate == LONG_MAX)
 		return -EINVAL;
 
 	return rrate;
@@ -357,12 +263,6 @@ static int div_set_rate(struct clk *c, unsigned long rate)
 	if (rrate != rate)
 		return -EINVAL;
 
-	/*
-	 * For fixed divider clock we don't want to return an error if the
-	 * requested rate matches the achievable rate. So, don't check for
-	 * !d->ops and return an error. __div_round_rate() ensures div ==
-	 * d->div if !d->ops.
-	 */
 	if (div > d->div)
 		rc = d->ops->set_div(d, div);
 	if (rc)
@@ -396,7 +296,7 @@ set_rate_fail:
 static int div_enable(struct clk *c)
 {
 	struct div_clk *d = to_div_clk(c);
-	if (d->ops && d->ops->enable)
+	if (d->ops->enable)
 		return d->ops->enable(d);
 	return 0;
 }
@@ -404,7 +304,7 @@ static int div_enable(struct clk *c)
 static void div_disable(struct clk *c)
 {
 	struct div_clk *d = to_div_clk(c);
-	if (d->ops && d->ops->disable)
+	if (d->ops->disable)
 		return d->ops->disable(d);
 }
 
@@ -412,7 +312,7 @@ static enum handoff div_handoff(struct clk *c)
 {
 	struct div_clk *d = to_div_clk(c);
 
-	if (d->ops && d->ops->get_div)
+	if (d->ops->get_div)
 		d->div = max(d->ops->get_div(d), 1);
 	d->div = max(d->div, 1U);
 	c->rate = clk_get_rate(c->parent) / d->div;
@@ -486,13 +386,8 @@ static int slave_div_set_rate(struct clk *c, unsigned long rate)
 	if (div == d->div)
 		return 0;
 
-	/*
-	 * For fixed divider clock we don't want to return an error if the
-	 * requested rate matches the achievable rate. So, don't check for
-	 * !d->ops and return an error. __slave_div_round_rate() ensures
-	 * div == d->div if !d->ops.
-	 */
-	rc = d->ops->set_div(d, div);
+	if (d->ops->set_div)
+		rc = d->ops->set_div(d, div);
 	if (rc)
 		return rc;
 

@@ -49,7 +49,6 @@
 #include "mdp3_hwio.h"
 #include "mdp3_ctrl.h"
 #include "mdp3_ppp.h"
-#include "mdss_debug.h"
 
 #define MDP_CORE_HW_VERSION	0x03040310
 struct mdp3_hw_resource *mdp3_res;
@@ -162,19 +161,12 @@ static irqreturn_t mdp3_irq_handler(int irq, void *ptr)
 {
 	int i = 0;
 	struct mdp3_hw_resource *mdata = (struct mdp3_hw_resource *)ptr;
-	u32 mdp_interrupt = 0;
+	u32 mdp_interrupt = MDP3_REG_READ(MDP3_REG_INTR_STATUS);
 
-	spin_lock(&mdata->irq_lock);
-	if (!mdata->irq_mask) {
-		pr_err("spurious interrupt\n");
-		spin_unlock(&mdata->irq_lock);
-		return IRQ_HANDLED;
-	}
-
-	mdp_interrupt = MDP3_REG_READ(MDP3_REG_INTR_STATUS);
 	MDP3_REG_WRITE(MDP3_REG_INTR_CLEAR, mdp_interrupt);
 	pr_debug("mdp3_irq_handler irq=%d\n", mdp_interrupt);
 
+	spin_lock(&mdata->irq_lock);
 	mdp_interrupt &= mdata->irq_mask;
 
 	while (mdp_interrupt && i < MDP3_MAX_INTR) {
@@ -191,6 +183,7 @@ static irqreturn_t mdp3_irq_handler(int irq, void *ptr)
 void mdp3_irq_enable(int type)
 {
 	unsigned long flag;
+	int irqEnabled = 0;
 
 	pr_debug("mdp3_irq_enable type=%d\n", type);
 	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
@@ -200,10 +193,11 @@ void mdp3_irq_enable(int type)
 		spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 		return;
 	}
-
+	irqEnabled = mdp3_res->irq_mask;
 	mdp3_res->irq_mask |= BIT(type);
 	MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
-
+	if (!irqEnabled)
+		enable_irq(mdp3_res->irq);
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 }
 
@@ -226,6 +220,8 @@ void mdp3_irq_disable_nosync(int type)
 	if (mdp3_res->irq_ref_count[type] == 0) {
 		mdp3_res->irq_mask &= ~BIT(type);
 		MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask);
+		if (!mdp3_res->irq_mask)
+			disable_irq_nosync(mdp3_res->irq);
 	}
 }
 
@@ -233,7 +229,7 @@ int mdp3_set_intr_callback(u32 type, struct mdp3_intr_cb *cb)
 {
 	unsigned long flag;
 
-	pr_debug("interrupt %d callback\n", type);
+	pr_debug("interrupt %d callback n", type);
 	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
 	if (cb)
 		mdp3_res->callbacks[type] = *cb;
@@ -242,30 +238,6 @@ int mdp3_set_intr_callback(u32 type, struct mdp3_intr_cb *cb)
 
 	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 	return 0;
-}
-
-void mdp3_irq_register(void)
-{
-	unsigned long flag;
-
-	pr_debug("mdp3_irq_register\n");
-	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
-	enable_irq(mdp3_res->irq);
-	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
-}
-
-void mdp3_irq_deregister(void)
-{
-	unsigned long flag;
-
-	pr_debug("mdp3_irq_deregister\n");
-	spin_lock_irqsave(&mdp3_res->irq_lock, flag);
-	memset(mdp3_res->irq_ref_count, 0, sizeof(u32) * MDP3_MAX_INTR);
-	mdp3_res->irq_mask = 0;
-	MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, 0);
-	MDP3_REG_WRITE(MDP3_REG_INTR_CLEAR, 0xfffffff);
-	disable_irq_nosync(mdp3_res->irq);
-	spin_unlock_irqrestore(&mdp3_res->irq_lock, flag);
 }
 
 static int mdp3_bus_scale_register(void)
@@ -567,6 +539,13 @@ static int mdp3_irq_setup(void)
 	return 0;
 }
 
+static int mdp3_iommu_fault_handler(struct iommu_domain *domain,
+		struct device *dev, unsigned long iova, int flags, void *token)
+{
+	pr_err("MDP IOMMU page fault: iova 0x%lx\n", iova);
+	return 0;
+}
+
 int mdp3_iommu_attach(int context)
 {
 	struct mdp3_iommu_ctx_map *context_map;
@@ -642,6 +621,9 @@ int mdp3_iommu_domain_init(void)
 			else
 				return PTR_ERR(mdp3_iommu_domains[i].domain);
 		}
+		iommu_set_fault_handler(mdp3_iommu_domains[i].domain,
+					mdp3_iommu_fault_handler,
+					NULL);
 	}
 
 	mdp3_res->domains = mdp3_iommu_domains;
@@ -844,16 +826,20 @@ int mdp3_put_img(struct mdp3_img_data *data)
 	struct ion_client *iclient = mdp3_res->ion_client;
 	int dom = (mdp3_res->domains + MDP3_IOMMU_DOMAIN)->domain_idx;
 
-	 if (data->flags & MDP_MEMORY_ID_TYPE_FB) {
-		pr_info("mdp3_put_img fb mem buf=0x%pa\n", &data->addr);
+	if (!data->srcp_file) {
+		pr_debug("No img to put\n");
+		return 0;
+	}
+	if (data->flags & MDP_BLIT_SRC_GEM) {
+		pr_debug("memory source MDP_BLIT_SRC_GEM\n");
+	} else if (data->flags & MDP_MEMORY_ID_TYPE_FB) {
+		pr_debug("fb mem buf=0x%x\n", data->addr);
 		fput_light(data->srcp_file, data->p_need);
 		data->srcp_file = NULL;
-	} else if (!IS_ERR_OR_NULL(data->srcp_ihdl)) {
+	} else {
 		ion_unmap_iommu(iclient, data->srcp_ihdl, dom, 0);
 		ion_free(iclient, data->srcp_ihdl);
 		data->srcp_ihdl = NULL;
-	} else {
-		return -EINVAL;
 	}
 	return 0;
 }
@@ -863,16 +849,22 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data)
 	struct file *file;
 	int ret = -EINVAL;
 	int fb_num;
-	unsigned long *len;
-	dma_addr_t *start;
+	unsigned long *start, *len;
 	struct ion_client *iclient = mdp3_res->ion_client;
 	int dom = (mdp3_res->domains + MDP3_IOMMU_DOMAIN)->domain_idx;
 
-	start = &data->addr;
+	start = (unsigned long *) &data->addr;
 	len = (unsigned long *) &data->len;
-	data->flags = img->flags;
+	data->flags |= img->flags;
 	data->p_need = 0;
 
+	if (img->flags & MDP_BLIT_SRC_GEM) {
+		data->srcp_file = NULL;
+		ret = kgsl_gem_obj_addr(img->memory_id, (int) img->priv,
+					&data->addr, &data->len);
+		if (!ret)
+			goto done;
+	}
 	if (img->flags & MDP_MEMORY_ID_TYPE_FB) {
 		file = fget_light(img->memory_id, &data->p_need);
 		if (file == NULL) {
@@ -897,7 +889,8 @@ int mdp3_get_img(struct msmfb_data *img, struct mdp3_img_data *data)
 		data->srcp_file = file;
 		if (!ret)
 			goto done;
-	} else if (iclient) {
+	}
+	if (iclient) {
 		data->srcp_ihdl = ion_import_dma_buf(iclient, img->memory_id);
 		if (IS_ERR_OR_NULL(data->srcp_ihdl)) {
 			pr_err("error on ion_import_fd\n");
@@ -923,8 +916,8 @@ done:
 		data->addr += img->offset;
 		data->len -= img->offset;
 
-		pr_debug("mem=%d ihdl=%p buf=0x%pa len=0x%x\n", img->memory_id,
-			 data->srcp_ihdl, &data->addr, data->len);
+		pr_debug("mem=%d ihdl=%p buf=0x%x len=0x%x\n", img->memory_id,
+			 data->srcp_ihdl, data->addr, data->len);
 	} else {
 		mdp3_put_img(data);
 		return -EINVAL;
@@ -961,21 +954,6 @@ int mdp3_iommu_disable(int client)
 	return rc;
 }
 
-int mdp3_iommu_is_attached(int client)
-{
-	struct mdp3_iommu_ctx_map *context_map;
-	int context = MDP3_IOMMU_CTX_DMA_0;
-
-	if (!mdp3_res->iommu_contexts)
-		return 0;
-
-	if (client == MDP3_CLIENT_PPP)
-		context = MDP3_IOMMU_CTX_PPP_0;
-
-	context_map = mdp3_res->iommu_contexts + context;
-	return context_map->attached;
-}
-
 static int mdp3_init(struct msm_fb_data_type *mfd)
 {
 	int rc;
@@ -997,71 +975,6 @@ u32 mdp3_fb_stride(u32 fb_index, u32 xres, int bpp)
 		return ALIGN(xres, 32) * bpp;
 	else
 		return xres * bpp;
-}
-
-static int mdp3_alloc(size_t size, void **virt, dma_addr_t *phys)
-{
-	int ret = 0;
-
-	if (mdp3_res->ion_handle) {
-		pr_debug("memory already alloc\n");
-		*virt = mdp3_res->virt;
-		*phys = mdp3_res->phys;
-		return 0;
-	}
-
-	mdp3_res->ion_handle = ion_alloc(mdp3_res->ion_client, size,
-					SZ_1M,
-					ION_HEAP(ION_QSECOM_HEAP_ID), 0);
-
-	if (!IS_ERR_OR_NULL(mdp3_res->ion_handle)) {
-		*virt = ion_map_kernel(mdp3_res->ion_client,
-					mdp3_res->ion_handle);
-		if (IS_ERR(*virt)) {
-			pr_err("map kernel error\n");
-			goto ion_map_kernel_err;
-		}
-
-		ret = ion_phys(mdp3_res->ion_client, mdp3_res->ion_handle,
-				phys, &size);
-		if (ret) {
-			pr_err("%s ion_phys error\n", __func__);
-			goto ion_map_phys_err;
-		}
-
-		mdp3_res->virt = *virt;
-		mdp3_res->phys = *phys;
-		mdp3_res->size = size;
-	} else {
-		pr_err("%s ion alloc fail\n", __func__);
-		mdp3_res->ion_handle = NULL;
-		return -ENOMEM;
-	}
-
-	return 0;
-
-ion_map_phys_err:
-	ion_unmap_kernel(mdp3_res->ion_client, mdp3_res->ion_handle);
-ion_map_kernel_err:
-	ion_free(mdp3_res->ion_client, mdp3_res->ion_handle);
-	mdp3_res->ion_handle = NULL;
-	mdp3_res->virt = NULL;
-	mdp3_res->phys = 0;
-	mdp3_res->size = 0;
-	return -ENOMEM;
-}
-
-void mdp3_free(void)
-{
-	pr_debug("mdp3_fbmem_free\n");
-	if (mdp3_res->ion_handle) {
-		ion_unmap_kernel(mdp3_res->ion_client, mdp3_res->ion_handle);
-		ion_free(mdp3_res->ion_client, mdp3_res->ion_handle);
-		mdp3_res->ion_handle = NULL;
-		mdp3_res->virt = NULL;
-		mdp3_res->phys = 0;
-		mdp3_res->size = 0;
-	}
 }
 
 struct mdp3_dma *mdp3_get_dma_pipe(int capability)
@@ -1099,190 +1012,12 @@ static int mdp3_fb_mem_get_iommu_domain(void)
 	return mdp3_res->domains[MDP3_IOMMU_DOMAIN].domain_idx;
 }
 
-int mdp3_continuous_splash_copy(struct mdss_panel_data *pdata)
-{
-	unsigned long splash_phys;
-	dma_addr_t phys;
-	void *splash_virt, *virt;
-	u32 height, width, rgb_size, stride;
-	size_t size;
-	int rc;
-
-	if (pdata->panel_info.type != MIPI_VIDEO_PANEL) {
-		pr_debug("cmd mode panel, no need to copy splash image\n");
-		return 0;
-	}
-
-	rgb_size = MDP3_REG_READ(MDP3_REG_DMA_P_SIZE);
-	stride = MDP3_REG_READ(MDP3_REG_DMA_P_IBUF_Y_STRIDE);
-	stride = stride & 0x3FFF;
-	splash_phys = MDP3_REG_READ(MDP3_REG_DMA_P_IBUF_ADDR);
-
-	height = (rgb_size >> 16) & 0xffff;
-	width  = rgb_size & 0xffff;
-	size = PAGE_ALIGN(height * stride);
-	pr_debug("splash_height=%d splash_width=%d Buffer size=%d\n",
-		height, width, size);
-
-	rc = mdp3_alloc(size, &virt, &phys);
-	if (rc) {
-		pr_err("fail to allocate memory for continuous splash image\n");
-		return rc;
-	}
-
-	splash_virt = ioremap(splash_phys, stride * height);
-	memcpy(virt, splash_virt, stride * height);
-	iounmap(splash_virt);
-	MDP3_REG_WRITE(MDP3_REG_DMA_P_IBUF_ADDR, phys);
-
-	return 0;
-}
-
-static int mdp3_is_display_on(struct mdss_panel_data *pdata)
-{
-	int rc = 0;
-	u32 status;
-
-	mdp3_clk_update(MDP3_CLK_AHB, 1);
-	mdp3_clk_update(MDP3_CLK_CORE, 1);
-
-	if (pdata->panel_info.type == MIPI_VIDEO_PANEL) {
-		status = MDP3_REG_READ(MDP3_REG_DSI_VIDEO_EN);
-		rc = status & 0x1;
-	} else {
-		status = MDP3_REG_READ(MDP3_REG_DMA_P_CONFIG);
-		status &= 0x180000;
-		rc = (status == 0x080000);
-	}
-
-	mdp3_clk_update(MDP3_CLK_AHB, 0);
-	mdp3_clk_update(MDP3_CLK_CORE, 0);
-	return rc;
-}
-
-static int mdp3_continuous_splash_on(struct mdss_panel_data *pdata)
-{
-	struct mdss_panel_info *panel_info = &pdata->panel_info;
-	int ab, ib, rc;
-
-	pr_debug("mdp3__continuous_splash_on\n");
-
-	rc = mdp3_clk_enable(1);
-	if (rc) {
-		pr_err("fail to enable clk\n");
-		return rc;
-	}
-
-	ab = panel_info->xres * panel_info->yres * 4;
-	ab *= panel_info->mipi.frame_rate;
-	ib = (ab * 3) / 2;
-	rc = mdp3_bus_scale_set_quota(MDP3_CLIENT_DMA_P, ab, ib);
-	if (rc) {
-		pr_err("fail to request bus bandwidth\n");
-		goto splash_on_err;
-	}
-
-	rc = mdp3_ppp_init();
-	if (rc) {
-		pr_err("ppp init failed\n");
-		goto splash_on_err;
-	}
-
-	rc = mdp3_continuous_splash_copy(pdata);
-	if (rc) {
-		pr_err("fail to copy continuous splash image\n");
-		goto splash_on_err;
-	}
-
-	mdp3_irq_register();
-
-	if (pdata->event_handler) {
-		rc = pdata->event_handler(pdata, MDSS_EVENT_CONT_SPLASH_BEGIN,
-					NULL);
-		if (rc) {
-			pr_err("MDSS_EVENT_CONT_SPLASH_BEGIN event fail\n");
-			goto splash_on_err;
-		}
-	}
-
-	if (panel_info->type == MIPI_VIDEO_PANEL)
-		mdp3_res->intf[MDP3_DMA_OUTPUT_SEL_DSI_VIDEO].active = 1;
-	else
-		mdp3_res->intf[MDP3_DMA_OUTPUT_SEL_DSI_CMD].active = 1;
-	return 0;
-
-splash_on_err:
-	mdp3_clk_enable(0);
-	return rc;
-}
-
-static int mdp3_panel_register_done(struct mdss_panel_data *pdata)
-{
-	int rc = 0;
-
-	if (pdata->panel_info.cont_splash_enabled) {
-		if (!mdp3_is_display_on(pdata)) {
-			pr_err("continuous splash, but bootloader is not\n");
-			return 0;
-		}
-		rc = mdp3_continuous_splash_on(pdata);
-	} else {
-		if (mdp3_is_display_on(pdata)) {
-			pr_err("lk continuous splash, but kerenl not\n");
-			rc = mdp3_continuous_splash_on(pdata);
-		}
-	}
-	return rc;
-}
-
-static void mdp3_debug_enable_clock(int on)
-{
-	if (on)
-		mdp3_clk_enable(1);
-	else
-		mdp3_clk_enable(0);
-}
-
-static int mdp3_debug_init(struct platform_device *pdev)
-{
-	int rc;
-	struct mdss_data_type *mdata;
-
-	mdata = devm_kzalloc(&pdev->dev, sizeof(*mdata), GFP_KERNEL);
-	if (!mdata)
-		return -ENOMEM;
-
-	mdss_res = mdata;
-
-	mdata->debug_inf.debug_dump_stats = NULL;
-	mdata->debug_inf.debug_enable_clock = mdp3_debug_enable_clock;
-
-	rc = mdss_debugfs_init(mdata);
-	if (rc)
-		return rc;
-
-	rc = mdss_debug_register_base(NULL, mdp3_res->mdp_base ,
-					mdp3_res->mdp_reg_size);
-
-	return rc;
-}
-
-static void mdp3_debug_deinit(struct platform_device *pdev)
-{
-	if (mdss_res) {
-		mdss_debugfs_remove(mdss_res);
-		devm_kfree(&pdev->dev, mdss_res);
-		mdss_res = NULL;
-	}
-}
-
 static int mdp3_probe(struct platform_device *pdev)
 {
 	int rc;
 	static struct msm_mdp_interface mdp3_interface = {
 	.init_fnc = mdp3_init,
 	.fb_mem_get_iommu_domain = mdp3_fb_mem_get_iommu_domain,
-	.panel_register_done = mdp3_panel_register_done,
 	.fb_stride = mdp3_fb_stride,
 	};
 
@@ -1323,12 +1058,6 @@ static int mdp3_probe(struct platform_device *pdev)
 		goto probe_done;
 	}
 
-	rc = mdp3_debug_init(pdev);
-	if (rc) {
-		pr_err("unable to initialize mdp debugging\n");
-		goto probe_done;
-	}
-
 	rc = mdss_fb_register_mdp_instance(&mdp3_interface);
 	if (rc)
 		pr_err("unable to register mdp instance\n");
@@ -1342,11 +1071,6 @@ probe_done:
 
 		devm_kfree(&pdev->dev, mdp3_res);
 		mdp3_res = NULL;
-
-		if (mdss_res) {
-			devm_kfree(&pdev->dev, mdss_res);
-			mdss_res = NULL;
-		}
 	}
 
 	return rc;
@@ -1395,7 +1119,6 @@ static int mdp3_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	mdp3_bus_scale_unregister();
 	mdp3_clk_remove();
-	mdp3_debug_deinit(pdev);
 	return 0;
 }
 

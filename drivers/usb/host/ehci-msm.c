@@ -28,7 +28,6 @@
 #include <linux/pm_runtime.h>
 
 #include <linux/usb/otg.h>
-#include <linux/usb/msm_hsusb.h>
 #include <linux/usb/msm_hsusb_hw.h>
 
 #define MSM_USB_BASE (hcd->regs)
@@ -48,21 +47,11 @@ static int ehci_msm_reset(struct usb_hcd *hcd)
 		return retval;
 
 	/* bursts of unspecified length. */
-	writel_relaxed(0, USB_AHBBURST);
+	writel(0, USB_AHBBURST);
 	/* Use the AHB transactor */
 	writel_relaxed(0x08, USB_AHBMODE);
 	/* Disable streaming mode and select host mode */
-	writel_relaxed(0x13, USB_USBMODE);
-
-	if (ehci->transceiver->flags & ENABLE_SECONDARY_PHY) {
-		ehci_dbg(ehci, "using secondary hsphy\n");
-		writel_relaxed(readl_relaxed(USB_PHY_CTRL2) | (1<<16),
-							USB_PHY_CTRL2);
-	}
-
-	/* Disable ULPI_TX_PKT_EN_CLR_FIX which is valid only for HSIC */
-	writel_relaxed(readl_relaxed(USB_GENCONFIG2) & ~(1<<19),
-					USB_GENCONFIG2);
+	writel(0x13, USB_USBMODE);
 
 	ehci_port_power(ehci, 1);
 	return 0;
@@ -164,8 +153,8 @@ static int ehci_msm_probe(struct platform_device *pdev)
 	 * powering up VBUS, mapping of registers address space and power
 	 * management.
 	 */
-	phy = usb_get_phy(USB_PHY_TYPE_USB2);
-	if (IS_ERR_OR_NULL(phy)) {
+	phy = usb_get_transceiver();
+	if (!phy) {
 		dev_err(&pdev->dev, "unable to find transceiver\n");
 		ret = -ENODEV;
 		goto unmap;
@@ -184,7 +173,7 @@ static int ehci_msm_probe(struct platform_device *pdev)
 	return 0;
 
 put_transceiver:
-	usb_put_phy(phy);
+	usb_put_transceiver(phy);
 unmap:
 	iounmap(hcd->regs);
 put_hcd:
@@ -203,7 +192,7 @@ static int __devexit ehci_msm_remove(struct platform_device *pdev)
 
 	hcd_to_ehci(hcd)->transceiver = NULL;
 	otg_set_host(phy->otg, NULL);
-	usb_put_phy(phy);
+	usb_put_transceiver(phy);
 
 	usb_put_hcd(hcd);
 

@@ -531,7 +531,7 @@ static struct msmfb_writeback_data_list *get_if_registered(
 		}
 		temp->ihdl = NULL;
 		if (data->iova)
-			temp->addr = (data->iova + data->offset);
+			temp->addr = (void *)(data->iova + data->offset);
 		else if (mfd->iclient) {
 			struct ion_handle *srcp_ihdl;
 			ulong len;
@@ -553,7 +553,7 @@ static struct msmfb_writeback_data_list *get_if_registered(
 					  GEN_POOL,
 					  SZ_4K,
 					  0,
-					  &temp->addr,
+					  (ulong *)&temp->addr,
 					  (ulong *)&len,
 					  0,
 					  ION_IOMMU_UNMAP_DELAYED)) {
@@ -773,7 +773,7 @@ static void mdp4_wfd_dequeue_update(struct msm_fb_data_type *mfd,
 	}
 	mutex_unlock(&mfd->writeback_mutex);
 
-	pipe->ov_blt_addr = (node ? node->addr : 0);
+	pipe->ov_blt_addr = (ulong) (node ? node->addr : NULL);
 
 	if (!pipe->ov_blt_addr) {
 		pr_err("%s: no writeback buffer 0x%x, %p\n", __func__,

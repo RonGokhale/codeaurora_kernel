@@ -51,6 +51,7 @@
 #include "platsmp.h"
 #include "spm.h"
 #include "pm.h"
+#include "lpm_resources.h"
 #include "modem_notifier.h"
 
 static struct memtype_reserve msm8226_reserve_table[] __initdata = {
@@ -74,14 +75,10 @@ static struct of_dev_auxdata msm8226_auxdata_lookup[] __initdata = {
 			"msm_sdcc.1", NULL),
 	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98A4000, \
 			"msm_sdcc.2", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9864000, \
-			"msm_sdcc.3", NULL),
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9824900, \
 			"msm_sdcc.1", NULL),
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF98A4900, \
 			"msm_sdcc.2", NULL),
-	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9864900, \
-			"msm_sdcc.3", NULL),
 	{}
 };
 
@@ -115,6 +112,7 @@ void __init msm8226_add_drivers(void)
 	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();
+	msm_lpmrs_module_init();
 	msm_spm_device_init();
 	msm_pm_sleep_status_init();
 	rpm_regulator_smd_driver_init();

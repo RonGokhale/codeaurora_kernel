@@ -44,8 +44,6 @@
 #define HAL_BUFFERFLAG_READONLY         0x00000200
 #define HAL_BUFFERFLAG_ENDOFSUBFRAME    0x00000400
 #define HAL_BUFFERFLAG_EOSEQ            0x00200000
-#define HAL_BUFFERFLAG_DROP_FRAME       0x20000000
-
 
 #define HAL_DEBUG_MSG_LOW				0x00000001
 #define HAL_DEBUG_MSG_MEDIUM			0x00000002
@@ -174,11 +172,6 @@ enum hal_property {
 	HAL_PARAM_VENC_H264_VUI_TIMING_INFO,
 	HAL_PARAM_VENC_H264_GENERATE_AUDNAL,
 	HAL_PARAM_VENC_MAX_NUM_B_FRAMES,
-	HAL_PARAM_BUFFER_ALLOC_MODE,
-	HAL_PARAM_VDEC_FRAME_ASSEMBLY,
-	HAL_PARAM_VENC_H264_VUI_BITSTREAM_RESTRC,
-	HAL_PARAM_VENC_PRESERVE_TEXT_QUALITY,
-	HAL_PARAM_VDEC_CONCEAL_COLOR,
 };
 
 enum hal_domain {
@@ -203,7 +196,7 @@ enum hal_video_codec {
 	HAL_VIDEO_CODEC_VP6      = 0x00000400,
 	HAL_VIDEO_CODEC_VP7      = 0x00000800,
 	HAL_VIDEO_CODEC_VP8      = 0x00001000,
-	HAL_VIDEO_CODEC_HEVC     = 0x00002000,
+	HAL_VIDEO_CODEC_HEVC     = 0x00010000,
 	HAL_UNUSED_CODEC = 0x10000000,
 };
 
@@ -318,7 +311,6 @@ enum hal_h264_level {
 	HAL_H264_LEVEL_42 = 0x00002000,
 	HAL_H264_LEVEL_5  = 0x00004000,
 	HAL_H264_LEVEL_51 = 0x00008000,
-	HAL_H264_LEVEL_52 = 0x00010000,
 	HAL_UNUSED_H264_LEVEL = 0x10000000,
 };
 
@@ -795,14 +787,6 @@ struct hal_h264_vui_timing_info {
 	u32 time_scale;
 };
 
-struct hal_h264_vui_bitstream_restrc {
-	u32 enable;
-};
-
-struct hal_preserve_text_quality {
-	u32 enable;
-};
-
 enum vidc_resource_id {
 	VIDC_RESOURCE_OCMEM = 0x00000001,
 	VIDC_UNUSED_RESORUCE = 0x10000000,
@@ -876,16 +860,6 @@ enum hal_event_type {
 	HAL_UNUSED_SEQCHG = 0x10000000,
 };
 
-enum buffer_mode_type {
-	HAL_BUFFER_MODE_STATIC = 0x00000000,
-	HAL_BUFFER_MODE_RING,
-};
-
-struct hal_buffer_alloc_mode {
-	enum hal_buffer buffer_type;
-	enum buffer_mode_type buffer_mode;
-};
-
 /* HAL Response */
 
 enum command_response {
@@ -948,7 +922,6 @@ struct vidc_hal_ebd {
 	u32 timestamp_hi;
 	u32 timestamp_lo;
 	u32 flags;
-	u32 status;
 	u32 mark_target;
 	u32 mark_data;
 	u32 stats;

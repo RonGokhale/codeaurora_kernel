@@ -17,24 +17,13 @@
 #define CTX_OFFSET 0x8000
 
 #define GET_GLOBAL_REG(reg, base) (readl_relaxed((base) + (reg)))
-#define GET_GLOBAL_REG_L(reg, base) (readll_relaxed((base) + (reg)))
 #define GET_CTX_REG(reg, base, ctx) \
 	(readl_relaxed((base) + CTX_OFFSET + (reg) + ((ctx) << CTX_SHIFT)))
-#define GET_CTX_REG_L(reg, base, ctx) \
-	(readll_relaxed((base) + CTX_OFFSET + (reg) + ((ctx) << CTX_SHIFT)))
 
 #define SET_GLOBAL_REG(reg, base, val)	writel_relaxed((val), ((base) + (reg)))
-#define SET_GLOBAL_REG_L(reg, base, val) \
-	(writell_relaxed((val), ((base) + (reg))))
 
 #define SET_CTX_REG(reg, base, ctx, val) \
 	writel_relaxed((val), \
-		((base) + CTX_OFFSET + (reg) + ((ctx) << CTX_SHIFT)))
-#define SET_CTX_REG_L(reg, base, ctx, val) \
-	writell_relaxed((val), \
-		((base) + CTX_OFFSET + (reg) + ((ctx) << CTX_SHIFT)))
-#define SET_CTX_REG_L(reg, base, ctx, val) \
-	writell_relaxed((val), \
 		((base) + CTX_OFFSET + (reg) + ((ctx) << CTX_SHIFT)))
 
 /* Wrappers for numbered registers */
@@ -47,17 +36,11 @@
 #define GET_CONTEXT_FIELD(b, c, r, F) \
 	GET_FIELD(((b) + CTX_OFFSET + (r) + ((c) << CTX_SHIFT)), \
 			r##_##F##_MASK, r##_##F##_SHIFT)
-#define GET_CONTEXT_FIELD_L(b, c, r, F) \
-	GET_FIELD_L(((b) + CTX_OFFSET + (r) + ((c) << CTX_SHIFT)), \
-			r##_##F##_MASK, r##_##F##_SHIFT)
 
 #define SET_GLOBAL_FIELD(b, r, F, v) \
 	SET_FIELD(((b) + (r)), r##_##F##_MASK, r##_##F##_SHIFT, (v))
 #define SET_CONTEXT_FIELD(b, c, r, F, v) \
 	SET_FIELD(((b) + CTX_OFFSET + (r) + ((c) << CTX_SHIFT)), \
-			r##_##F##_MASK, r##_##F##_SHIFT, (v))
-#define SET_CONTEXT_FIELD_L(b, c, r, F, v) \
-	SET_FIELD_L(((b) + CTX_OFFSET + (r) + ((c) << CTX_SHIFT)), \
 			r##_##F##_MASK, r##_##F##_SHIFT, (v))
 
 /* Wrappers for numbered field registers */
@@ -67,21 +50,12 @@
 	GET_FIELD(((b) + ((n) << 2) + (r)), r##_##F##_MASK, r##_##F##_SHIFT)
 
 #define GET_FIELD(addr, mask, shift) ((readl_relaxed(addr) >> (shift)) & (mask))
-#define GET_FIELD_L(addr, mask, shift) \
-	((readll_relaxed(addr) >> (shift)) & (mask))
 
 #define SET_FIELD(addr, mask, shift, v) \
 do { \
 	int t = readl_relaxed(addr); \
 	writel_relaxed((t & ~((mask) << (shift))) + (((v) & \
 			(mask)) << (shift)), addr); \
-} while (0)
-
-#define SET_FIELD_L(addr, mask, shift, v) \
-do { \
-	u64 t = readll_relaxed(addr); \
-	writell_relaxed((t & ~(((u64) mask) << (shift))) + (((v) & \
-			((u64) mask)) << (shift)), addr); \
 } while (0)
 
 
@@ -94,7 +68,7 @@ do { \
 #define SET_IDR1(b, N, v)        SET_GLOBAL_REG(IDR1, (b), (v))
 #define SET_IDR2(b, N, v)        SET_GLOBAL_REG(IDR2, (b), (v))
 #define SET_IDR7(b, N, v)        SET_GLOBAL_REG(IDR7, (b), (v))
-#define SET_GFAR(b, v)           SET_GLOBAL_REG_L(GFAR, (b), (v))
+#define SET_GFAR(b, v)           SET_GLOBAL_REG(GFAR, (b), (v))
 #define SET_GFSR(b, v)           SET_GLOBAL_REG(GFSR, (b), (v))
 #define SET_GFSRRESTORE(b, v)    SET_GLOBAL_REG(GFSRRESTORE, (b), (v))
 #define SET_GFSYNR0(b, v)        SET_GLOBAL_REG(GFSYNR0, (b), (v))
@@ -133,7 +107,7 @@ do { \
 #define GET_IDR1(b, N)           GET_GLOBAL_REG(IDR1, (b))
 #define GET_IDR2(b, N)           GET_GLOBAL_REG(IDR2, (b))
 #define GET_IDR7(b, N)           GET_GLOBAL_REG(IDR7, (b))
-#define GET_GFAR(b)              GET_GLOBAL_REG_L(GFAR, (b))
+#define GET_GFAR(b)              GET_GLOBAL_REG(GFAR, (b))
 #define GET_GFSR(b)              GET_GLOBAL_REG(GFSR, (b))
 #define GET_GFSRRESTORE(b)       GET_GLOBAL_REG(GFSRRESTORE, (b))
 #define GET_GFSYNR0(b)           GET_GLOBAL_REG(GFSYNR0, (b))
@@ -187,6 +161,8 @@ do { \
 #define SET_SCTLR(b, c, v)       SET_CTX_REG(CB_SCTLR, (b), (c), (v))
 #define SET_ACTLR(b, c, v)       SET_CTX_REG(CB_ACTLR, (b), (c), (v))
 #define SET_RESUME(b, c, v)      SET_CTX_REG(CB_RESUME, (b), (c), (v))
+#define SET_TTBR0(b, c, v)       SET_CTX_REG(CB_TTBR0, (b), (c), (v))
+#define SET_TTBR1(b, c, v)       SET_CTX_REG(CB_TTBR1, (b), (c), (v))
 #define SET_TTBCR(b, c, v)       SET_CTX_REG(CB_TTBCR, (b), (c), (v))
 #define SET_CONTEXTIDR(b, c, v)  SET_CTX_REG(CB_CONTEXTIDR, (b), (c), (v))
 #define SET_PRRR(b, c, v)        SET_CTX_REG(CB_PRRR, (b), (c), (v))
@@ -220,10 +196,10 @@ do { \
 #define GET_CONTEXTIDR(b, c)     GET_CTX_REG(CB_CONTEXTIDR, (b), (c))
 #define GET_PRRR(b, c)           GET_CTX_REG(CB_PRRR, (b), (c))
 #define GET_NMRR(b, c)           GET_CTX_REG(CB_NMRR, (b), (c))
-#define GET_PAR(b, c)            GET_CTX_REG_L(CB_PAR, (b), (c))
+#define GET_PAR(b, c)            GET_CTX_REG(CB_PAR, (b), (c))
 #define GET_FSR(b, c)            GET_CTX_REG(CB_FSR, (b), (c))
 #define GET_FSRRESTORE(b, c)     GET_CTX_REG(CB_FSRRESTORE, (b), (c))
-#define GET_FAR(b, c)            GET_CTX_REG_L(CB_FAR, (b), (c))
+#define GET_FAR(b, c)            GET_CTX_REG(CB_FAR, (b), (c))
 #define GET_FSYNR0(b, c)         GET_CTX_REG(CB_FSYNR0, (b), (c))
 #define GET_FSYNR1(b, c)         GET_CTX_REG(CB_FSYNR1, (b), (c))
 #define GET_TLBIVA(b, c)         GET_CTX_REG(CB_TLBIVA, (b), (c))
@@ -901,74 +877,25 @@ do { \
 			GET_CONTEXT_FIELD(b, c, CB_TLBSTATUS, SACTIVE)
 
 /* Translation Table Base Control Register: CB_TTBCR */
-/* These are shared between VMSA and LPAE */
-#define GET_CB_TTBCR_EAE(b, c)       GET_CONTEXT_FIELD(b, c, CB_TTBCR, EAE)
-#define SET_CB_TTBCR_EAE(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, EAE, v)
-
+#define SET_CB_TTBCR_T0SZ(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBCR, T0SZ, v)
+#define SET_CB_TTBCR_PD0(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, PD0, v)
+#define SET_CB_TTBCR_PD1(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, PD1, v)
 #define SET_CB_TTBCR_NSCFG0(b, c, v) \
 			SET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG0, v)
 #define SET_CB_TTBCR_NSCFG1(b, c, v) \
 			SET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG1, v)
+#define SET_CB_TTBCR_EAE(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, EAE, v)
 
+#define GET_CB_TTBCR_T0SZ(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBCR, T0SZ)
+#define GET_CB_TTBCR_PD0(b, c)       GET_CONTEXT_FIELD(b, c, CB_TTBCR, PD0)
+#define GET_CB_TTBCR_PD1(b, c)       GET_CONTEXT_FIELD(b, c, CB_TTBCR, PD1)
 #define GET_CB_TTBCR_NSCFG0(b, c)    \
 			GET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG0)
 #define GET_CB_TTBCR_NSCFG1(b, c)    \
 			GET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG1)
-
-#ifdef CONFIG_IOMMU_LPAE
-
-/* LPAE format */
+#define GET_CB_TTBCR_EAE(b, c)       GET_CONTEXT_FIELD(b, c, CB_TTBCR, EAE)
 
 /* Translation Table Base Register 0: CB_TTBR */
-#define SET_TTBR0(b, c, v)       SET_CTX_REG_L(CB_TTBR0, (b), (c), (v))
-#define SET_TTBR1(b, c, v)       SET_CTX_REG_L(CB_TTBR1, (b), (c), (v))
-
-#define SET_CB_TTBR0_ASID(b, c, v)  SET_CONTEXT_FIELD_L(b, c, CB_TTBR0, ASID, v)
-#define SET_CB_TTBR0_ADDR(b, c, v)  SET_CONTEXT_FIELD_L(b, c, CB_TTBR0, ADDR, v)
-
-#define GET_CB_TTBR0_ASID(b, c)     GET_CONTEXT_FIELD_L(b, c, CB_TTBR0, ASID)
-#define GET_CB_TTBR0_ADDR(b, c)     GET_CONTEXT_FIELD_L(b, c, CB_TTBR0, ADDR)
-#define GET_CB_TTBR0(b, c)          GET_CTX_REG_L(CB_TTBR0, (b), (c))
-
-/* Translation Table Base Control Register: CB_TTBCR */
-#define SET_CB_TTBCR_T0SZ(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBCR, T0SZ, v)
-#define SET_CB_TTBCR_T1SZ(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBCR, T1SZ, v)
-#define SET_CB_TTBCR_EPD0(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBCR, EPD0, v)
-#define SET_CB_TTBCR_EPD1(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBCR, EPD1, v)
-#define SET_CB_TTBCR_IRGN0(b, c, v)  SET_CONTEXT_FIELD(b, c, CB_TTBCR, IRGN0, v)
-#define SET_CB_TTBCR_IRGN1(b, c, v)  SET_CONTEXT_FIELD(b, c, CB_TTBCR, IRGN1, v)
-#define SET_CB_TTBCR_ORGN0(b, c, v)  SET_CONTEXT_FIELD(b, c, CB_TTBCR, ORGN0, v)
-#define SET_CB_TTBCR_ORGN1(b, c, v)  SET_CONTEXT_FIELD(b, c, CB_TTBCR, ORGN1, v)
-#define SET_CB_TTBCR_NSCFG0(b, c, v) \
-				SET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG0, v)
-#define SET_CB_TTBCR_NSCFG1(b, c, v) \
-				SET_CONTEXT_FIELD(b, c, CB_TTBCR, NSCFG1, v)
-
-#define SET_CB_TTBCR_SH0(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, SH0, v)
-#define SET_CB_TTBCR_SH1(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, SH1, v)
-#define SET_CB_TTBCR_A1(b, c, v)     SET_CONTEXT_FIELD(b, c, CB_TTBCR, A1, v)
-
-#define GET_CB_TTBCR_T0SZ(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBCR, T0SZ)
-#define GET_CB_TTBCR_T1SZ(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBCR, T1SZ)
-#define GET_CB_TTBCR_EPD0(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBCR, EPD0)
-#define GET_CB_TTBCR_EPD1(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBCR, EPD1)
-#define GET_CB_TTBCR_IRGN0(b, c, v)  GET_CONTEXT_FIELD(b, c, CB_TTBCR, IRGN0)
-#define GET_CB_TTBCR_IRGN1(b, c, v)  GET_CONTEXT_FIELD(b, c, CB_TTBCR, IRGN1)
-#define GET_CB_TTBCR_ORGN0(b, c, v)  GET_CONTEXT_FIELD(b, c, CB_TTBCR, ORGN0)
-#define GET_CB_TTBCR_ORGN1(b, c, v) GET_CONTEXT_FIELD(b, c, CB_TTBCR, ORGN1)
-
-#define SET_CB_MAIR0(b, c, v)        SET_CTX_REG(CB_MAIR0, (b), (c), (v))
-#define SET_CB_MAIR1(b, c, v)        SET_CTX_REG(CB_MAIR1, (b), (c), (v))
-
-#define GET_CB_MAIR0(b, c)           GET_CTX_REG(CB_MAIR0, (b), (c))
-#define GET_CB_MAIR1(b, c)           GET_CTX_REG(CB_MAIR1, (b), (c))
-#else
-#define SET_TTBR0(b, c, v)           SET_CTX_REG(CB_TTBR0, (b), (c), (v))
-#define SET_TTBR1(b, c, v)           SET_CTX_REG(CB_TTBR1, (b), (c), (v))
-
-#define SET_CB_TTBCR_PD0(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, PD0, v)
-#define SET_CB_TTBCR_PD1(b, c, v)    SET_CONTEXT_FIELD(b, c, CB_TTBCR, PD1, v)
-
 #define SET_CB_TTBR0_IRGN1(b, c, v) SET_CONTEXT_FIELD(b, c, CB_TTBR0, IRGN1, v)
 #define SET_CB_TTBR0_S(b, c, v)     SET_CONTEXT_FIELD(b, c, CB_TTBR0, S, v)
 #define SET_CB_TTBR0_RGN(b, c, v)   SET_CONTEXT_FIELD(b, c, CB_TTBR0, RGN, v)
@@ -982,7 +909,6 @@ do { \
 #define GET_CB_TTBR0_NOS(b, c)      GET_CONTEXT_FIELD(b, c, CB_TTBR0, NOS)
 #define GET_CB_TTBR0_IRGN0(b, c)    GET_CONTEXT_FIELD(b, c, CB_TTBR0, IRGN0)
 #define GET_CB_TTBR0_ADDR(b, c)     GET_CONTEXT_FIELD(b, c, CB_TTBR0, ADDR)
-#endif
 
 /* Translation Table Base Register 1: CB_TTBR1 */
 #define SET_CB_TTBR1_IRGN1(b, c, v) SET_CONTEXT_FIELD(b, c, CB_TTBR1, IRGN1, v)
@@ -1009,7 +935,7 @@ do { \
 #define IDR2		(0x0028)
 #define IDR7		(0x003C)
 #define GFAR		(0x0040)
-#define GFSR		(0x0048)
+#define GFSR		(0x0044)
 #define GFSRRESTORE	(0x004C)
 #define GFSYNR0		(0x0050)
 #define GFSYNR1		(0x0054)
@@ -1078,9 +1004,7 @@ do { \
 #define CB_TTBCR	(0x030)
 #define CB_CONTEXTIDR	(0x034)
 #define CB_PRRR		(0x038)
-#define CB_MAIR0	(0x038)
 #define CB_NMRR		(0x03C)
-#define CB_MAIR1	(0x03C)
 #define CB_PAR		(0x050)
 #define CB_FSR		(0x058)
 #define CB_FSRRESTORE	(0x05C)
@@ -1383,7 +1307,6 @@ do { \
 #define CB_PAR_TF          (CB_PAR_TF_MASK     << CB_PAR_TF_SHIFT)
 #define CB_PAR_AFF         (CB_PAR_AFF_MASK    << CB_PAR_AFF_SHIFT)
 #define CB_PAR_PF          (CB_PAR_PF_MASK     << CB_PAR_PF_SHIFT)
-#define CB_PAR_EF          (CB_PAR_EF_MASK     << CB_PAR_EF_SHIFT)
 #define CB_PAR_TLBMCF      (CB_PAR_TLBMCF_MASK << CB_PAR_TLBMCF_SHIFT)
 #define CB_PAR_TLBLKF      (CB_PAR_TLBLKF_MASK << CB_PAR_TLBLKF_SHIFT)
 #define CB_PAR_ATOT        (CB_PAR_ATOT_MASK   << CB_PAR_ATOT_SHIFT)
@@ -1459,31 +1382,12 @@ do { \
 						CB_TLBSTATUS_SACTIVE_SHIFT)
 
 /* Translation Table Base Control Register: CB_TTBCR */
-#define CB_TTBCR_EAE         (CB_TTBCR_EAE_MASK     << CB_TTBCR_EAE_SHIFT)
-
-#define CB_TTBR0_ADDR        (CB_TTBR0_ADDR_MASK    << CB_TTBR0_ADDR_SHIFT)
-
-#ifdef CONFIG_IOMMU_LPAE
-/* Translation Table Base Register: CB_TTBR */
-#define CB_TTBR0_ASID        (CB_TTBR0_ASID_MASK    << CB_TTBR0_ASID_SHIFT)
-#define CB_TTBR1_ASID        (CB_TTBR1_ASID_MASK    << CB_TTBR1_ASID_SHIFT)
-
-/* Translation Table Base Control Register: CB_TTBCR */
 #define CB_TTBCR_T0SZ        (CB_TTBCR_T0SZ_MASK    << CB_TTBCR_T0SZ_SHIFT)
-#define CB_TTBCR_T1SZ        (CB_TTBCR_T1SZ_MASK    << CB_TTBCR_T1SZ_SHIFT)
-#define CB_TTBCR_EPD0        (CB_TTBCR_EPD0_MASK    << CB_TTBCR_EPD0_SHIFT)
-#define CB_TTBCR_EPD1        (CB_TTBCR_EPD1_MASK    << CB_TTBCR_EPD1_SHIFT)
-#define CB_TTBCR_IRGN0       (CB_TTBCR_IRGN0_MASK   << CB_TTBCR_IRGN0_SHIFT)
-#define CB_TTBCR_IRGN1       (CB_TTBCR_IRGN1_MASK   << CB_TTBCR_IRGN1_SHIFT)
-#define CB_TTBCR_ORGN0       (CB_TTBCR_ORGN0_MASK   << CB_TTBCR_ORGN0_SHIFT)
-#define CB_TTBCR_ORGN1       (CB_TTBCR_ORGN1_MASK   << CB_TTBCR_ORGN1_SHIFT)
+#define CB_TTBCR_PD0         (CB_TTBCR_PD0_MASK     << CB_TTBCR_PD0_SHIFT)
+#define CB_TTBCR_PD1         (CB_TTBCR_PD1_MASK     << CB_TTBCR_PD1_SHIFT)
 #define CB_TTBCR_NSCFG0      (CB_TTBCR_NSCFG0_MASK  << CB_TTBCR_NSCFG0_SHIFT)
 #define CB_TTBCR_NSCFG1      (CB_TTBCR_NSCFG1_MASK  << CB_TTBCR_NSCFG1_SHIFT)
-#define CB_TTBCR_SH0         (CB_TTBCR_SH0_MASK     << CB_TTBCR_SH0_SHIFT)
-#define CB_TTBCR_SH1         (CB_TTBCR_SH1_MASK     << CB_TTBCR_SH1_SHIFT)
-#define CB_TTBCR_A1          (CB_TTBCR_A1_MASK      << CB_TTBCR_A1_SHIFT)
-
-#else
+#define CB_TTBCR_EAE         (CB_TTBCR_EAE_MASK     << CB_TTBCR_EAE_SHIFT)
 
 /* Translation Table Base Register 0: CB_TTBR0 */
 #define CB_TTBR0_IRGN1       (CB_TTBR0_IRGN1_MASK   << CB_TTBR0_IRGN1_SHIFT)
@@ -1491,6 +1395,7 @@ do { \
 #define CB_TTBR0_RGN         (CB_TTBR0_RGN_MASK     << CB_TTBR0_RGN_SHIFT)
 #define CB_TTBR0_NOS         (CB_TTBR0_NOS_MASK     << CB_TTBR0_NOS_SHIFT)
 #define CB_TTBR0_IRGN0       (CB_TTBR0_IRGN0_MASK   << CB_TTBR0_IRGN0_SHIFT)
+#define CB_TTBR0_ADDR        (CB_TTBR0_ADDR_MASK    << CB_TTBR0_ADDR_SHIFT)
 
 /* Translation Table Base Register 1: CB_TTBR1 */
 #define CB_TTBR1_IRGN1       (CB_TTBR1_IRGN1_MASK   << CB_TTBR1_IRGN1_SHIFT)
@@ -1498,7 +1403,7 @@ do { \
 #define CB_TTBR1_RGN         (CB_TTBR1_RGN_MASK     << CB_TTBR1_RGN_SHIFT)
 #define CB_TTBR1_NOS         (CB_TTBR1_NOS_MASK     << CB_TTBR1_NOS_SHIFT)
 #define CB_TTBR1_IRGN0       (CB_TTBR1_IRGN0_MASK   << CB_TTBR1_IRGN0_SHIFT)
-#endif
+#define CB_TTBR1_ADDR        (CB_TTBR1_ADDR_MASK    << CB_TTBR1_ADDR_SHIFT)
 
 /* Global Register Masks */
 /* Configuration Register 0 */
@@ -1777,12 +1682,11 @@ do { \
 #define CB_PAR_TF_MASK          0x01
 #define CB_PAR_AFF_MASK         0x01
 #define CB_PAR_PF_MASK          0x01
-#define CB_PAR_EF_MASK          0x01
 #define CB_PAR_TLBMCF_MASK      0x01
 #define CB_PAR_TLBLKF_MASK      0x01
-#define CB_PAR_ATOT_MASK        0x01ULL
-#define CB_PAR_PLVL_MASK        0x03ULL
-#define CB_PAR_STAGE_MASK       0x01ULL
+#define CB_PAR_ATOT_MASK        0x01
+#define CB_PAR_PLVL_MASK        0x03
+#define CB_PAR_STAGE_MASK       0x01
 
 /* Primary Region Remap Register: CB_PRRR */
 #define CB_PRRR_TR0_MASK        0x03
@@ -1852,26 +1756,13 @@ do { \
 
 /* Translation Table Base Control Register: CB_TTBCR */
 #define CB_TTBCR_T0SZ_MASK         0x07
-#define CB_TTBCR_T1SZ_MASK         0x07
-#define CB_TTBCR_EPD0_MASK         0x01
-#define CB_TTBCR_EPD1_MASK         0x01
-#define CB_TTBCR_IRGN0_MASK        0x03
-#define CB_TTBCR_IRGN1_MASK        0x03
-#define CB_TTBCR_ORGN0_MASK        0x03
-#define CB_TTBCR_ORGN1_MASK        0x03
+#define CB_TTBCR_PD0_MASK          0x01
+#define CB_TTBCR_PD1_MASK          0x01
 #define CB_TTBCR_NSCFG0_MASK       0x01
 #define CB_TTBCR_NSCFG1_MASK       0x01
-#define CB_TTBCR_SH0_MASK          0x03
-#define CB_TTBCR_SH1_MASK          0x03
-#define CB_TTBCR_A1_MASK           0x01
 #define CB_TTBCR_EAE_MASK          0x01
 
 /* Translation Table Base Register 0/1: CB_TTBR */
-#ifdef CONFIG_IOMMU_LPAE
-#define CB_TTBR0_ADDR_MASK         0x7FFFFFFFFULL
-#define CB_TTBR0_ASID_MASK         0xFF
-#define CB_TTBR1_ASID_MASK         0xFF
-#else
 #define CB_TTBR0_IRGN1_MASK        0x01
 #define CB_TTBR0_S_MASK            0x01
 #define CB_TTBR0_RGN_MASK          0x01
@@ -1884,7 +1775,7 @@ do { \
 #define CB_TTBR1_RGN_MASK          0x1
 #define CB_TTBR1_NOS_MASK          0X1
 #define CB_TTBR1_IRGN0_MASK        0X1
-#endif
+#define CB_TTBR1_ADDR_MASK         0xFFFFFF
 
 /* Global Register Shifts */
 /* Configuration Register: CR0 */
@@ -2161,12 +2052,11 @@ do { \
 #define CB_PAR_TF_SHIFT            1
 #define CB_PAR_AFF_SHIFT           2
 #define CB_PAR_PF_SHIFT            3
-#define CB_PAR_EF_SHIFT            4
 #define CB_PAR_TLBMCF_SHIFT        5
 #define CB_PAR_TLBLKF_SHIFT        6
 #define CB_PAR_ATOT_SHIFT          31
-#define CB_PAR_PLVL_SHIFT          32
-#define CB_PAR_STAGE_SHIFT         35
+#define CB_PAR_PLVL_SHIFT          0
+#define CB_PAR_STAGE_SHIFT         3
 
 /* Primary Region Remap Register: CB_PRRR */
 #define CB_PRRR_TR0_SHIFT          0
@@ -2235,27 +2125,14 @@ do { \
 #define CB_TLBSTATUS_SACTIVE_SHIFT  0
 
 /* Translation Table Base Control Register: CB_TTBCR */
-#define CB_TTBCR_T0SZ_SHIFT          0
-#define CB_TTBCR_T1SZ_SHIFT         16
-#define CB_TTBCR_EPD0_SHIFT          4
-#define CB_TTBCR_EPD1_SHIFT          5
+#define CB_TTBCR_T0SZ_SHIFT         0
+#define CB_TTBCR_PD0_SHIFT          4
+#define CB_TTBCR_PD1_SHIFT          5
 #define CB_TTBCR_NSCFG0_SHIFT       14
 #define CB_TTBCR_NSCFG1_SHIFT       30
 #define CB_TTBCR_EAE_SHIFT          31
-#define CB_TTBCR_IRGN0_SHIFT         8
-#define CB_TTBCR_IRGN1_SHIFT        24
-#define CB_TTBCR_ORGN0_SHIFT        10
-#define CB_TTBCR_ORGN1_SHIFT        26
-#define CB_TTBCR_A1_SHIFT           22
-#define CB_TTBCR_SH0_SHIFT          12
-#define CB_TTBCR_SH1_SHIFT          28
 
 /* Translation Table Base Register 0/1: CB_TTBR */
-#ifdef CONFIG_IOMMU_LPAE
-#define CB_TTBR0_ADDR_SHIFT         5
-#define CB_TTBR0_ASID_SHIFT         48
-#define CB_TTBR1_ASID_SHIFT         48
-#else
 #define CB_TTBR0_IRGN1_SHIFT        0
 #define CB_TTBR0_S_SHIFT            1
 #define CB_TTBR0_RGN_SHIFT          3
@@ -2269,6 +2146,5 @@ do { \
 #define CB_TTBR1_NOS_SHIFT          5
 #define CB_TTBR1_IRGN0_SHIFT        6
 #define CB_TTBR1_ADDR_SHIFT         14
-#endif
 
 #endif

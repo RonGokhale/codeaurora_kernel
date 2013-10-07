@@ -80,8 +80,6 @@ struct sps_drv {
 static struct sps_drv *sps;
 
 u32 d_type;
-bool enhd_pipe;
-bool imem;
 
 static void sps_device_de_init(void);
 
@@ -1612,7 +1610,7 @@ EXPORT_SYMBOL(sps_transfer);
  * Perform a single DMA transfer on an SPS connection end point
  *
  */
-int sps_transfer_one(struct sps_pipe *h, phys_addr_t addr, u32 size,
+int sps_transfer_one(struct sps_pipe *h, u32 addr, u32 size,
 		     void *user, u32 flags)
 {
 	struct sps_pipe *pipe = h;
@@ -1634,8 +1632,7 @@ int sps_transfer_one(struct sps_pipe *h, phys_addr_t addr, u32 size,
 		return SPS_ERROR;
 
 	result = sps_bam_pipe_transfer_one(bam, pipe->pipe_index,
-				SPS_GET_LOWER_ADDR(addr), size, user,
-				DESC_FLAG_WORD(flags, addr));
+					   addr, size, user, flags);
 
 	sps_bam_unlock(bam);
 
@@ -2431,16 +2428,13 @@ static int get_device_tree_data(struct platform_device *pdev)
 
 	resource = platform_get_resource(pdev, IORESOURCE_MEM, 2);
 	if (resource) {
-		imem = true;
 		sps->pipemem_phys_base = resource->start;
 		sps->pipemem_size = resource_size(resource);
 		SPS_DBG("sps:pipemem.base=0x%x,size=0x%x.",
 			sps->pipemem_phys_base,
 			sps->pipemem_size);
-	} else {
-		imem = false;
+	} else
 		SPS_DBG("sps:No pipe memory on this target.\n");
-	}
 
 	resource  = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (resource) {
@@ -2459,11 +2453,6 @@ static int get_device_tree_data(struct platform_device *pdev)
 		SPS_DBG("sps:default device type.\n");
 	} else
 		SPS_DBG("sps:device type is %d.", d_type);
-
-	enhd_pipe = of_property_read_bool((&pdev->dev)->of_node,
-			"qcom,pipe-attr-ee");
-	SPS_DBG2("sps:PIPE_ATTR_EE is %s supported.\n",
-			(enhd_pipe ? "" : "not"));
 
 	return 0;
 }

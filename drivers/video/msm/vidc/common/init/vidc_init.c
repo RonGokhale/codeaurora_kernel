@@ -627,8 +627,7 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 			   (res_trk_get_core_type() == (u32)VCD_CORE_720P)) {
 				if (ion_phys(client_ctx->user_ion_client,
 					buff_ion_handle,
-					(ion_phys_addr_t *)&phys_addr,
-					&ion_len)) {
+					&phys_addr, &ion_len)) {
 					ERR("%s():ION physical addr fail\n",
 					__func__);
 					goto ion_map_error;
@@ -645,7 +644,7 @@ u32 vidc_insert_addr_table(struct video_client_ctx *client_ctx,
 						VIDEO_MAIN_POOL,
 						SZ_8K,
 						length,
-						(dma_addr_t *) &iova,
+						(unsigned long *) &iova,
 						(unsigned long *) &buffer_size,
 						0,
 						ION_IOMMU_UNMAP_DELAYED);

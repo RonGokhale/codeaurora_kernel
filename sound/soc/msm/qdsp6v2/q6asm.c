@@ -30,7 +30,6 @@
 #include <linux/time.h>
 #include <linux/atomic.h>
 #include <linux/msm_audio_ion.h>
-#include <linux/mm.h>
 
 #include <asm/ioctls.h>
 
@@ -72,11 +71,11 @@ static void q6asm_add_hdr_async(struct audio_client *ac, struct apr_hdr *hdr,
 static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 				uint32_t bufsz, uint32_t bufcnt,
 				bool is_contiguous);
-static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir);
+static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir,
+				uint32_t bufsz, uint32_t bufcnt);
 static void q6asm_reset_buf_state(struct audio_client *ac);
 
 static int q6asm_map_channels(u8 *channel_mapping, uint32_t channels);
-void *q6asm_mmap_apr_reg(void);
 
 
 #ifdef CONFIG_DEBUG_FS
@@ -96,27 +95,8 @@ static int in_cont_index;
 static int out_cold_index;
 static char *out_buffer;
 static char *in_buffer;
-static struct audio_buffer common_buf[2];
-static struct audio_client common_client;
 static int set_custom_topology;
 static int topology_map_handle;
-
-
-int q6asm_mmap_apr_dereg(void)
-{
-	int c;
-
-	c = atomic_sub_return(1, &this_mmap.ref_cnt);
-	if (c == 0) {
-		apr_deregister(this_mmap.apr);
-		pr_debug("%s: APR De-Register common port\n", __func__);
-	} else if (c < 0) {
-		pr_err("%s: APR Common Port Already Closed\n", __func__);
-		atomic_set(&this_mmap.ref_cnt, 0);
-	}
-
-	return 0;
-}
 
 static int audio_output_latency_dbgfs_open(struct inode *inode,
 							struct file *file)
@@ -359,6 +339,7 @@ void send_asm_custom_topology(struct audio_client *ac)
 {
 	struct acdb_cal_block		cal_block;
 	struct cmd_set_topologies	asm_top;
+	struct audio_buffer		*buf;
 	struct asm_buffer_node		*buf_node = NULL;
 	struct list_head		*ptr, *next;
 	int				result;
@@ -372,29 +353,20 @@ void send_asm_custom_topology(struct audio_client *ac)
 	}
 
 	if (set_custom_topology) {
-		if (common_client.mmap_apr == NULL) {
-			common_client.mmap_apr = q6asm_mmap_apr_reg();
-			common_client.apr = common_client.mmap_apr;
-			if (common_client.mmap_apr == NULL) {
-				pr_err("%s: q6asm_mmap_apr_reg failed\n",
-					__func__);
-				result = -EPERM;
-				goto done;
-			}
-		}
 		/* Only call this once */
 		set_custom_topology = 0;
 
 		/* Use first asm buf to map memory */
-		if (common_client.port[IN].buf == NULL) {
-			pr_err("%s: common buf is NULL\n",
+		buf = kzalloc(sizeof(struct audio_buffer), GFP_KERNEL);
+		if (!buf) {
+			pr_debug("%s: could not allocate temp memory\n",
 				__func__);
 			goto done;
 		}
-		common_client.port[IN].buf->phys = cal_block.cal_paddr;
+		buf[0].phys = cal_block.cal_paddr;
+		ac->port[0].buf = buf;
 
-		result = q6asm_memory_map_regions(&common_client,
-							IN, size, 1, 1);
+		result = q6asm_memory_map_regions(ac, 0, size, 1, 1);
 		if (result < 0) {
 			pr_err("%s: mmap did not work! addr = 0x%x, size = %d\n",
 				__func__, cal_block.cal_paddr,
@@ -402,8 +374,7 @@ void send_asm_custom_topology(struct audio_client *ac)
 			goto done;
 		}
 
-		list_for_each_safe(ptr, next,
-				&common_client.port[IN].mem_map_handle) {
+		list_for_each_safe(ptr, next, &ac->port[IN].mem_map_handle) {
 			buf_node = list_entry(ptr, struct asm_buffer_node,
 						list);
 			if (buf_node->buf_addr_lsw == cal_block.cal_paddr) {
@@ -412,13 +383,7 @@ void send_asm_custom_topology(struct audio_client *ac)
 			}
 		}
 
-		result = q6asm_mmap_apr_dereg();
-		if (result < 0) {
-			pr_err("%s: q6asm_mmap_apr_dereg failed, err %d\n",
-				__func__, result);
-		} else {
-			common_client.mmap_apr = NULL;
-		}
+		kfree(buf);
 	}
 
 	q6asm_add_hdr(ac, &asm_top.hdr, APR_PKT_SIZE(APR_HDR_SIZE,
@@ -449,51 +414,9 @@ void send_asm_custom_topology(struct audio_client *ac)
 		goto done;
 	}
 
+
 done:
 	return;
-}
-
-int q6asm_unmap_cal_blocks(void)
-{
-	int	result = 0;
-	int	result2 = 0;
-	pr_debug("%s\n", __func__);
-
-	if (topology_map_handle == 0)
-		goto done;
-
-	if (common_client.mmap_apr == NULL) {
-		common_client.mmap_apr = q6asm_mmap_apr_reg();
-		if (common_client.mmap_apr == NULL) {
-			pr_err("%s: q6asm_mmap_apr_reg failed\n",
-				__func__);
-			result = -EPERM;
-			goto done;
-		}
-	}
-
-	result2 = q6asm_memory_unmap_regions(&common_client, IN);
-	if (result2 < 0) {
-		pr_err("%s: unmap failed, err %d\n",
-			__func__, result2);
-		result = result2;
-	} else {
-		topology_map_handle = 0;
-	}
-
-	result2 = q6asm_mmap_apr_dereg();
-	if (result2 < 0) {
-		pr_err("%s: q6asm_mmap_apr_dereg failed, err %d\n",
-			__func__, result2);
-		result = result2;
-	} else {
-		common_client.mmap_apr = NULL;
-	}
-
-	set_custom_topology = 0;
-
-done:
-	return result;
 }
 
 int q6asm_audio_client_buf_free(unsigned int dir,
@@ -513,7 +436,9 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 		cnt = port->max_buf_cnt - 1;
 
 		if (cnt >= 0) {
-			rc = q6asm_memory_unmap_regions(ac, dir);
+			rc = q6asm_memory_unmap_regions(ac, dir,
+							port->buf[0].size,
+							port->max_buf_cnt);
 			if (rc < 0)
 				pr_err("%s CMD Memory_unmap_regions failed\n",
 								__func__);
@@ -523,8 +448,6 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 			if (port->buf[cnt].data) {
 				msm_audio_ion_free(port->buf[cnt].client,
 						   port->buf[cnt].handle);
-				port->buf[cnt].client = NULL;
-				port->buf[cnt].handle = NULL;
 				port->buf[cnt].data = NULL;
 				port->buf[cnt].phys = 0;
 				--(port->max_buf_cnt);
@@ -561,6 +484,7 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	}
 
 	if (port->buf[0].data) {
+		msm_audio_ion_free(port->buf[0].client, port->buf[0].handle);
 		pr_debug("%s:data[%p]phys[%p][%p] , client[%p] handle[%p]\n",
 			__func__,
 			(void *)port->buf[0].data,
@@ -568,9 +492,6 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 			(void *)&port->buf[0].phys,
 			(void *)port->buf[0].client,
 			(void *)port->buf[0].handle);
-		msm_audio_ion_free(port->buf[0].client, port->buf[0].handle);
-		port->buf[0].client = NULL;
-		port->buf[0].handle = NULL;
 	}
 
 	while (cnt >= 0) {
@@ -584,6 +505,23 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	mutex_unlock(&ac->cmd_lock);
 	return 0;
 }
+
+int q6asm_mmap_apr_dereg(void)
+{
+	int c;
+
+	c = atomic_sub_return(1, &this_mmap.ref_cnt);
+	if (c == 0) {
+		apr_deregister(this_mmap.apr);
+		pr_debug("%s: APR De-Register common port\n", __func__);
+	} else if (c < 0) {
+		pr_err("%s: APR Common Port Already Closed\n", __func__);
+		atomic_set(&this_mmap.ref_cnt, 0);
+	}
+
+	return 0;
+}
+
 
 void q6asm_audio_client_free(struct audio_client *ac)
 {
@@ -603,7 +541,6 @@ void q6asm_audio_client_free(struct audio_client *ac)
 	}
 
 	apr_deregister(ac->apr);
-	ac->apr = NULL;
 	ac->mmap_apr = NULL;
 	q6asm_session_free(ac);
 	q6asm_mmap_apr_dereg();
@@ -612,7 +549,6 @@ void q6asm_audio_client_free(struct audio_client *ac)
 
 /*done:*/
 	kfree(ac);
-	ac = NULL;
 	return;
 }
 
@@ -723,10 +659,6 @@ fail_session:
 
 struct audio_client *q6asm_get_audio_client(int session_id)
 {
-	if (session_id == ASM_CONTROL_SESSION) {
-		return &common_client;
-	}
-
 	if ((session_id <= 0) || (session_id > SESSION_MAX)) {
 		pr_err("%s: invalid session: %d\n", __func__, session_id);
 		goto err;
@@ -829,7 +761,6 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	int rc = 0;
 	struct audio_buffer *buf;
 	int len;
-	int bytes_to_alloc;
 
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
 		return -EINVAL;
@@ -856,13 +787,8 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 
 	ac->port[dir].buf = buf;
 
-	bytes_to_alloc = bufsz * bufcnt;
-
-	/* The size to allocate should be multiple of 4K bytes */
-	bytes_to_alloc = PAGE_ALIGN(bytes_to_alloc);
-
 	rc = msm_audio_ion_alloc("audio_client", &buf[0].client, &buf[0].handle,
-		bytes_to_alloc,
+		bufsz*bufcnt,
 		(ion_phys_addr_t *)&buf[0].phys, (size_t *)&len,
 		&buf[0].data);
 	if (rc) {
@@ -956,7 +882,7 @@ static int32_t q6asm_mmapcallback(struct apr_client_data *data, void *priv)
 		case ASM_CMD_SHARED_MEM_UNMAP_REGIONS:
 			if (payload[1] != 0) {
 				pr_err("%s: cmd = 0x%x returned error = 0x%x sid:%d\n",
-					__func__, payload[0], payload[1], sid);
+				__func__, payload[0], payload[1], sid);
 			}
 
 			if (atomic_read(&ac->cmd_state)) {
@@ -1394,11 +1320,6 @@ static void q6asm_add_hdr(struct audio_client *ac, struct apr_hdr *hdr,
 {
 	pr_debug("%s:pkt_size=%d cmd_flg=%d session=%d\n", __func__, pkt_size,
 		cmd_flg, ac->session);
-	if (ac->apr == NULL) {
-		pr_err("%s: ac->apr is NULL", __func__);
-		return;
-	}
-
 	mutex_lock(&ac->cmd_lock);
 	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, \
 				APR_HDR_LEN(sizeof(struct apr_hdr)),\
@@ -1426,10 +1347,6 @@ static void q6asm_add_hdr_async(struct audio_client *ac, struct apr_hdr *hdr,
 	hdr->hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD, \
 				APR_HDR_LEN(sizeof(struct apr_hdr)),\
 				APR_PKT_VER);
-	if (ac->apr == NULL) {
-		pr_err("%s: ac->apr is NULL", __func__);
-		return;
-	}
 	hdr->src_svc = ((struct apr_svc *)ac->apr)->id;
 	hdr->src_domain = APR_DOMAIN_APPS;
 	hdr->dest_svc = APR_SVC_ASM;
@@ -1459,11 +1376,14 @@ static void q6asm_add_mmaphdr(struct audio_client *ac, struct apr_hdr *hdr,
 	hdr->pkt_size  = pkt_size;
 	return;
 }
-static int __q6asm_open_read(struct audio_client *ac,
-		uint32_t format, uint16_t bits_per_sample)
+int q6asm_open_read(struct audio_client *ac,
+		uint32_t format)
 {
 	int rc = 0x00;
 	struct asm_stream_cmd_open_read_v3 open;
+
+	uint16_t bits_per_sample = 16;
+
 
 	config_debug_fs_reset_index();
 
@@ -1539,18 +1459,6 @@ fail_cmd:
 	return -EINVAL;
 }
 
-int q6asm_open_read(struct audio_client *ac,
-		uint32_t format)
-{
-	return __q6asm_open_read(ac, format, 16);
-}
-
-int q6asm_open_read_v2(struct audio_client *ac, uint32_t format,
-			uint16_t bits_per_sample)
-{
-	return __q6asm_open_read(ac, format, bits_per_sample);
-}
-
 static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 		uint16_t bits_per_sample)
 {
@@ -1569,9 +1477,11 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 	open.hdr.opcode = ASM_STREAM_CMD_OPEN_WRITE_V3;
 	open.mode_flags = 0x00;
 	if (ac->perf_mode)
-		open.mode_flags |= ASM_ULTRA_LOW_LATENCY_STREAM_SESSION;
+		open.mode_flags |= (ASM_LOW_LATENCY_STREAM_SESSION <<
+				ASM_SHIFT_STREAM_PERF_MODE_FLAG_IN_OPEN_WRITE);
 	else
-		open.mode_flags |= ASM_LEGACY_STREAM_SESSION;
+		open.mode_flags |= (ASM_LEGACY_STREAM_SESSION <<
+				ASM_SHIFT_STREAM_PERF_MODE_FLAG_IN_OPEN_WRITE);
 
 	/* source endpoint : matrix */
 	open.sink_endpointype = ASM_END_POINT_DEVICE_MATRIX;
@@ -1903,8 +1813,8 @@ fail_cmd:
 		return rc;
 }
 
-static int __q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
-		uint32_t rate, uint32_t channels, uint16_t bits_per_sample)
+int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
+			uint32_t rate, uint32_t channels)
 {
 	struct asm_multi_channel_pcm_enc_cfg_v2  enc_cfg;
 	u8 *channel_mapping;
@@ -1925,7 +1835,7 @@ static int __q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 					sizeof(struct asm_enc_cfg_blk_param_v2);
 
 	enc_cfg.num_channels = channels;
-	enc_cfg.bits_per_sample = bits_per_sample;
+	enc_cfg.bits_per_sample = 16;
 	enc_cfg.sample_rate = rate;
 	enc_cfg.is_signed = 1;
 	channel_mapping = enc_cfg.channel_mapping;
@@ -1950,18 +1860,6 @@ static int __q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
 	return 0;
 fail_cmd:
 	return -EINVAL;
-}
-
-int q6asm_enc_cfg_blk_pcm(struct audio_client *ac,
-			uint32_t rate, uint32_t channels)
-{
-	return __q6asm_enc_cfg_blk_pcm(ac, rate, channels, 16);
-}
-
-int q6asm_enc_cfg_blk_pcm_format_support(struct audio_client *ac,
-		uint32_t rate, uint32_t channels, uint16_t bits_per_sample)
-{
-	 return __q6asm_enc_cfg_blk_pcm(ac, rate, channels, bits_per_sample);
 }
 
 int q6asm_enc_cfg_blk_pcm_native(struct audio_client *ac,
@@ -2152,35 +2050,8 @@ fail_cmd:
 /* Support for selecting stereo mixing coefficients for B family not done */
 int q6asm_cfg_aac_sel_mix_coef(struct audio_client *ac, uint32_t mix_coeff)
 {
-	struct asm_aac_stereo_mix_coeff_selection_param_v2 aac_mix_coeff;
-	int rc = 0;
-
-	q6asm_add_hdr(ac, &aac_mix_coeff.hdr, sizeof(aac_mix_coeff), TRUE);
-	aac_mix_coeff.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
-	aac_mix_coeff.param_id =
-		ASM_PARAM_ID_AAC_STEREO_MIX_COEFF_SELECTION_FLAG_V2;
-	aac_mix_coeff.param_size =
-		sizeof(struct asm_aac_stereo_mix_coeff_selection_param_v2);
-	aac_mix_coeff.aac_stereo_mix_coeff_flag = mix_coeff;
-	pr_debug("%s, mix_coeff = %u", __func__, mix_coeff);
-	rc = apr_send_pkt(ac->apr, (uint32_t *) &aac_mix_coeff);
-	if (rc < 0) {
-		pr_err("%s:Command opcode[0x%x]paramid[0x%x] failed\n",
-			__func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM,
-			ASM_PARAM_ID_AAC_STEREO_MIX_COEFF_SELECTION_FLAG_V2);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-	rc = wait_event_timeout(ac->cmd_wait,
-		(atomic_read(&ac->cmd_state) == 0), 5*HZ);
-	if (!rc) {
-		pr_err("%s:timeout opcode[0x%x]\n",
-			__func__, aac_mix_coeff.hdr.opcode);
-		goto fail_cmd;
-	}
+	/* To Be Done */
 	return 0;
-fail_cmd:
-	return -EINVAL;
 }
 
 int q6asm_enc_cfg_blk_qcelp(struct audio_client *ac, uint32_t frames_per_buf,
@@ -2694,7 +2565,7 @@ int q6asm_memory_map(struct audio_client *ac, uint32_t buf_add, int dir,
 	int	rc = 0;
 	int	cmd_size = 0;
 
-	if (!ac || ac->mmap_apr == NULL) {
+	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
 		pr_err("APR handle NULL\n");
 		return -EINVAL;
 	}
@@ -2771,7 +2642,7 @@ int q6asm_memory_unmap(struct audio_client *ac, uint32_t buf_add, int dir)
 
 	int rc = 0;
 
-	if (!ac || this_mmap.apr == NULL) {
+	if (!ac || ac->apr == NULL || this_mmap.apr == NULL) {
 		pr_err("APR handle NULL\n");
 		return -EINVAL;
 	}
@@ -2841,7 +2712,7 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 	uint32_t bufcnt_t;
 	uint32_t bufsz_t;
 
-	if (!ac || ac->mmap_apr == NULL) {
+	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
 		pr_err("APR handle NULL\n");
 		return -EINVAL;
 	}
@@ -2849,11 +2720,6 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 
 	bufcnt_t = (is_contiguous) ? 1 : bufcnt;
 	bufsz_t = (is_contiguous) ? (bufsz * bufcnt) : bufsz;
-
-	if (is_contiguous) {
-		/* The size to memory map should be multiple of 4K bytes */
-		bufsz_t = PAGE_ALIGN(bufsz_t);
-	}
 
 	cmd_size = sizeof(struct avs_cmd_shared_mem_map_regions)
 			+ (sizeof(struct avs_shared_map_region_payload)
@@ -2940,7 +2806,8 @@ fail_cmd:
 	return rc;
 }
 
-static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir)
+static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir,
+				uint32_t bufsz, uint32_t bufcnt)
 {
 	struct avs_cmd_shared_mem_unmap_regions mem_unmap;
 	struct audio_port_data *port = NULL;
@@ -2950,7 +2817,7 @@ static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir)
 	int	rc = 0;
 	int	cmd_size = 0;
 
-	if (!ac || ac->mmap_apr == NULL) {
+	if (!ac || ac->apr == NULL || ac->mmap_apr == NULL) {
 		pr_err("APR handle NULL\n");
 		return -EINVAL;
 	}
@@ -3008,12 +2875,6 @@ int q6asm_set_lrgain(struct audio_client *ac, int left_gain, int right_gain)
 	int sz = 0;
 	int rc  = 0;
 
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
 	sz = sizeof(struct asm_volume_ctrl_lr_chan_gain);
 	q6asm_add_hdr_async(ac, &lrgain.hdr, sz, TRUE);
 	lrgain.hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
@@ -3056,12 +2917,6 @@ int q6asm_set_mute(struct audio_client *ac, int muteflag)
 	int sz = 0;
 	int rc  = 0;
 
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
 	sz = sizeof(struct asm_volume_ctrl_mute_config);
 	q6asm_add_hdr_async(ac, &mute.hdr, sz, TRUE);
 	mute.hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
@@ -3102,12 +2957,6 @@ int q6asm_set_volume(struct audio_client *ac, int volume)
 	struct asm_volume_ctrl_master_gain vol;
 	int sz = 0;
 	int rc  = 0;
-
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
 
 	sz = sizeof(struct asm_volume_ctrl_master_gain);
 	q6asm_add_hdr_async(ac, &vol.hdr, sz, TRUE);
@@ -3151,12 +3000,6 @@ int q6asm_set_softpause(struct audio_client *ac,
 	struct asm_soft_pause_params softpause;
 	int sz = 0;
 	int rc  = 0;
-
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
 
 	sz = sizeof(struct asm_soft_pause_params);
 	q6asm_add_hdr_async(ac, &softpause.hdr, sz, TRUE);
@@ -3205,12 +3048,6 @@ int q6asm_set_softvolume(struct audio_client *ac,
 	int sz = 0;
 	int rc  = 0;
 
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
 	sz = sizeof(struct asm_soft_step_volume_params);
 	q6asm_add_hdr_async(ac, &softvol.hdr, sz, TRUE);
 	softvol.hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
@@ -3256,12 +3093,6 @@ int q6asm_equalizer(struct audio_client *ac, void *eq_p)
 	int i  = 0;
 	int sz = 0;
 	int rc  = 0;
-
-	if (!ac || ac->apr == NULL) {
-		pr_err("%s: APR handle NULL\n", __func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
 
 	if (eq_p == NULL) {
 		pr_err("%s[%d]: Invalid Eq param\n", __func__, ac->session);
@@ -3940,7 +3771,7 @@ int q6asm_get_apr_service_id(int session_id)
 {
 	pr_debug("%s\n", __func__);
 
-	if (session_id <= 0 || session_id > SESSION_MAX) {
+	if (session_id < 0 || session_id > SESSION_MAX) {
 		pr_err("%s: invalid session_id = %d\n", __func__, session_id);
 		return -EINVAL;
 	}
@@ -3951,28 +3782,9 @@ int q6asm_get_apr_service_id(int session_id)
 
 static int __init q6asm_init(void)
 {
-	int lcnt;
 	pr_debug("%s\n", __func__);
-
 	memset(session, 0, sizeof(session));
 	set_custom_topology = 1;
-
-	/*setup common client used for cal mem map */
-	common_client.session = ASM_CONTROL_SESSION;
-	common_client.port[0].buf = &common_buf[0];
-	common_client.port[1].buf = &common_buf[1];
-	init_waitqueue_head(&common_client.cmd_wait);
-	init_waitqueue_head(&common_client.time_wait);
-	atomic_set(&common_client.time_flag, 1);
-	INIT_LIST_HEAD(&common_client.port[0].mem_map_handle);
-	INIT_LIST_HEAD(&common_client.port[1].mem_map_handle);
-	mutex_init(&common_client.cmd_lock);
-	for (lcnt = 0; lcnt <= OUT; lcnt++) {
-		mutex_init(&common_client.port[lcnt].lock);
-		spin_lock_init(&common_client.port[lcnt].dsp_lock);
-	}
-	atomic_set(&common_client.cmd_state, 0);
-	atomic_set(&common_client.nowait_cmd_cnt, 0);
 
 	config_debug_fs_init();
 

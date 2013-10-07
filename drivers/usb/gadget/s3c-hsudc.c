@@ -24,7 +24,6 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
-#include <linux/err.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/otg.h>
@@ -1169,7 +1168,7 @@ static int s3c_hsudc_start(struct usb_gadget *gadget,
 	}
 
 	/* connect to bus through transceiver */
-	if (!IS_ERR_OR_NULL(hsudc->transceiver)) {
+	if (hsudc->transceiver) {
 		ret = otg_set_peripheral(hsudc->transceiver->otg,
 					&hsudc->gadget);
 		if (ret) {
@@ -1224,7 +1223,7 @@ static int s3c_hsudc_stop(struct usb_gadget *gadget,
 	s3c_hsudc_stop_activity(hsudc);
 	spin_unlock_irqrestore(&hsudc->lock, flags);
 
-	if (!IS_ERR_OR_NULL(hsudc->transceiver))
+	if (hsudc->transceiver)
 		(void) otg_set_peripheral(hsudc->transceiver->otg, NULL);
 
 	disable_irq(hsudc->irq);
@@ -1253,7 +1252,7 @@ static int s3c_hsudc_vbus_draw(struct usb_gadget *gadget, unsigned mA)
 	if (!hsudc)
 		return -ENODEV;
 
-	if (!IS_ERR_OR_NULL(hsudc->transceiver))
+	if (hsudc->transceiver)
 		return usb_phy_set_power(hsudc->transceiver, mA);
 
 	return -EOPNOTSUPP;
@@ -1286,7 +1285,7 @@ static int __devinit s3c_hsudc_probe(struct platform_device *pdev)
 	hsudc->dev = dev;
 	hsudc->pd = pdev->dev.platform_data;
 
-	hsudc->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
+	hsudc->transceiver = usb_get_transceiver();
 
 	for (i = 0; i < ARRAY_SIZE(hsudc->supplies); i++)
 		hsudc->supplies[i].supply = s3c_hsudc_supply_names[i];
@@ -1389,8 +1388,8 @@ err_irq:
 err_remap:
 	release_mem_region(res->start, resource_size(res));
 err_res:
-	if (!IS_ERR_OR_NULL(hsudc->transceiver))
-		usb_put_phy(hsudc->transceiver);
+	if (hsudc->transceiver)
+		usb_put_transceiver(hsudc->transceiver);
 
 	regulator_bulk_free(ARRAY_SIZE(hsudc->supplies), hsudc->supplies);
 err_supplies:

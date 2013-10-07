@@ -46,8 +46,6 @@ struct mux_clk {
 	struct clk	*safe_parent;
 	int		safe_sel;
 	struct clk_mux_ops *ops;
-	/* Recursively search for the requested parent. */
-	bool		rec_set_par;
 
 	/* Fields not used by helper function. */
 	void *const __iomem *base;
@@ -66,7 +64,6 @@ static inline struct mux_clk *to_mux_clk(struct clk *c)
 }
 
 extern struct clk_ops clk_ops_gen_mux;
-extern struct clk_mux_ops mux_reg_ops;
 
 /* ==================== Divider clock ==================== */
 
@@ -75,6 +72,8 @@ struct div_clk;
 struct clk_div_ops {
 	int (*set_div)(struct div_clk *clk, int div);
 	int (*get_div)(struct div_clk *clk);
+
+	/* Optional */
 	bool (*is_enabled)(struct div_clk *clk);
 	int (*enable)(struct div_clk *clk);
 	void (*disable)(struct div_clk *clk);
@@ -85,7 +84,6 @@ struct div_clk {
 	unsigned int	min_div;
 	unsigned int	max_div;
 	unsigned long	rate_margin;
-	/* Optional */
 	struct clk_div_ops *ops;
 
 	/* Fields not used by helper function. */

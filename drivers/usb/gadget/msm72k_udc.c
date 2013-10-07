@@ -1521,7 +1521,7 @@ static int usb_free(struct usb_info *ui, int ret)
 	usb_del_gadget_udc(&ui->gadget);
 
 	if (ui->xceiv)
-		usb_put_phy(ui->xceiv);
+		usb_put_transceiver(ui->xceiv);
 
 	if (ui->irq)
 		free_irq(ui->irq, 0);
@@ -2732,8 +2732,8 @@ static int msm72k_probe(struct platform_device *pdev)
 	if (!ui->pool)
 		return usb_free(ui, -ENOMEM);
 
-	ui->xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
-	if (IS_ERR_OR_NULL(ui->xceiv))
+	ui->xceiv = usb_get_transceiver();
+	if (!ui->xceiv)
 		return usb_free(ui, -ENODEV);
 
 	otg = to_msm_otg(ui->xceiv);

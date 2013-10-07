@@ -25,7 +25,6 @@
 #include "dsi_v2.h"
 #include "dsi_io_v2.h"
 #include "dsi_host_v2.h"
-#include "mdss_debug.h"
 
 #define DSI_POLL_SLEEP_US 1000
 #define DSI_POLL_TIMEOUT_US 16000
@@ -39,10 +38,7 @@ struct dsi_host_v2_private {
 
 	int irq_no;
 	unsigned char *dsi_base;
-	size_t dsi_reg_size;
 	struct device dis_dev;
-
-	void (*debug_enable_clk)(int on);
 };
 
 static struct dsi_host_v2_private *dsi_host_private;
@@ -324,7 +320,7 @@ void msm_dsi_host_init(struct mipi_panel_info *pinfo)
 	wmb();
 }
 
-void dsi_set_tx_power_mode(int mode)
+void msm_dsi_set_tx_power_mode(int mode)
 {
 	u32 data;
 	unsigned char *ctrl_base = dsi_host_private->dsi_base;
@@ -861,58 +857,6 @@ static int msm_dsi_off(struct mdss_panel_data *pdata)
 	return ret;
 }
 
-static int msm_dsi_cont_on(struct mdss_panel_data *pdata)
-{
-	struct mdss_panel_info *pinfo;
-	int ret = 0;
-
-	pr_debug("%s:\n", __func__);
-
-	pinfo = &pdata->panel_info;
-	ret = msm_dsi_regulator_enable();
-	if (ret) {
-		pr_err("%s: DSI power on failed\n", __func__);
-		return ret;
-	}
-
-	msm_dsi_ahb_ctrl(1);
-	msm_dsi_prepare_clocks();
-	msm_dsi_clk_enable();
-	return 0;
-}
-
-static void msm_dsi_debug_enable_clock(int on)
-{
-	if (dsi_host_private->debug_enable_clk)
-		dsi_host_private->debug_enable_clk(on);
-
-	if (on)
-		msm_dsi_ahb_ctrl(1);
-	else
-		msm_dsi_ahb_ctrl(0);
-}
-
-static int msm_dsi_debug_init(void)
-{
-	int rc;
-
-	if (!mdss_res)
-		return 0;
-
-	dsi_host_private->debug_enable_clk =
-			mdss_res->debug_inf.debug_enable_clock;
-
-	mdss_res->debug_inf.debug_enable_clock = msm_dsi_debug_enable_clock;
-
-
-	rc = mdss_debug_register_base("dsi0",
-				dsi_host_private->dsi_base,
-				dsi_host_private->dsi_reg_size);
-
-	return rc;
-}
-
-
 static int __devinit msm_dsi_probe(struct platform_device *pdev)
 {
 	struct dsi_interface intf;
@@ -933,11 +877,9 @@ static int __devinit msm_dsi_probe(struct platform_device *pdev)
 				__func__, __LINE__);
 			return -ENOMEM;
 		} else {
-			dsi_host_private->dsi_reg_size =
-						resource_size(mdss_dsi_mres);
 			dsi_host_private->dsi_base = ioremap(
 						mdss_dsi_mres->start,
-						dsi_host_private->dsi_reg_size);
+						resource_size(mdss_dsi_mres));
 			if (!dsi_host_private->dsi_base) {
 				pr_err("%s:%d unable to remap dsi resources",
 					__func__, __LINE__);
@@ -983,15 +925,12 @@ static int __devinit msm_dsi_probe(struct platform_device *pdev)
 	dsi_host_private->dis_dev = pdev->dev;
 	intf.on = msm_dsi_on;
 	intf.off = msm_dsi_off;
-	intf.cont_on = msm_dsi_cont_on;
 	intf.op_mode_config = msm_dsi_op_mode_config;
 	intf.tx = msm_dsi_cmds_tx;
 	intf.rx = msm_dsi_cmds_rx;
 	intf.index = 0;
 	intf.private = NULL;
 	dsi_register_interface(&intf);
-
-	msm_dsi_debug_init();
 	pr_debug("%s success\n", __func__);
 	return 0;
 dsi_probe_error:

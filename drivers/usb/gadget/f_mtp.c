@@ -151,7 +151,7 @@ static struct usb_ss_ep_comp_descriptor mtp_superspeed_in_comp_desc = {
 	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
 
 	/* the following 2 values can be tweaked if necessary */
-	.bMaxBurst =		2,
+	/* .bMaxBurst =		0, */
 	/* .bmAttributes =	0, */
 };
 
@@ -168,7 +168,7 @@ static struct usb_ss_ep_comp_descriptor mtp_superspeed_out_comp_desc = {
 	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
 
 	/* the following 2 values can be tweaked if necessary */
-	 .bMaxBurst =		2,
+	/* .bMaxBurst =		0, */
 	/* .bmAttributes =	0, */
 };
 
@@ -558,15 +558,17 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 	struct mtp_dev *dev = fp->private_data;
 	struct usb_composite_dev *cdev = dev->cdev;
 	struct usb_request *req;
-	int r = count, xfer, len;
+	int r = count, xfer;
 	int ret = 0;
 
 	DBG(cdev, "mtp_read(%d)\n", count);
 
-	len = ALIGN(count, dev->ep_out->maxpacket);
-
-	if (len > mtp_rx_req_len)
+	if (count > mtp_rx_req_len)
 		return -EINVAL;
+
+	if (!IS_ALIGNED(count, dev->ep_out->maxpacket))
+		DBG(cdev, "%s - count(%d) not multiple of mtu(%d)\n", __func__,
+						count, dev->ep_out->maxpacket);
 
 	/* we will block until we're online */
 	DBG(cdev, "mtp_read: waiting for online state\n");
@@ -589,7 +591,7 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 requeue_req:
 	/* queue a request */
 	req = dev->rx_req[0];
-	req->length = len;
+	req->length = mtp_rx_req_len;
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
 	if (ret < 0) {

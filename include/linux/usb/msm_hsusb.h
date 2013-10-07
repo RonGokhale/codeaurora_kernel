@@ -26,7 +26,6 @@
 #include <linux/pm_qos.h>
 #include <linux/hrtimer.h>
 #include <linux/power_supply.h>
-#include <linux/cdev.h>
 /*
  * The following are bit fields describing the usb_request.udc_priv word.
  * These bit fields are set by function drivers that wish to queue
@@ -41,20 +40,6 @@
 #define MSM_ETD_IOC			BIT(9)
 #define MSM_INTERNAL_MEM		BIT(10)
 #define MSM_VENDOR_ID			BIT(16)
-
-/**
- * Requested USB votes for BUS bandwidth
- *
- * USB_NO_PERF_VOTE     BUS Vote for inactive USB session or disconnect
- * USB_MAX_PERF_VOTE    Maximum BUS bandwidth vote
- * USB_MIN_PERF_VOTE    Minimum BUS bandwidth vote (for some hw same as NO_PERF)
- *
- */
-enum usb_bus_vote {
-	USB_NO_PERF_VOTE = 0,
-	USB_MAX_PERF_VOTE,
-	USB_MIN_PERF_VOTE,
-};
 
 /**
  * Supported USB modes
@@ -166,7 +151,6 @@ enum usb_chg_type {
 	USB_ACA_C_CHARGER,
 	USB_ACA_DOCK_CHARGER,
 	USB_PROPRIETARY_CHARGER,
-	USB_FLOATED_CHARGER,
 };
 
 /**
@@ -320,8 +304,8 @@ struct msm_otg_platform_data {
  * @async_irq: IRQ number used by some controllers during low power state
  * @clk: clock struct of alt_core_clk.
  * @pclk: clock struct of iface_clk.
+ * @phy_reset_clk: clock struct of phy_clk.
  * @core_clk: clock struct of core_bus_clk.
- * @sleep_clk: clock struct of sleep_clk for USB PHY.
  * @core_clk_rate: core clk max frequency
  * @regs: ioremapped register base address.
  * @inputs: OTG state machine inputs(Id, SessValid etc).
@@ -357,10 +341,9 @@ struct msm_otg {
 	struct clk *xo_clk;
 	struct clk *clk;
 	struct clk *pclk;
+	struct clk *phy_reset_clk;
 	struct clk *core_clk;
-	struct clk *sleep_clk;
 	long core_clk_rate;
-	struct resource *io_res;
 	void __iomem *regs;
 #define ID		0
 #define B_SESS_VLD	1
@@ -449,16 +432,7 @@ struct msm_otg {
 	struct power_supply usb_psy;
 	unsigned int online;
 	unsigned int host_mode;
-	unsigned int voltage_max;
 	unsigned int current_max;
-
-	dev_t ext_chg_dev;
-	struct cdev ext_chg_cdev;
-	struct class *ext_chg_class;
-	struct device *ext_chg_device;
-	bool ext_chg_opened;
-	bool ext_chg_active;
-	struct completion ext_chg_wait;
 };
 
 struct ci13xxx_platform_data {
@@ -472,21 +446,11 @@ struct ci13xxx_platform_data {
 	bool l1_supported;
 };
 
-/**
- * struct msm_hsic_host_platform_data - platform device data
- *              for msm_hsic_host driver.
- * @phy_sof_workaround: Enable ALL PHY SOF bug related workarounds for
-		SUSPEND, RESET and RESUME.
- * @phy_susp_sof_workaround: Enable PHY SOF workaround only for SUSPEND.
- *
- */
 struct msm_hsic_host_platform_data {
 	unsigned strobe;
 	unsigned data;
 	bool ignore_cal_pad_config;
 	bool phy_sof_workaround;
-	bool phy_susp_sof_workaround;
-	u32 reset_delay;
 	int strobe_pad_offset;
 	int data_pad_offset;
 
@@ -514,8 +478,6 @@ struct msm_usb_host_platform_data {
 	int pmic_gpio_dp_irq;
 	unsigned int dock_connect_irq;
 	bool use_sec_phy;
-	bool no_selective_suspend;
-	int resume_gpio;
 };
 
 /**
@@ -531,7 +493,7 @@ struct msm_hsic_peripheral_platform_data {
 /**
  * struct usb_ext_notification: event notification structure
  * @notify: pointer to client function to call when ID event is detected.
- *          The function parameter is provided by driver to be called back when
+ *          The last parameter is provided by driver to be called back when
  *          external client indicates it is done using the USB. This function
  *          should return 0 if handled successfully, otherise an error code.
  * @ctxt: client-specific context pointer
@@ -545,7 +507,7 @@ struct msm_hsic_peripheral_platform_data {
  * called with the online parameter set to false.
  */
 struct usb_ext_notification {
-	int (*notify)(void *, int, void (*)(void *, int online), void *);
+	int (*notify)(void *, int, void (*)(int online));
 	void *ctxt;
 };
 #ifdef CONFIG_USB_BAM
@@ -574,11 +536,10 @@ static inline void msm_hw_bam_disable(bool bam_disable)
 #ifdef CONFIG_USB_DWC3_MSM
 int msm_ep_config(struct usb_ep *ep);
 int msm_ep_unconfig(struct usb_ep *ep);
-void dwc3_tx_fifo_resize_request(struct usb_ep *ep, bool qdss_enable);
 int msm_data_fifo_config(struct usb_ep *ep, u32 addr, u32 size,
 	u8 dst_pipe_idx);
 
-void msm_dwc3_restart_usb_session(struct usb_gadget *gadget);
+void msm_dwc3_restart_usb_session(void);
 
 int msm_register_usb_ext_notification(struct usb_ext_notification *info);
 #else
@@ -598,13 +559,7 @@ static inline int msm_ep_unconfig(struct usb_ep *ep)
 	return -ENODEV;
 }
 
-static inline void dwc3_tx_fifo_resize_request(
-					struct usb_ep *ep, bool qdss_enable)
-{
-	return;
-}
-
-static inline void msm_dwc3_restart_usb_session(struct usb_gadget *gadget)
+static inline void msm_dwc3_restart_usb_session(void)
 {
 	return;
 }

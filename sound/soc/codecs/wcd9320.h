@@ -146,7 +146,6 @@ extern int taiko_mclk_enable(struct snd_soc_codec *codec, int mclk_enable,
 			     bool dapm);
 extern int taiko_hs_detect(struct snd_soc_codec *codec,
 			   struct wcd9xxx_mbhc_config *mbhc_cfg);
-extern void taiko_hs_detect_exit(struct snd_soc_codec *codec);
 extern void *taiko_get_afe_config(struct snd_soc_codec *codec,
 				  enum afe_config_type config_type);
 

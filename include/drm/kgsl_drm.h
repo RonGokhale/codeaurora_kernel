@@ -115,7 +115,6 @@ struct drm_kgsl_gem_glockinfo)
 #define DRM_KGSL_GEM_TYPE_SMI          1
 #define DRM_KGSL_GEM_TYPE_KMEM         2
 #define DRM_KGSL_GEM_TYPE_KMEM_NOCACHE 3
-#define DRM_KGSL_GEM_TYPE_MEM_SECURE   4
 #define DRM_KGSL_GEM_TYPE_MEM_MASK     0xF
 
 /* Contiguous memory (PMEM) */
@@ -127,8 +126,6 @@ struct drm_kgsl_gem_glockinfo)
 
 /* Standard paged memory */
 #define DRM_KGSL_GEM_TYPE_MEM        0x010000
-
-/* Secure memory */
 
 /* Caching controls */
 #define DRM_KGSL_GEM_CACHE_NONE      0x000000

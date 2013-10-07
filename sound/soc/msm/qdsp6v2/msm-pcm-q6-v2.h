@@ -72,13 +72,6 @@ struct msm_audio {
 	int enabled;
 	int close_ack;
 	int cmd_ack;
-	/*
-	 * cmd_ack doesn't tell if paticular command has been sent so can't
-	 * determine if it needs to wait for completion.
-	 * Use cmd_pending instead when checking whether a command is been
-	 * sent or not.
-	 */
-	unsigned long cmd_pending;
 	atomic_t start;
 	atomic_t stop;
 	atomic_t out_count;
@@ -92,8 +85,6 @@ struct msm_audio {
 	bool set_channel_map;
 	char channel_map[8];
 	int cmd_interrupt;
-	bool meta_data_mode;
-	uint32_t volume;
 };
 
 struct output_meta_data_st {

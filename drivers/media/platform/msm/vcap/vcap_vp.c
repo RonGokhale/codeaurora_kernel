@@ -472,8 +472,7 @@ int init_motion_buf(struct vcap_client_data *c_data)
 	int rc;
 	struct vcap_dev *dev = c_data->dev;
 	struct ion_handle *handle = NULL;
-	unsigned long len;
-	dma_addr_t paddr;
+	unsigned long paddr, len;
 	void *vaddr;
 	size_t size = ((c_data->vp_out_fmt.width + 63) >> 6) *
 		((c_data->vp_out_fmt.height + 7) >> 3) * 16;
@@ -539,8 +538,7 @@ int init_nr_buf(struct vcap_client_data *c_data)
 	struct vcap_dev *dev = c_data->dev;
 	struct ion_handle *handle = NULL;
 	size_t frame_size, tot_size;
-	unsigned long len;
-	dma_addr_t paddr;
+	unsigned long paddr, len;
 	int rc;
 
 	if (c_data->vp_action.bufNR.nr_handle) {
@@ -685,8 +683,7 @@ int vp_dummy_event(struct vcap_client_data *c_data)
 	struct vcap_dev *dev = c_data->dev;
 	unsigned int width, height;
 	struct ion_handle *handle = NULL;
-	unsigned long len;
-	dma_addr_t paddr;
+	unsigned long paddr, len;
 	uint32_t reg;
 	int rc = 0;
 

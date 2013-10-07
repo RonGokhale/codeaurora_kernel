@@ -46,7 +46,7 @@ static u32 get_tz_usage(struct smem_client *client, enum hal_buffer buffer_type)
 
 static int get_device_address(struct smem_client *smem_client,
 		struct ion_handle *hndl, unsigned long align,
-		dma_addr_t *iova, unsigned long *buffer_size,
+		unsigned long *iova, unsigned long *buffer_size,
 		u32 flags, enum hal_buffer buffer_type)
 {
 	int rc = 0;
@@ -135,7 +135,7 @@ static int ion_user_to_kernel(struct smem_client *client, int fd, u32 offset,
 		struct msm_smem *mem, enum hal_buffer buffer_type)
 {
 	struct ion_handle *hndl;
-	dma_addr_t iova = 0;
+	unsigned long iova = 0;
 	unsigned long buffer_size = 0;
 	unsigned long ionflags = 0;
 	int rc = 0;
@@ -185,7 +185,7 @@ static int alloc_ion_mem(struct smem_client *client, size_t size, u32 align,
 	int map_kernel)
 {
 	struct ion_handle *hndl;
-	dma_addr_t iova = 0;
+	unsigned long iova = 0;
 	unsigned long buffer_size = 0;
 	unsigned long heap_mask = 0;
 	int rc = 0;
@@ -500,13 +500,8 @@ int msm_smem_get_domain_partition(void *clt, u32 flags, enum hal_buffer
 	struct smem_client *client = clt;
 	struct iommu_set *iommu_group_set = &client->res->iommu_group_set;
 	int i;
-	int j;
 	bool is_secure = (flags & SMEM_SECURE);
 	struct iommu_info *iommu_map;
-	if (!domain_num || !partition_num) {
-		dprintk(VIDC_DBG, "passed null to get domain partition!");
-		return -EINVAL;
-	}
 
 	*domain_num = -1;
 	*partition_num = -1;
@@ -517,14 +512,14 @@ int msm_smem_get_domain_partition(void *clt, u32 flags, enum hal_buffer
 
 	for (i = 0; i < iommu_group_set->count; i++) {
 		iommu_map = &iommu_group_set->iommu_maps[i];
-		if (iommu_map->is_secure == is_secure) {
-			for (j = 0; j < iommu_map->npartitions; j++) {
-				if (iommu_map->buffer_type[j] & buffer_type) {
-					*domain_num = iommu_map->domain;
-					*partition_num = j;
-					break;
-				}
-			}
+		if ((iommu_map->is_secure == is_secure) &&
+			(iommu_map->buffer_type & buffer_type)) {
+			*domain_num = iommu_map->domain;
+			*partition_num = 0;
+			if ((buffer_type & HAL_BUFFER_INTERNAL_CMD_QUEUE) &&
+				(iommu_map->npartitions == 2))
+				*partition_num = 1;
+			break;
 		}
 	}
 	dprintk(VIDC_DBG, "domain: %d, partition: %d found!\n",

@@ -74,11 +74,9 @@ struct mxt_platform_data {
 	u32 reset_gpio_flags;
 	int irq_gpio;
 	u32 irq_gpio_flags;
-	int i2cmode_gpio;
 	int *key_codes;
 	bool need_calibration;
 	bool no_force_update;
-	bool no_lpm_support;
 	u8 bl_addr;
 
 	u8(*read_chg) (void);

@@ -25,7 +25,6 @@
 #ifdef CONFIG_MSM_SCM
 #define SCM_SVC_BOOT 0x1
 #define SCM_CMD_TERMINATE_PC 0x2
-#define SCM_CMD_CORE_HOTPLUGGED 0x10
 #endif
 
 ENTRY(msm_arch_idle)
@@ -66,75 +65,6 @@ wfi_done:
 #endif
 	bx	lr
 #endif
-ENTRY(msm_pm_pc_hotplug)
-	stmfd	sp!, {lr}
-#if defined(CONFIG_MSM_FIQ_SUPPORT)
-	cpsid   f
-#endif
-
-#if defined(CONFIG_MSM_JTAG) || defined(CONFIG_MSM_JTAG_MM)
-	bl      msm_jtag_save_state
-#endif
-	mov	r1, #0
-	mcr	p15, 2, r1, c0, c0, 0 /*CCSELR*/
-	isb
-	mrc	p15, 1, r1, c0, c0, 0 /*CCSIDR*/
-	mov	r2, #1
-	and	r1, r2, r1, ASR #30 /* Check if the cache is write back */
-	cmp	r1, #1
-	bleq	v7_flush_kern_cache_all
-
-	mrc	p15, 0, r0, c0, c0, 5	/* MPIDR */
-	and	r0, r0, #15		/* what CPU am I */
-
-	ldr	r1, =msm_pc_debug_counters /*load the IMEM debug location */
-	ldr	r1, [r1]
-	cmp	r1, #0
-	beq	skip_hp_debug1
-	add	r1, r1, r0, LSL #4	/* debug location for this CPU */
-	ldr	r2, [r1]
-	add	r2, #1
-	str	r2, [r1]
-skip_hp_debug1:
-
-#ifdef CONFIG_MSM_SCM
-	ldr	r0, =SCM_SVC_BOOT
-	ldr	r1, =SCM_CMD_TERMINATE_PC
-	ldr	r2, =SCM_CMD_CORE_HOTPLUGGED
-	bl	scm_call_atomic1
-#else
-	mrc     p15, 0, r3, c1, c0, 0    /* read current CR    */
-	bic     r0, r3, #(1 << 2)        /* clear dcache bit   */
-	bic     r0, r0, #(1 << 12)       /* clear icache bit   */
-	mcr     p15, 0, r0, c1, c0, 0    /* disable d/i cache  */
-	isb
-	wfi
-	mcr     p15, 0, r3, c1, c0, 0    /* restore d/i cache  */
-	isb
-#endif
-
-#if defined(CONFIG_MSM_FIQ_SUPPORT)
-	cpsie   f
-#endif
-	mrc	p15, 0, r0, c0, c0, 5 /* MPIDR */
-	and	r0, r0, #15              /* what CPU am I                  */
-
-	ldr	r1, =msm_pc_debug_counters /*load the IMEM debug location */
-	ldr	r1, [r1]
-	cmp	r1, #0
-	beq	skip_hp_debug2
-	add	r1, r1, r0, LSL #4	/* debug location for this CPU */
-	add	r1, #8
-	ldr	r2, [r1]
-	add	r2, #1
-	str	r2, [r1]
-skip_hp_debug2:
-#if defined(CONFIG_MSM_JTAG) || defined(CONFIG_MSM_JTAG_MM)
-	bl	msm_jtag_restore_state
-#endif
-	mov     r0, #0                   /* return power collapse failed */
-	ldmfd	sp!, {lr}
-	bx      lr
 
 ENTRY(msm_pm_collapse)
 #if defined(CONFIG_MSM_FIQ_SUPPORT)
@@ -151,21 +81,7 @@ ENTRY(msm_pm_collapse)
 	add	r0, r0, r1
 #endif
 
-	PUSH	{r4-r12}
-	stmia   r0!, {r13-r14}
-#ifdef	CONFIG_ARM_LPAE
-	mrc	p15, 0, r1, c1, c0, 0 /* MMU control */
-	mrc	p15, 0, r2, c2, c0, 2 /*TTBCR*/
-	mrc	p15, 0, r3, c3, c0, 0 /* dacr */
-	mrrc	p15, 0, r4, r5, c2 /* TTBR0 */
-	mrrc	p15, 1, r6, r7, c2 /* TTBR1 */
-	mrc	p15, 0, r8, c10, c2, 0 /* MAIR0 */
-	mrc	p15, 0, r9, c10, c2, 1  /* MAIR1 */
-	mrc	p15, 0, r10, c1, c0, 1 /* ACTLR */
-	mrc	p15, 0, r11, c13, c0, 3 /* TPIDRURO */
-	mrc	p15, 0, r12, c13, c0, 1 /* context ID */
-	stmia	r0!, {r1-r12}
-#else
+	stmia   r0!, {r4-r14}
 	mrc     p15, 0, r1, c1, c0, 0 /* MMU control */
 	mrc     p15, 0, r2, c2, c0, 0 /* TTBR0 */
 	mrc     p15, 0, r3, c3, c0, 0 /* dacr */
@@ -181,7 +97,6 @@ ENTRY(msm_pm_collapse)
 	mrc     p15, 0, ip, c13, c0, 1 /* context ID */
 	stmia   r0!, {r1-r9, ip}
 
-#endif
 #if defined(CONFIG_MSM_JTAG) || defined(CONFIG_MSM_JTAG_MM)
 	bl      msm_jtag_save_state
 #endif
@@ -239,7 +154,7 @@ skip_pc_debug1:
 	SUSPEND_8x25_L2
 	SET_SMP_COHERENCY OFF
 	wfi
-	DELAY 300
+	DELAY_8x25 300
 
 	mcr     p15, 0, r4, c1, c0, 0    /* restore d/i cache  */
 	isb
@@ -282,8 +197,7 @@ skip_pc_debug2:
 	mul	r2, r2, r1
 	add	r0, r0, r2
 #endif
-	ldmfd   r0, {r13-r14}		 /* restore sp and lr */
-	POP 	{r4-r12}		 /* restore r4-r12 registers */
+	ldmfd   r0, {r4-r14}		 /* restore registers */
 	mov     r0, #0                   /* return power collapse failed */
 	bx      lr
 
@@ -312,44 +226,6 @@ ENTRY(msm_pm_collapse_exit)
 	add	r1, r1, r2
 #endif
 
-#ifdef CONFIG_ARM_LPAE
-	ldmdb   r1!, {r2-r13}
-	mcr	p15, 0, r3, c2, c0, 2 /*TTBCR*/
-	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
-	mcrr    p15, 0, r5, r6, c2 /* TTBR0 */
-	mcrr    p15, 1, r7, r8, c2 /* TTBR1 */
-	mcr     p15, 0, r9, c10, c2, 0 /* MAIR0 */
-	mcr     p15, 0, r10, c10, c2, 1 /* MAIR1 */
-	mcr     p15, 0, r11, c1, c0, 1 /* ACTLR */
-	mcr     p15, 0, r12, c13, c0, 3 /* TPIDRURO */
-	mcr     p15, 0, r13, c13, c0, 1 /* context ID */
-	isb
-	ldmdb   r1!, {r13, r14}
-	ldr	r0, =msm_pm_pc_pgd
-	ldr	r4, =msm_pm_collapse_exit
-	adr	r3, msm_pm_collapse_exit
-	add	r0, r0, r3
-	sub	r0, r0, r4
-	ldr	r0, [r0]
-	ldr	r3, [r0]
-	mrrc	p15, 0, r4, r5, c2     /* save current TTBR0 */
-	and	r6, r4, #0x7f /* mask to get TTB flags */
-	mcr	p15, 0, r3, c2, c0, 0 /* temporary switch TTBR0 */
-	isb
-	mcr	p15, 0, r2, c1, c0, 0   /* MMU control */
-	isb
-msm_pm_mapped_pa:
-	/* Switch to virtual */
-	ldr     r2, =msm_pm_pa_to_va
-	mov     pc, r2
-msm_pm_pa_to_va:
-	mcrr    p15, 0, r4, r5, c2	/* restore TTBR0 */
-	isb
-	mcr     p15, 0, r6, c8, c7, 0   /* UTLBIALL */
-	mcr     p15, 0, r6, c7, c5, 6   /* BPIALL */
-	dsb
-	isb
-#else
 	ldmdb   r1!, {r2-r11}
 	mcr     p15, 0, r4, c3, c0, 0 /* dacr */
 	mcr     p15, 0, r3, c2, c0, 0 /* TTBR0 */
@@ -364,7 +240,7 @@ msm_pm_pa_to_va:
 	mcr     p15, 0, r10, c13, c0, 3 /* TPIDRURO */
 	mcr     p15, 0, r11, c13, c0, 1 /* context ID */
 	isb
-	ldmdb   r1!, {r13-r14}
+	ldmdb   r1!, {r4-r14}
 	ldr	r0, =msm_pm_pc_pgd
 	ldr	r1, =msm_pm_collapse_exit
 	adr	r3, msm_pm_collapse_exit
@@ -389,8 +265,6 @@ msm_pm_pa_to_va:
 	mcr     p15, 0, r3, c7, c5, 6   /* BPIALL */
 	dsb
 	isb
-#endif
-	POP	{r4-r12}
 
 #ifdef CONFIG_ARCH_MSM_KRAIT
 	mrc	p15, 0, r1, c0, c0, 0

@@ -76,9 +76,7 @@ static const struct sps_bam_opt_event_table opt_event_table[] = {
 	{SPS_EVENT_INACTIVE, SPS_O_INACTIVE, BAM_PIPE_IRQ_TIMER},
 	{SPS_EVENT_OUT_OF_DESC, SPS_O_OUT_OF_DESC,
 		BAM_PIPE_IRQ_OUT_OF_DESC},
-	{SPS_EVENT_ERROR, SPS_O_ERROR, BAM_PIPE_IRQ_ERROR},
-	{SPS_EVENT_RST_ERROR, SPS_O_RST_ERROR, BAM_PIPE_IRQ_RST_ERROR},
-	{SPS_EVENT_HRESP_ERROR, SPS_O_HRESP_ERROR, BAM_PIPE_IRQ_HRESP_ERROR}
+	{SPS_EVENT_ERROR, SPS_O_ERROR, BAM_PIPE_IRQ_ERROR}
 };
 
 /* Pipe event source handler */
@@ -262,8 +260,7 @@ int sps_bam_enable(struct sps_bam *dev)
 				  dev->props.options);
 	else
 		/* No, so just verify that it is enabled */
-		rc = bam_check(dev->base, &dev->version,
-				dev->props.ee, &num_pipes);
+		rc = bam_check(dev->base, &dev->version, &num_pipes);
 
 	if (rc) {
 		SPS_ERR("sps:Fail to init BAM 0x%x IRQ %d\n",
@@ -445,10 +442,6 @@ int sps_bam_disable(struct sps_bam *dev)
 	if ((dev->props.manage & SPS_BAM_MGR_DEVICE_REMOTE)) {
 		/* No, so just mark it disabled */
 		dev->state &= ~BAM_STATE_ENABLED;
-		if ((dev->state & BAM_STATE_IRQ) && (dev->props.irq > 0)) {
-			free_irq(dev->props.irq, dev);
-			dev->state &= ~BAM_STATE_IRQ;
-		}
 		return 0;
 	}
 
@@ -1290,19 +1283,14 @@ int sps_bam_pipe_transfer_one(struct sps_bam *dev,
 
 	desc->addr = addr;
 	desc->size = size;
-
 	if ((flags & SPS_IOVEC_FLAG_DEFAULT) == 0) {
-		desc->flags = (flags & BAM_IOVEC_FLAG_MASK)
-				| DESC_UPPER_ADDR(flags);
+		desc->flags = flags & BAM_IOVEC_FLAG_MASK;
 	} else {
 		if (pipe->mode == SPS_MODE_SRC)
-			desc->flags = SPS_IOVEC_FLAG_INT
-					| DESC_UPPER_ADDR(flags);
+			desc->flags = SPS_IOVEC_FLAG_INT;
 		else
-			desc->flags = (SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT)
-					| DESC_UPPER_ADDR(flags);
+			desc->flags = SPS_IOVEC_FLAG_INT | SPS_IOVEC_FLAG_EOT;
 	}
-
 #ifdef SPS_BAM_STATISTICS
 	if ((flags & SPS_IOVEC_FLAG_INT))
 		pipe->sys.int_flags++;
@@ -1355,7 +1343,6 @@ int sps_bam_pipe_transfer(struct sps_bam *dev,
 	void *user;
 	int n;
 	int result;
-	struct sps_pipe *pipe = dev->pipes[pipe_index];
 
 	if (transfer->iovec_count == 0) {
 		SPS_ERR("sps:iovec count zero: BAM 0x%x pipe %d\n",
@@ -1363,13 +1350,7 @@ int sps_bam_pipe_transfer(struct sps_bam *dev,
 		return SPS_ERROR;
 	}
 
-	if (!pipe->sys.ack_xfers && pipe->polled) {
-		sps_bam_pipe_get_unused_desc_num(dev, pipe_index,
-					&count);
-		count = pipe->desc_size - count - 1;
-	} else
-		sps_bam_get_free_count(dev, pipe_index, &count);
-
+	sps_bam_get_free_count(dev, pipe_index, &count);
 	if (count < transfer->iovec_count) {
 		SPS_ERR("sps:Insufficient free desc: BAM 0x%x pipe %d: %d\n",
 			BAM_ID(dev), pipe_index, count);
@@ -1778,30 +1759,6 @@ static void pipe_handler(struct sps_bam *dev, struct sps_pipe *pipe)
 		pipe_handler_generic(dev, pipe,
 					     SPS_EVENT_OUT_OF_DESC);
 		status &= ~SPS_O_OUT_OF_DESC;
-		if (status == 0)
-			return;
-	}
-
-	if ((status & SPS_O_RST_ERROR) && enhd_pipe) {
-		SPS_ERR("sps:bam 0x%x ;pipe 0x%x irq status=0x%x.\n"
-				"sps: BAM_PIPE_IRQ_RST_ERROR\n",
-				BAM_ID(dev), pipe_index, status);
-		bam_output_register_content(dev->base, dev->props.ee);
-		pipe_handler_generic(dev, pipe,
-					     SPS_EVENT_RST_ERROR);
-		status &= ~SPS_O_RST_ERROR;
-		if (status == 0)
-			return;
-	}
-
-	if ((status & SPS_O_HRESP_ERROR) && enhd_pipe) {
-		SPS_ERR("sps:bam 0x%x ;pipe 0x%x irq status=0x%x.\n"
-				"sps: BAM_PIPE_IRQ_HRESP_ERROR\n",
-				BAM_ID(dev), pipe_index, status);
-		bam_output_register_content(dev->base, dev->props.ee);
-		pipe_handler_generic(dev, pipe,
-					     SPS_EVENT_HRESP_ERROR);
-		status &= ~SPS_O_HRESP_ERROR;
 		if (status == 0)
 			return;
 	}

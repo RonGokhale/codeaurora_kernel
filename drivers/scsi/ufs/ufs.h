@@ -41,10 +41,12 @@
 
 #define MAX_CDB_SIZE	16
 #define GENERAL_UPIU_REQUEST_SIZE 32
-#define QUERY_DESC_MAX_SIZE       255
-#define QUERY_DESC_MIN_SIZE       2
-#define QUERY_OSF_SIZE            (GENERAL_UPIU_REQUEST_SIZE - \
+#define UPIU_HEADER_DATA_SEGMENT_MAX_SIZE	((ALIGNED_UPIU_SIZE) - \
+					(GENERAL_UPIU_REQUEST_SIZE))
+#define QUERY_OSF_SIZE			((GENERAL_UPIU_REQUEST_SIZE) - \
 					(sizeof(struct utp_upiu_header)))
+#define UFS_QUERY_RESERVED_SCSI_CMD 0xCC
+#define UFS_QUERY_CMD_SIZE 10
 
 #define UPIU_HEADER_DWORD(byte3, byte2, byte1, byte0)\
 			cpu_to_be32((byte3 << 24) | (byte2 << 16) |\
@@ -101,74 +103,12 @@ enum {
 
 /* UPIU Query request function */
 enum {
-	UPIU_QUERY_FUNC_STANDARD_READ_REQUEST           = 0x01,
-	UPIU_QUERY_FUNC_STANDARD_WRITE_REQUEST          = 0x81,
-};
-
-/* Flag idn for Query Requests*/
-enum flag_idn {
-	QUERY_FLAG_IDN_FDEVICEINIT      = 0x01,
-	QUERY_FLAG_IDN_BKOPS_EN         = 0x04,
-};
-
-/* Attribute idn for Query requests */
-enum attr_idn {
-	QUERY_ATTR_IDN_BKOPS_STATUS	= 0x05,
-	QUERY_ATTR_IDN_EE_CONTROL	= 0x0D,
-	QUERY_ATTR_IDN_EE_STATUS	= 0x0E,
-};
-
-/* Descriptor idn for Query requests */
-enum desc_idn {
-	QUERY_DESC_IDN_DEVICE		= 0x0,
-	QUERY_DESC_IDN_CONFIGURAION	= 0x1,
-	QUERY_DESC_IDN_UNIT		= 0x2,
-	QUERY_DESC_IDN_RFU_0		= 0x3,
-	QUERY_DESC_IDN_INTERCONNECT	= 0x4,
-	QUERY_DESC_IDN_STRING		= 0x5,
-	QUERY_DESC_IDN_RFU_1		= 0x6,
-	QUERY_DESC_IDN_GEOMETRY		= 0x7,
-	QUERY_DESC_IDN_POWER		= 0x8,
-	QUERY_DESC_IDN_RFU_2		= 0x9,
-};
-
-#define UNIT_DESC_MAX_SIZE       0x22
-/* Unit descriptor parameters offsets in bytes*/
-enum unit_desc_param {
-	UNIT_DESC_PARAM_LEN			= 0x0,
-	UNIT_DESC_PARAM_TYPE			= 0x1,
-	UNIT_DESC_PARAM_UNIT_INDEX		= 0x2,
-	UNIT_DESC_PARAM_LU_ENABLE		= 0x3,
-	UNIT_DESC_PARAM_BOOT_LUN_ID		= 0x4,
-	UNIT_DESC_PARAM_LU_WR_PROTECT		= 0x5,
-	UNIT_DESC_PARAM_LU_Q_DEPTH		= 0x6,
-	UNIT_DESC_PARAM_MEM_TYPE		= 0x8,
-	UNIT_DESC_PARAM_DATA_RELIABILITY	= 0x9,
-	UNIT_DESC_PARAM_LOGICAL_BLK_SIZE	= 0xA,
-	UNIT_DESC_PARAM_LOGICAL_BLK_COUNT	= 0xB,
-	UNIT_DESC_PARAM_ERASE_BLK_SIZE		= 0x13,
-	UNIT_DESC_PARAM_PROVISIONING_TYPE	= 0x17,
-	UNIT_DESC_PARAM_PHY_MEM_RSRC_CNT	= 0x18,
-	UNIT_DESC_PARAM_CTX_CAPABILITIES	= 0x20,
-	UNIT_DESC_PARAM_LARGE_UNIT_SIZE_M1	= 0x22,
-};
-
-/* Exception event mask values */
-enum {
-	MASK_EE_STATUS		= 0xFFFF,
-	MASK_EE_URGENT_BKOPS	= (1 << 2),
-};
-
-/* Background operation status */
-enum {
-	BKOPS_STATUS_NO_OP               = 0x0,
-	BKOPS_STATUS_NON_CRITICAL        = 0x1,
-	BKOPS_STATUS_PERF_IMPACT         = 0x2,
-	BKOPS_STATUS_CRITICAL            = 0x3,
+	UPIU_QUERY_FUNC_STANDARD_READ_REQUEST = 0x01,
+	UPIU_QUERY_FUNC_STANDARD_WRITE_REQUEST = 0x81,
 };
 
 /* UTP QUERY Transaction Specific Fields OpCode */
-enum query_opcode {
+enum {
 	UPIU_QUERY_OPCODE_NOP		= 0x0,
 	UPIU_QUERY_OPCODE_READ_DESC	= 0x1,
 	UPIU_QUERY_OPCODE_WRITE_DESC	= 0x2,
@@ -182,17 +122,17 @@ enum query_opcode {
 
 /* Query response result code */
 enum {
-	QUERY_RESULT_SUCCESS                    = 0x00,
-	QUERY_RESULT_NOT_READABLE               = 0xF6,
-	QUERY_RESULT_NOT_WRITEABLE              = 0xF7,
-	QUERY_RESULT_ALREADY_WRITTEN            = 0xF8,
-	QUERY_RESULT_INVALID_LENGTH             = 0xF9,
-	QUERY_RESULT_INVALID_VALUE              = 0xFA,
-	QUERY_RESULT_INVALID_SELECTOR           = 0xFB,
-	QUERY_RESULT_INVALID_INDEX              = 0xFC,
-	QUERY_RESULT_INVALID_IDN                = 0xFD,
-	QUERY_RESULT_INVALID_OPCODE             = 0xFE,
-	QUERY_RESULT_GENERAL_FAILURE            = 0xFF,
+	QUERY_RESULT_SUCCESS			= 0x00,
+	QUERY_RESULT_NOT_READABLE		= 0xF6,
+	QUERY_RESULT_NOT_WRITEABLE		= 0xF7,
+	QUERY_RESULT_ALREADY_WRITTEN		= 0xF8,
+	QUERY_RESULT_INVALID_LENGTH		= 0xF9,
+	QUERY_RESULT_INVALID_VALUE		= 0xFA,
+	QUERY_RESULT_INVALID_SELECTOR		= 0xFB,
+	QUERY_RESULT_INVALID_INDEX		= 0xFC,
+	QUERY_RESULT_INVALID_IDN		= 0xFD,
+	QUERY_RESULT_INVALID_OPCODE		= 0xFE,
+	QUERY_RESULT_GENERAL_FAILURE		= 0xFF,
 };
 
 /* UTP Transfer Request Command Type (CT) */
@@ -209,12 +149,10 @@ enum {
 #define UPIU_RSP_CODE_OFFSET		8
 
 enum {
-	MASK_SCSI_STATUS		= 0xFF,
-	MASK_TASK_RESPONSE              = 0xFF00,
-	MASK_RSP_UPIU_RESULT            = 0xFFFF,
-	MASK_QUERY_DATA_SEG_LEN         = 0xFFFF,
-	MASK_RSP_UPIU_DATA_SEG_LEN	= 0xFFFF,
-	MASK_RSP_EXCEPTION_EVENT        = 0x10000,
+	MASK_SCSI_STATUS	= 0xFF,
+	MASK_TASK_RESPONSE	= 0xFF00,
+	MASK_RSP_UPIU_RESULT	= 0xFFFF,
+	MASK_QUERY_DATA_SEG_LEN	= 0xFFFF,
 };
 
 /* Task management service response */
@@ -256,8 +194,8 @@ struct utp_upiu_cmd {
  * @selector: Index to further identify data B-3
  * @reserved_osf: spec reserved field B-4,5
  * @length: number of descriptor bytes to read/write B-6,7
- * @value: Attribute value to be written DW-5
- * @reserved: spec reserved DW-6,7
+ * @value: Attribute value to be written DW-6
+ * @reserved: spec reserved DW-7,8
  */
 struct utp_upiu_query {
 	u8 opcode;
@@ -273,8 +211,8 @@ struct utp_upiu_query {
 /**
  * struct utp_upiu_req - general upiu request structure
  * @header:UPIU header structure DW-0 to DW-2
- * @sc: fields structure for scsi command DW-3 to DW-7
- * @qr: fields structure for query request DW-3 to DW-7
+ * @sc: fields structure for scsi command
+ * @qr: fields structure for query request
  */
 struct utp_upiu_req {
 	struct utp_upiu_header header;
@@ -301,13 +239,13 @@ struct utp_cmd_rsp {
 /**
  * struct utp_upiu_rsp - general upiu response structure
  * @header: UPIU header structure DW-0 to DW-2
- * @sr: fields structure for scsi command DW-3 to DW-12
- * @qr: fields structure for query request DW-3 to DW-7
+ * @sc: fields structure for scsi command
+ * @qr: fields structure for query request
  */
 struct utp_upiu_rsp {
 	struct utp_upiu_header header;
 	union {
-		struct utp_cmd_rsp sr;
+		struct utp_cmd_rsp sc;
 		struct utp_upiu_query qr;
 	};
 };
@@ -360,31 +298,6 @@ struct ufs_query_req {
 struct ufs_query_res {
 	u8 response;
 	struct utp_upiu_query upiu_res;
-};
-
-#define UFS_VREG_VCC_MIN_UV	   2700000 /* uV */
-#define UFS_VREG_VCC_MAX_UV	   3600000 /* uV */
-#define UFS_VREG_VCC_1P8_MIN_UV    1700000 /* uV */
-#define UFS_VREG_VCC_1P8_MAX_UV    1950000 /* uV */
-#define UFS_VREG_VCCQ_MIN_UV	   1100000 /* uV */
-#define UFS_VREG_VCCQ_MAX_UV	   1300000 /* uV */
-#define UFS_VREG_VCCQ2_MIN_UV	   1650000 /* uV */
-#define UFS_VREG_VCCQ2_MAX_UV	   1950000 /* uV */
-
-struct ufs_vreg {
-	struct regulator *reg;
-	const char *name;
-	bool enabled;
-	int min_uV;
-	int max_uV;
-	int min_uA;
-	int max_uA;
-};
-
-struct ufs_vreg_info {
-	struct ufs_vreg *vcc;
-	struct ufs_vreg *vccq;
-	struct ufs_vreg *vccq2;
 };
 
 #endif /* End of Header */

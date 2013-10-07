@@ -167,19 +167,20 @@ static int qpnpint_arbiter_op(struct irq_data *d,
 		pr_err_ratelimited("%s: decode failed on hwirq %lu\n",
 							__func__, d->hwirq);
 		return rc;
-	}
+	} else {
+		if (irq_d->priv_d == QPNPINT_INVALID_DATA) {
+			rc = chip_d->cb->register_priv_data(chip_d->spmi_ctrl,
+						&q_spec, &irq_d->priv_d);
+			if (rc) {
+				pr_err_ratelimited(
+					"%s: decode failed on hwirq %lu\n",
+					__func__, d->hwirq);
+				return rc;
+			}
 
-	if (irq_d->priv_d == QPNPINT_INVALID_DATA) {
-		rc = chip_d->cb->register_priv_data(chip_d->spmi_ctrl,
-					&q_spec, &irq_d->priv_d);
-		if (rc) {
-			pr_err_ratelimited(
-				"%s: decode failed on hwirq %lu rc = %d\n",
-				__func__, d->hwirq, rc);
-			return rc;
 		}
+		arb_op(chip_d->spmi_ctrl, &q_spec, irq_d->priv_d);
 	}
-	arb_op(chip_d->spmi_ctrl, &q_spec, irq_d->priv_d);
 
 	return 0;
 }
@@ -190,7 +191,6 @@ static void qpnpint_irq_mask(struct irq_data *d)
 	struct q_chip_data *chip_d = irq_d->chip_d;
 	struct q_perip_data *per_d = irq_d->per_d;
 	int rc;
-	uint8_t prev_int_en = per_d->int_en;
 
 	pr_debug("hwirq %lu irq: %d\n", d->hwirq, d->irq);
 
@@ -201,15 +201,9 @@ static void qpnpint_irq_mask(struct irq_data *d)
 		return;
 	}
 
-	per_d->int_en &= ~irq_d->mask_shift;
+	qpnpint_arbiter_op(d, irq_d, chip_d->cb->mask);
 
-	if (prev_int_en && !(per_d->int_en)) {
-		/*
-		 * no interrupt on this peripheral is enabled
-		 * ask the arbiter to ignore this peripheral
-		 */
-		qpnpint_arbiter_op(d, irq_d, chip_d->cb->mask);
-	}
+	per_d->int_en &= ~irq_d->mask_shift;
 
 	rc = qpnpint_spmi_write(irq_d, QPNPINT_REG_EN_CLR,
 					(u8 *)&irq_d->mask_shift, 1);
@@ -227,7 +221,6 @@ static void qpnpint_irq_mask_ack(struct irq_data *d)
 	struct q_chip_data *chip_d = irq_d->chip_d;
 	struct q_perip_data *per_d = irq_d->per_d;
 	int rc;
-	uint8_t prev_int_en = per_d->int_en;
 
 	pr_debug("hwirq %lu irq: %d\n", d->hwirq, d->irq);
 
@@ -238,15 +231,9 @@ static void qpnpint_irq_mask_ack(struct irq_data *d)
 		return;
 	}
 
-	per_d->int_en &= ~irq_d->mask_shift;
+	qpnpint_arbiter_op(d, irq_d, chip_d->cb->mask);
 
-	if (prev_int_en && !(per_d->int_en)) {
-		/*
-		 * no interrupt on this peripheral is enabled
-		 * ask the arbiter to ignore this peripheral
-		 */
-		qpnpint_arbiter_op(d, irq_d, chip_d->cb->mask);
-	}
+	per_d->int_en &= ~irq_d->mask_shift;
 
 	rc = qpnpint_spmi_write(irq_d, QPNPINT_REG_EN_CLR,
 							&irq_d->mask_shift, 1);
@@ -269,7 +256,6 @@ static void qpnpint_irq_unmask(struct irq_data *d)
 	struct q_chip_data *chip_d = irq_d->chip_d;
 	struct q_perip_data *per_d = irq_d->per_d;
 	int rc;
-	uint8_t prev_int_en = per_d->int_en;
 
 	pr_debug("hwirq %lu irq: %d\n", d->hwirq, d->irq);
 
@@ -280,15 +266,9 @@ static void qpnpint_irq_unmask(struct irq_data *d)
 		return;
 	}
 
+	qpnpint_arbiter_op(d, irq_d, chip_d->cb->unmask);
+
 	per_d->int_en |= irq_d->mask_shift;
-	if (!prev_int_en && per_d->int_en) {
-		/*
-		 * no interrupt prior to this call was enabled for the
-		 * peripheral. Ask the arbiter to enable interrupts for
-		 * this peripheral
-		 */
-		qpnpint_arbiter_op(d, irq_d, chip_d->cb->unmask);
-	}
 	rc = qpnpint_spmi_write(irq_d, QPNPINT_REG_EN_SET,
 					&irq_d->mask_shift, 1);
 	if (rc) {
@@ -591,9 +571,8 @@ int qpnpint_unregister_controller(struct device_node *node)
 }
 EXPORT_SYMBOL(qpnpint_unregister_controller);
 
-static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
-		       struct qpnp_irq_spec *spec,
-		       bool show)
+int qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
+		       struct qpnp_irq_spec *spec)
 {
 	struct irq_domain *domain;
 	unsigned long hwirq, busno;
@@ -618,39 +597,11 @@ static int __qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
 	domain = chip_lookup[busno]->domain;
 	irq = irq_radix_revmap_lookup(domain, hwirq);
 
-	if (show) {
-		struct irq_desc *desc;
-		const char *name = "null";
-
-		desc = irq_to_desc(irq);
-		if (desc == NULL)
-			name = "stray irq";
-		else if (desc->action && desc->action->name)
-			name = desc->action->name;
-
-		pr_warn("%d triggered [0x%01x, 0x%02x,0x%01x] %s\n",
-				irq, spec->slave, spec->per, spec->irq, name);
-	} else {
-		generic_handle_irq(irq);
-	}
+	generic_handle_irq(irq);
 
 	return 0;
 }
-
-int qpnpint_handle_irq(struct spmi_controller *spmi_ctrl,
-		       struct qpnp_irq_spec *spec)
-{
-	return  __qpnpint_handle_irq(spmi_ctrl, spec, false);
-}
-
 EXPORT_SYMBOL(qpnpint_handle_irq);
-
-int qpnpint_show_irq(struct spmi_controller *spmi_ctrl,
-		       struct qpnp_irq_spec *spec)
-{
-	return  __qpnpint_handle_irq(spmi_ctrl, spec, true);
-}
-EXPORT_SYMBOL(qpnpint_show_irq);
 
 int __init qpnpint_of_init(struct device_node *node, struct device_node *parent)
 {

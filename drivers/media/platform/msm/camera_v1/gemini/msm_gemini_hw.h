@@ -22,9 +22,9 @@ struct msm_gemini_hw_buf {
 	struct msm_gemini_buf vbuf;
 	struct file  *file;
 	uint32_t framedone_len;
-	dma_addr_t y_buffer_addr;
+	uint32_t y_buffer_addr;
 	uint32_t y_len;
-	dma_addr_t cbcr_buffer_addr;
+	uint32_t cbcr_buffer_addr;
 	uint32_t cbcr_len;
 	uint32_t num_of_mcu_rows;
 	struct ion_handle *handle;
@@ -94,8 +94,7 @@ uint32_t msm_gemini_hw_read(struct msm_gemini_hw_cmd *hw_cmd_p);
 void msm_gemini_hw_write(struct msm_gemini_hw_cmd *hw_cmd_p);
 int msm_gemini_hw_wait(struct msm_gemini_hw_cmd *hw_cmd_p, int m_us);
 void msm_gemini_hw_delay(struct msm_gemini_hw_cmd *hw_cmd_p, int m_us);
-int msm_gemini_hw_exec_cmds(struct msm_gemini_hw_cmd *hw_cmd_p,
-	uint32_t m_cmds);
+int msm_gemini_hw_exec_cmds(struct msm_gemini_hw_cmd *hw_cmd_p, int m_cmds);
 void msm_gemini_io_dump(int size);
 
 #define MSM_GEMINI_PIPELINE_CLK_128MHZ 128 /* 8MP  128MHz */

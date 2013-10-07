@@ -72,12 +72,6 @@ enum cp_mem_usage {
  */
 #define ION_FLAG_FORCE_CONTIGUOUS (1 << 30)
 
-/*
- * Used in conjunction with heap which pool memory to force an allocation
- * to come from the page allocator directly instead of from the pool allocation
- */
-#define ION_FLAG_POOL_FORCE_ALLOC (1 << 16)
-
 /**
 * Deprecated! Please use the corresponding ION_FLAG_*
 */
@@ -235,7 +229,7 @@ int ion_handle_get_flags(struct ion_client *client, struct ion_handle *handle,
  */
 int ion_map_iommu(struct ion_client *client, struct ion_handle *handle,
 			int domain_num, int partition_num, unsigned long align,
-			unsigned long iova_length, ion_phys_addr_t *iova,
+			unsigned long iova_length, unsigned long *iova,
 			unsigned long *buffer_size,
 			unsigned long flags, unsigned long iommu_flags);
 
@@ -390,7 +384,7 @@ static inline struct ion_client *msm_ion_client_create(unsigned int heap_mask,
 static inline int ion_map_iommu(struct ion_client *client,
 			struct ion_handle *handle, int domain_num,
 			int partition_num, unsigned long align,
-			unsigned long iova_length, ion_phys_addr_t *iova,
+			unsigned long iova_length, unsigned long *iova,
 			unsigned long *buffer_size,
 			unsigned long flags,
 			unsigned long iommu_flags)
@@ -494,12 +488,6 @@ struct ion_flush_data {
 	unsigned int length;
 };
 
-
-struct ion_prefetch_data {
-	int heap_id;
-	unsigned long len;
-};
-
 #define ION_IOC_MSM_MAGIC 'M'
 
 /**
@@ -523,12 +511,5 @@ struct ion_prefetch_data {
  */
 #define ION_IOC_CLEAN_INV_CACHES	_IOWR(ION_IOC_MSM_MAGIC, 2, \
 						struct ion_flush_data)
-
-#define ION_IOC_PREFETCH		_IOWR(ION_IOC_MSM_MAGIC, 3, \
-						struct ion_prefetch_data)
-
-#define ION_IOC_DRAIN			_IOWR(ION_IOC_MSM_MAGIC, 4, \
-						struct ion_prefetch_data)
-
 
 #endif

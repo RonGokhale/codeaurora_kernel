@@ -47,7 +47,7 @@
 
 /* Define a MobiCore device structure for use with dev_debug() etc */
 struct device_driver mcd_debug_name = {
-	.name = "MobiCore"
+	.name = "mcdrvkmod"
 };
 
 struct device mcd_debug_subname = {

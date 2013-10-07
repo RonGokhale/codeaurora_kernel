@@ -15,7 +15,6 @@
 #define __SUBSYS_RESTART_H
 
 #include <linux/spinlock.h>
-#include <linux/interrupt.h>
 
 #define SUBSYS_NAME_MAX_LENGTH 40
 
@@ -58,15 +57,8 @@ struct subsys_desc {
 	int (*powerup)(const struct subsys_desc *desc);
 	void (*crash_shutdown)(const struct subsys_desc *desc);
 	int (*ramdump)(int, const struct subsys_desc *desc);
-	irqreturn_t (*err_fatal_handler) (int irq, void *dev_id);
-	irqreturn_t (*stop_ack_handler) (int irq, void *dev_id);
-	irqreturn_t (*wdog_bite_handler) (int irq, void *dev_id);
-	int is_not_loadable;
-	unsigned int err_fatal_irq;
 	unsigned int err_ready_irq;
-	unsigned int stop_ack_irq;
-	unsigned int wdog_bite_irq;
-	int force_stop_gpio;
+	int is_not_loadable;
 };
 
 #if defined(CONFIG_MSM_SUBSYSTEM_RESTART)

@@ -84,7 +84,6 @@ static const struct tlmm_field_cfg tlmm_pull_cfgs[] = {
 	{SDC1_HDRV_PULL_CTL, 13}, /* TLMM_PULL_SDC1_CLK  */
 	{SDC1_HDRV_PULL_CTL, 11}, /* TLMM_PULL_SDC1_CMD  */
 	{SDC1_HDRV_PULL_CTL, 9},  /* TLMM_PULL_SDC1_DATA */
-	{SDC1_HDRV_PULL_CTL, 15}, /* TLMM_PULL_SDC1_RCLK  */
 };
 
 /*
@@ -374,18 +373,9 @@ void msm_gpio_show_resume_irq(void)
 	for_each_set_bit(i, msm_gpio.wake_irqs, ngpio) {
 		intstat = __msm_gpio_get_intr_status(i);
 		if (intstat) {
-			struct irq_desc *desc;
-			const char *name = "null";
-
 			irq = msm_gpio_to_irq(&msm_gpio.gpio_chip, i);
-			desc = irq_to_desc(irq);
-			if (desc == NULL)
-				name = "stray irq";
-			else if (desc->action && desc->action->name)
-				name = desc->action->name;
-
-			pr_warning("%s: %d triggered %s\n",
-					__func__, irq, name);
+			pr_warning("%s: %d triggered\n",
+				__func__, irq);
 		}
 	}
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);

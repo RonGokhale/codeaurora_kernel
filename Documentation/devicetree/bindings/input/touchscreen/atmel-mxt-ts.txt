@@ -35,11 +35,6 @@ Optional property:
 					needed during wakeup.
  - atmel,no-force-update	: flag that signifies whether force configuration
 					update is applicable or not
- - atmel,no-lpm-support		: flag that signifies whether low power mode is
-					supported or not on this platform
- - atmel,i2cmode-gpio		: specify gpio number for i2cmode, which provides
-					internal pull-ups to i2c bus in case there
-					is no hardware pull-up support
 
 Example:
 	i2c@f9966000 {

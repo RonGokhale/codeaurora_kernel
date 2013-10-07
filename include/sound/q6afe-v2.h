@@ -83,7 +83,6 @@ enum {
 	IDX_AFE_PORT_ID_PRIMARY_MI2S_TX = 41,
 	IDX_AFE_PORT_ID_SECONDARY_PCM_RX = 42,
 	IDX_AFE_PORT_ID_SECONDARY_PCM_TX = 43,
-	IDX_VOICE2_PLAYBACK_TX = 44,
 	IDX_GLOBAL_CFG,
 	AFE_MAX_PORTS
 };
@@ -148,7 +147,6 @@ int afe_get_port_index(u16 port_id);
 int afe_start_pseudo_port(u16 port_id);
 int afe_stop_pseudo_port(u16 port_id);
 uint32_t afe_req_mmap_handle(struct afe_audio_client *ac);
-int afe_unmap_cal_blocks(void);
 int afe_memory_map(u32 dma_addr_p, u32 dma_buf_sz, struct afe_audio_client *ac);
 int afe_cmd_memory_map(u32 dma_addr_p, u32 dma_buf_sz);
 int afe_cmd_memory_map_nowait(int port_id, u32 dma_addr_p, u32 dma_buf_sz);

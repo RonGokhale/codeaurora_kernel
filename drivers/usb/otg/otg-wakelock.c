@@ -139,9 +139,9 @@ static int __init otg_wakelock_init(void)
 {
 	int ret;
 
-	otgwl_xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
+	otgwl_xceiv = usb_get_transceiver();
 
-	if (IS_ERR_OR_NULL(otgwl_xceiv)) {
+	if (!otgwl_xceiv) {
 		pr_err("%s: No USB transceiver found\n", __func__);
 		return -ENODEV;
 	}

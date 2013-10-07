@@ -285,7 +285,7 @@ static int pil_venus_reset(struct pil_desc *pil)
 	struct venus_data *drv = dev_get_drvdata(pil->dev);
 	void __iomem *wrapper_base = drv->venus_wrapper_base;
 	phys_addr_t pa = pil_get_entry_addr(pil);
-	dma_addr_t iova;
+	unsigned long iova;
 	u32 ver, cpa_start_addr, cpa_end_addr, fw_start_addr, fw_end_addr;
 
 	/*
@@ -604,8 +604,6 @@ static int __devinit pil_venus_probe(struct platform_device *pdev)
 	drv->ramdump_dev = create_ramdump_device("venus", &pdev->dev);
 	if (!drv->ramdump_dev)
 		return -ENOMEM;
-
-	scm_pas_init(MSM_BUS_MASTER_CRYPTO_CORE0);
 
 	rc = pil_desc_init(desc);
 	if (rc)

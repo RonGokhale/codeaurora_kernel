@@ -23,10 +23,3 @@
 		      <198 8 0>,
 		      <205 8 0>;
 };
-
-&cci {
-	/* Rotate rear camera to 180 degrees */
-	qcom,camera@6f {
-	qcom,mount-angle = <180>;
-	};
-};

@@ -52,12 +52,7 @@ struct dss_vreg {
 	char vreg_name[32];
 	int min_voltage;
 	int max_voltage;
-	int enable_load;
-	int disable_load;
-	int pre_on_sleep;
-	int post_on_sleep;
-	int pre_off_sleep;
-	int post_off_sleep;
+	int peak_current;
 };
 
 struct dss_gpio {

@@ -39,8 +39,6 @@
 #define HFI_BUFFERFLAG_EOSEQ			0x00200000
 #define HFI_BUFFERFLAG_DISCONTINUITY	0x80000000
 #define HFI_BUFFERFLAG_TEI				0x40000000
-#define HFI_BUFFERFLAG_DROP_FRAME               0x20000000
-
 
 #define HFI_ERR_SESSION_EMPTY_BUFFER_DONE_OUTPUT_PENDING	\
 	(HFI_OX_BASE + 0x1001)
@@ -337,6 +335,7 @@ struct hfi_uncompressed_plane_actual_constraints_info {
 #define HFI_MSG_SYS_OX_START			\
 (HFI_DOMAIN_BASE_COMMON + HFI_ARCH_OX_OFFSET + HFI_MSG_START_OFFSET + 0x0000)
 #define HFI_MSG_SYS_PING_ACK	(HFI_MSG_SYS_OX_START + 0x2)
+#define HFI_MSG_SYS_PROPERTY_INFO	(HFI_MSG_SYS_OX_START + 0x3)
 #define HFI_MSG_SYS_SESSION_ABORT_DONE	(HFI_MSG_SYS_OX_START + 0x4)
 
 #define HFI_MSG_SESSION_OX_START		\
@@ -409,7 +408,7 @@ struct hfi_cmd_session_empty_buffer_compressed_packet {
 	u32 input_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane0_packet {
@@ -428,7 +427,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane0_packet {
 	u32 input_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane1_packet {
@@ -437,7 +436,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane1_packet {
 	u32 filled_len;
 	u32 offset;
 	u8 *packet_buffer2;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_empty_buffer_uncompressed_plane2_packet {
@@ -446,7 +445,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane2_packet {
 	u32 filled_len;
 	u32 offset;
 	u8 *packet_buffer3;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_fill_buffer_packet {
@@ -460,7 +459,7 @@ struct hfi_cmd_session_fill_buffer_packet {
 	u32 output_tag;
 	u8 *packet_buffer;
 	u8 *extra_data_buffer;
-	u32 rgData[1];
+	u32 rgData[0];
 };
 
 struct hfi_cmd_session_flush_packet {
@@ -832,7 +831,6 @@ struct msm_vidc_fw {
 };
 
 u32 hfi_process_msg_packet(msm_vidc_callback callback,
-		u32 device_id, struct vidc_hal_msg_pkt_hdr *msg_hdr,
-		struct list_head *sessions, struct mutex *session_lock);
+		u32 device_id, struct vidc_hal_msg_pkt_hdr *msg_hdr);
 #endif
 

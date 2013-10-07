@@ -29,7 +29,9 @@
 #include <linux/completion.h>
 #include <linux/workqueue.h>
 #include <linux/clk.h>
+#include <linux/mfd/pmic8058.h>
 #include <asm/mach-types.h>
+#include <asm/uaccess.h>
 #include <mach/mdm2.h>
 #include <mach/restart.h>
 #include <mach/subsystem_notif.h>
@@ -81,14 +83,13 @@ static void mdm_toggle_soft_reset(struct mdm_modem_drv *mdm_drv)
 		soft_reset_direction_assert = 1;
 		soft_reset_direction_de_assert = 0;
 	}
-
-	gpio_direction_output(MDM_GPIO(AP2MDM_SOFT_RESET),
+	gpio_direction_output(mdm_drv->ap2mdm_soft_reset_gpio,
 			soft_reset_direction_assert);
 	/* Use mdelay because this function can be called from atomic
 	 * context.
 	 */
 	mdelay(10);
-	gpio_direction_output(MDM_GPIO(AP2MDM_SOFT_RESET),
+	gpio_direction_output(mdm_drv->ap2mdm_soft_reset_gpio,
 			soft_reset_direction_de_assert);
 }
 
@@ -108,7 +109,7 @@ static void mdm_power_down_common(struct mdm_modem_drv *mdm_drv)
 
 	/* Wait for the modem to complete its power down actions. */
 	for (i = 20; i > 0; i--) {
-		if (gpio_get_value(MDM_GPIO(MDM2AP_STATUS)) == 0) {
+		if (gpio_get_value(mdm_drv->mdm2ap_status_gpio) == 0) {
 			if (mdm_debug_mask & MDM_DEBUG_MASK_SHDN_LOG)
 				pr_debug("%s:id %d: mdm2ap_statuswent low, i=%d\n",
 					__func__, mdm_drv->device_id, i);
@@ -118,12 +119,12 @@ static void mdm_power_down_common(struct mdm_modem_drv *mdm_drv)
 	}
 
 	/* Assert the soft reset line whether mdm2ap_status went low or not */
-	gpio_direction_output(MDM_GPIO(AP2MDM_SOFT_RESET),
+	gpio_direction_output(mdm_drv->ap2mdm_soft_reset_gpio,
 					soft_reset_direction);
 	if (i == 0) {
 		pr_debug("%s:id %d: MDM2AP_STATUS never went low. Doing a hard reset\n",
 			   __func__, mdm_drv->device_id);
-		gpio_direction_output(MDM_GPIO(AP2MDM_SOFT_RESET),
+		gpio_direction_output(mdm_drv->ap2mdm_soft_reset_gpio,
 					soft_reset_direction);
 		/*
 		* Currently, there is a debounce timer on the charm PMIC. It is
@@ -139,12 +140,12 @@ static void mdm_do_first_power_on(struct mdm_modem_drv *mdm_drv)
 {
 	int i;
 	int pblrdy;
-
 	if (mdm_drv->power_on_count != 1) {
 		pr_debug("%s:id %d: Calling fn when power_on_count != 1\n",
 			   __func__, mdm_drv->device_id);
 		return;
 	}
+
 	pr_debug("%s:id %d: Powering on modem for the first time\n",
 		   __func__, mdm_drv->device_id);
 	mdm_peripheral_disconnect(mdm_drv);
@@ -154,29 +155,27 @@ static void mdm_do_first_power_on(struct mdm_modem_drv *mdm_drv)
 	 * instead of just de-asserting it. No harm done if the modem was
 	 * powered down.
 	 */
-	if (!mdm_drv->pdata->no_reset_on_first_powerup)
-		mdm_toggle_soft_reset(mdm_drv);
-
+	mdm_toggle_soft_reset(mdm_drv);
 	/* If the device has a kpd pwr gpio then toggle it. */
-	if (GPIO_IS_VALID(MDM_GPIO(AP2MDM_KPDPWR))) {
+	if (GPIO_IS_VALID(mdm_drv->ap2mdm_kpdpwr_n_gpio)) {
 		/* Pull AP2MDM_KPDPWR gpio high and wait for PS_HOLD to settle,
 		 * then	pull it back low.
 		 */
 		pr_debug("%s:id %d: Pulling AP2MDM_KPDPWR gpio high\n",
 				 __func__, mdm_drv->device_id);
-		gpio_direction_output(MDM_GPIO(AP2MDM_KPDPWR), 1);
-		gpio_direction_output(MDM_GPIO(AP2MDM_STATUS), 1);
+		gpio_direction_output(mdm_drv->ap2mdm_kpdpwr_n_gpio, 1);
+		gpio_direction_output(mdm_drv->ap2mdm_status_gpio, 1);
 		msleep(1000);
-		gpio_direction_output(MDM_GPIO(AP2MDM_KPDPWR), 0);
+		gpio_direction_output(mdm_drv->ap2mdm_kpdpwr_n_gpio, 0);
 	} else {
-		gpio_direction_output(MDM_GPIO(AP2MDM_STATUS), 1);
+		gpio_direction_output(mdm_drv->ap2mdm_status_gpio, 1);
 	}
 
-	if (!GPIO_IS_VALID(MDM_GPIO(MDM2AP_PBLRDY)))
+	if (!GPIO_IS_VALID(mdm_drv->mdm2ap_pblrdy))
 		goto start_mdm_peripheral;
 
 	for (i = 0; i  < MDM_PBLRDY_CNT; i++) {
-		pblrdy = gpio_get_value(MDM_GPIO(MDM2AP_PBLRDY));
+		pblrdy = gpio_get_value(mdm_drv->mdm2ap_pblrdy);
 		if (pblrdy)
 			break;
 		usleep_range(5000, 5000);
@@ -199,11 +198,11 @@ static void mdm_do_soft_power_on(struct mdm_modem_drv *mdm_drv)
 	mdm_peripheral_disconnect(mdm_drv);
 	mdm_toggle_soft_reset(mdm_drv);
 
-	if (!GPIO_IS_VALID(MDM_GPIO(MDM2AP_PBLRDY)))
+	if (!GPIO_IS_VALID(mdm_drv->mdm2ap_pblrdy))
 		goto start_mdm_peripheral;
 
 	for (i = 0; i  < MDM_PBLRDY_CNT; i++) {
-		pblrdy = gpio_get_value(MDM_GPIO(MDM2AP_PBLRDY));
+		pblrdy = gpio_get_value(mdm_drv->mdm2ap_pblrdy);
 		if (pblrdy)
 			break;
 		usleep_range(5000, 5000);
@@ -225,8 +224,8 @@ static void mdm_power_on_common(struct mdm_modem_drv *mdm_drv)
 	 * de-assert it now so that it can be asserted later.
 	 * May not be used.
 	 */
-	if (GPIO_IS_VALID(MDM_GPIO(AP2MDM_WAKEUP)))
-		gpio_direction_output(MDM_GPIO(AP2MDM_WAKEUP), 0);
+	if (GPIO_IS_VALID(mdm_drv->ap2mdm_wakeup_gpio))
+		gpio_direction_output(mdm_drv->ap2mdm_wakeup_gpio, 0);
 
 	/*
 	 * If we did an "early power on" then ignore the very next
@@ -250,18 +249,14 @@ static void debug_state_changed(int value)
 
 static void mdm_status_changed(struct mdm_modem_drv *mdm_drv, int value)
 {
-	if (!mdm_drv->pdata->peripheral_platform_device)
-		return;
-
 	pr_debug("%s: id %d: value:%d\n", __func__,
 			 value, mdm_drv->device_id);
 
 	if (value) {
 		mdm_peripheral_disconnect(mdm_drv);
-		msleep(100);
 		mdm_peripheral_connect(mdm_drv);
-		if (GPIO_IS_VALID(MDM_GPIO(AP2MDM_WAKEUP)))
-			gpio_direction_output(MDM_GPIO(AP2MDM_WAKEUP), 1);
+		if (GPIO_IS_VALID(mdm_drv->ap2mdm_wakeup_gpio))
+			gpio_direction_output(mdm_drv->ap2mdm_wakeup_gpio, 1);
 	}
 }
 
@@ -284,10 +279,10 @@ static void mdm_image_upgrade(struct mdm_modem_drv *mdm_drv, int type)
 		 * high.
 		 */
 		mdm_drv->disable_status_check = 1;
-		if (GPIO_IS_VALID(MDM_GPIO(USB_SW))) {
+		if (GPIO_IS_VALID(mdm_drv->usb_switch_gpio)) {
 			pr_debug("%s: id %d: Switching usb control to MDM\n",
 					__func__, mdm_drv->device_id);
-			gpio_direction_output(MDM_GPIO(USB_SW), 1);
+			gpio_direction_output(mdm_drv->usb_switch_gpio, 1);
 		} else
 			pr_err("%s: id %d: usb switch gpio unavailable\n",
 				   __func__, mdm_drv->device_id);
@@ -313,4 +308,5 @@ int mdm_get_ops(struct mdm_ops **mdm_ops)
 	*mdm_ops = &mdm_cb;
 	return 0;
 }
+
 

@@ -22,7 +22,6 @@ struct platform_device;
 
 struct q6v5_data {
 	void __iomem *reg_base;
-	void __iomem *rmb_base;
 	void __iomem *cxrail_bhs;  /* External BHS register */
 	struct clk *xo;		   /* XO clock source */
 	struct clk *ahb_clk;	   /* PIL access to registers */
@@ -38,7 +37,6 @@ struct q6v5_data {
 	struct regulator *vreg_pll;
 	bool is_booted;
 	struct pil_desc desc;
-	bool self_auth;
 };
 
 int pil_q6v5_make_proxy_votes(struct pil_desc *pil);

@@ -23,8 +23,6 @@
 #include "msm_gemini_platform.h"
 #include "msm_gemini_common.h"
 
-#define UINT32_MAX (0xFFFFFFFFU)
-
 static int release_buf;
 
 /* size is based on 4k page size */
@@ -590,7 +588,7 @@ int msm_gemini_input_buf_enqueue(struct msm_gemini_device *pgmn_dev,
 			(unsigned long)buf_cmd.y_off, CAMERA_DOMAIN, GEN_POOL,
 			((buf_cmd.y_len + buf_cmd.cbcr_len + 4095) & (~4095)),
 			SZ_4K, IOMMU_WRITE | IOMMU_READ,
-			&buf_p->y_buffer_addr);
+			(unsigned long *)&buf_p->y_buffer_addr);
 		if (rc < 0) {
 			pr_err("%s iommu mapping failed with error %d\n",
 				 __func__, rc);
@@ -806,19 +804,13 @@ int msm_gemini_ioctl_hw_cmds(struct msm_gemini_device *pgmn_dev,
 	void * __user arg)
 {
 	int is_copy_to_user;
-	uint32_t len;
+	int len;
 	uint32_t m;
 	struct msm_gemini_hw_cmds *hw_cmds_p;
 	struct msm_gemini_hw_cmd *hw_cmd_p;
 
 	if (copy_from_user(&m, arg, sizeof(m))) {
 		GMN_PR_ERR("%s:%d] failed\n", __func__, __LINE__);
-		return -EFAULT;
-	}
-
-	if ((m == 0) || (m > ((UINT32_MAX - sizeof(struct msm_gemini_hw_cmds)) /
-		sizeof(struct msm_gemini_hw_cmd)))) {
-		GMN_PR_ERR("%s:%d] m_cmds out of range\n", __func__, __LINE__);
 		return -EFAULT;
 	}
 

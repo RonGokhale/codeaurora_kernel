@@ -410,19 +410,31 @@ void kgsl_cffdump_user_event(struct kgsl_device *device,
 	cffdump_printline(-1, cff_opcode, op1, op2, op3, op4, op5);
 }
 
-void kgsl_cffdump_syncmem(struct kgsl_device *device,
-			  struct kgsl_memdesc *memdesc, uint gpuaddr,
-			  uint sizebytes, bool clean_cache)
+void kgsl_cffdump_syncmem(struct kgsl_device_private *dev_priv,
+	struct kgsl_memdesc *memdesc, uint gpuaddr, uint sizebytes,
+	bool clean_cache)
 {
+	struct kgsl_device *device = dev_priv->device;
 	const void *src;
 
 	if (!device->cff_dump_enable)
 		return;
 
-	BUG_ON(memdesc == NULL);
-
 	total_syncmem += sizebytes;
 
+	if (memdesc == NULL) {
+		struct kgsl_mem_entry *entry;
+		spin_lock(&dev_priv->process_priv->mem_lock);
+		entry = kgsl_sharedmem_find_region(dev_priv->process_priv,
+			gpuaddr, sizebytes);
+		spin_unlock(&dev_priv->process_priv->mem_lock);
+		if (entry == NULL) {
+			KGSL_CORE_ERR("did not find mapping "
+				"for gpuaddr: 0x%08x\n", gpuaddr);
+			return;
+		}
+		memdesc = &entry->memdesc;
+	}
 	src = (uint *)kgsl_gpuaddr_to_vaddr(memdesc, gpuaddr);
 	if (memdesc->hostptr == NULL) {
 		KGSL_CORE_ERR(
@@ -451,8 +463,6 @@ void kgsl_cffdump_syncmem(struct kgsl_device *device,
 	if (sizebytes > 0)
 		cffdump_printline(-1, CFF_OP_WRITE_MEM, gpuaddr, *(uint *)src,
 			0, 0, 0);
-	/* Unmap memory since kgsl_gpuaddr_to_vaddr was called */
-	kgsl_memdesc_unmap(memdesc);
 }
 
 void kgsl_cffdump_setmem(struct kgsl_device *device,
@@ -612,6 +622,10 @@ int kgsl_cff_dump_enable_set(void *data, u64 val)
 	int i;
 
 	mutex_lock(&kgsl_driver.devlock);
+	/*
+	 * If CFF dump enabled then set active count to prevent device
+	 * from restarting because simulator cannot run device restarts
+	 */
 	if (val) {
 		/* Check if CFF is on for some other device already */
 		for (i = 0; i < KGSL_DEVICE_MAX; i++) {
@@ -629,10 +643,20 @@ int kgsl_cff_dump_enable_set(void *data, u64 val)
 			}
 		}
 		if (!device->cff_dump_enable) {
+			mutex_lock(&device->mutex);
 			device->cff_dump_enable = 1;
+			ret = kgsl_open_device(device);
+			if (!ret)
+				ret = kgsl_active_count_get(device);
+			if (ret)
+				device->cff_dump_enable = 0;
+			mutex_unlock(&device->mutex);
 		}
 	} else if (device->cff_dump_enable && !val) {
+		mutex_lock(&device->mutex);
+		ret = kgsl_close_device(device);
 		device->cff_dump_enable = 0;
+		mutex_unlock(&device->mutex);
 	}
 done:
 	mutex_unlock(&kgsl_driver.devlock);

@@ -42,7 +42,7 @@ static int clk_rpmrs_get_rate(struct rpm_clk *r)
 	int rc;
 	struct msm_rpm_iv_pair iv = { .id = r->rpm_status_id, };
 	rc = msm_rpm_get_status(&iv, 1);
-	return (rc < 0) ? rc : iv.value * 1000;
+	return (rc < 0) ? rc : iv.value * r->factor;
 }
 
 static int clk_rpmrs_handoff(struct rpm_clk *r)
@@ -54,14 +54,9 @@ static int clk_rpmrs_handoff(struct rpm_clk *r)
 		return rc;
 
 	if (!r->branch)
-		r->c.rate = iv.value * 1000;
+		r->c.rate = iv.value * r->factor;
 
 	return 0;
-}
-
-static int clk_rpmrs_is_enabled(struct rpm_clk *r)
-{
-	return !!clk_rpmrs_get_rate(r);
 }
 
 static int clk_rpmrs_set_rate_smd(struct rpm_clk *r, uint32_t value,
@@ -85,16 +80,10 @@ static int clk_rpmrs_handoff_smd(struct rpm_clk *r)
 	return 0;
 }
 
-static int clk_rpmrs_is_enabled_smd(struct rpm_clk *r)
-{
-	return !!r->c.prepare_count;
-}
-
 struct clk_rpmrs_data {
 	int (*set_rate_fn)(struct rpm_clk *r, uint32_t value, uint32_t context);
 	int (*get_rate_fn)(struct rpm_clk *r);
 	int (*handoff_fn)(struct rpm_clk *r);
-	int (*is_enabled)(struct rpm_clk *r);
 	int ctx_active_id;
 	int ctx_sleep_id;
 };
@@ -103,7 +92,6 @@ struct clk_rpmrs_data clk_rpmrs_data = {
 	.set_rate_fn = clk_rpmrs_set_rate,
 	.get_rate_fn = clk_rpmrs_get_rate,
 	.handoff_fn = clk_rpmrs_handoff,
-	.is_enabled = clk_rpmrs_is_enabled,
 	.ctx_active_id = MSM_RPM_CTX_SET_0,
 	.ctx_sleep_id = MSM_RPM_CTX_SET_SLEEP,
 };
@@ -111,7 +99,6 @@ struct clk_rpmrs_data clk_rpmrs_data = {
 struct clk_rpmrs_data clk_rpmrs_data_smd = {
 	.set_rate_fn = clk_rpmrs_set_rate_smd,
 	.handoff_fn = clk_rpmrs_handoff_smd,
-	.is_enabled = clk_rpmrs_is_enabled_smd,
 	.ctx_active_id = MSM_RPM_CTX_ACTIVE_SET,
 	.ctx_sleep_id = MSM_RPM_CTX_SLEEP_SET,
 };
@@ -122,7 +109,7 @@ static void to_active_sleep_khz(struct rpm_clk *r, unsigned long rate,
 			unsigned long *active_khz, unsigned long *sleep_khz)
 {
 	/* Convert the rate (hz) to khz */
-	*active_khz = DIV_ROUND_UP(rate, 1000);
+	*active_khz = DIV_ROUND_UP(rate, r->factor);
 
 	/*
 	 * Active-only clocks don't care what the rate is during sleep. So,
@@ -270,8 +257,7 @@ static unsigned long rpm_clk_get_rate(struct clk *clk)
 
 static int rpm_clk_is_enabled(struct clk *clk)
 {
-	struct rpm_clk *r = to_rpm_clk(clk);
-	return r->rpmrs_data->is_enabled(r);
+	return !!(rpm_clk_get_rate(clk));
 }
 
 static long rpm_clk_round_rate(struct clk *clk, unsigned long rate)

@@ -109,7 +109,7 @@ int mdss_mdp_video_addr_setup(struct mdss_data_type *mdata,
 	return 0;
 }
 
-static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
+static int mdss_mdp_video_timegen_setup(struct mdss_mdp_video_ctx *ctx,
 					struct intf_timing_params *p)
 {
 	u32 hsync_period, vsync_period;
@@ -117,9 +117,7 @@ static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
 	u32 active_h_start, active_h_end, active_v_start, active_v_end;
 	u32 den_polarity, hsync_polarity, vsync_polarity;
 	u32 display_hctl, active_hctl, hsync_ctl, polarity_ctl;
-	struct mdss_mdp_video_ctx *ctx;
 
-	ctx = ctl->priv_data;
 	hsync_period = p->hsync_pulse_width + p->h_back_porch +
 			p->width + p->h_front_porch;
 	vsync_period = p->vsync_pulse_width + p->v_back_porch +
@@ -182,7 +180,7 @@ static int mdss_mdp_video_timegen_setup(struct mdss_mdp_ctl *ctl,
 
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_HSYNC_CTL, hsync_ctl);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_VSYNC_PERIOD_F0,
-			vsync_period * hsync_period);
+			   vsync_period * hsync_period);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_VSYNC_PULSE_WIDTH_F0,
 			   p->vsync_pulse_width * hsync_period);
 	mdp_video_write(ctx, MDSS_MDP_REG_INTF_DISPLAY_HCTL, display_hctl);
@@ -411,9 +409,11 @@ static int mdss_mdp_video_wait4comp(struct mdss_mdp_ctl *ctl, void *arg)
 	if (ctx->polling_en) {
 		rc = mdss_mdp_video_pollwait(ctl);
 	} else {
-		rc = wait_for_completion_timeout(&ctx->vsync_comp,
+		rc = wait_for_completion_interruptible_timeout(&ctx->vsync_comp,
 				usecs_to_jiffies(VSYNC_TIMEOUT_US));
-		if (rc == 0) {
+		if (rc < 0) {
+			pr_warn("vsync wait interrupted ctl=%d\n", ctl->num);
+		} else if (rc == 0) {
 			pr_warn("vsync wait timeout %d, fallback to poll mode\n",
 					ctl->num);
 			ctx->polling_en++;
@@ -441,88 +441,6 @@ static void mdss_mdp_video_underrun_intr_done(void *arg)
 	pr_debug("display underrun detected for ctl=%d count=%d\n", ctl->num,
 			ctl->underrun_cnt);
 }
-
-static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl, int new_fps)
-{
-	struct mdss_mdp_video_ctx *ctx;
-	struct mdss_panel_data *pdata;
-	int rc = 0;
-	u32 hsync_period, vsync_period;
-
-	pr_debug("Updating fps for ctl=%d\n", ctl->num);
-
-	ctx = (struct mdss_mdp_video_ctx *) ctl->priv_data;
-	if (!ctx) {
-		pr_err("invalid ctx\n");
-		return -ENODEV;
-	}
-
-	pdata = ctl->panel_data;
-	if (pdata == NULL) {
-		pr_err("%s: Invalid panel data\n", __func__);
-		return -EINVAL;
-	}
-
-	if (!pdata->panel_info.dynamic_fps) {
-		pr_err("%s: Dynamic fps not enabled for this panel\n",
-						__func__);
-		return -EINVAL;
-	}
-
-	vsync_period = mdss_panel_get_vtotal(&pdata->panel_info);
-	hsync_period = mdss_panel_get_htotal(&pdata->panel_info);
-
-	if (pdata->panel_info.dfps_update
-			!= DFPS_SUSPEND_RESUME_MODE) {
-		if (pdata->panel_info.dfps_update
-				== DFPS_IMMEDIATE_CLK_UPDATE_MODE) {
-			if (!ctx->timegen_en) {
-				pr_err("TG is OFF. DFPS mode invalid\n");
-				return -EINVAL;
-			}
-			ctl->force_screen_state = MDSS_SCREEN_FORCE_BLANK;
-			mdss_mdp_display_commit(ctl, NULL);
-			mdss_mdp_display_wait4comp(ctl);
-			mdp_video_write(ctx,
-					MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 0);
-			/*
-			 * Need to wait for atleast one vsync time for proper
-			 * TG OFF before doing changes on interfaces
-			 */
-			msleep(20);
-			rc = mdss_mdp_ctl_intf_event(ctl,
-						MDSS_EVENT_PANEL_UPDATE_FPS,
-						(void *)new_fps);
-			WARN(rc, "intf %d panel fps update error (%d)\n",
-							ctl->intf_num, rc);
-			mdp_video_write(ctx,
-					MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
-			/*
-			 * Add memory barrier to make sure the MDP Video
-			 * mode engine is enabled before next frame is sent
-			 */
-			mb();
-			ctl->force_screen_state = MDSS_SCREEN_DEFAULT;
-			mdss_mdp_display_commit(ctl, NULL);
-			mdss_mdp_display_wait4comp(ctl);
-		} else {
-			pr_err("intf %d panel, unknown FPS mode\n",
-							ctl->intf_num);
-			return -EINVAL;
-		}
-	} else {
-		rc = mdss_mdp_ctl_intf_event(ctl,
-					MDSS_EVENT_PANEL_UPDATE_FPS,
-					(void *)new_fps);
-		WARN(rc, "intf %d panel fps update error (%d)\n",
-						ctl->intf_num, rc);
-	}
-
-	return rc;
-}
-
-
-
 
 static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 {
@@ -563,9 +481,9 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 		mdp_video_write(ctx, MDSS_MDP_REG_INTF_TIMING_ENGINE_EN, 1);
 		wmb();
 
-		rc = wait_for_completion_timeout(&ctx->vsync_comp,
+		rc = wait_for_completion_interruptible_timeout(&ctx->vsync_comp,
 				usecs_to_jiffies(VSYNC_TIMEOUT_US));
-		WARN(rc == 0, "timeout (%d) enabling timegen on ctl=%d\n",
+		WARN(rc <= 0, "timeout (%d) enabling timegen on ctl=%d\n",
 				rc, ctl->num);
 
 		ctx->timegen_en = true;
@@ -576,85 +494,32 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 	return 0;
 }
 
-static struct splash_pipe_cfg splash_pipes[MDSS_MDP_MAX_SSPP];
-
-int mdss_mdp_scan_cont_splash(void)
-{
-	u32 off;
-	u32  data, height = 0, width = 0;
-	int i, j, total = 0;
-	u32 bits;
-	struct splash_pipe_cfg *sp;
-
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
-	sp = splash_pipes;
-	for (i = 0; i < MDSS_MDP_MAX_SSPP; i++, sp++) {
-		off = MDSS_MDP_REG_SSPP_OFFSET(i) + MDSS_MDP_REG_SSPP_SRC_SIZE;
-		data = MDSS_MDP_REG_READ(off);
-		pr_debug("i=%d: addr=%x hw=%x\n", i, (int)off, (int)data);
-
-		if (data == 0)
-			continue;
-		height = data;
-		height >>= 16;
-		height &= 0x0ffff;
-		width = data & 0x0ffff;
-		sp->width = width;
-		sp->height = height;
-		total++;
-	}
-	off = MDSS_MDP_REG_CTL_OFFSET(0);	/* control 0 only */
-	for (i = 0; i < MDSS_MDP_INTF_MAX_LAYERMIXER; i++) {
-		data = MDSS_MDP_REG_READ(off);
-		pr_debug("i=%d: addr=%x hw=%x\n", i, (int)off, (int)data);
-
-		for (j = 0; j < MDSS_MDP_MAX_SSPP; j++) {
-			bits = data & 0x07;
-			if (bits)
-				splash_pipes[j].mixer = i;
-			data >>= 3;
-		}
-		off += 4;
-	}
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
-
-	pr_debug("total=%d\n", total);
-
-	return total;
-}
-
 int mdss_mdp_video_copy_splash_screen(struct mdss_panel_data *pdata)
 {
 	void *virt = NULL;
-	unsigned long fb_addr = 0;
-	unsigned long *fb_addr_va;
-	unsigned long  off;
-	u32 height, width, bpp, flush;
+	unsigned long bl_fb_addr = 0;
+	unsigned long *bl_fb_addr_va;
+	unsigned long  pipe_addr, pipe_src_size;
+	u32 height, width, rgb_size, bpp;
 	size_t size;
 	static struct ion_handle *ihdl;
 	struct ion_client *iclient = mdss_get_ionclient();
 	static ion_phys_addr_t phys;
-	int i;
-	struct splash_pipe_cfg *sp;
 
-	sp = splash_pipes;
-
-	width = 0;
-	height = 0;
-	for (i = 0; i < 8; i++, sp++) {
-		if (sp->width == 0)
-			continue;
-		width += sp->width;	/* aggregated */
-		height = sp->height;
-		off = MDSS_MDP_REG_SSPP_OFFSET(i) +
+	pipe_addr = MDSS_MDP_REG_SSPP_OFFSET(3) +
 		MDSS_MDP_REG_SSPP_SRC0_ADDR;
-		fb_addr = MDSS_MDP_REG_READ(off);
-	}
+	pipe_src_size =
+		MDSS_MDP_REG_SSPP_OFFSET(3) + MDSS_MDP_REG_SSPP_SRC_SIZE;
 
 	bpp        = 3;
+	rgb_size   = MDSS_MDP_REG_READ(pipe_src_size);
+	bl_fb_addr = MDSS_MDP_REG_READ(pipe_addr);
+
+	height = (rgb_size >> 16) & 0xffff;
+	width  = rgb_size & 0xffff;
 	size = PAGE_ALIGN(height * width * bpp);
-	pr_debug("splash_height=%d splash_width=%d Buffer size=%d fb=%x\n",
-			height, width, size, (int)fb_addr);
+	pr_debug("%s:%d splash_height=%d splash_width=%d Buffer size=%d\n",
+			__func__, __LINE__, height, width, size);
 
 	ihdl = ion_alloc(iclient, size, SZ_1M,
 			ION_HEAP(ION_QSECOM_HEAP_ID), 0);
@@ -668,35 +533,17 @@ int mdss_mdp_video_copy_splash_screen(struct mdss_panel_data *pdata)
 	virt = ion_map_kernel(iclient, ihdl);
 	ion_phys(iclient, ihdl, &phys, &size);
 
-	if (MDSS_LPAE_CHECK(phys)) {
-		pr_err("Phys mem %pa >4Gb cannot be used w/o IOMMU\n", &phys);
-		pdata->panel_info.splash_ihdl = NULL;
-		ion_free(iclient, ihdl);
-		return -ERANGE;
-	}
-
 	pr_debug("%s %d Allocating %u bytes at 0x%lx (%pa phys)\n",
 			__func__, __LINE__, size,
 			(unsigned long int)virt, &phys);
 
-	fb_addr_va = (unsigned long *)ioremap(fb_addr, size);
+	bl_fb_addr_va = (unsigned long *)ioremap(bl_fb_addr, size);
 
-	memcpy(virt, fb_addr_va, size);
+	memcpy(virt, bl_fb_addr_va, size);
 
-	sp = splash_pipes;
-	flush = 0;
-	for (i = 0; i < 8; i++, sp++) {
-		if (sp->width == 0)
-			continue;
-		off = MDSS_MDP_REG_SSPP_OFFSET(i) +
-			MDSS_MDP_REG_SSPP_SRC0_ADDR;
-		MDSS_MDP_REG_WRITE(off, phys);
-		flush |= (1 << i);	/* pipe bit */
-		flush |= (4 << sp->mixer); /* mixer bit */
-	}
-
+	MDSS_MDP_REG_WRITE(pipe_addr, phys);
 	MDSS_MDP_REG_WRITE(MDSS_MDP_REG_CTL_FLUSH + MDSS_MDP_REG_CTL_OFFSET(0),
-					flush);
+			0x48);
 
 	return 0;
 }
@@ -726,7 +573,7 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_ctl_write(ctl, 0, MDSS_MDP_LM_BORDER_COLOR);
 	off = MDSS_MDP_REG_INTF_OFFSET(ctl->intf_num);
 
-	if (mdss_mdp_rev >= MDSS_MDP_HW_REV_102)
+	if (mdss_mdp_rev == MDSS_MDP_HW_REV_102)
 		mdss_v2_intf_off =  0xEC00;
 
 	MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_INTF_TIMING_ENGINE_EN -
@@ -809,7 +656,7 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 			pinfo->bpp);
 	itp.vsync_pulse_width = pinfo->lcdc.v_pulse_width;
 
-	if (mdss_mdp_video_timegen_setup(ctl, &itp)) {
+	if (mdss_mdp_video_timegen_setup(ctx, &itp)) {
 		pr_err("unable to get timing parameters\n");
 		return -EINVAL;
 	}
@@ -821,7 +668,6 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 	ctl->read_line_cnt_fnc = mdss_mdp_video_line_count;
 	ctl->add_vsync_handler = mdss_mdp_video_add_vsync_handler;
 	ctl->remove_vsync_handler = mdss_mdp_video_remove_vsync_handler;
-	ctl->config_fps_fnc = mdss_mdp_video_config_fps;
 
 	return 0;
 }

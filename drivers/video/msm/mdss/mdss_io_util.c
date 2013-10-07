@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,7 +13,6 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
-#include <linux/delay.h>
 #include "mdss_io_util.h"
 
 #define MAX_I2C_CMDS  16
@@ -101,7 +100,7 @@ int msm_dss_ioremap_byname(struct platform_device *pdev,
 		return -ENODEV;
 	}
 
-	io_data->len = (u32)resource_size(res);
+	io_data->len = resource_size(res);
 	io_data->base = ioremap(res->start, io_data->len);
 	if (!io_data->base) {
 		DEV_ERR("%pS->%s: '%s' ioremap failed\n",
@@ -161,6 +160,19 @@ int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 						curr_vreg->vreg_name);
 					goto vreg_set_voltage_fail;
 				}
+				if (curr_vreg->peak_current >= 0) {
+					rc = regulator_set_optimum_mode(
+						curr_vreg->vreg,
+						curr_vreg->peak_current);
+					if (rc < 0) {
+						DEV_ERR(
+						"%pS->%s: %s set opt m fail\n",
+						__builtin_return_address(0),
+						__func__,
+						curr_vreg->vreg_name);
+						goto vreg_set_opt_mode_fail;
+					}
+				}
 			}
 		}
 	} else {
@@ -171,6 +183,10 @@ int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 					curr_vreg->vreg) > 0)
 					? DSS_REG_LDO : DSS_REG_VS;
 				if (type == DSS_REG_LDO) {
+					if (curr_vreg->peak_current >= 0) {
+						regulator_set_optimum_mode(
+							curr_vreg->vreg, 0);
+					}
 					regulator_set_voltage(curr_vreg->vreg,
 						0, curr_vreg->max_voltage);
 				}
@@ -184,6 +200,10 @@ int msm_dss_config_vreg(struct device *dev, struct dss_vreg *in_vreg,
 vreg_unconfig:
 if (type == DSS_REG_LDO)
 	regulator_set_optimum_mode(curr_vreg->vreg, 0);
+
+vreg_set_opt_mode_fail:
+if (type == DSS_REG_LDO)
+	regulator_set_voltage(curr_vreg->vreg, 0, curr_vreg->max_voltage);
 
 vreg_set_voltage_fail:
 	regulator_put(curr_vreg->vreg);
@@ -209,21 +229,9 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 				DEV_ERR("%pS->%s: %s regulator error. rc=%d\n",
 					__builtin_return_address(0), __func__,
 					in_vreg[i].vreg_name, rc);
-				goto vreg_set_opt_mode_fail;
-			}
-			if (in_vreg[i].pre_on_sleep)
-				msleep(in_vreg[i].pre_on_sleep);
-			rc = regulator_set_optimum_mode(in_vreg[i].vreg,
-				in_vreg[i].enable_load);
-			if (rc < 0) {
-				DEV_ERR("%pS->%s: %s set opt m fail\n",
-					__builtin_return_address(0), __func__,
-					in_vreg[i].vreg_name);
-				goto vreg_set_opt_mode_fail;
+				goto disable_vreg;
 			}
 			rc = regulator_enable(in_vreg[i].vreg);
-			if (in_vreg[i].post_on_sleep)
-				msleep(in_vreg[i].post_on_sleep);
 			if (rc < 0) {
 				DEV_ERR("%pS->%s: %s enable failed\n",
 					__builtin_return_address(0), __func__,
@@ -233,32 +241,14 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg, int enable)
 		}
 	} else {
 		for (i = num_vreg-1; i >= 0; i--)
-			if (regulator_is_enabled(in_vreg[i].vreg)) {
-				if (in_vreg[i].pre_off_sleep)
-					msleep(in_vreg[i].pre_off_sleep);
-				regulator_set_optimum_mode(in_vreg[i].vreg,
-					in_vreg[i].disable_load);
+			if (regulator_is_enabled(in_vreg[i].vreg))
 				regulator_disable(in_vreg[i].vreg);
-				if (in_vreg[i].post_off_sleep)
-					msleep(in_vreg[i].post_off_sleep);
-			}
 	}
 	return rc;
 
 disable_vreg:
-	regulator_set_optimum_mode(in_vreg[i].vreg, in_vreg[i].disable_load);
-
-vreg_set_opt_mode_fail:
-	for (i--; i >= 0; i--) {
-		if (in_vreg[i].pre_off_sleep)
-			msleep(in_vreg[i].pre_off_sleep);
-		regulator_set_optimum_mode(in_vreg[i].vreg,
-			in_vreg[i].disable_load);
+	for (i--; i >= 0; i--)
 		regulator_disable(in_vreg[i].vreg);
-		if (in_vreg[i].post_off_sleep)
-			msleep(in_vreg[i].post_off_sleep);
-	}
-
 	return rc;
 } /* msm_dss_enable_vreg */
 
