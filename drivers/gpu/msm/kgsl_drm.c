@@ -1967,11 +1967,13 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 
 	if (obj == NULL) {
 		DRM_ERROR("Unable to allocate the GEM object\n");
+		ion_free(kgsl_drm_ion_client, ion_handle);
 		return -ENOMEM;
 	}
 
 	ret = kgsl_gem_init_obj(dev, file_priv, obj, &gem_handle);
 	if (ret) {
+		ion_free(kgsl_drm_ion_client, ion_handle);
 		drm_gem_object_release(obj);
 		kfree(obj->driver_private);
 		kfree(obj);
