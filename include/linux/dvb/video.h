@@ -258,6 +258,7 @@ struct video_event {
 #define VIDEO_EVENT_INPUT_FLUSH_DONE    (12)
 #define VIDEO_EVENT_INPUT_FLUSHED       (13)
 #define VIDEO_EVENT_OUTPUT_FLUSHED      (14)
+#define VIDEO_EVENT_STREAM_TIMEOUT_ERROR (15)
 
 
 	unsigned int    status;
