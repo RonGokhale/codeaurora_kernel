@@ -537,7 +537,7 @@ static int dwc3_msm_dbm_ep_config(u8 usb_ep, u8 bam_pipe,
 				  bool producer, bool disable_wb,
 				  bool internal_mem, bool ioc)
 {
-	u8 dbm_ep;
+	int dbm_ep;
 	u32 ep_cfg;
 
 	dev_dbg(context->dev, "%s\n", __func__);
@@ -583,7 +583,7 @@ static int dwc3_msm_dbm_ep_config(u8 usb_ep, u8 bam_pipe,
  */
 static int dwc3_msm_dbm_ep_unconfig(u8 usb_ep)
 {
-	u8 dbm_ep;
+	int dbm_ep;
 	u32 data;
 
 	dev_dbg(context->dev, "%s\n", __func__);

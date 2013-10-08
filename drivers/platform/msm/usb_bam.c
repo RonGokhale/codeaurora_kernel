@@ -173,7 +173,7 @@ static struct usb_bam_ctx_type ctx;
 static struct device *hsic_host_dev;
 static bool hsic_host_dev_resumed_from_cons_request;
 
-static int __usb_bam_register_wake_cb(u8 idx, int (*callback)(void *user),
+static int __usb_bam_register_wake_cb(int idx, int (*callback)(void *user),
 	void *param, bool trigger_cb_per_pipe);
 static void wait_for_prod_release(enum usb_bam cur_bam);
 static void wait_for_cons_release(enum usb_bam cur_bam);
@@ -648,7 +648,7 @@ static void usb_bam_start_lpm(bool disconnect)
 	pm_runtime_suspend(trans->dev);
 }
 
-int usb_bam_connect(u8 idx, u32 *bam_pipe_idx)
+int usb_bam_connect(int idx, u32 *bam_pipe_idx)
 {
 	int ret;
 	struct usb_bam_pipe_connect *pipe_connect = &usb_bam_connections[idx];
@@ -1810,7 +1810,7 @@ static void usb_bam_ack_toggle_cb(void *priv,
 	}
 }
 
-static int __usb_bam_register_wake_cb(u8 idx, int (*callback)(void *user),
+static int __usb_bam_register_wake_cb(int idx, int (*callback)(void *user),
 	void *param, bool trigger_cb_per_pipe)
 {
 	struct sps_pipe *pipe = ctx.usb_bam_sps.sps_pipes[idx];
@@ -2059,7 +2059,7 @@ int usb_bam_a2_reset(void)
 	struct usb_bam_pipe_connect *pipe_connect;
 	int i;
 	int ret = 0, ret_int;
-	u8 bam = -1;
+	int bam = -1;
 	int reconnect_pipe_idx[ctx.max_connections];
 
 	for (i = 0; i < ctx.max_connections; i++)
@@ -2347,7 +2347,7 @@ static int usb_bam_init(int bam_idx)
 
 		ram_resource = platform_get_resource_byname(ctx.usb_bam_pdev,
 			IORESOURCE_MEM, "qscratch_ram1_reg");
-		if (!res) {
+		if (!ram_resource) {
 			dev_err(&ctx.usb_bam_pdev->dev, "Unable to get qscratch\n");
 			ret = -ENODEV;
 			goto free_bam_regs;
