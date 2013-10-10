@@ -110,6 +110,24 @@ static int dwc3_setup_vbus_gpio(struct platform_device *pdev)
 	return err;
 }
 
+static int dwc_set_vbus_gpio(struct platform_device *pdev, int value)
+{
+	int gpio;
+
+	if (!pdev->dev.of_node)
+		return 0;
+
+	gpio = of_get_named_gpio(pdev->dev.of_node,
+				"samsung,vbus-gpio", 0);
+	if (!gpio_is_valid(gpio))
+		return 0;
+
+	gpio_set_value(gpio, value);
+
+	return 0;
+}
+
+
 static int dwc3_exynos_remove_child(struct device *dev, void *unused)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -213,8 +231,10 @@ MODULE_DEVICE_TABLE(of, exynos_dwc3_match);
 static int dwc3_exynos_suspend(struct device *dev)
 {
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
+	struct platform_device *pdev = to_platform_device(dev);
 
 	clk_disable(exynos->clk);
+	dwc_set_vbus_gpio(pdev, 0);
 
 	return 0;
 }
@@ -222,7 +242,9 @@ static int dwc3_exynos_suspend(struct device *dev)
 static int dwc3_exynos_resume(struct device *dev)
 {
 	struct dwc3_exynos *exynos = dev_get_drvdata(dev);
+	struct platform_device *pdev = to_platform_device(dev);
 
+	dwc_set_vbus_gpio(pdev, 1);
 	clk_enable(exynos->clk);
 
 	/* runtime set active to reflect active state. */
