@@ -74,8 +74,8 @@ struct msm_mdp_interface mdp5 = {
 #define DEFAULT_TOTAL_VIG_PIPES 3
 #define DEFAULT_TOTAL_DMA_PIPES 2
 
-#define IB_QUOTA 2000000000
-#define AB_QUOTA 2000000000
+#define IB_QUOTA 800000000
+#define AB_QUOTA 800000000
 
 static DEFINE_SPINLOCK(mdp_lock);
 static DEFINE_MUTEX(mdp_clk_lock);
@@ -358,8 +358,6 @@ int mdss_mdp_bus_scale_set_quota(u64 ab_quota, u64 ib_quota)
 		size = SZ_64M / mdss_res->axi_port_cnt;
 
 		ab_quota = div_u64(ab_quota, mdss_res->axi_port_cnt);
-		ab_quota = AB_QUOTA;
-		ib_quota = IB_QUOTA;
 
 		new_uc_idx = (mdss_res->curr_bw_uc_idx %
 			(bw_table->num_usecases - 1)) + 1;

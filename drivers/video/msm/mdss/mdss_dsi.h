@@ -434,6 +434,4 @@ void mdss_dsi_cmdlist_kickoff(int intf);
 int mdss_dsi_panel_init(struct device_node *node,
 		struct mdss_dsi_ctrl_pdata *ctrl_pdata,
 		bool cmd_cfg_cont_splash);
-
-void mdss_dsi_panel_bklt_pwm(struct mdss_dsi_ctrl_pdata *ctrl, int level);
 #endif /* MDSS_DSI_H */

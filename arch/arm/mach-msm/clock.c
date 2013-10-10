@@ -806,8 +806,6 @@ static int __init clock_late_init(void)
 	struct clock_init_data *initdata, *initdata_temp;
 	int ret = 0;
 
-	return 0;
-
 	pr_info("%s: Removing enables held for handed-off clocks\n", __func__);
 
 	mutex_lock(&msm_clock_init_lock);

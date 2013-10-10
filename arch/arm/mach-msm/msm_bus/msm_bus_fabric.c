@@ -382,7 +382,7 @@ void msm_bus_fabric_update_bw(struct msm_bus_fabric_device *fabdev,
 	if (fabric->info.nodeclk[DUAL_CTX].clk)
 		if (fabric->info.nodeclk[DUAL_CTX].rate == 0) {
 			rounded_rate = clk_round_rate(fabric->
-				info.nodeclk[DUAL_CTX].clk, INT_MAX);
+				info.nodeclk[DUAL_CTX].clk, 1);
 		if (clk_set_rate(fabric->info.nodeclk[DUAL_CTX].clk,
 				rounded_rate))
 			MSM_BUS_ERR("Error: clk: en: Node: %d rate: %ld",
