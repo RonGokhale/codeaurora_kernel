@@ -397,7 +397,6 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	else
 		mfd->mdp_sync_pt_data.threshold = 2;
 
-	mdss_fb_set_backlight(mfd, 255);
 	return rc;
 }
 

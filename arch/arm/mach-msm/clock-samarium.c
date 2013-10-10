@@ -1734,9 +1734,6 @@ static struct rcg_clk axi_clk_src = {
 	},
 };
 
-static DEFINE_CLK_VOTER(boot_axi_clk_src, &axi_clk_src.c, 300000000);
-static DEFINE_CLK_VOTER(axi_msmbus_clk_src, &axi_clk_src.c, 300000000);
-
 static struct clk_freq_tbl ftbl_camss_csi0_2_clk[] = {
 	F_MM( 100000000,      gpll0,    6,    0,     0),
 	F_MM( 200000000,     mmpll0,    4,    0,     0),
@@ -2772,7 +2769,7 @@ static struct branch_clk mmss_s0_axi_clk = {
 	.base = &virt_bases[MMSS_BASE],
 	.c = {
 		.dbg_name = "mmss_s0_axi_clk",
-		.parent = &axi_msmbus_clk_src.c,
+		.parent = &axi_clk_src.c,
 		.ops = &clk_ops_branch,
 		CLK_INIT(mmss_s0_axi_clk.c),
 		.depends = &mmss_mmssnoc_axi_clk.c,
@@ -3750,7 +3747,7 @@ static struct clk_lookup msm_clocks_samarium[] = {
 	CLK_LOOKUP("", byte_clk_src_samarium.c, ""),
 
 	/* MMSS */
-	CLK_LOOKUP("bus_clk_src", axi_clk_src.c, ""),
+	CLK_LOOKUP("", axi_clk_src.c, ""),
 	CLK_LOOKUP("", camss_ahb_clk.c, ""),
 	CLK_LOOKUP("", camss_gp0_clk.c, ""),
 	CLK_LOOKUP("", camss_gp1_clk.c, ""),
@@ -3760,28 +3757,19 @@ static struct clk_lookup msm_clocks_samarium[] = {
 	CLK_LOOKUP("", gfx3d.c, ""),
 	CLK_LOOKUP("", gfx3d_a_clk.c, ""),
 	CLK_LOOKUP("", jpeg0_clk_src.c, ""),
-	CLK_LOOKUP("core_clk_src", mdp_clk_src.c, "fd900000.qcom,mdss_mdp"),
-	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd900000.qcom,mdss_mdp"),
-	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd928000.qcom,iommu"),
-	CLK_LOOKUP("bus_clk", mdss_axi_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("core_clk", mdss_axi_clk.c, "fd928000.qcom,iommu"),
-	CLK_LOOKUP("bus_clk", mdss_axi_clk.c, "fd900000.qcom,mdss_mdp"),
+	CLK_LOOKUP("", mdp_clk_src.c, ""),
+	CLK_LOOKUP("", mdss_ahb_clk.c, ""),
+	CLK_LOOKUP("", mdss_axi_clk.c, ""),
 	CLK_LOOKUP("", byte0_clk_src.c, ""),
+	CLK_LOOKUP("", mdss_byte0_clk.c, ""),
+	CLK_LOOKUP("", mdss_esc0_clk.c, ""),
+	CLK_LOOKUP("", mdss_mdp_clk.c, ""),
+	CLK_LOOKUP("", mdss_mdp_lut_clk.c, ""),
+	CLK_LOOKUP("", mdss_pclk0_clk.c, ""),
 	CLK_LOOKUP("", pclk0_clk_src.c, ""),
-	CLK_LOOKUP("byte_clk", mdss_byte0_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("core_clk", mdss_esc0_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "fd900000.qcom,mdss_mdp"),
-	CLK_LOOKUP("mdp_core_clk", mdss_mdp_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "fd8c2304.qcom,gdsc"),
-	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "fd900000.qcom,mdss_mdp"),
-	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "fd8c2304.qcom,gdsc"),
-	CLK_LOOKUP("pixel_clk", mdss_pclk0_clk.c, "fd922800.qcom,mdss_dsi"),
-	CLK_LOOKUP("vsync_clk", mdss_vsync_clk.c, "fd900000.qcom,mdss_mdp"),
+	CLK_LOOKUP("", mdss_vsync_clk.c, ""),
 	CLK_LOOKUP("core_mmss_clk", mmss_misc_ahb_clk.c, "fd828018.hwevent"),
-	CLK_LOOKUP("bus_clk", mmss_mmssnoc_axi_clk.c, ""),
-	CLK_LOOKUP("bus_clk_src", boot_axi_clk_src.c, ""),
-	CLK_LOOKUP("bus_clk_src", axi_msmbus_clk_src.c, ""),
+	CLK_LOOKUP("", mmss_mmssnoc_axi_clk.c, ""),
 	CLK_LOOKUP("", ocmemgx.c, ""),
 	CLK_LOOKUP("", ocmemgx_a_clk.c, ""),
 	CLK_LOOKUP("core_clk", ocmemgx_core_clk.c, "fdd00000.qcom,ocmem"),
@@ -3944,9 +3932,9 @@ static void __init reg_init(void)
 
 static void __init msmsamarium_clock_post_init(void)
 {
-	clk_set_rate(&axi_clk_src.c, 300000000);
+	clk_set_rate(&axi_clk_src.c, 133330000);
 	clk_set_rate(&ocmemnoc_clk_src.c, 150000000);
-	
+
 	/*
 	 * Hold an active set vote at a rate of 40MHz for the MMSS NOC AHB
 	 * source. Sleep set vote is 0.
