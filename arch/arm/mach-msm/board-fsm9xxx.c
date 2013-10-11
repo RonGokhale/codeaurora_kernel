@@ -928,6 +928,9 @@ static struct platform_device *devices[] __initdata = {
 	&fsm_xo_device,
 	&fsm9xxx_device_watchdog,
 	&msm_ion_device,
+#ifdef CONFIG_HW_RANDOM_MSM
+	&msm_device_rng,
+#endif
 };
 
 static void __init fsm9xxx_init_irq(void)
