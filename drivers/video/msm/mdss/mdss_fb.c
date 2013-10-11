@@ -23,6 +23,7 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/fb.h>
+#include <linux/kthread.h>
 #include <linux/init.h>
 #include <linux/ioport.h>
 #include <linux/kernel.h>
@@ -877,6 +878,8 @@ static int mdss_fb_alloc_fbmem(struct msm_fb_data_type *mfd)
 	}
 }
 
+void msm_fb_commit_init(struct msm_fb_data_type *mfd);
+
 static int mdss_fb_register(struct msm_fb_data_type *mfd)
 {
 	int ret = -ENODEV;
@@ -1075,6 +1078,9 @@ static int mdss_fb_register(struct msm_fb_data_type *mfd)
 	init_completion(&mfd->commit_comp);
 	init_completion(&mfd->power_set_comp);
 	INIT_WORK(&mfd->commit_work, mdss_fb_commit_wq_handler);
+
+	msm_fb_commit_init(mfd);
+
 	mfd->msm_fb_backup = kzalloc(sizeof(struct msm_fb_backup_type),
 		GFP_KERNEL);
 	if (mfd->msm_fb_backup == 0) {
@@ -1304,6 +1310,8 @@ static void mdss_fb_pan_idle(struct msm_fb_data_type *mfd)
 	}
 }
 
+static void msm_fb_trigger_commit(struct msm_fb_data_type *mfd);
+
 static int mdss_fb_pan_display_ex(struct fb_info *info,
 		struct mdp_display_commit *disp_commit)
 {
@@ -1339,7 +1347,9 @@ static int mdss_fb_pan_display_ex(struct fb_info *info,
 		sizeof(struct mdp_display_commit));
 	INIT_COMPLETION(mfd->commit_comp);
 	mfd->is_committing = 1;
-	schedule_work(&mfd->commit_work);
+
+	msm_fb_trigger_commit(mfd);
+
 	mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
 	if (wait_for_finish)
 		mdss_fb_pan_idle(mfd);
@@ -1431,6 +1441,75 @@ static void mdss_fb_commit_wq_handler(struct work_struct *work)
 	mfd->is_committing = 0;
 	complete_all(&mfd->commit_comp);
 	mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
+}
+
+static void msm_fb_trigger_commit(struct msm_fb_data_type *mfd)
+{
+	/* wake up commit thread */
+	atomic_inc(&mfd->mdp_sync_pt_data.commit_cnt);
+	wake_up(&mfd->commit_wait_q);
+}
+
+static int msm_fb_commit_thread(void *data)
+{
+	struct msm_fb_data_type *mfd = data;
+	struct fb_var_screeninfo *var;
+	struct fb_info *info;
+	struct msm_fb_backup_type *fb_backup;
+	struct sched_param param;
+	int ret = 0;
+
+	param.sched_priority = 16;
+	ret = sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
+	if (ret)
+		pr_info("%s: set priority failed\n", __func__);
+
+	pr_err("%s: START, mfd=%x ndx=%d\n", __func__, (int)mfd, mfd->index);
+
+	while (1) {
+		wait_event(mfd->commit_wait_q,
+			atomic_read(&mfd->mdp_sync_pt_data.commit_cnt) > 0);
+
+		atomic_dec(&mfd->mdp_sync_pt_data.commit_cnt);
+
+		fb_backup = (struct msm_fb_backup_type *)mfd->msm_fb_backup;
+		info = &fb_backup->info;
+
+		if (fb_backup->disp_commit.flags &
+			MDP_DISPLAY_COMMIT_OVERLAY) {
+			mdss_fb_wait_for_fence(&mfd->mdp_sync_pt_data);
+			if (mfd->mdp.kickoff_fnc)
+				mfd->mdp.kickoff_fnc(mfd);
+			mdss_fb_update_backlight(mfd);
+			mdss_fb_signal_timeline(&mfd->mdp_sync_pt_data);
+		} else {
+			var = &fb_backup->disp_commit.var;
+			ret = mdss_fb_pan_display_sub(var, info);
+			if (ret)
+				pr_err("%s fails: ret = %x", __func__, ret);
+		}
+
+		mutex_lock(&mfd->mdp_sync_pt_data.sync_mutex);
+		mfd->is_committing = 0;
+		complete_all(&mfd->commit_comp);
+		mutex_unlock(&mfd->mdp_sync_pt_data.sync_mutex);
+	}
+
+	return 0;
+}
+
+void msm_fb_commit_init(struct msm_fb_data_type *mfd)
+{
+	struct task_struct *task;
+
+pr_err("%s: mfd=%x ndx=%d\n", __func__, (int)mfd, mfd->index);
+
+	atomic_set(&mfd->mdp_sync_pt_data.commit_cnt, 0);
+	init_waitqueue_head(&mfd->commit_wait_q);
+
+	task = kthread_run(msm_fb_commit_thread, mfd, "mdss_fb%d", mfd->index);
+	if (IS_ERR(task))
+		pr_err("%s: Error: launch commit thread failed at index=%d\n", __func__, mfd->index);
 }
 
 static int mdss_fb_check_var(struct fb_var_screeninfo *var,
