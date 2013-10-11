@@ -556,6 +556,11 @@ static int i915_drm_freeze(struct drm_device *dev)
 	dev_priv->modeset_restore = MODESET_SUSPENDED;
 	mutex_unlock(&dev_priv->modeset_restore_lock);
 
+	/* ignore lid events during suspend */
+	mutex_lock(&dev_priv->modeset_restore_lock);
+	dev_priv->modeset_restore = MODESET_SUSPENDED;
+	mutex_unlock(&dev_priv->modeset_restore_lock);
+
 	intel_set_power_well(dev, true);
 
 	drm_kms_helper_poll_disable(dev);
