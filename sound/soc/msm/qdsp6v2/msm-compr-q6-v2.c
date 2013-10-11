@@ -649,7 +649,6 @@ static int compressed_set_volume(struct msm_audio *prtd, uint32_t volume)
                         __func__, rc);
             }
         }
-    }
 	}
 	return rc;
 }
@@ -1100,7 +1099,6 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		prtd->cmd_interrupt = 0;
 		return rc;
 	case SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM:
-        pr_err("SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM");
         return dts_eagle_ioctl_pre(prtd->audio_client, arg);
 	default:
 		break;
