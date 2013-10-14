@@ -183,6 +183,12 @@ struct cache {
 	dm_cblock_t cache_size;
 
 	/*
+	 * Original block begin/end range to invalidate any mapped cache entries for.
+	 */
+	dm_oblock_t begin_invalidate;
+	dm_oblock_t end_invalidate;
+
+	/*
 	 * Fields for converting from sectors to blocks.
 	 */
 	uint32_t sectors_per_block;
@@ -241,6 +247,7 @@ struct cache {
 
 	bool need_tick_bio:1;
 	bool sized:1;
+	bool invalidate:1;
 	bool commit_requested:1;
 	bool loaded_mappings:1;
 	bool loaded_discards:1;
@@ -283,6 +290,7 @@ struct dm_cache_migration {
 	bool demote:1;
 	bool promote:1;
 	bool requeue_holder:1;
+	bool invalidate:1;
 
 	struct dm_bio_prison_cell *old_ocell;
 	struct dm_bio_prison_cell *new_ocell;
@@ -870,6 +878,7 @@ static void migration_success_pre_commit(struct dm_cache_migration *mg)
 			cleanup_migration(mg);
 			return;
 		}
+
 	} else {
 		if (dm_cache_insert_mapping(cache->cmd, mg->cblock, mg->new_oblock)) {
 			DMWARN_LIMIT("promotion failed; couldn't update on disk metadata");
@@ -904,8 +913,11 @@ static void migration_success_post_commit(struct dm_cache_migration *mg)
 			list_add_tail(&mg->list, &cache->quiesced_migrations);
 			spin_unlock_irqrestore(&cache->lock, flags);
 
-		} else
+		} else {
+			if (mg->invalidate)
+				policy_remove_mapping(cache->policy, mg->old_oblock);
 			cleanup_migration(mg);
+		}
 
 	} else {
 		if (mg->requeue_holder)
@@ -1115,6 +1127,7 @@ static void promote(struct cache *cache, struct prealloc *structs,
 	mg->demote = false;
 	mg->promote = true;
 	mg->requeue_holder = true;
+	mg->invalidate = false;
 	mg->cache = cache;
 	mg->new_oblock = oblock;
 	mg->cblock = cblock;
@@ -1137,6 +1150,7 @@ static void writeback(struct cache *cache, struct prealloc *structs,
 	mg->demote = false;
 	mg->promote = false;
 	mg->requeue_holder = true;
+	mg->invalidate = false;
 	mg->cache = cache;
 	mg->old_oblock = oblock;
 	mg->cblock = cblock;
@@ -1161,6 +1175,7 @@ static void demote_then_promote(struct cache *cache, struct prealloc *structs,
 	mg->demote = true;
 	mg->promote = true;
 	mg->requeue_holder = true;
+	mg->invalidate = false;
 	mg->cache = cache;
 	mg->old_oblock = old_oblock;
 	mg->new_oblock = new_oblock;
@@ -1187,6 +1202,8 @@ static void invalidate(struct cache *cache, struct prealloc *structs,
 	mg->writeback = false;
 	mg->demote = true;
 	mg->promote = false;
+	mg->requeue_holder = true;
+	mg->invalidate = true;
 	mg->cache = cache;
 	mg->old_oblock = oblock;
 	mg->cblock = cblock;
@@ -1405,15 +1422,17 @@ static int need_commit_due_to_time(struct cache *cache)
 
 static int commit_if_needed(struct cache *cache)
 {
+	int r = 0;
+
 	if ((cache->commit_requested || need_commit_due_to_time(cache)) &&
 	    dm_cache_changed_this_transaction(cache->cmd)) {
 		atomic_inc(&cache->stats.commit_count);
-		cache->last_commit_jiffies = jiffies;
 		cache->commit_requested = false;
-		return dm_cache_commit(cache->cmd, false);
+		r = dm_cache_commit(cache->cmd, false);
+		cache->last_commit_jiffies = jiffies;
 	}
 
-	return 0;
+	return r;
 }
 
 static void process_deferred_bios(struct cache *cache)
@@ -1578,6 +1597,77 @@ static void requeue_deferred_io(struct cache *cache)
 		bio_endio(bio, DM_ENDIO_REQUEUE);
 }
 
+static void invalidate_mappings(struct cache *cache)
+{
+	dm_oblock_t requested_oblock, begin, end;
+	unsigned long long count = 0;
+
+	smp_rmb();
+	if (!cache->invalidate)
+		return;
+
+	begin = requested_oblock = cache->begin_invalidate;
+	end = to_oblock(from_oblock(cache->end_invalidate));
+
+	while (from_oblock(requested_oblock) <= from_oblock(end)) {
+		int r;
+		dm_cblock_t cblock;
+		dm_oblock_t given_oblock = requested_oblock;
+
+		/*
+		 * Policy either doesn't suport invalidation (yet)
+		 */
+		r = policy_invalidate_mapping(cache->policy, &given_oblock, &cblock);
+		if (r == -EINVAL) {
+			DMWARN("policy doesn't support invalidation (yet).");
+			break;
+		}
+
+		/*
+		 * Policy doesn't offer any more blocks to invalidate (e.g. 'era').
+		 */
+		if (r == -ENODATA)
+			break;
+
+		/*
+		 * Policy can hand back a different oblock than the
+		 * requested one at will (e.g. 'era')!
+		 *
+		 * Check if the given one is within our begin/end range
+		 * and reload the mapping if not, else remove mapping
+		 * from persistent cache metadata and request a commit.
+		 */
+		else if (!r) {
+			if (from_oblock(given_oblock) < from_oblock(begin) ||
+			    from_oblock(given_oblock) > from_oblock(end)) {
+				r = policy_load_mapping(cache->policy, given_oblock, cblock, NULL, false);
+				BUG_ON(r);
+
+			} else if (dm_cache_remove_mapping(cache->cmd, cblock)) {
+				DMWARN_LIMIT("invalidation failed; couldn't update on disk metadata");
+				r = policy_load_mapping(cache->policy, given_oblock, cblock, NULL, false);
+				BUG_ON(r);
+
+			} else {
+				/*
+				 * FIXME: we are cautious and keep this even though all
+				 *	  blocks _should_ be clean in passthrough mode.
+				 */
+				clear_dirty(cache, given_oblock, cblock);
+				cache->commit_requested = true;
+				count++; /* FIXME: REMOVEME: */
+			}
+
+		} else
+			DMERR("invalid policy_invalidate_mapping return code %d", r);
+
+		requested_oblock = to_oblock(from_oblock(requested_oblock) + 1);
+	}
+
+	cache->invalidate = false;
+	smp_wmb();
+}
+
 static int more_work(struct cache *cache)
 {
 	if (is_quiescing(cache))
@@ -1590,7 +1680,8 @@ static int more_work(struct cache *cache)
 			!bio_list_empty(&cache->deferred_writethrough_bios) ||
 			!list_empty(&cache->quiesced_migrations) ||
 			!list_empty(&cache->completed_migrations) ||
-			!list_empty(&cache->need_commit_migrations);
+			!list_empty(&cache->need_commit_migrations) ||
+			cache->invalidate;
 }
 
 static void do_worker(struct work_struct *ws)
@@ -1602,6 +1693,7 @@ static void do_worker(struct work_struct *ws)
 			writeback_some_dirty_blocks(cache);
 			process_deferred_writethrough_bios(cache);
 			process_deferred_bios(cache);
+			invalidate_mappings(cache);
 		}
 
 		process_migrations(cache, &cache->quiesced_migrations, issue_copy);
@@ -2268,6 +2360,7 @@ static int cache_create(struct cache_args *ca, struct cache **result)
 
 	cache->need_tick_bio = true;
 	cache->sized = false;
+	cache->invalidate = false;
 	cache->commit_requested = false;
 	cache->loaded_mappings = false;
 	cache->loaded_discards = false;
@@ -2833,8 +2926,74 @@ err:
 	DMEMIT("Error");
 }
 
+static int get_origin_block(struct cache *cache, const char *what,
+			    char *arg, unsigned long long *val)
+{
+	unsigned long long last_block = from_oblock(cache->origin_blocks) - 1;
+
+	if (!strcmp(arg, "begin"))
+		*val = 0;
+
+	else if (!strcmp(arg, "end"))
+		*val = last_block;
+
+	else if (kstrtoull(arg, 10, val)) {
+		DMERR("%s origin block invalid", what);
+		return -EINVAL;
+
+	} else if (*val > last_block) {
+		*val = last_block;
+		DMERR("%s origin block adjusted to EOD=%llu", what, *val);
+	}
+
+	return 0;
+}
+
+static int set_invalidate_mappings(struct cache *cache, char **argv)
+{
+	unsigned long long begin, end;
+
+	if (strcasecmp(argv[0], "invalidate_mappings"))
+		return -EINVAL;
+
+	if (!passthrough_mode(&cache->features)) {
+		DMERR("cache has to be in passthrough mode for invalidation!");
+		return -EPERM;
+	}
+
+	if (cache->invalidate) {
+		DMERR("cache is processing invalidation");
+		return -EPERM;
+	}
+
+	if (get_origin_block(cache, "begin", argv[1], &begin) ||
+	    get_origin_block(cache, "end", argv[2], &end))
+		return -EINVAL;
+
+	if (begin > end) {
+		DMERR("begin origin block > end origin block");
+		return -EINVAL;
+	}
+
+	/*
+	 * Pass begin and end origin blocks to the worker and wake it.
+	 */
+	cache->begin_invalidate = to_oblock(begin);
+	cache->end_invalidate = to_oblock(end);
+	smp_wmb();
+	cache->invalidate = true;
+	smp_wmb();
+
+	wake_worker(cache);
+
+	return 0;
+}
+
 /*
- * Supports <key> <value>.
+ * Supports
+ *	"<key> <value>"
+ * and
+ *     "invalidate_mappings <begin_origin_block> <end_origin_block>".
  *
  * The key migration_threshold is supported by the cache target core.
  */
@@ -2842,10 +3001,16 @@ static int cache_message(struct dm_target *ti, unsigned argc, char **argv)
 {
 	struct cache *cache = ti->private;
 
-	if (argc != 2)
-		return -EINVAL;
+	switch (argc) {
+	case 2:
+		return set_config_value(cache, argv[0], argv[1]);
 
-	return set_config_value(cache, argv[0], argv[1]);
+	case 3:
+		return set_invalidate_mappings(cache, argv);
+
+	default:
+		return -EINVAL;
+	}
 }
 
 static int cache_iterate_devices(struct dm_target *ti,

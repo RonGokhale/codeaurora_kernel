@@ -37,6 +37,13 @@ struct era_policy {
 
 	era_t *eras;
 	atomic64_t current_era;
+
+	/* Temporary store for unmap information during invalidation. */
+	struct {
+		unsigned long *bitset;
+		dm_oblock_t *oblocks;
+		unsigned long last_cblock;
+	} invalidate;
 };
 
 /*----------------------------------------------------------------*/
@@ -44,6 +51,64 @@ struct era_policy {
 static struct era_policy *to_era_policy(struct dm_cache_policy *p)
 {
 	return container_of(p, struct era_policy, policy);
+}
+
+static unsigned long *alloc_bitset(unsigned nr_entries)
+{
+	size_t s = sizeof(unsigned long) * dm_div_up(nr_entries, BITS_PER_LONG);
+	return vzalloc(s);
+}
+
+static void free_bitset(unsigned long *bits)
+{
+	vfree(bits);
+}
+
+static dm_oblock_t *alloc_oblocks(unsigned nr_entries)
+{
+	size_t s = sizeof(dm_oblock_t) * nr_entries;
+	return vmalloc(s);
+}
+
+static void free_oblocks(dm_oblock_t *blocks)
+{
+	vfree(blocks);
+}
+
+static void free_invalidate(struct era_policy *era)
+{
+	if (era->invalidate.oblocks) {
+		free_oblocks(era->invalidate.oblocks);
+		era->invalidate.oblocks = NULL;
+	}
+
+	if (era->invalidate.bitset) {
+		free_bitset(era->invalidate.bitset);
+		era->invalidate.bitset = NULL; /* Being checked for! */
+	}
+}
+
+static int alloc_invalidate(struct era_policy *era)
+{
+	/* FIXME: memory consumption! */
+	era->invalidate.oblocks = alloc_oblocks(from_cblock(era->cache_size));
+	if (!era->invalidate.oblocks) {
+		DMERR("failed to allocate original blocks unmap array");
+		goto err;
+	}
+
+	era->invalidate.bitset = alloc_bitset(from_cblock(era->cache_size));
+	if (!era->invalidate.bitset) {
+		DMERR("failed to allocate cache blocks unmap bitset");
+		goto err;
+	}
+
+	era->invalidate.last_cblock = 0;
+	return 0;
+
+err:
+	free_invalidate(era);
+	return -ENOMEM;
 }
 
 typedef int (*era_match_fn_t)(era_t, era_t);
@@ -123,21 +188,11 @@ static int era_inval_oblocks(void *context, dm_cblock_t cblock,
 			     dm_oblock_t oblock, void *unused)
 {
 	struct inval_oblocks_ctx *ctx = (struct inval_oblocks_ctx *)context;
-	struct dm_cache_policy *child;
-	era_t act_era;
+	era_t act_era = ctx->era->eras[from_cblock(cblock)];
 
-	act_era = ctx->era->eras[from_cblock(cblock)];
 	if (ctx->era_match_fn(act_era, ctx->test_era)) {
-		child = ctx->era->policy.child;
-
-		/*
-		 * This deadlocks (lock against self) because child is calling
-		 * us via the walk_mappings context callback, child's
-		 * walk_mappings holds child's lock, and child's remove_mappings
-		 * tries to get it again.  Not fixing because I believe the
-		 * invalidate API is going to change.
-		 */
-		/* child->remove_mapping(child, oblock); */
+		set_bit(from_cblock(cblock), ctx->era->invalidate.bitset);
+		ctx->era->invalidate.oblocks[from_cblock(cblock)] = oblock;
 	}
 
 	return 0;
@@ -151,6 +206,11 @@ static int cond_unmap_by_era(struct era_policy *era, const char *test_era_str,
 	era_t test_era;
 	int r;
 
+	if (era->invalidate.bitset) {
+		DMERR("previous unmap request exists");
+		return -EPERM;
+	}
+
 	/*
 	 * Unmap blocks with eras matching the given era, according to the
 	 * given matching function.
@@ -158,6 +218,10 @@ static int cond_unmap_by_era(struct era_policy *era, const char *test_era_str,
 
 	if (kstrtou32(test_era_str, 10, &test_era))
 		return -EINVAL;
+
+	r = alloc_invalidate(era);
+	if (r)
+		return r;
 
 	io_ctx.era = era;
 	io_ctx.era_match_fn = era_match_fn;
@@ -185,6 +249,7 @@ static void era_destroy(struct dm_cache_policy *p)
 {
 	struct era_policy *era = to_era_policy(p);
 
+	free_invalidate(era);
 	vfree(era->eras);
 	kfree(era);
 }
@@ -290,6 +355,40 @@ static void era_force_mapping(struct dm_cache_policy *p, dm_oblock_t old_oblock,
 	mutex_unlock(&era->lock);
 }
 
+/* Find next block to invalidate. */
+static int __find_invalidate_block(struct era_policy *era, dm_cblock_t *cblock)
+{
+	int bit = find_next_bit(era->invalidate.bitset, from_cblock(era->cache_size),
+				era->invalidate.last_cblock);
+
+	*cblock = to_cblock(bit);
+	era->invalidate.last_cblock = bit;
+	return bit < from_cblock(era->cache_size) ? 0 : -ENODATA;
+}
+
+static int era_invalidate_mapping(struct dm_cache_policy *p,
+				  dm_oblock_t *oblock, dm_cblock_t *cblock)
+{
+	struct era_policy *era = to_era_policy(p);
+	int r;
+
+	if (!era->invalidate.bitset)
+		return -ENODATA;
+
+	r = __find_invalidate_block(era, cblock);
+	if (r < 0)
+		free_invalidate(era);
+	else {
+		BUG_ON(from_cblock(*cblock) >= from_cblock(era->cache_size));
+		BUG_ON(!test_bit(from_cblock(*cblock), era->invalidate.bitset));
+		clear_bit(from_cblock(*cblock), era->invalidate.bitset);
+		*oblock = era->invalidate.oblocks[from_cblock(*cblock)];
+		r = policy_invalidate_mapping(p->child, oblock, cblock);
+	}
+
+	return r;
+}
+
 struct config_value_handler {
 	const char *cmd;
 	int (*handler_fn)(struct era_policy *, const char *, era_match_fn_t);
@@ -342,6 +441,7 @@ static void init_policy_functions(struct era_policy *era)
 	era->policy.load_mapping = era_load_mapping;
 	era->policy.walk_mappings = era_walk_mappings;
 	era->policy.force_mapping = era_force_mapping;
+	era->policy.invalidate_mapping = era_invalidate_mapping;
 	era->policy.count_config_pairs = era_count_config_pairs;
 	era->policy.emit_config_values = era_emit_config_values;
 	era->policy.set_config_value = era_set_config_value;
