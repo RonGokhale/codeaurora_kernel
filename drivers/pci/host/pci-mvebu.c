@@ -150,6 +150,11 @@ static inline u32 mvebu_readl(struct mvebu_pcie_port *port, u32 reg)
 	return readl(port->base + reg);
 }
 
+static inline bool mvebu_has_ioport(struct mvebu_pcie_port *port)
+{
+	return port->io_target != -1 && port->io_attr != -1;
+}
+
 static bool mvebu_pcie_link_up(struct mvebu_pcie_port *port)
 {
 	return !(mvebu_readl(port, PCIE_STAT_OFF) & PCIE_STAT_LINK_DOWN);
@@ -299,7 +304,7 @@ static void mvebu_pcie_handle_iobase_change(struct mvebu_pcie_port *port)
 	phys_addr_t iobase;
 
 	/* Are the new iobase/iolimit values invalid? */
-	if (port->bridge.iolimit < port->bridge.iobase ||
+	if (port->bridge.iolimit <= port->bridge.iobase ||
 	    port->bridge.iolimitupper < port->bridge.iobaseupper) {
 
 		/* If a window was configured, remove it */
@@ -310,6 +315,12 @@ static void mvebu_pcie_handle_iobase_change(struct mvebu_pcie_port *port)
 			port->iowin_size = 0;
 		}
 
+		return;
+	}
+
+	if (!mvebu_has_ioport(port)) {
+		dev_WARN(&port->pcie->pdev->dev,
+			 "Attempt to set IO when IO is disabled\n");
 		return;
 	}
 
@@ -426,9 +437,12 @@ static int mvebu_sw_pci_bridge_read(struct mvebu_pcie_port *port,
 		break;
 
 	case PCI_IO_BASE:
-		*value = (bridge->secondary_status << 16 |
-			  bridge->iolimit          <<  8 |
-			  bridge->iobase);
+		if (!mvebu_has_ioport(port))
+			*value = bridge->secondary_status << 16;
+		else
+			*value = (bridge->secondary_status << 16 |
+				  bridge->iolimit          <<  8 |
+				  bridge->iobase);
 		break;
 
 	case PCI_MEMORY_BASE:
@@ -486,6 +500,8 @@ static int mvebu_sw_pci_bridge_write(struct mvebu_pcie_port *port,
 	switch (where & ~3) {
 	case PCI_COMMAND:
 		bridge->command = value & 0xffff;
+		if (!mvebu_has_ioport(port))
+			bridge->command &= ~PCI_COMMAND_IO;
 		break;
 
 	case PCI_BASE_ADDRESS_0 ... PCI_BASE_ADDRESS_1:
@@ -651,7 +667,9 @@ static int mvebu_pcie_setup(int nr, struct pci_sys_data *sys)
 	struct mvebu_pcie *pcie = sys_to_pcie(sys);
 	int i;
 
-	pci_add_resource_offset(&sys->resources, &pcie->realio, sys->io_offset);
+	if (resource_size(&pcie->realio) != 0)
+		pci_add_resource_offset(&sys->resources, &pcie->realio,
+					sys->io_offset);
 	pci_add_resource_offset(&sys->resources, &pcie->mem, sys->mem_offset);
 	pci_add_resource(&sys->resources, &pcie->busn);
 
@@ -752,11 +770,16 @@ static void __iomem *mvebu_pcie_map_registers(struct platform_device *pdev,
 #define DT_CPUADDR_TO_ATTR(cpuaddr)   (((cpuaddr) >> 48) & 0xFF)
 
 static int mvebu_get_tgt_attr(struct device_node *np, int devfn,
-			      unsigned long type, int *tgt, int *attr)
+			      unsigned long type,
+			      unsigned int *tgt,
+			      unsigned int *attr)
 {
 	const int na = 3, ns = 2;
 	const __be32 *range;
 	int rlen, nranges, rangesz, pna, i;
+
+	*tgt = -1;
+	*attr = -1;
 
 	range = of_get_property(np, "ranges", &rlen);
 	if (!range)
@@ -827,16 +850,15 @@ static int mvebu_pcie_probe(struct platform_device *pdev)
 	}
 
 	mvebu_mbus_get_pcie_io_aperture(&pcie->io);
-	if (resource_size(&pcie->io) == 0) {
-		dev_err(&pdev->dev, "invalid I/O aperture size\n");
-		return -EINVAL;
-	}
 
-	pcie->realio.flags = pcie->io.flags;
-	pcie->realio.start = PCIBIOS_MIN_IO;
-	pcie->realio.end = min_t(resource_size_t,
-				  IO_SPACE_LIMIT,
-				  resource_size(&pcie->io));
+	if (resource_size(&pcie->io) != 0) {
+		pcie->realio.flags = pcie->io.flags;
+		pcie->realio.start = PCIBIOS_MIN_IO;
+		pcie->realio.end = min_t(resource_size_t,
+					 IO_SPACE_LIMIT,
+					 resource_size(&pcie->io));
+	} else
+		pcie->realio = pcie->io;
 
 	/* Get the bus range */
 	ret = of_pci_parse_bus_range(np, &pcie->busn);
@@ -895,12 +917,12 @@ static int mvebu_pcie_probe(struct platform_device *pdev)
 			continue;
 		}
 
-		ret = mvebu_get_tgt_attr(np, port->devfn, IORESOURCE_IO,
-					 &port->io_target, &port->io_attr);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "PCIe%d.%d: cannot get tgt/attr for io window\n",
-				port->port, port->lane);
-			continue;
+		if (resource_size(&pcie->io) != 0)
+			mvebu_get_tgt_attr(np, port->devfn, IORESOURCE_IO,
+					   &port->io_target, &port->io_attr);
+		else {
+			port->io_target = -1;
+			port->io_attr = -1;
 		}
 
 		port->reset_gpio = of_get_named_gpio_flags(child,
