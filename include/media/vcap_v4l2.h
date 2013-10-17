@@ -223,6 +223,7 @@ struct vcap_dev {
 
 struct vp_format_data {
 	unsigned int		width, height;
+	unsigned int		bytesperline;
 	unsigned int		pixfmt;
 };
 
