@@ -446,11 +446,24 @@ struct ci13xxx_platform_data {
 	bool l1_supported;
 };
 
+/**
+ * struct msm_hsic_host_platform_data - platform device data
+ *              for msm_hsic_host driver.
+ * @phy_sof_workaround: Enable ALL PHY SOF bug related workarounds for
+		SUSPEND, RESET and RESUME.
+ * @phy_susp_sof_workaround: Enable PHY SOF workaround for
+ *      SUSPEND.
+ * @phy_reset_sof_workaround: Enable PHY SOF workaround for
+ *      RESET.
+ *
+ */
 struct msm_hsic_host_platform_data {
 	unsigned strobe;
 	unsigned data;
 	bool ignore_cal_pad_config;
 	bool phy_sof_workaround;
+	bool phy_susp_sof_workaround;
+	bool phy_reset_sof_workaround;
 	int strobe_pad_offset;
 	int data_pad_offset;
 
