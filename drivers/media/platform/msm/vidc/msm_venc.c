@@ -699,7 +699,7 @@ static u32 get_frame_size_nv21(int plane, u32 height, u32 width)
 
 static u32 get_frame_size_compressed(int plane, u32 height, u32 width)
 {
-	int sz = ((height + 31) & (~31)) * ((width + 31) & (~31)) * 3/2;
+	int sz = ((height + 31) & (~31)) * ((width + 31) & (~31)) * 3/4;
 	sz = (sz + 4095) & (~4095);
 	return sz;
 }
