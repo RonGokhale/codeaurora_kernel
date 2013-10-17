@@ -31,7 +31,7 @@ void config_nr_buffer(struct vcap_client_data *c_data,
 			struct vcap_buffer *buf)
 {
 	struct vcap_dev *dev = c_data->dev;
-	int size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.width;
+	int size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.bytesperline;
 
 	writel_relaxed(buf->paddr, VCAP_VP_NR_T2_Y_BASE_ADDR);
 	writel_relaxed(buf->paddr + size, VCAP_VP_NR_T2_C_BASE_ADDR);
@@ -41,7 +41,7 @@ void config_in_buffer(struct vcap_client_data *c_data,
 			struct vcap_buffer *buf)
 {
 	struct vcap_dev *dev = c_data->dev;
-	int size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.width;
+	int size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.bytesperline;
 
 	writel_relaxed(buf->paddr, VCAP_VP_T2_Y_BASE_ADDR);
 	writel_relaxed(buf->paddr + size, VCAP_VP_T2_C_BASE_ADDR);
@@ -574,7 +574,7 @@ int init_nr_buf(struct vcap_client_data *c_data)
 		return -ENOEXEC;
 	}
 
-	frame_size = c_data->vp_in_fmt.width * c_data->vp_in_fmt.height;
+	frame_size = c_data->vp_in_fmt.bytesperline * c_data->vp_in_fmt.height;
 	if (c_data->vp_in_fmt.pixfmt == V4L2_PIX_FMT_NV16)
 		tot_size = frame_size * 2;
 	else
@@ -601,7 +601,7 @@ int init_nr_buf(struct vcap_client_data *c_data)
 
 	c_data->vp_action.bufNR.paddr = paddr;
 	rc = readl_relaxed(VCAP_VP_NR_CONFIG2);
-	rc |= (((c_data->vp_out_fmt.width / 16) << 20) | 0x1);
+	rc |= (((c_data->vp_in_fmt.bytesperline / 16) << 20) | 0x1);
 	writel_relaxed(rc, VCAP_VP_NR_CONFIG2);
 	writel_relaxed(paddr, VCAP_VP_NR_T2_Y_BASE_ADDR);
 	writel_relaxed(paddr + frame_size, VCAP_VP_NR_T2_C_BASE_ADDR);
@@ -916,7 +916,7 @@ int kickoff_vp(struct vcap_client_data *c_data)
 	list_del(&vp_act->bufOut->list);
 	spin_unlock_irqrestore(&dev->vp_client->cap_slock, flags);
 
-	size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.width;
+	size = c_data->vp_in_fmt.height * c_data->vp_in_fmt.bytesperline;
 	writel_relaxed(vp_act->bufT1->paddr, VCAP_VP_T1_Y_BASE_ADDR);
 	writel_relaxed(vp_act->bufT1->paddr + size, VCAP_VP_T1_C_BASE_ADDR);
 
@@ -926,7 +926,7 @@ int kickoff_vp(struct vcap_client_data *c_data)
 	/* Config VP */
 	if (c_data->vp_in_fmt.pixfmt == V4L2_PIX_FMT_NV16)
 		chroma_fmt = 1;
-	writel_relaxed((c_data->vp_in_fmt.width / 16) << 20 |
+	writel_relaxed((c_data->vp_in_fmt.bytesperline / 16) << 20 |
 			chroma_fmt << 11 | 0x2 << 4, VCAP_VP_IN_CONFIG);
 
 	chroma_fmt = 0;

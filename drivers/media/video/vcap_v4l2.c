@@ -962,8 +962,12 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 		c_data->vp_in_fmt.width = priv_fmt->u.pix.width;
 		c_data->vp_in_fmt.height = priv_fmt->u.pix.height;
 		c_data->vp_in_fmt.pixfmt = priv_fmt->u.pix.pixelformat;
+		if (priv_fmt->u.pix.bytesperline)
+			c_data->vp_in_fmt.bytesperline = priv_fmt->u.pix.bytesperline;
+		else
+			c_data->vp_in_fmt.bytesperline = c_data->vp_in_fmt.width;
 
-		size = c_data->vp_in_fmt.width * c_data->vp_in_fmt.height;
+		size = c_data->vp_in_fmt.bytesperline * c_data->vp_in_fmt.height;
 		if (c_data->vp_in_fmt.pixfmt == V4L2_PIX_FMT_NV16)
 			size = size * 2;
 		else
@@ -1028,6 +1032,7 @@ static int vidioc_reqbufs(struct file *file, void *priv,
 			c_data->vp_in_fmt.width =
 				(c_data->vc_format.hactive_end -
 				c_data->vc_format.hactive_start);
+			c_data->vp_in_fmt.bytesperline = c_data->vp_in_fmt.width;
 			c_data->vp_in_fmt.height =
 				(c_data->vc_format.vactive_end -
 				c_data->vc_format.vactive_start);
