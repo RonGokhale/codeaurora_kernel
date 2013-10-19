@@ -13,7 +13,7 @@
 &soc {
 	kgsl_drm: qcom,kgsl_drm@fd900000 {
 		compatible = "qcom,kgsl_drm";
-		reg = <0xfd900000 0x22100>;
+		reg = <0xfd900000 0x100000>;
 		reg-names = "mdp_phys";
 		interrupts = <0 72 0>;
 		interrupt-names = "kgsl_drm_irq";

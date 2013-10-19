@@ -43,6 +43,9 @@
 #define MDP3_REG_INTR_STATUS				0x0024
 #define MDP3_REG_INTR_CLEAR				0x0028
 
+/* Used as a scratch register by KGSL DRM VBLANK driver */
+#define KGSL_DRM_VSYNC_INTR_STATUS			0xA0000
+
 #define MDP3_REG_PRIMARY_RD_PTR_IRQ			0x021C
 #define MDP3_REG_SECONDARY_RD_PTR_IRQ			0x0220
 
