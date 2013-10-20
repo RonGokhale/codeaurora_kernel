@@ -622,6 +622,11 @@ ENTRY(stub_\func)
 END(stub_\func)
 	.endm
 
+	FORK_LIKE  clone
+	FORK_LIKE  fork
+	FORK_LIKE  vfork
+
+#ifdef CONFIG_X86_IOPORT
 	.macro FIXED_FRAME label,func
 ENTRY(\label)
 	CFI_STARTPROC
@@ -634,10 +639,8 @@ ENTRY(\label)
 END(\label)
 	.endm
 
-	FORK_LIKE  clone
-	FORK_LIKE  fork
-	FORK_LIKE  vfork
 	FIXED_FRAME stub_iopl, sys_iopl
+#endif /* CONFIG_X86_IOPORT */
 
 ENTRY(ptregscall_common)
 	DEFAULT_FRAME 1 8	/* offset 8: return address */

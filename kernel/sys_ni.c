@@ -218,3 +218,8 @@ cond_syscall(sys_kcmp);
 
 /* operate on Secure Computing state */
 cond_syscall(sys_seccomp);
+
+/* userspace I/O port access */
+cond_syscall(stub_iopl);
+cond_syscall(sys_iopl);
+cond_syscall(sys_ioperm);

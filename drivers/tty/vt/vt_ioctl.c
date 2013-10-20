@@ -410,7 +410,7 @@ int vt_ioctl(struct tty_struct *tty,
 		 *
 		 * XXX: you should never use these, just call ioperm directly..
 		 */
-#ifdef CONFIG_X86
+#ifdef CONFIG_X86_IOPORT
 	case KDADDIO:
 	case KDDELIO:
 		/*

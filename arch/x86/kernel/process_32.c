@@ -154,7 +154,7 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 		childregs->cs = __KERNEL_CS | get_kernel_rpl();
 		childregs->flags = X86_EFLAGS_IF | X86_EFLAGS_FIXED;
 		p->thread.fpu_counter = 0;
-		p->thread.io_bitmap_ptr = NULL;
+		clear_thread_io_bitmap(p);
 		memset(p->thread.ptrace_bps, 0, sizeof(p->thread.ptrace_bps));
 		return 0;
 	}
@@ -167,7 +167,7 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	task_user_gs(p) = get_user_gs(current_pt_regs());
 
 	p->thread.fpu_counter = 0;
-	p->thread.io_bitmap_ptr = NULL;
+	clear_thread_io_bitmap(p);
 	tsk = current;
 
 	memset(p->thread.ptrace_bps, 0, sizeof(p->thread.ptrace_bps));
@@ -269,14 +269,7 @@ __switch_to(struct task_struct *prev_p, struct task_struct *next_p)
 	 */
 	load_TLS(next, cpu);
 
-	/*
-	 * Restore IOPL if needed.  In normal use, the flags restore
-	 * in the switch assembly will handle this.  But if the kernel
-	 * is running virtualized at a non-zero CPL, the popf will
-	 * not restore flags, so it must be done in a separate step.
-	 */
-	if (get_kernel_rpl() && unlikely(prev->iopl != next->iopl))
-		set_iopl_mask(next->iopl);
+	switch_iopl_mask(prev, next);
 
 	/*
 	 * If it were not for PREEMPT_ACTIVE we could guarantee that the

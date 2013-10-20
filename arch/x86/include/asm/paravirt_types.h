@@ -142,7 +142,9 @@ struct pv_cpu_ops {
 
 	void (*load_sp0)(struct tss_struct *tss, struct thread_struct *t);
 
+#ifdef CONFIG_X86_IOPORT
 	void (*set_iopl_mask)(unsigned mask);
+#endif /* CONFIG_X86_IOPORT */
 
 	void (*wbinvd)(void);
 	void (*io_delay)(void);
