@@ -258,8 +258,10 @@ struct x86_hw_tss {
 #define IO_BITMAP_BITS			65536
 #define IO_BITMAP_BYTES			(IO_BITMAP_BITS/8)
 #define IO_BITMAP_LONGS			(IO_BITMAP_BYTES/sizeof(long))
-#define IO_BITMAP_OFFSET		offsetof(struct tss_struct, io_bitmap)
 #define INVALID_IO_BITMAP_OFFSET	0x8000
+
+/* Segment limits point to the last valid byte, hence the -1 */
+#define TSS_LIMIT	(offsetof(struct tss_struct, stack) - 1)
 
 struct tss_struct {
 	/*
