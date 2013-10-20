@@ -304,6 +304,7 @@ int mdp4_dtv_pipe_commit(int cndx, int wait, u32 *release_busy)
 	spin_unlock_irqrestore(&vctrl->spin_lock, flags);
 	mdp4_stat.overlay_commit[pipe->mixer_num]++;
 
+	msm_fb_log_fence(ACTION_KICKOFF, vctrl->mfd);
 	if (wait)
 		mdp4_dtv_wait4dmae(0);
 
@@ -960,7 +961,8 @@ u32 mdp4_dtv_get_vsync_cnt(void)
 	return vctrl->vsync_cnt;
 }
 
-u32 mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync)
+int mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync,
+			u32 *cur_vsync)
 {
 	struct vsycn_ctrl *vctrl;
 	int ret;
@@ -971,9 +973,16 @@ u32 mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync)
 			vctrl->wait_queue,
 			(expect_vsync == vctrl->vsync_cnt),
 			timeout);
-	if (ret <= 0)
-		pr_err("%s fails: %d", __func__, ret);
-	return vctrl->vsync_cnt;
+	if (ret <= 0) {
+		pr_err("%s fails: timeout=%d ret=%d",
+			__func__, timeout, ret);
+		ret = -ETIMEDOUT;
+	} else {
+		ret = 0;
+	}
+
+	*cur_vsync = vctrl->vsync_cnt;
+	return ret;
 }
 
 /* TODO: dtv writeback need to be added later */

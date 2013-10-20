@@ -50,7 +50,7 @@
 #define MSM_FB_DEFAULT_PAGE_SIZE 2
 #define MFD_KEY  0x11161126
 #define MSM_FB_MAX_DEV_LIST 32
-#define MDP_MAX_FENCE_LOG 512
+#define MDP_MAX_FENCE_LOG 128
 
 struct disp_info_type_suspend {
 	boolean op_enable;
@@ -270,6 +270,7 @@ void msm_fb_wait_for_fence(struct msm_fb_data_type *mfd);
 int msm_fb_signal_timeline(struct msm_fb_data_type *mfd);
 void msm_fb_release_timeline(struct msm_fb_data_type *mfd);
 void msm_fb_release_busy(struct msm_fb_data_type *mfd);
+void msm_fb_log_fence(u32 action_id, struct msm_fb_data_type *mfd);
 
 #ifdef CONFIG_FB_BACKLIGHT
 void msm_fb_config_backlight(struct msm_fb_data_type *mfd);
