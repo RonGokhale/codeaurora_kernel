@@ -15,6 +15,7 @@
 #include <linux/workqueue.h>
 #include <linux/compiler.h>
 #include <linux/types.h>
+#include <linux/mutex.h>
 #include <linux/io.h>
 #include <linux/mmc/host.h>
 
@@ -118,7 +119,7 @@ struct sdhci_host {
 	enum led_brightness brightness;
 #endif
 
-	spinlock_t lock;	/* Mutex */
+	struct mutex lock;	/* Mutex */
 
 	int flags;		/* Host attributes */
 #define SDHCI_USE_SDMA		(1<<0)	/* Host is SDMA capable */

@@ -376,10 +376,9 @@ static void sdhci_s3c_notify_change(struct platform_device *dev, int state)
 #ifdef CONFIG_PM_RUNTIME
 	struct sdhci_s3c *sc = sdhci_priv(host);
 #endif
-	unsigned long flags;
 
 	if (host) {
-		spin_lock_irqsave(&host->lock, flags);
+		mutex_lock(&host->lock);
 		if (state) {
 			dev_dbg(&dev->dev, "card inserted.\n");
 #ifdef CONFIG_PM_RUNTIME
@@ -396,7 +395,7 @@ static void sdhci_s3c_notify_change(struct platform_device *dev, int state)
 #endif
 		}
 		schedule_work(&host->card_detect_work);
-		spin_unlock_irqrestore(&host->lock, flags);
+		mutex_unlock(&host->lock);
 	}
 }
 
