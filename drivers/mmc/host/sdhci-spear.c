@@ -65,7 +65,7 @@ static irqreturn_t sdhci_gpio_irq(int irq, void *dev_id)
 	}
 
 	/* inform sdhci driver about card insertion/removal */
-	tasklet_schedule(&host->card_tasklet);
+	schedule_work(&host->card_detect_work);
 
 	return IRQ_HANDLED;
 }

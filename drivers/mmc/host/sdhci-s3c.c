@@ -395,7 +395,7 @@ static void sdhci_s3c_notify_change(struct platform_device *dev, int state)
 			clk_disable_unprepare(sc->clk_io);
 #endif
 		}
-		tasklet_schedule(&host->card_tasklet);
+		schedule_work(&host->card_detect_work);
 		spin_unlock_irqrestore(&host->lock, flags);
 	}
 }
