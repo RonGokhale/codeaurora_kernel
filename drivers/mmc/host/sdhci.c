@@ -280,8 +280,14 @@ static void sdhci_activate_led(struct sdhci_host *host)
 	u8 ctrl;
 
 	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
-	ctrl |= SDHCI_CTRL_LED;
-	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+#ifdef SDHCI_USE_LEDS_CLASS
+	if (host->brightness && !(ctrl & SDHCI_CTRL_LED)) {
+#else
+	if (!(ctrl & SDHCI_CTRL_LED)) {
+#endif
+		ctrl |= SDHCI_CTRL_LED;
+		sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+	}
 }
 
 static void sdhci_deactivate_led(struct sdhci_host *host)
@@ -289,8 +295,14 @@ static void sdhci_deactivate_led(struct sdhci_host *host)
 	u8 ctrl;
 
 	ctrl = sdhci_readb(host, SDHCI_HOST_CONTROL);
-	ctrl &= ~SDHCI_CTRL_LED;
-	sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+#ifdef SDHCI_USE_LEDS_CLASS
+	if (!host->brightness && (ctrl & SDHCI_CTRL_LED)) {
+#else
+	if (ctrl & SDHCI_CTRL_LED) {
+#endif
+		ctrl &= ~SDHCI_CTRL_LED;
+		sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
+	}
 }
 
 #ifdef SDHCI_USE_LEDS_CLASS
@@ -298,19 +310,11 @@ static void sdhci_led_control(struct led_classdev *led,
 	enum led_brightness brightness)
 {
 	struct sdhci_host *host = container_of(led, struct sdhci_host, led);
-	unsigned long flags;
-
-	spin_lock_irqsave(&host->lock, flags);
 
 	if (host->runtime_suspended)
-		goto out;
+		return;
 
-	if (brightness == LED_OFF)
-		sdhci_deactivate_led(host);
-	else
-		sdhci_activate_led(host);
-out:
-	spin_unlock_irqrestore(&host->lock, flags);
+	host->brightness = brightness;
 }
 #endif
 
@@ -1338,9 +1342,7 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	WARN_ON(host->mrq != NULL);
 
-#ifndef SDHCI_USE_LEDS_CLASS
 	sdhci_activate_led(host);
-#endif
 
 	/*
 	 * Ensure we don't send the STOP for non-SET_BLOCK_COUNTED
@@ -2174,15 +2176,15 @@ static void sdhci_finish_work(struct work_struct *wk)
 	host->cmd = NULL;
 	host->data = NULL;
 
-#ifndef SDHCI_USE_LEDS_CLASS
-	sdhci_deactivate_led(host);
-#endif
-
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
 
 	mmc_request_done(host->mmc, mrq);
 	sdhci_runtime_pm_put(host);
+
+	spin_lock_irqsave(&host->lock, flags);
+	sdhci_deactivate_led(host);
+	spin_unlock_irqrestore(&host->lock, flags);
 }
 
 static void sdhci_timeout_work(struct work_struct *wk)
