@@ -56,7 +56,7 @@ static inline int policy_writeback_work(struct dm_cache_policy *p,
 					dm_oblock_t *oblock,
 					dm_cblock_t *cblock)
 {
-	return p->writeback_work ? p->writeback_work(p, oblock, cblock) : -ENOENT;
+	return p->writeback_work ? p->writeback_work(p, oblock, cblock) : -ENODATA;
 }
 
 static inline void policy_remove_mapping(struct dm_cache_policy *p, dm_oblock_t oblock)
