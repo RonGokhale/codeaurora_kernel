@@ -91,7 +91,7 @@ static int tc = TC_DEFAULT;
 module_param(tc, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(tc, "DMA threshold control value");
 
-#define DMA_BUFFER_SIZE	BUF_SIZE_2KiB
+#define DMA_BUFFER_SIZE	BUF_SIZE_4KiB
 static int buf_sz = DMA_BUFFER_SIZE;
 module_param(buf_sz, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(buf_sz, "DMA buffer size");
@@ -875,18 +875,13 @@ static void stmmac_display_rings(struct stmmac_priv *priv)
 	}
 }
 
-static int stmmac_set_bfsize(int mtu, int bufsize)
+static int stmmac_set_bfsize(int mtu, int bufsize, int maxjumbosz)
 {
-	int ret = bufsize;
-
-	if (mtu >= BUF_SIZE_4KiB)
-		ret = BUF_SIZE_8KiB;
-	else if (mtu >= BUF_SIZE_2KiB)
-		ret = BUF_SIZE_4KiB;
-	else if (mtu >= DMA_BUFFER_SIZE)
+	int ret;
+	if (mtu <= STMMAC_2KPACKET_MTU)
 		ret = BUF_SIZE_2KiB;
 	else
-		ret = DMA_BUFFER_SIZE;
+		ret = maxjumbosz;
 
 	return ret;
 }
@@ -988,7 +983,10 @@ static int init_dma_desc_rings(struct net_device *dev)
 		bfsize = priv->hw->ring->set_16kib_bfsize(dev->mtu);
 
 	if (bfsize < BUF_SIZE_16KiB)
-		bfsize = stmmac_set_bfsize(dev->mtu, priv->dma_buf_sz);
+		bfsize = stmmac_set_bfsize(dev->mtu, priv->dma_buf_sz,
+			priv->plat->maxmtu);
+
+	priv->dma_buf_sz = bfsize;
 
 	if (netif_msg_probe(priv))
 		pr_debug("%s: txsize %d, rxsize %d, bfsize %d\n", __func__,
@@ -1079,7 +1077,6 @@ static int init_dma_desc_rings(struct net_device *dev)
 	}
 	priv->cur_rx = 0;
 	priv->dirty_rx = (unsigned int)(i - rxsize);
-	priv->dma_buf_sz = bfsize;
 	buf_sz = bfsize;
 
 	/* Setup the chained descriptor addresses */
@@ -1642,7 +1639,7 @@ static int stmmac_open(struct net_device *dev)
 		priv->plat->bus_setup(priv->ioaddr);
 
 	/* Initialize the MAC Core */
-	priv->hw->mac->core_init(priv->ioaddr);
+	priv->hw->mac->core_init(priv->ioaddr, dev->mtu);
 
 	/* Request the IRQ lines */
 	ret = request_irq(dev->irq, stmmac_interrupt,
@@ -2217,17 +2214,12 @@ static void stmmac_set_rx_mode(struct net_device *dev)
 static int stmmac_change_mtu(struct net_device *dev, int new_mtu)
 {
 	struct stmmac_priv *priv = netdev_priv(dev);
-	int max_mtu;
+	int max_mtu = priv->plat->maxmtu;
 
 	if (netif_running(dev)) {
 		pr_err("%s: must be stopped to change its MTU\n", dev->name);
 		return -EBUSY;
 	}
-
-	if (priv->plat->enh_desc)
-		max_mtu = JUMBO_LEN;
-	else
-		max_mtu = SKB_MAX_HEAD(NET_SKB_PAD + NET_IP_ALIGN);
 
 	if ((new_mtu < 46) || (new_mtu > max_mtu)) {
 		pr_err("%s: invalid MTU, max MTU is: %d\n", dev->name, max_mtu);

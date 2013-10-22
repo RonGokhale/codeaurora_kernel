@@ -206,5 +206,6 @@
 	txc-skew-ps = <2600>;
 	rxdv-skew-ps = <0>;
 	rxc-skew-ps = <2000>;
+	snps,max-mtu = <4062>;
 	status = "okay";
 };
