@@ -526,6 +526,103 @@ sound {
 	qcom,sec-auxpcm-gpio-dout = <&msmgpio 82 0>;
 };
 
+* msm-auxpcm
+
+Required properties:
+
+ - compatible :                           "qcom,msm-auxpcm-dev-rx"
+
+ - qcom,msm-cpudai-auxpcm-mode:           mode information. The first value is
+                                          for 8khz mode, the second is for
+                                          16khz
+                                          0 - for PCM
+
+ - qcom,msm-cpudai-auxpcm-sync:           sync information. The first value is
+                                          for 8khz mode, the second is for
+                                          16khz
+
+ - qcom,msm-cpudai-auxpcm-frame:          No.of bytes per frame. The first
+                                          value is for 8khz mode, the second
+                                          is for 16khz
+                                          5 - 256BPF
+                                          4 - 128BPF
+
+ - qcom,msm-cpudai-auxpcm-quant:          Type of quantization. The first
+                                          value is for 8khz mode, the second
+                                          is for 16khz
+                                          2 - Linear quantization
+
+ - qcom,msm-cpudai-auxpcm-slot:           Slot number for multichannel scenario
+                                          The first value is for 8khz mode the
+                                          second is for 16khz
+                                          Value is 1
+
+ - qcom,msm-cpudai-auxpcm-data:           Data field - 0. The first value is
+                                          for 8khz mode, the second is for
+                                          16khz
+
+ - qcom,msm-cpudai-auxpcm-pcm-clk-rate:   Clock rate for pcm - 2048000. The
+                                          first value is for 8khz mode, the
+                                          second is for auxpcm
+
+ - qcom,msm-auxpcm-interface:             name of AUXPCM interface "primary-rx"
+                                          indicates primary AUXPCM RX interface,
+										  "primary-tx" indicates primary AUXPCM
+										  TX interface,"secondary-rx" indicates
+										  secondary AUXPCM RX interface and
+										  "secondary-tx" indicates secondary
+										  AUXPCM RX interface,
+
+Example:
+
+	qcom,msm-pri-auxpcm-rx {
+		compatible = "qcom,msm-auxpcm-dev-rx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "primary-rx";
+	};
+
+	qcom,msm-pri-auxpcm-tx {
+		compatible = "qcom,msm-auxpcm-dev-tx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "primary-tx";
+	};
+
+	qcom,msm-sec-auxpcm-rx {
+		compatible = "qcom,msm-auxpcm-dev-rx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "secondary-rx";
+	};
+
+	qcom,msm-sec-auxpcm-tx {
+		compatible = "qcom,msm-auxpcm-dev-tx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "secondary-tx";
+	};
+
 * msm-dai-mi2s
 
 [First Level Nodes]

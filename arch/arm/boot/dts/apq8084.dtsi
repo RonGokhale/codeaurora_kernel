@@ -2360,8 +2360,8 @@
 		};
 	};
 
-	qcom,msm-pri-auxpcm {
-		compatible = "qcom,msm-auxpcm-dev";
+	qcom,msm-pri-auxpcm-rx {
+		compatible = "qcom,msm-auxpcm-dev-rx";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
@@ -2369,11 +2369,11 @@
 		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
-		qcom,msm-auxpcm-interface = "primary";
+		qcom,msm-auxpcm-interface = "primary-rx";
 	};
 
-	qcom,msm-sec-auxpcm {
-		compatible = "qcom,msm-auxpcm-dev";
+	qcom,msm-pri-auxpcm-tx {
+		compatible = "qcom,msm-auxpcm-dev-tx";
 		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
@@ -2381,7 +2381,31 @@
 		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
 		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
 		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
-		qcom,msm-auxpcm-interface = "secondary";
+		qcom,msm-auxpcm-interface = "primary-tx";
+	};
+
+	qcom,msm-sec-auxpcm-rx {
+		compatible = "qcom,msm-auxpcm-dev-rx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "secondary-rx";
+	};
+
+	qcom,msm-sec-auxpcm-tx {
+		compatible = "qcom,msm-auxpcm-dev-tx";
+		qcom,msm-cpudai-auxpcm-mode = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-sync = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-frame = <5>, <4>;
+		qcom,msm-cpudai-auxpcm-quant = <2>, <2>;
+		qcom,msm-cpudai-auxpcm-slot = <1>, <1>;
+		qcom,msm-cpudai-auxpcm-data = <0>, <0>;
+		qcom,msm-cpudai-auxpcm-pcm-clk-rate = <2048000>, <2048000>;
+		qcom,msm-auxpcm-interface = "secondary-tx";
 	};
 
 	qcom,msm-dai-mi2s {

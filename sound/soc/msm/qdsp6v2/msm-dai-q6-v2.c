@@ -82,6 +82,8 @@ struct msm_dai_q6_auxpcm_dai_data {
 	struct afe_clk_cfg clk_cfg; /* hold LPASS clock configuration */
 	struct msm_dai_q6_dai_data bdai_data; /* incoporate base DAI data */
 };
+struct msm_dai_q6_auxpcm_dai_data *pri_dai_data;
+struct msm_dai_q6_auxpcm_dai_data *sec_dai_data;
 
 /* MI2S format field for AFE_PORT_CMD_I2S_CONFIG command
  *  0: linear PCM
@@ -470,11 +472,16 @@ static struct snd_soc_dai_ops msm_dai_q6_auxpcm_ops = {
 };
 
 static const struct snd_soc_component_driver
-	msm_dai_q6_aux_pcm_dai_component = {
-	.name		= "msm-auxpcm-dev",
+	msm_dai_q6_aux_pcm_dai_component_rx = {
+	.name		= "msm-auxpcm-dev-rx",
 };
 
-static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_dai[] = {
+static const struct snd_soc_component_driver
+	msm_dai_q6_aux_pcm_dai_component_tx = {
+	.name		= "msm-auxpcm-dev-tx",
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_dai_rx[] = {
 	{
 		.playback = {
 			.stream_name = "AUX PCM Playback",
@@ -486,6 +493,29 @@ static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_dai[] = {
 			.rate_max = 16000,
 			.rate_min = 8000,
 		},
+		.ops = &msm_dai_q6_auxpcm_ops,
+		.probe = msm_dai_q6_aux_pcm_probe,
+		.remove = msm_dai_q6_dai_auxpcm_remove,
+	},
+	{
+		 .playback = {
+			 .stream_name = "AUX PCM Sec Playback",
+			 .aif_name = "SEC_AUX_PCM_RX",
+			 .rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
+			 .formats = SNDRV_PCM_FMTBIT_S16_LE,
+			 .channels_min = 1,
+			 .channels_max = 1,
+			 .rate_max = 16000,
+			 .rate_min = 8000,
+		 },
+		 .ops = &msm_dai_q6_auxpcm_ops,
+		 .probe = msm_dai_q6_aux_pcm_probe,
+		 .remove = msm_dai_q6_dai_auxpcm_remove,
+	}
+};
+
+static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_dai_tx[] = {
+	{
 		.capture = {
 			.stream_name = "AUX PCM Capture",
 			.aif_name = "AUX_PCM_TX",
@@ -501,30 +531,20 @@ static struct snd_soc_dai_driver msm_dai_q6_aux_pcm_dai[] = {
 		.remove = msm_dai_q6_dai_auxpcm_remove,
 	},
 	{
-	 .playback = {
-		 .stream_name = "AUX PCM Sec Playback",
-		 .aif_name = "SEC_AUX_PCM_RX",
-		 .rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
-		 .formats = SNDRV_PCM_FMTBIT_S16_LE,
-		 .channels_min = 1,
-		 .channels_max = 1,
-		 .rate_max = 16000,
-		 .rate_min = 8000,
-	 },
-	 .capture = {
-		 .stream_name = "AUX PCM Sec Capture",
-		 .aif_name = "SEC_AUX_PCM_TX",
-		 .rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
-		 .formats = SNDRV_PCM_FMTBIT_S16_LE,
-		 .channels_min = 1,
-		 .channels_max = 1,
-		 .rate_max = 16000,
-		 .rate_min = 8000,
-	 },
-	 .ops = &msm_dai_q6_auxpcm_ops,
-	 .probe = msm_dai_q6_aux_pcm_probe,
-	 .remove = msm_dai_q6_dai_auxpcm_remove,
- }
+		 .capture = {
+			 .stream_name = "AUX PCM Sec Capture",
+			 .aif_name = "SEC_AUX_PCM_TX",
+			 .rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
+			 .formats = SNDRV_PCM_FMTBIT_S16_LE,
+			 .channels_min = 1,
+			 .channels_max = 1,
+			 .rate_max = 16000,
+			 .rate_min = 8000,
+		 },
+		 .ops = &msm_dai_q6_auxpcm_ops,
+		 .probe = msm_dai_q6_aux_pcm_probe,
+		 .remove = msm_dai_q6_dai_auxpcm_remove,
+	 }
 };
 
 static int msm_dai_q6_prepare(struct snd_pcm_substream *substream,
@@ -1189,24 +1209,16 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 	const char *intf_name;
 	int rc = 0, i = 0;
 
-	dai_data = kzalloc(sizeof(struct msm_dai_q6_auxpcm_dai_data),
-			   GFP_KERNEL);
-	if (!dai_data) {
-		dev_err(&pdev->dev,
-			"Failed to allocate memory for auxpcm DAI data\n");
-		return -ENOMEM;
-	}
-
 	auxpcm_pdata = kzalloc(sizeof(struct msm_dai_auxpcm_pdata),
 				GFP_KERNEL);
 
 	if (!auxpcm_pdata) {
 		dev_err(&pdev->dev, "Failed to allocate memory for platform data\n");
-		goto fail_pdata_nomem;
+		return -ENOMEM;
 	}
 
-	dev_dbg(&pdev->dev, "%s: dev %p, dai_data %p, auxpcm_pdata %p\n",
-		__func__, &pdev->dev, dai_data, auxpcm_pdata);
+	dev_dbg(&pdev->dev, "%s: dev %p, auxpcm_pdata %p\n", __func__,
+		&pdev->dev, auxpcm_pdata);
 
 	rc = of_property_read_u32_array(pdev->dev.of_node,
 			"qcom,msm-cpudai-auxpcm-mode",
@@ -1296,14 +1308,42 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 		goto fail_nodev_intf;
 	}
 
-	if (!strncmp(intf_name, "primary", sizeof("primary"))) {
-		dai_data->rx_pid = AFE_PORT_ID_PRIMARY_PCM_RX;
-		dai_data->tx_pid = AFE_PORT_ID_PRIMARY_PCM_TX;
+	if ((!strcmp(intf_name, "primary-rx")) ||
+	    (!strcmp(intf_name, "primary-tx"))) {
+		if (pri_dai_data == NULL) {
+			pri_dai_data = kzalloc(
+				sizeof(struct msm_dai_q6_auxpcm_dai_data),
+				GFP_KERNEL);
+			if (!pri_dai_data) {
+				dev_err(&pdev->dev,
+				"Failed to alloc mem for auxpcm DAI data\n");
+				return -ENOMEM;
+			}
+
+			pri_dai_data->rx_pid = AFE_PORT_ID_PRIMARY_PCM_RX;
+			pri_dai_data->tx_pid = AFE_PORT_ID_PRIMARY_PCM_TX;
+			mutex_init(&pri_dai_data->rlock);
+		}
+		dai_data = pri_dai_data;
 		pdev->id = MSM_DAI_PRI_AUXPCM_DT_DEV_ID;
 		i = 0;
-	} else if (!strncmp(intf_name, "secondary", sizeof("secondary"))) {
-		dai_data->rx_pid = AFE_PORT_ID_SECONDARY_PCM_RX;
-		dai_data->tx_pid = AFE_PORT_ID_SECONDARY_PCM_TX;
+	} else if ((!strcmp(intf_name, "secondary-rx")) ||
+		   (!strcmp(intf_name, "secondary-tx"))) {
+		if (sec_dai_data == NULL) {
+			sec_dai_data = kzalloc(
+				sizeof(struct msm_dai_q6_auxpcm_dai_data),
+				GFP_KERNEL);
+			if (!sec_dai_data) {
+				dev_err(&pdev->dev,
+				"Failed to alloc mem for auxpcm DAI data\n");
+				return -ENOMEM;
+			}
+
+			sec_dai_data->rx_pid = AFE_PORT_ID_SECONDARY_PCM_RX;
+			sec_dai_data->tx_pid = AFE_PORT_ID_SECONDARY_PCM_TX;
+			mutex_init(&sec_dai_data->rlock);
+		}
+		dai_data = sec_dai_data;
 		pdev->id = MSM_DAI_SEC_AUXPCM_DT_DEV_ID;
 		i = 1;
 	} else {
@@ -1312,31 +1352,49 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 		goto fail_invalid_intf;
 	}
 
-	mutex_init(&dai_data->rlock);
-	dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-auxpcm", pdev->id);
-	dev_dbg(&pdev->dev, "dev name %s\n", dev_name(&pdev->dev));
-
-	dev_set_drvdata(&pdev->dev, dai_data);
 	pdev->dev.platform_data = (void *) auxpcm_pdata;
 
-	rc = snd_soc_register_component(&pdev->dev,
-			&msm_dai_q6_aux_pcm_dai_component,
-			&msm_dai_q6_aux_pcm_dai[i], 1);
-	if (rc) {
-		dev_err(&pdev->dev, "%s: auxpcm dai reg failed, rc=%d\n",
-				__func__, rc);
-		goto fail_reg_dai;
-	}
+	if ((!strcmp(intf_name, "primary-rx")) ||
+	    (!strcmp(intf_name, "secondary-rx"))) {
+		dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-auxpcm-rx",
+				pdev->id);
+		dev_dbg(&pdev->dev, "dev name %s\n", dev_name(&pdev->dev));
+		dev_set_drvdata(&pdev->dev, dai_data);
 
+		rc = snd_soc_register_component(&pdev->dev,
+				&msm_dai_q6_aux_pcm_dai_component_rx,
+				&msm_dai_q6_aux_pcm_dai_rx[i], 1);
+		if (rc) {
+			dev_err(&pdev->dev, "%s: auxpcm dai reg failed, rc=%d\n",
+				__func__, rc);
+			goto fail_reg_dai;
+		}
+	} else if ((!strcmp(intf_name, "primary-tx")) ||
+		   (!strcmp(intf_name, "secondary-tx"))) {
+		dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-auxpcm-tx",
+				pdev->id);
+		dev_dbg(&pdev->dev, "dev name %s\n", dev_name(&pdev->dev));
+
+		dev_set_drvdata(&pdev->dev, dai_data);
+
+		rc = snd_soc_register_component(&pdev->dev,
+			&msm_dai_q6_aux_pcm_dai_component_tx,
+			&msm_dai_q6_aux_pcm_dai_tx[i], 1);
+		if (rc) {
+			dev_err(&pdev->dev, "%s: auxpcm dai reg failed, rc=%d\n",
+				__func__, rc);
+			goto fail_reg_dai;
+		}
+	}
 	return rc;
 
 fail_reg_dai:
+	kfree(pri_dai_data);
+	kfree(sec_dai_data);
 fail_invalid_intf:
 fail_nodev_intf:
 fail_invalid_dt:
 	kfree(auxpcm_pdata);
-fail_pdata_nomem:
-	kfree(dai_data);
 	return rc;
 }
 
@@ -1355,22 +1413,37 @@ static int msm_auxpcm_dev_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id msm_auxpcm_dev_dt_match[] = {
-	{ .compatible = "qcom,msm-auxpcm-dev", },
+static struct of_device_id msm_auxpcm_dev_rx_dt_match[] = {
+	{ .compatible = "qcom,msm-auxpcm-dev-rx", },
 	{}
 };
 
 
-static struct platform_driver msm_auxpcm_dev_driver = {
+static struct platform_driver msm_auxpcm_dev_rx_driver = {
 	.probe  = msm_auxpcm_dev_probe,
 	.remove = msm_auxpcm_dev_remove,
 	.driver = {
-		.name = "msm-auxpcm-dev",
+		.name = "msm-auxpcm-dev-rx",
 		.owner = THIS_MODULE,
-		.of_match_table = msm_auxpcm_dev_dt_match,
+		.of_match_table = msm_auxpcm_dev_rx_dt_match,
 	},
 };
 
+static struct of_device_id msm_auxpcm_dev_tx_dt_match[] = {
+	{ .compatible = "qcom,msm-auxpcm-dev-tx", },
+	{}
+};
+
+
+static struct platform_driver msm_auxpcm_dev_tx_driver = {
+	.probe  = msm_auxpcm_dev_probe,
+	.remove = msm_auxpcm_dev_remove,
+	.driver = {
+		.name = "msm-auxpcm-dev-tx",
+		.owner = THIS_MODULE,
+		.of_match_table = msm_auxpcm_dev_tx_dt_match,
+	},
+};
 static struct snd_soc_dai_driver msm_dai_q6_slimbus_rx_dai[] = {
 	{
 		.playback = {
@@ -2628,10 +2701,19 @@ static int __init msm_dai_q6_init(void)
 {
 	int rc;
 
-	rc = platform_driver_register(&msm_auxpcm_dev_driver);
+	pri_dai_data = NULL;
+	sec_dai_data = NULL;
+
+	rc = platform_driver_register(&msm_auxpcm_dev_rx_driver);
 	if (rc) {
-		pr_err("%s: fail to register auxpcm dev driver", __func__);
+		pr_err("%s: fail to register auxpcm dev rx driver", __func__);
 		goto fail;
+	}
+
+	rc = platform_driver_register(&msm_auxpcm_dev_tx_driver);
+	if (rc) {
+		pr_err("%s: fail to register auxpcm dev tx driver", __func__);
+		goto dai_auxpcm_tx_fail;
 	}
 
 	rc = platform_driver_register(&msm_dai_q6);
@@ -2666,7 +2748,9 @@ dai_q6_mi2s_drv_fail:
 dai_q6_dev_fail:
 	platform_driver_unregister(&msm_dai_q6);
 dai_q6_fail:
-	platform_driver_unregister(&msm_auxpcm_dev_driver);
+	platform_driver_unregister(&msm_auxpcm_dev_tx_driver);
+dai_auxpcm_tx_fail:
+	platform_driver_unregister(&msm_auxpcm_dev_rx_driver);
 fail:
 	return rc;
 }
@@ -2676,7 +2760,8 @@ static void __exit msm_dai_q6_exit(void)
 {
 	platform_driver_unregister(&msm_dai_q6_dev);
 	platform_driver_unregister(&msm_dai_q6);
-	platform_driver_unregister(&msm_auxpcm_dev_driver);
+	platform_driver_unregister(&msm_auxpcm_dev_rx_driver);
+	platform_driver_unregister(&msm_auxpcm_dev_tx_driver);
 }
 module_exit(msm_dai_q6_exit);
 
