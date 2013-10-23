@@ -75,14 +75,8 @@ static int msm_gesture_proc_ctrl_cmd(struct msm_gesture_ctrl *p_gesture_ctrl,
 	uint32_t cmd_len = sizeof(struct msm_ctrl_cmd);
 	uint32_t value_len;
 
-	if (copy_from_user(tmp_cmd, (void __user *)(ctrl->value),
-		sizeof(struct msm_ctrl_cmd))) {
-		pr_err("%s: copy_from_user failed.\n", __func__);
-		rc = -EINVAL;
-		goto end;
-	}
-
-	uptr_cmd = (void __user *)tmp_cmd;
+	tmp_cmd = (struct msm_ctrl_cmd *)ctrl->value;
+	uptr_cmd = (void __user *)ctrl->value;
 	uptr_value = (void __user *)tmp_cmd->value;
 	value_len = tmp_cmd->length;
 
