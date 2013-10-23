@@ -19,6 +19,8 @@
 #define WCD9XXX_CFILT_EXT_PRCHG_EN 0x30
 #define WCD9XXX_CFILT_EXT_PRCHG_DSBL 0x00
 
+#define WCD9XXX_USLEEP_RANGE_MARGIN_US 100
+
 struct mbhc_micbias_regs {
 	u16 cfilt_val;
 	u16 cfilt_ctl;
@@ -38,6 +40,12 @@ enum mbhc_cal_type {
 	MBHC_CAL_MCLK,
 	MBHC_CAL_RCO,
 	MBHC_CAL_NUM,
+};
+
+enum mbhc_impedance_detect_stages {
+	PRE_MEAS,
+	POST_MEAS,
+	PA_DISABLE,
 };
 
 /* Data used by MBHC */
@@ -219,6 +227,7 @@ struct wcd9xxx_mbhc_config {
 	/* swap_gnd_mic returns true if extern GND/MIC swap switch toggled */
 	bool (*swap_gnd_mic) (struct snd_soc_codec *);
 	unsigned long cs_enable_flags;
+	bool use_int_rbias;
 };
 
 struct wcd9xxx_cfilt_mode {
@@ -239,6 +248,13 @@ struct wcd9xxx_mbhc_cb {
 	void (*free_irq) (struct wcd9xxx_mbhc *);
 	enum wcd9xxx_cdc_type (*get_cdc_type) (void);
 	void (*enable_clock_gate) (struct snd_soc_codec *, bool);
+	int (*setup_zdet) (struct wcd9xxx_mbhc *,
+			   enum mbhc_impedance_detect_stages stage);
+	void (*compute_impedance) (s16 *, s16 *, uint32_t *, uint32_t *);
+	void (*enable_mbhc_txfe) (struct snd_soc_codec *, bool);
+	int (*enable_mb_source) (struct snd_soc_codec *, bool);
+	void (*setup_int_rbias) (struct snd_soc_codec *, bool);
+	void (*pull_mb_to_vddio) (struct snd_soc_codec *, bool);
 };
 
 struct wcd9xxx_mbhc {

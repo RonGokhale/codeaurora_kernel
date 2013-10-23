@@ -242,12 +242,28 @@ static ssize_t mdss_fb_get_split(struct device *dev,
 	return ret;
 }
 
+static ssize_t mdss_mdp_show_blank_event(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct fb_info *fbi = dev_get_drvdata(dev);
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)fbi->par;
+	int ret;
+
+	pr_debug("fb%d panel_power_on = %d\n", mfd->index, mfd->panel_power_on);
+	ret = scnprintf(buf, PAGE_SIZE, "panel_power_on = %d\n",
+						mfd->panel_power_on);
+
+	return ret;
+}
+
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO, mdss_fb_get_split, NULL);
+static DEVICE_ATTR(show_blank_event, S_IRUGO, mdss_mdp_show_blank_event, NULL);
 
 static struct attribute *mdss_fb_attrs[] = {
 	&dev_attr_msm_fb_type.attr,
 	&dev_attr_msm_fb_split.attr,
+	&dev_attr_show_blank_event.attr,
 	NULL,
 };
 
@@ -313,6 +329,7 @@ static int mdss_fb_probe(struct platform_device *pdev)
 	mfd->index = fbi_list_index;
 	mfd->mdp_fb_page_protection = MDP_FB_PAGE_PROTECTION_WRITECOMBINE;
 
+	mfd->ext_ad_ctrl = -1;
 	mfd->bl_level = 0;
 	mfd->bl_scale = 1024;
 	mfd->bl_min_lvl = 30;
@@ -606,6 +623,7 @@ static void mdss_fb_scale_bl(struct msm_fb_data_type *mfd, u32 *bl_lvl)
 void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 {
 	struct mdss_panel_data *pdata;
+	int (*update_ad_input)(struct msm_fb_data_type *mfd);
 	u32 temp = bkl_lvl;
 
 	if ((!mfd->panel_power_on || !bl_updated) && !IS_CALIB_MODE_BL(mfd)) {
@@ -637,9 +655,10 @@ void mdss_fb_set_backlight(struct msm_fb_data_type *mfd, u32 bkl_lvl)
 		bl_level_old = temp;
 
 		if (mfd->mdp.update_ad_input) {
+			update_ad_input = mfd->mdp.update_ad_input;
 			mutex_unlock(&mfd->bl_lock);
 			/* Will trigger ad_setup which will grab bl_lock */
-			mfd->mdp.update_ad_input(mfd);
+			update_ad_input(mfd);
 			mutex_lock(&mfd->bl_lock);
 		}
 	}
@@ -703,11 +722,8 @@ static int mdss_fb_blank_sub(int blank_mode, struct fb_info *info,
 
 			mfd->op_enable = false;
 			curr_pwr_state = mfd->panel_power_on;
-			mutex_lock(&mfd->bl_lock);
-			mdss_fb_set_backlight(mfd, 0);
 			mfd->panel_power_on = false;
 			bl_updated = 0;
-			mutex_unlock(&mfd->bl_lock);
 
 			ret = mfd->mdp.off_fnc(mfd);
 			if (ret)

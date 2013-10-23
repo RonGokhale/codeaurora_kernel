@@ -36,6 +36,8 @@
 
 struct msm_vidc_drv *vidc_driver;
 
+uint32_t msm_vidc_pwr_collapse_delay = 2000;
+
 struct buffer_info {
 	struct list_head list;
 	int type;
@@ -512,6 +514,19 @@ int msm_v4l2_qbuf(struct file *file, void *fh,
 		b->m.planes[i].m.userptr = binfo->device_addr[i];
 		dprintk(VIDC_DBG, "Queueing device address = 0x%x\n",
 				binfo->device_addr[i]);
+
+		if ((vidc_inst->fmts[OUTPUT_PORT]->fourcc ==
+			V4L2_PIX_FMT_HEVC_HYBRID) &&  binfo->handle[i] &&
+			(b->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)) {
+			rc = msm_smem_cache_operations(v4l2_inst->mem_client,
+				binfo->handle[i], SMEM_CACHE_INVALIDATE);
+			if (rc) {
+				dprintk(VIDC_ERR,
+					"Failed to INV caches: %d\n", rc);
+					goto err_invalid_buff;
+			}
+		}
+
 		if (binfo->handle[i] &&
 			(b->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)) {
 			rc = msm_smem_cache_operations(v4l2_inst->mem_client,
@@ -781,6 +796,31 @@ static ssize_t msm_vidc_link_name_show(struct device *dev,
 
 static DEVICE_ATTR(link_name, 0644, msm_vidc_link_name_show, NULL);
 
+static ssize_t store_pwr_collapse_delay(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	unsigned long val = 0;
+	int rc = 0;
+	rc = kstrtoul(buf, 0, &val);
+	if (rc)
+		return rc;
+	else if (val == 0)
+		return -EINVAL;
+	msm_vidc_pwr_collapse_delay = val;
+	return count;
+}
+
+static ssize_t show_pwr_collapse_delay(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n", msm_vidc_pwr_collapse_delay);
+}
+
+static DEVICE_ATTR(pwr_collapse_delay, 0644, show_pwr_collapse_delay,
+		store_pwr_collapse_delay);
+
 static int __devinit msm_vidc_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -798,6 +838,12 @@ static int __devinit msm_vidc_probe(struct platform_device *pdev)
 	rc = msm_vidc_initialize_core(pdev, core);
 	if (rc) {
 		dprintk(VIDC_ERR, "Failed to init core\n");
+		goto err_v4l2_register;
+	}
+	rc = device_create_file(&pdev->dev, &dev_attr_pwr_collapse_delay);
+	if (rc) {
+		dprintk(VIDC_ERR,
+				"Failed to create pwr_collapse_delay sysfs node");
 		goto err_v4l2_register;
 	}
 	if (core->hfi_type == VIDC_HFI_Q6) {

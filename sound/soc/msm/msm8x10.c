@@ -29,6 +29,7 @@
 #include <qdsp6v2/msm-pcm-routing-v2.h>
 #include <sound/q6afe-v2.h>
 #include <linux/module.h>
+#include <mach/gpiomux.h>
 #include "../codecs/msm8x10-wcd.h"
 #define DRV_NAME "msm8x10-asoc-wcd"
 #define BTSCO_RATE_8KHZ 8000
@@ -72,6 +73,7 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.detect_extn_cable = false,
 	.insert_detect = true,
 	.swap_gnd_mic = NULL,
+	.use_int_rbias = false,
 };
 
 /*
@@ -185,6 +187,10 @@ static void msm8x10_enable_ext_spk_power_amp(u32 on)
 
 static int msm_config_mclk(u16 port_id, struct afe_digital_clk_cfg *cfg)
 {
+	/* set the drive strength on the clock */
+	msm_tlmm_misc_reg_write(TLMM_CDC_HDRV_CTL, 0x00);
+	msm_tlmm_misc_reg_write(TLMM_CDC_HDRV_PULL_CTL, 0x0006db6d);
+
 	iowrite32(0x1, pcbcr);
 	/* Set the update bit to make the settings go through */
 	iowrite32(0x1, prcgr);
@@ -1024,6 +1030,8 @@ static __devinit int msm8x10_asoc_machine_probe(struct platform_device *pdev)
 	atomic_set(&mclk_rsc_ref, 0);
 	mbhc_cfg.gpio_level_insert = of_property_read_bool(pdev->dev.of_node,
 						"qcom,headset-jack-type-NC");
+	mbhc_cfg.use_int_rbias = of_property_read_bool(pdev->dev.of_node,
+						"qcom,mbhc-bias-internal");
 
 	spdev = pdev;
 

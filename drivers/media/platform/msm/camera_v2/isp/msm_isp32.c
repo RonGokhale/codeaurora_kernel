@@ -776,12 +776,14 @@ static void msm_vfe32_cfg_axi_ub(struct vfe_device *vfe_dev)
 	for (i = 0; i < axi_data->hw_info->num_wm; i++) {
 		if (ub_offset + VFE32_EQUAL_SLICE_UB > VFE32_AXI_SLICE_UB) {
 			final_ub_slice_size = VFE32_AXI_SLICE_UB - ub_offset;
-			msm_camera_io_w(ub_offset << 16 | (final_ub_slice_size - 1),
-				vfe_dev->vfe_base + VFE32_WM_BASE(i) + 0xC);
+			msm_camera_io_w(ub_offset << 16 |
+				(final_ub_slice_size - 1), vfe_dev->vfe_base +
+				VFE32_WM_BASE(i) + 0xC);
 			ub_offset += final_ub_slice_size;
 		} else {
-			msm_camera_io_w(ub_offset << 16 | (VFE32_EQUAL_SLICE_UB - 1),
-				vfe_dev->vfe_base + VFE32_WM_BASE(i) + 0xC);
+			msm_camera_io_w(ub_offset << 16 |
+				(VFE32_EQUAL_SLICE_UB - 1), vfe_dev->vfe_base +
+				VFE32_WM_BASE(i) + 0xC);
 			ub_offset += VFE32_EQUAL_SLICE_UB;
 		}
 	}

@@ -293,6 +293,7 @@ struct qpnp_chg_chip {
 	bool				bat_is_cool;
 	bool				bat_is_warm;
 	bool				chg_done;
+	bool				charger_monitor_checked;
 	bool				usb_present;
 	bool				dc_present;
 	bool				batt_present;
@@ -341,6 +342,7 @@ struct qpnp_chg_chip {
 	struct delayed_work		arb_stop_work;
 	struct delayed_work		eoc_work;
 	struct work_struct		soc_check_work;
+	struct delayed_work		aicl_check_work;
 	struct qpnp_chg_regulator	otg_vreg;
 	struct qpnp_chg_regulator	boost_vreg;
 	struct qpnp_chg_regulator	batfet_vreg;
@@ -1503,6 +1505,28 @@ qpnp_power_get_property_mains(struct power_supply *psy,
 	return 0;
 }
 
+static void
+qpnp_aicl_check_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct qpnp_chg_chip *chip = container_of(dwork,
+				struct qpnp_chg_chip, aicl_check_work);
+	union power_supply_propval ret = {0,};
+
+	if (!charger_monitor && qpnp_chg_is_usb_chg_plugged_in(chip)) {
+		chip->usb_psy->get_property(chip->usb_psy,
+			  POWER_SUPPLY_PROP_CURRENT_MAX, &ret);
+		if ((ret.intval / 1000) > USB_WALL_THRESHOLD_MA) {
+			pr_debug("no charger_monitor present set iusbmax %d\n",
+					ret.intval / 1000);
+			qpnp_chg_iusbmax_set(chip, ret.intval / 1000);
+		}
+	} else {
+		pr_debug("charger_monitor is present\n");
+	}
+	chip->charger_monitor_checked = true;
+}
+
 static int
 get_prop_battery_voltage_now(struct qpnp_chg_chip *chip)
 {
@@ -1669,7 +1693,7 @@ static int
 get_prop_capacity(struct qpnp_chg_chip *chip)
 {
 	union power_supply_propval ret = {0,};
-	int battery_status, charger_in;
+	int battery_status, bms_status, soc, charger_in;
 
 	if (chip->use_default_batt_values || !get_prop_batt_present(chip))
 		return DEFAULT_CAPACITY;
@@ -1677,28 +1701,32 @@ get_prop_capacity(struct qpnp_chg_chip *chip)
 	if (chip->bms_psy) {
 		chip->bms_psy->get_property(chip->bms_psy,
 				POWER_SUPPLY_PROP_CAPACITY, &ret);
+		soc = ret.intval;
 		battery_status = get_prop_batt_status(chip);
+		chip->bms_psy->get_property(chip->bms_psy,
+				POWER_SUPPLY_PROP_STATUS, &ret);
+		bms_status = ret.intval;
 		charger_in = qpnp_chg_is_usb_chg_plugged_in(chip) ||
 			qpnp_chg_is_dc_chg_plugged_in(chip);
 
 		if (battery_status != POWER_SUPPLY_STATUS_CHARGING
+				&& bms_status != POWER_SUPPLY_STATUS_CHARGING
 				&& charger_in
 				&& !chip->resuming_charging
 				&& !chip->charging_disabled
 				&& chip->soc_resume_limit
-				&& ret.intval <= chip->soc_resume_limit) {
-			pr_debug("resuming charging at %d%% soc\n",
-					ret.intval);
+				&& soc <= chip->soc_resume_limit) {
+			pr_debug("resuming charging at %d%% soc\n", soc);
 			chip->resuming_charging = true;
 			qpnp_chg_set_appropriate_vbatdet(chip);
 			qpnp_chg_charge_en(chip, !chip->charging_disabled);
 		}
-		if (ret.intval == 0) {
+		if (soc == 0) {
 			if (!qpnp_chg_is_usb_chg_plugged_in(chip)
 				&& !qpnp_chg_is_usb_chg_plugged_in(chip))
 				pr_warn_ratelimited("Battery 0, CHG absent\n");
 		}
-		return ret.intval;
+		return soc;
 	} else {
 		pr_debug("No BMS supply registered return 50\n");
 	}
@@ -1790,7 +1818,8 @@ qpnp_batt_external_power_changed(struct power_supply *psy)
 		} else {
 			qpnp_chg_usb_suspend_enable(chip, 0);
 			if (((ret.intval / 1000) > USB_WALL_THRESHOLD_MA)
-					&& (charger_monitor)) {
+					&& (charger_monitor ||
+					!chip->charger_monitor_checked)) {
 				qpnp_chg_iusbmax_set(chip,
 						USB_WALL_THRESHOLD_MA);
 			} else {
@@ -3931,6 +3960,7 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	INIT_DELAYED_WORK(&chip->eoc_work, qpnp_eoc_work);
 	INIT_DELAYED_WORK(&chip->arb_stop_work, qpnp_arb_stop_work);
 	INIT_WORK(&chip->soc_check_work, qpnp_chg_soc_check_work);
+	INIT_DELAYED_WORK(&chip->aicl_check_work, qpnp_aicl_check_work);
 
 	if (chip->dc_chgpth_base) {
 		chip->dc_psy.name = "qpnp-dc";
@@ -4012,6 +4042,8 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	if (qpnp_chg_is_usb_chg_plugged_in(chip))
 		power_supply_set_online(chip->usb_psy, 1);
 
+	schedule_delayed_work(&chip->aicl_check_work,
+		msecs_to_jiffies(EOC_CHECK_PERIOD_MS));
 	pr_info("success chg_dis = %d, bpd = %d, usb = %d, dc = %d b_health = %d batt_present = %d\n",
 			chip->charging_disabled,
 			chip->bpd_detection,

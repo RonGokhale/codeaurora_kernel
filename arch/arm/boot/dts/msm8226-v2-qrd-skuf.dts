@@ -13,7 +13,6 @@
 /dts-v1/;
 /include/ "msm8226-v2.dtsi"
 /include/ "msm8226-qrd.dtsi"
-/include/ "dsi-panel-nt35521-720p-video.dtsi"
 
 / {
 	model = "Qualcomm MSM 8226v2 QRD";
@@ -22,11 +21,6 @@
 };
 
 &soc {
-	qcom,mdss_dsi_nt35521_720p_video {
-		status = "ok";
-		qcom,cont-splash-enabled;
-	};
-
 	sound {
 		qcom,model = "msm8226-tapan-skuf-snd-card";
 
@@ -51,6 +45,29 @@
 		qcom,cdc-vdd-spkr-gpios;
 		qcom,cdc-us-euro-gpios;
 	};
+
+    sound-9302 {
+          qcom,model = "msm8226-tapan9302-skuf-snd-card";
+
+          qcom,audio-routing =
+              "RX_BIAS", "MCLK",
+              "LDO_H", "MCLK",
+              "SPK_OUT", "MCLK",
+              "SPK_OUT", "EXT_VDD_SPKR",
+              "Lineout_1 amp", "LINEOUT1",
+              "Lineout_2 amp", "LINEOUT2",
+              "AMIC1", "MIC BIAS1 External",
+              "MIC BIAS1 External", "Handset Mic",
+              "AMIC2", "MIC BIAS2 External",
+              "MIC BIAS2 External", "Headset Mic",
+              "AMIC3", "MIC BIAS1 External",
+              "MIC BIAS1 External", "Handset Mic";
+
+          qcom,cdc-mclk-gpios = <&pm8226_gpios 1 0>;
+          qcom,cdc-lineout-spkr-gpios = <&pm8226_gpios 2 0>;
+          qcom,cdc-vdd-spkr-gpios;
+          qcom,cdc-us-euro-gpios;
+        };
 
 	tp_power: regulator-tp {
 		compatible = "regulator-fixed";
@@ -180,4 +197,12 @@
 
 &pm8226_iadc {
 	qcom,rsense = <10000000>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_nt35521_720_vid>;
+};
+
+&dsi_nt35521_720_vid {
+	qcom,cont-splash-enabled;
 };

@@ -112,7 +112,7 @@ static struct msm_camera_i2c_client imx134_sensor_i2c_client = {
 };
 
 static const struct of_device_id imx134_dt_match[] = {
-	{.compatible = "qcom,imx134", .data = &imx134_s_ctrl},
+	{.compatible = "sne,imx134", .data = &imx134_s_ctrl},
 	{}
 };
 
@@ -120,7 +120,7 @@ MODULE_DEVICE_TABLE(of, imx134_dt_match);
 
 static struct platform_driver imx134_platform_driver = {
 	.driver = {
-		.name = "qcom,imx134",
+		.name = "sne,imx134",
 		.owner = THIS_MODULE,
 		.of_match_table = imx134_dt_match,
 	},
@@ -138,23 +138,24 @@ static int32_t imx134_platform_probe(struct platform_device *pdev)
 static int __init imx134_init_module(void)
 {
 	int32_t rc = 0;
-	pr_info("%s:%d\n", __func__, __LINE__);
+	pr_debug("%s:%d\n", __func__, __LINE__);
 	rc = platform_driver_probe(&imx134_platform_driver,
 		imx134_platform_probe);
 	if (!rc)
 		return rc;
-	pr_err("%s:%d rc %d\n", __func__, __LINE__, rc);
+	pr_debug("%s:%d rc %d\n", __func__, __LINE__, rc);
 	return i2c_add_driver(&imx134_i2c_driver);
 }
 
 static void __exit imx134_exit_module(void)
 {
-	pr_info("%s:%d\n", __func__, __LINE__);
+	pr_debug("%s:%d\n", __func__, __LINE__);
 	if (imx134_s_ctrl.pdev) {
 		msm_sensor_free_sensor_data(&imx134_s_ctrl);
 		platform_driver_unregister(&imx134_platform_driver);
-	} else
+	} else {
 		i2c_del_driver(&imx134_i2c_driver);
+	}
 	return;
 }
 
