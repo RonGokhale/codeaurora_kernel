@@ -650,6 +650,8 @@ int q6asm_audio_client_buf_free(unsigned int dir,
 			if (port->buf[cnt].data) {
 				msm_audio_ion_free(port->buf[cnt].client,
 						   port->buf[cnt].handle);
+				port->buf[cnt].client = NULL;
+				port->buf[cnt].handle = NULL;
 				port->buf[cnt].data = NULL;
 				port->buf[cnt].phys = 0;
 				--(port->max_buf_cnt);
@@ -686,7 +688,6 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 	}
 
 	if (port->buf[0].data) {
-		msm_audio_ion_free(port->buf[0].client, port->buf[0].handle);
 		pr_debug("%s:data[%p]phys[%p][%p] , client[%p] handle[%p]\n",
 			__func__,
 			(void *)port->buf[0].data,
@@ -694,6 +695,9 @@ int q6asm_audio_client_buf_free_contiguous(unsigned int dir,
 			(void *)&port->buf[0].phys,
 			(void *)port->buf[0].client,
 			(void *)port->buf[0].handle);
+		msm_audio_ion_free(port->buf[0].client, port->buf[0].handle);
+		port->buf[0].client = NULL;
+		port->buf[0].handle = NULL;
 	}
 
 	while (cnt >= 0) {
@@ -1603,7 +1607,7 @@ static int __q6asm_open_read(struct audio_client *ac,
 
 	open.preprocopo_id = get_asm_topology();
 	if (open.preprocopo_id == 0)
-		open.preprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT;
+		open.preprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
 	open.bits_per_sample = bits_per_sample;
 	open.mode_flags = 0x0;
 
@@ -1702,7 +1706,7 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 
 	open.postprocopo_id = get_asm_topology();
 	if (open.postprocopo_id == 0)
-		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT;
+		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
 
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
@@ -1786,7 +1790,7 @@ int q6asm_open_read_write(struct audio_client *ac,
 	/* source endpoint : matrix */
 	open.postprocopo_id = get_asm_topology();
 	if (open.postprocopo_id == 0)
-		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT;
+		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
 
 	switch (wr_format) {
 	case FORMAT_LINEAR_PCM:
@@ -2233,7 +2237,6 @@ int q6asm_cfg_dual_mono_aac(struct audio_client *ac,
 			uint16_t sce_left, uint16_t sce_right)
 {
 	struct asm_aac_dual_mono_mapping_param dual_mono;
-	u32 frames_per_buf = 0;
 
 	int rc = 0;
 
@@ -2244,11 +2247,8 @@ int q6asm_cfg_dual_mono_aac(struct audio_client *ac,
 
 	dual_mono.hdr.opcode = ASM_STREAM_CMD_SET_ENCDEC_PARAM;
 	dual_mono.encdec.param_id = ASM_PARAM_ID_AAC_DUAL_MONO_MAPPING;
-	dual_mono.encdec.param_size = sizeof(struct asm_aac_enc_cfg_v2) -
-				sizeof(struct asm_stream_cmd_set_encdec_param);
-	dual_mono.encblk.frames_per_buf = frames_per_buf;
-	dual_mono.encblk.enc_cfg_blk_size  = dual_mono.encdec.param_size -
-				sizeof(struct asm_enc_cfg_blk_param_v2);
+	dual_mono.encdec.param_size = sizeof(dual_mono.left_channel_sce) +
+				sizeof(dual_mono.right_channel_sce);
 	dual_mono.left_channel_sce = sce_left;
 	dual_mono.right_channel_sce = sce_right;
 

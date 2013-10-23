@@ -49,6 +49,7 @@
 			compatible = "qcom,mdss-fb";
 			qcom,memory-reservation-type = "EBI1";
 			qcom,memory-reservation-size = <0x800000>;
+			qcom,memblock-reserve = <0x03200000 0xFA0000>;
 		};
 
 		mdss_fb1: qcom,mdss_fb_wfd {
@@ -67,7 +68,7 @@
 		vdd-supply = <&pm8226_l15>;
 		vddio-supply = <&pm8226_l8>;
 		vdda-supply = <&pm8226_l4>;
-		qcom,platform-reset-gpio = <&msmgpio 25 1>;
+		qcom,platform-reset-gpio = <&msmgpio 25 0>;
 		qcom,platform-te-gpio = <&msmgpio 24 0>;
 		qcom,platform-strength-ctrl = [ff 06];
 		qcom,platform-bist-ctrl = [00 00 b1 ff 00 00];
@@ -120,3 +121,5 @@
 		qcom,mdss-fb-map = <&mdss_fb1>;
 	};
 };
+
+/include/ "msm8226-mdss-panels.dtsi"

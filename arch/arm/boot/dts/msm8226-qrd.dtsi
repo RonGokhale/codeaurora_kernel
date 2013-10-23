@@ -10,7 +10,6 @@
  * GNU General Public License for more details.
  */
 
-/include/ "dsi-panel-nt35596-1080p-video.dtsi"
 /include/ "msm8226-camera-sensor-qrd.dtsi"
 
 &soc {
@@ -30,7 +29,10 @@
 			synaptics,irq-gpio = <&msmgpio 17 0x2008>;
 			synaptics,button-map = <139 102 158>;
 			synaptics,i2c-pull-up;
+			synaptics,power-down;
+			synaptics,disable-gpios;
 		};
+
 		focaltech@38 {
 			compatible = "focaltech,5x06";
 			reg = <0x38>;
@@ -115,10 +117,10 @@
 			"MIC BIAS1 External", "Handset Mic",
 			"AMIC2", "MIC BIAS2 External",
 			"MIC BIAS2 External", "Headset Mic",
-			"AMIC4", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCRight Headset Mic",
-			"AMIC5", "MIC BIAS2 External",
-			"MIC BIAS2 External", "ANCLeft Headset Mic";
+			"AMIC3", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Analog Mic3",
+			"AMIC4", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Analog Mic4";
 
 		qcom,cdc-mclk-gpios = <&pm8226_gpios 1 0>;
 		qcom,cdc-vdd-spkr-gpios = <&pm8226_gpios 2 0>;
@@ -239,7 +241,7 @@
 	qcom,pad-drv-on = <0x4 0x4 0x4>; /* 10mA, 10mA, 10mA */
 	qcom,pad-drv-off = <0x0 0x0 0x0>; /* 2mA, 2mA, 2mA */
 
-	qcom,clk-rates = <400000 25000000 50000000 100000000 200000000>;
+	qcom,clk-rates = <400000 25000000 50000000>;
 
 	#address-cells = <0>;
 	interrupt-parent = <&sdhc_2>;
@@ -455,6 +457,7 @@
 &slim_msm {
 	tapan_codec {
 		qcom,cdc-micbias1-ext-cap;
+		qcom,cdc-micbias3-ext-cap;
 	};
 };
 
@@ -473,4 +476,17 @@
 
 &android_usb {
 	qcom,android-usb-cdrom;
+	qcom,android-usb-internal-ums;
+};
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_nt35596_1080_vid>;
+};
+
+&dsi_nt35596_1080_vid {
+	qcom,cont-splash-enabled;
 };

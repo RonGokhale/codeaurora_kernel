@@ -50,7 +50,7 @@ static void mdp3_bufq_deinit(struct mdp3_buffer_queue *bufq)
 	while (count--) {
 		struct mdp3_img_data *data = &bufq->img_data[bufq->pop_idx];
 		bufq->pop_idx = (bufq->pop_idx + 1) % MDP3_MAX_BUF_QUEUE;
-		mdp3_put_img(data);
+		mdp3_put_img(data, MDP3_CLIENT_DMA_P);
 	}
 	bufq->count = 0;
 	bufq->push_idx = 0;
@@ -557,6 +557,88 @@ off_error:
 	return 0;
 }
 
+static int mdp3_ctrl_reset(struct msm_fb_data_type *mfd)
+{
+	int rc = 0;
+	struct mdp3_session_data *mdp3_session;
+	struct mdp3_dma *mdp3_dma;
+	struct mdss_panel_data *panel;
+	struct mdp3_vsync_notification vsync_client;
+
+	pr_debug("mdp3_ctrl_reset\n");
+	mdp3_session = (struct mdp3_session_data *)mfd->mdp.private1;
+	if (!mdp3_session || !mdp3_session->panel || !mdp3_session->dma ||
+		!mdp3_session->intf) {
+		pr_err("mdp3_ctrl_reset no device");
+		return -ENODEV;
+	}
+
+	panel = mdp3_session->panel;
+	mdp3_dma = mdp3_session->dma;
+	mutex_lock(&mdp3_session->lock);
+
+	vsync_client = mdp3_dma->vsync_client;
+
+	rc = mdp3_dma->stop(mdp3_dma, mdp3_session->intf);
+	if (rc) {
+		pr_err("fail to stop the MDP3 dma\n");
+		goto reset_error;
+	}
+
+	rc = panel->event_handler(panel, MDSS_EVENT_PANEL_OFF, NULL);
+	if (rc)
+		pr_err("fail to turn off panel\n");
+
+	rc = mdp3_ctrl_res_req_clk(mfd, 0);
+	if (rc) {
+		pr_err("fail to release mdp clocks\n");
+		goto reset_error;
+	}
+
+	rc = panel->event_handler(panel, MDSS_EVENT_BLANK, NULL);
+	if (rc) {
+		pr_err("fail to blank the panel\n");
+		goto reset_error;
+	}
+
+	rc = mdp3_iommu_enable(MDP3_CLIENT_DMA_P);
+	if (rc) {
+		pr_err("fail to attach dma iommu\n");
+		goto reset_error;
+	}
+
+	rc = panel->event_handler(panel, MDSS_EVENT_UNBLANK, NULL);
+	if (rc) {
+		pr_err("fail to unblank the panel\n");
+		goto reset_error;
+	}
+
+	rc = panel->event_handler(panel, MDSS_EVENT_PANEL_ON, NULL);
+	if (rc) {
+		pr_err("fail to turn on the panel\n");
+		goto reset_error;
+	}
+
+	rc = mdp3_ctrl_res_req_clk(mfd, 1);
+	if (rc) {
+		pr_err("fail to turn on mdp clks\n");
+		goto reset_error;
+	}
+
+	mdp3_ctrl_intf_init(mfd, mdp3_session->intf);
+	mdp3_ctrl_dma_init(mfd, mdp3_dma);
+
+	if (vsync_client.handler)
+		mdp3_dma->vsync_enable(mdp3_dma, &vsync_client);
+
+	if (mfd->fbi->screen_base)
+		rc = mdp3_dma->start(mdp3_dma, mdp3_session->intf);
+
+reset_error:
+	mutex_unlock(&mdp3_session->lock);
+	return rc;
+}
+
 static int mdp3_overlay_get(struct msm_fb_data_type *mfd,
 				struct mdp_overlay *req)
 {
@@ -583,15 +665,15 @@ static int mdp3_overlay_set(struct msm_fb_data_type *mfd,
 
 	mutex_lock(&mdp3_session->lock);
 
-	if (mdp3_session->overlay.id == req->id) {
-		mdp3_session->overlay = *req;
-		if (req->id == MSMFB_NEW_REQUEST) {
-			mdp3_session->overlay.id = 1;
-			req->id = 1;
-		}
-	} else {
-		rc = -EINVAL;
+	if (mdp3_session->overlay.id != req->id)
+		pr_err("overlay was not released, continue to recover\n");
+
+	mdp3_session->overlay = *req;
+	if (req->id == MSMFB_NEW_REQUEST) {
+		mdp3_session->overlay.id = 1;
+		req->id = 1;
 	}
+
 	mutex_unlock(&mdp3_session->lock);
 
 	return rc;
@@ -624,7 +706,7 @@ static int mdp3_overlay_queue_buffer(struct msm_fb_data_type *mfd,
 	struct msmfb_data *img = &req->data;
 	struct mdp3_img_data data;
 
-	rc = mdp3_get_img(img, &data);
+	rc = mdp3_get_img(img, &data, MDP3_CLIENT_DMA_P);
 	if (rc) {
 		pr_err("fail to get overlay buffer\n");
 		return rc;
@@ -633,7 +715,7 @@ static int mdp3_overlay_queue_buffer(struct msm_fb_data_type *mfd,
 	rc = mdp3_bufq_push(&mdp3_session->bufq_in, &data);
 	if (rc) {
 		pr_err("fail to queue the overlay buffer, buffer drop\n");
-		mdp3_put_img(&data);
+		mdp3_put_img(&data, MDP3_CLIENT_DMA_P);
 		return rc;
 	}
 	return 0;
@@ -675,10 +757,9 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd)
 
 	if (!mdp3_iommu_is_attached(MDP3_CLIENT_DMA_P)) {
 		pr_debug("continuous splash screen, IOMMU not attached\n");
-		mdp3_ctrl_off(mfd);
-		mdp3_ctrl_on(mfd);
-		mdp3_free();
+		mdp3_ctrl_reset(mfd);
 	}
+	mdp3_release_splash_memory();
 
 	mutex_lock(&mdp3_session->lock);
 
@@ -698,7 +779,7 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd)
 
 	if (mdp3_bufq_count(&mdp3_session->bufq_out) > 2) {
 		data = mdp3_bufq_pop(&mdp3_session->bufq_out);
-		mdp3_put_img(data);
+		mdp3_put_img(data, MDP3_CLIENT_DMA_P);
 	}
 	mutex_unlock(&mdp3_session->lock);
 
@@ -724,9 +805,9 @@ static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
 
 	if (!mdp3_iommu_is_attached(MDP3_CLIENT_DMA_P)) {
 		pr_debug("continuous splash screen, IOMMU not attached\n");
-		mdp3_ctrl_off(mfd);
-		mdp3_ctrl_on(mfd);
+		mdp3_ctrl_reset(mfd);
 	}
+	mdp3_release_splash_memory();
 
 	mutex_lock(&mdp3_session->lock);
 
@@ -1138,7 +1219,8 @@ static int mdp3_ctrl_lut_update(struct msm_fb_data_type *mfd,
 	if (!mdp3_session->dma->config_lut)
 		return -EINVAL;
 
-	if (cmap->start + cmap->len > MDP_LUT_SIZE) {
+	if (cmap->start > MDP_LUT_SIZE || cmap->len > MDP_LUT_SIZE ||
+			(cmap->start + cmap->len > MDP_LUT_SIZE)) {
 		pr_err("mdp3_ctrl_lut_update invalid arguments\n");
 		return  -EINVAL;
 	}
@@ -1277,8 +1359,13 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 	struct mdp3_session_data *mdp3_session = NULL;
 	u32 intf_type = MDP3_DMA_OUTPUT_SEL_DSI_VIDEO;
 	int rc;
+	int splash_mismatch = 0;
 
 	pr_debug("mdp3_ctrl_init\n");
+	rc = mdp3_parse_dt_splash(mfd);
+	if (rc)
+		splash_mismatch = 1;
+
 	mdp3_interface->on_fnc = mdp3_ctrl_on;
 	mdp3_interface->off_fnc = mdp3_ctrl_off;
 	mdp3_interface->do_histogram = NULL;
@@ -1323,7 +1410,7 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 	mdp3_session->dma->output_config.out_sel = intf_type;
 	mdp3_session->mfd = mfd;
 	mdp3_session->panel = dev_get_platdata(&mfd->pdev->dev);
-	mdp3_session->status = 0;
+	mdp3_session->status = mdp3_session->intf->active;
 	mdp3_session->overlay.id = MSMFB_NEW_REQUEST;
 	mdp3_bufq_init(&mdp3_session->bufq_in);
 	mdp3_bufq_init(&mdp3_session->bufq_out);
@@ -1352,6 +1439,11 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 
 	kobject_uevent(&dev->kobj, KOBJ_ADD);
 	pr_debug("vsync kobject_uevent(KOBJ_ADD)\n");
+
+	if (splash_mismatch) {
+		pr_err("splash memory mismatch, stop splash\n");
+		mdp3_ctrl_off(mfd);
+	}
 
 init_done:
 	if (IS_ERR_VALUE(rc))
