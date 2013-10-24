@@ -181,8 +181,14 @@ struct dm_cache_policy {
 	/*
 	 * Configuration.
 	 */
+	unsigned (*count_config_pairs)(struct dm_cache_policy *p);
+
+	/*
+	 * Emits just the config values, no arg count in front.
+	 */
 	int (*emit_config_values)(struct dm_cache_policy *p,
 				  char *result, unsigned maxlen);
+
 	int (*set_config_value)(struct dm_cache_policy *p,
 				const char *key, const char *value);
 
@@ -190,9 +196,24 @@ struct dm_cache_policy {
 	 * Book keeping ptr for the policy register, not for general use.
 	 */
 	void *private;
+
+	/*
+	 * Support for stackable policies. A policy stack consists of 0 or more
+	 * "non-terminal" policies (which can intercept requests to provide
+	 * additional functionality, but ultimately hand them down the stack)
+	 * followed by one "terminal" policy which actually runs a caching
+	 * algorithm.  This is the pointer to the "next" policy in a
+	 * non-terminal policy.  It will always be NULL in a terminal policy.
+	 */
+	struct dm_cache_policy *child;
 };
 
 /*----------------------------------------------------------------*/
+
+/*
+ * Indicates that a policy is only a shim layer in a policy stack.
+ */
+#define	DM_CACHE_POLICY_SHIM	 (1 << 0)
 
 /*
  * We maintain a little register of the different policy types.
@@ -222,6 +243,8 @@ struct dm_cache_policy_type {
 	struct dm_cache_policy *(*create)(dm_cblock_t cache_size,
 					  sector_t origin_size,
 					  sector_t block_size);
+
+	unsigned long features;
 };
 
 int dm_cache_policy_register(struct dm_cache_policy_type *type);

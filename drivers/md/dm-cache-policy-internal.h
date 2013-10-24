@@ -81,6 +81,11 @@ static inline void policy_tick(struct dm_cache_policy *p)
 		return p->tick(p);
 }
 
+static inline unsigned policy_count_config_pairs(struct dm_cache_policy *p)
+{
+	return p->count_config_pairs ? p->count_config_pairs(p) : 0;
+}
+
 static inline int policy_emit_config_values(struct dm_cache_policy *p, char *result, unsigned maxlen)
 {
 	ssize_t sz = 0;
@@ -123,6 +128,12 @@ const unsigned *dm_cache_policy_get_version(struct dm_cache_policy *p);
 #define DM_CACHE_POLICY_MAX_HINT_SIZE 128U
 int    dm_cache_policy_set_hint_size(struct dm_cache_policy *p, unsigned hint_size);
 size_t dm_cache_policy_get_hint_size(struct dm_cache_policy *p);
+
+/*
+ * Return bool that reflects whether or not policy is only a shim
+ * layer in a policy stack.
+ */
+bool dm_cache_policy_is_shim(struct dm_cache_policy *p);
 
 /*----------------------------------------------------------------*/
 
