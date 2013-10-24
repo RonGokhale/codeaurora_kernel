@@ -347,23 +347,40 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
     case DTS_EAGLE_IOCTL_GET_PARAM: {
         struct dts_eagle_param_desc depd;
         int offset = 0;
+        void *buf, *buf_m = NULL;
         pr_info("DTS_EAGLE_DRIVER_POST: %s called, control 0x%X (get param)\n",
             __func__, cmd);
         if (copy_from_user((void *)&depd, (void *)arg, sizeof(depd))) {
             pr_err("DTS_EAGLE_DRIVER_POST: error copying dts_eagle_param_desc\n");
             return -EFAULT;
-        }
-        offset = _cache_targets[depd.target][BETD_OFFSET] + depd.offset;
-        if ((offset + depd.size) > _depc_size) {
-            pr_err("DTS_EAGLE_DRIVER_POST: invalid size %d and/or offset %d\n",
-                depd.size, offset);
-            return -EFAULT;
+        }        
+        if (depd.offset == -1) {
+            pr_info("DTS_EAGLE_DRIVER_POST: get from qdsp requested\n");
+            buf = buf_m = kzalloc(depd.size, GFP_KERNEL);            
+            if(!buf_m) {
+                pr_err("DTS_EAGLE_DRIVER_POST: out of memory\n");
+                return -ENOMEM;
+            } else if(dts_eagle_open_get(_cache_targets[depd.target][BETD_ID],
+                      depd.id, buf, depd.size) < 0) {
+                pr_err("DTS_EAGLE_DRIVER_POST: get from qdsp failed\n");
+                return -EFAULT;        
+            }
+        } else {
+            offset = _cache_targets[depd.target][BETD_OFFSET] + depd.offset;
+            if ((offset + depd.size) > _depc_size) {
+                pr_err("DTS_EAGLE_DRIVER_POST: invalid size %d and/or offset %d\n",
+                    depd.size, offset);
+                return -EFAULT;
+            }
+            buf = (void *)&_depc[offset];
         }
         if (copy_to_user((void *)(((char *)arg)+sizeof(depd)),
-                 (void *)&_depc[offset], depd.size)) {
+                          buf, depd.size)) {
             pr_err("DTS_EAGLE_DRIVER_POST: error getting param\n");
             return -EFAULT;
         }
+        if(buf_m)
+            kfree(buf_m);
         break;
     }
     case DTS_EAGLE_IOCTL_SET_PARAM: {
@@ -411,10 +428,8 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                 _cache_targets[depd.target][BETD_ID], depd.target);
             if (get_is_backend_active(
                     _cache_targets[depd.target][BETD_ID])) {
-                if (dts_eagle_open_post(
-                        _cache_targets[depd.target][BETD_ID],
-                        depd.id, (void *)&_depc[offset],
-                        depd.size) < 0) {
+                if (dts_eagle_open_post(_cache_targets[depd.target][BETD_ID],
+                        depd.id, (void *)&_depc[offset], depd.size) < 0) {
                     pr_err("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post failed with id = 0x%X, size = %d, offset = %d, target = %d, global offset = %d\n",
                         depd.id, depd.size, depd.offset, depd.target, offset);
                 } else {
@@ -454,7 +469,8 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
             return -EFAULT;
         }
         target[0] &= 0x00FFFFFF;
-        if (target[0] + target[2] >= _depc_size || !target[0] || !target[1] || !target[2]) {
+        if (target[0] + target[2] >= _depc_size || !target[0] ||
+            !target[1] || !target[2]) {
             pr_err("DTS_EAGLE_DRIVER_POST: target offset and/or size out of range or zero, or invalid parameter sent (offset %u, size %u, cache size limit is %u, parameter sent 0x%X)\n",
                 target[0], target[2], _depc_size, target[1]);
             return -EFAULT;

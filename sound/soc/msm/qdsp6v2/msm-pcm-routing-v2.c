@@ -178,10 +178,6 @@ int get_topology(int path_type)
 
 	if (topology_id  == 0)
 		topology_id = DEFAULT_COPP_TOPOLOGY;
-
-    // temporarily force DTS EAGLE postmix topology
-	if (path_type == ADM_PATH_PLAYBACK)
-        topology_id = ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX;
     
 	return topology_id;
 }

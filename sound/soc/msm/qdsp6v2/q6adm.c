@@ -31,7 +31,6 @@
 #include "msm-dts-eagle.h"
 
 #define TIMEOUT_MS 1000
-
 #define RESET_COPP_ID 99
 #define INVALID_COPP_ID 0xFF
 #define ADM_GET_PARAMETER_LENGTH 350
@@ -81,14 +80,14 @@ static struct adm_multi_ch_map multi_ch_map = { false,
 
 static int adm_dolby_get_parameters[ADM_GET_PARAMETER_LENGTH];
 
+static char* eagle_get_buf = NULL;
 int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
 {
 	struct adm_cmd_set_pp_params_v5	adm_p;
-	int ret = 0, index, *update_params_value;
+	int ret = 0, index = afe_get_port_index(port_id), *update_params_value;
 
 	pr_debug("DTS_EAGLE_ADM - %s\n", __func__);
-
-	index = afe_get_port_index(port_id);
+	
 	if (index < 0 || index >= AFE_MAX_PORTS) {
 		pr_err("DTS_EAGLE_ADM - %s: invalid port idx %d portid %#x\n",
 				__func__, index, port_id);
@@ -149,6 +148,79 @@ int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
 
 fail_cmd:
 	return ret;
+}
+
+int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
+{
+	struct adm_cmd_get_pp_params_v5	*adm_params = NULL;
+	int sz, rc = 0, index = afe_get_port_index(port_id);	
+
+	if (index < 0 || index >= AFE_MAX_PORTS) {
+		pr_err("%s: invalid port idx %d portid %#x\n",
+			__func__, index, port_id);
+		return -EINVAL;
+	}
+	sz = sizeof(struct adm_cmd_get_pp_params_v5) + size;
+	adm_params = kzalloc(sz, GFP_KERNEL);
+	if (!adm_params) {
+		pr_err("%s, adm params memory alloc failed", __func__);
+		return -ENOMEM;
+	}
+
+	adm_params->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+	adm_params->hdr.pkt_size = sz;
+	adm_params->hdr.src_svc = APR_SVC_ADM;
+	adm_params->hdr.src_domain = APR_DOMAIN_APPS;
+	adm_params->hdr.src_port = port_id;
+	adm_params->hdr.dest_svc = APR_SVC_ADM;
+	adm_params->hdr.dest_domain = APR_DOMAIN_ADSP;
+	adm_params->hdr.dest_port = atomic_read(&this_adm.copp_id[index]);
+	adm_params->hdr.token = port_id;
+	adm_params->hdr.opcode = ADM_CMD_GET_PP_PARAMS_V5;
+	adm_params->data_payload_addr_lsw = 0;
+	adm_params->data_payload_addr_msw = 0;
+	adm_params->mem_map_handle = 0;
+	adm_params->module_id = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
+	adm_params->param_id = param_id;
+	adm_params->param_max_size = size;
+	adm_params->reserved = 0;
+    
+    eagle_get_buf = kzalloc(size, GFP_KERNEL);
+    if (!eagle_get_buf) {
+		pr_err("%s, eagle_get_buf alloc failed", __func__);
+		rc = -ENOMEM;
+        goto fail_cmd_2;
+	}
+
+	atomic_set(&this_adm.copp_stat[index], 0);
+	rc = apr_send_pkt(this_adm.apr, (uint32_t *)adm_params);
+	if (rc < 0) {
+		pr_err("%s: Failed to Get EAGLE Params on port %d\n", __func__,
+			port_id);
+		rc = -EINVAL;
+		goto fail_cmd_2;
+	}
+	/* Wait for the callback with copp id */
+	rc = wait_event_timeout(this_adm.wait[index],
+			atomic_read(&this_adm.copp_stat[index]),
+			msecs_to_jiffies(TIMEOUT_MS));
+	if (!rc) {
+		pr_err("%s: EAGLE get params timed out port = %d\n", __func__,
+			port_id);
+		rc = -EINVAL;
+		goto fail_cmd_2;
+	}
+	if (data) {
+		memcpy(data, eagle_get_buf, size);
+	}
+	rc = 0;
+fail_cmd_2:
+	kfree(adm_params);
+    if(eagle_get_buf)
+        kfree(eagle_get_buf);
+    eagle_get_buf = NULL;
+	return rc;
 }
 
 int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
@@ -1055,7 +1127,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 		atomic_set(&this_adm.copp_perf_mode[index], 1);
 	}
 
-	if (topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX) {
+	if ((topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX)&&(!perf_mode)) {
 		int res;
 /*
 		if (this_adm.outband_memmap.paddr != 0)
