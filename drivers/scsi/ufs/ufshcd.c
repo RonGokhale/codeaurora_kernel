@@ -1666,7 +1666,51 @@ static inline int ufshcd_read_power_desc(struct ufs_hba *hba,
 					 u8 *buf,
 					 u32 size)
 {
-	return ufshcd_read_desc(hba, QUERY_DESC_IDN_POWER, 0, buf, size);
+	int err = 0;
+	int retries;
+
+	for (retries = QUERY_REQ_RETRIES; retries > 0; retries--) {
+		/* Read descriptor*/
+		err = ufshcd_read_desc(hba, QUERY_DESC_IDN_POWER, 0, buf, size);
+		if (!err)
+			break;
+		dev_dbg(hba->dev, "%s: error %d retrying\n", __func__, err);
+	}
+
+	if (err)
+		dev_err(hba->dev,
+			"%s: reading power descriptor failed with error %d\n",
+			__func__, err);
+	return err;
+}
+
+static inline int ufshcd_read_lun_qdepth(struct scsi_device *sdev,
+					u8 *lun_qdepth)
+{
+	int ret = 0;
+	int retries;
+	struct ufs_hba *hba;
+
+	hba = shost_priv(sdev->host);
+
+	for (retries = QUERY_REQ_RETRIES; retries > 0; retries--) {
+		/* Read descriptor*/
+		ret = ufshcd_read_unit_desc_param(hba,
+				  ufshcd_scsi_to_upiu_lun(sdev->lun),
+				  UNIT_DESC_PARAM_LU_Q_DEPTH,
+				  lun_qdepth,
+				  1);
+		if (!ret)
+			break;
+
+		dev_dbg(hba->dev, "%s: error %d retrying\n", __func__, ret);
+	}
+
+	if (ret)
+		dev_err(hba->dev,
+			"%s: reading unit desc param failed with error %d\n",
+			__func__, ret);
+	return ret;
 }
 
 /**
@@ -3731,6 +3775,28 @@ out:
 	return icc_level;
 }
 
+static int ufshcd_set_icc_levels_attr(struct ufs_hba *hba, u32 icc_level)
+{
+	int ret = 0;
+	int retries;
+
+	for (retries = QUERY_REQ_RETRIES; retries > 0; retries--) {
+		/* write attribute */
+		ret = ufshcd_query_attr(hba, UPIU_QUERY_OPCODE_WRITE_ATTR,
+			QUERY_ATTR_IDN_ACTIVE_ICC_LVL, 0, 0, &icc_level);
+		if (!ret)
+			break;
+
+		dev_dbg(hba->dev, "%s: failed with error %d\n", __func__, ret);
+	}
+
+	if (ret)
+		dev_err(hba->dev,
+			"%s: setting icclevel attribute failed with error %d\n",
+				__func__, ret);
+		return ret;
+}
+
 static void ufshcd_init_icc_levels(struct ufs_hba *hba)
 {
 	u32 icc_level;
@@ -3750,8 +3816,7 @@ static void ufshcd_init_icc_levels(struct ufs_hba *hba)
 	icc_level = ufshcd_find_max_sup_active_icc_level(hba, desc_buf,
 								buff_len);
 
-	ret = ufshcd_query_attr(hba, UPIU_QUERY_OPCODE_WRITE_ATTR,
-			QUERY_ATTR_IDN_ACTIVE_ICC_LVL, 0, 0, &icc_level);
+	ret = ufshcd_set_icc_levels_attr(hba, icc_level);
 
 	if (ret)
 		dev_err(hba->dev,
