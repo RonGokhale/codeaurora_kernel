@@ -198,6 +198,7 @@ struct synaptics_rmi4_data {
 	struct regulator *vdd;
 	struct regulator *vcc_i2c;
 	struct mutex rmi4_io_ctrl_mutex;
+	struct mutex rmi4_reset_mutex;
 	struct delayed_work det_work;
 	struct workqueue_struct *det_workqueue;
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -230,6 +231,7 @@ struct synaptics_rmi4_data {
 	wait_queue_head_t wait;
 	bool stay_awake;
 	bool staying_awake;
+	unsigned char no_sleep_setting;
 	int (*i2c_read)(struct synaptics_rmi4_data *pdata, unsigned short addr,
 			unsigned char *data, unsigned short length);
 	int (*i2c_write)(struct synaptics_rmi4_data *pdata, unsigned short addr,
