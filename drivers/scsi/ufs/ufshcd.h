@@ -472,7 +472,19 @@ void ufshcd_remove(struct ufs_hba *);
  */
 static inline void ufshcd_hba_stop(struct ufs_hba *hba)
 {
+	int retries;
+
 	ufshcd_writel(hba, CONTROLLER_DISABLE,  REG_CONTROLLER_ENABLE);
+
+	/* Poll the controller enable register to verify update*/
+	for (retries = 0; retries < 1000; retries++)
+		if (ufshcd_readl(hba, REG_CONTROLLER_ENABLE) ==
+				CONTROLLER_DISABLE)
+			return;
+		else
+			usleep(1);
+
+	dev_err(hba->dev, "%s: Controller disable failed\n", __func__);
 }
 
 static inline void check_upiu_size(void)

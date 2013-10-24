@@ -2277,18 +2277,9 @@ static int ufshcd_hba_enable(struct ufs_hba *hba)
 	 * development and testing of this driver. msleep can be changed to
 	 * mdelay and retry count can be reduced based on the controller.
 	 */
-	if (!ufshcd_is_hba_active(hba)) {
-
+	if (!ufshcd_is_hba_active(hba))
 		/* change controller state to "reset state" */
 		ufshcd_hba_stop(hba);
-
-		/*
-		 * This delay is based on the testing done with UFS host
-		 * controller FPGA. The delay can be changed based on the
-		 * host controller used.
-		 */
-		msleep(5);
-	}
 
 	/* UniPro link is disabled at this point */
 	ufshcd_set_link_off(hba);
