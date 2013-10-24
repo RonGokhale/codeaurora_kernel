@@ -2243,6 +2243,7 @@ exit:
 	return ret;
 }
 
+#define MDSS_MAX_HIST_BIN_SIZE 16777215
 int mdss_mdp_histogram_start(struct mdss_mdp_ctl *ctl,
 				struct mdp_histogram_start_req *req)
 {
@@ -2252,6 +2253,7 @@ int mdss_mdp_histogram_start(struct mdss_mdp_ctl *ctl,
 	int i, ret = 0;
 	u32 disp_num, dspp_num = 0;
 	u32 mixer_cnt, mixer_id[MDSS_MDP_INTF_MAX_LAYERMIXER];
+	u32 frame_size;
 	struct mdss_mdp_pipe *pipe;
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	if (!ctl)
@@ -2274,6 +2276,16 @@ int mdss_mdp_histogram_start(struct mdss_mdp_ctl *ctl,
 		pr_err("%s, Too many dspp connects to disp %d",
 			__func__, mixer_cnt);
 		ret = -EPERM;
+		goto hist_exit;
+	}
+
+	frame_size = (mdata->ctl_off[mixer_id[0]].width *
+					mdata->ctl_off[mixer_id[0]].height);
+	if (!frame_size ||
+		((MDSS_MAX_HIST_BIN_SIZE / frame_size) < req->frame_cnt)) {
+		pr_err("%s, too many frames for given display size, %d",
+						__func__, req->frame_cnt);
+		ret = -EINVAL;
 		goto hist_exit;
 	}
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
@@ -2946,6 +2958,11 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 			ret = -EINVAL;
 			goto error;
 		}
+		if (input->in.amb_light > MDSS_MDP_MAX_AD_AL) {
+			pr_warn("invalid input ambient light");
+			ret = -EINVAL;
+			goto error;
+		}
 		ad->ad_data_mode = MDSS_AD_INPUT_AMBIENT;
 
 		ad->ad_data = input->in.amb_light;
@@ -2957,6 +2974,11 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 	case MDSS_AD_MODE_MAN_STR:
 		if (!MDSS_AD_MODE_DATA_MATCH(ad->cfg.mode,
 				MDSS_AD_INPUT_STRENGTH)) {
+			ret = -EINVAL;
+			goto error;
+		}
+		if (input->in.strength > MDSS_MDP_MAX_AD_STR) {
+			pr_warn("invalid input strength");
 			ret = -EINVAL;
 			goto error;
 		}
@@ -3484,8 +3506,8 @@ int mdss_mdp_calib_config_buffer(struct mdp_calib_config_buffer *cfg,
 		return ret;
 	}
 
-	if (cfg->size == 0) {
-		pr_err("Invalid buffer size");
+	if (cfg->size == 0 || cfg->size > PAGE_SIZE) {
+		pr_err("Invalid buffer size %d", cfg->size);
 		return ret;
 	}
 
