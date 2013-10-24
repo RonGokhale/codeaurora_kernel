@@ -456,4 +456,12 @@ config DM_CACHE_HINTS
        ---help---
          A dumb cache policy just to test variable hint size
 
+config DM_CACHE_TRACE
+       tristate "Tracing Cache Policy shim (EXPERIMENTAL)"
+       depends on DM_CACHE
+       depends on DM_TEST_TARGETS
+       ---help---
+         A cache policy shim that adds debug tracing for all cache policy
+	 interface function calls, along with a configurable trace level.
+
 endif # MD
