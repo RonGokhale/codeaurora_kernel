@@ -44,6 +44,8 @@
 /* #define REPORT_2D_Z */
 #define REPORT_2D_W
 
+#define F12_DATA_15_WORKAROUND
+
 #define RPT_TYPE (1 << 0)
 #define RPT_X_LSB (1 << 1)
 #define RPT_X_MSB (1 << 2)
@@ -947,7 +949,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
-	int retval;
+	int retval, temp;
 	unsigned char touch_count = 0; /* number of touch points */
 	unsigned char finger;
 	unsigned char fingers_to_process;
@@ -961,11 +963,40 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	struct synaptics_rmi4_f12_extra_data *extra_data;
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
-
+#ifdef F12_DATA_15_WORKAROUND	
+	static unsigned char finger_already_present;
+#endif
 	fingers_to_process = fhandler->num_of_data_points;
 	data_addr = fhandler->full_addr.data_base;
 	extra_data = (struct synaptics_rmi4_f12_extra_data *)fhandler->extra;
 	size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
+
+	/* Determine the total number of fingers to process */
+	if (extra_data->data15_size) {
+		retval = synaptics_rmi4_i2c_read(rmi4_data,
+			data_addr + extra_data->data15_offset,
+			extra_data->data15_data,
+			extra_data->data15_size);
+		if (retval < 0)
+			return 0;
+
+		/* Start checking from the highest bit */
+		temp = extra_data->data15_size - 1;
+		finger = (fingers_to_process -1) % 8;
+		do {
+			if (extra_data->data15_data[temp] & (1 << finger))
+				break;
+			if (finger) {
+				finger--;
+			} else {
+				temp--;
+				finger = 7;
+			}
+		} while (--fingers_to_process);
+#ifdef F12_DATA_15_WORKAROUND
+		fingers_to_process = max(fingers_to_process, finger_already_present);
+#endif
+	}
 
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
 			data_addr + extra_data->data1_offset,
@@ -1035,6 +1066,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			input_mt_sync(rmi4_data->input_dev);
 #endif
 			touch_count++;
+#ifdef F12_DATA_15_WORKAROUND
+			finger_already_present = finger + 1;
+#endif
 		}
 	}
 
@@ -1042,6 +1076,10 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			BTN_TOUCH, touch_count > 0);
 	input_report_key(rmi4_data->input_dev,
 			BTN_TOOL_FINGER, touch_count > 0);
+#ifdef F12_DATA_15_WORKAROUND
+	if (!touch_count)
+		finger_already_present = 0;
+#endif
 #ifndef TYPE_B_PROTOCOL	
 	if (!touch_count)
 		input_mt_sync(rmi4_data->input_dev);
