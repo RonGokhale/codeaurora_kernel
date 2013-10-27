@@ -846,36 +846,6 @@ static struct msm_gpiomux_config msm_qca1530_liquid_configs[] __initdata = {
 	},
 };
 
-static struct gpiomux_setting gpio_qca1530_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv  = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct msm_gpiomux_config msm_qca1530_cdp_configs[] __initdata = {
-	{
-		.gpio = 133,    /* qca1530 reset */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_qca1530_config,
-		},
-	},
-};
-
-static struct msm_gpiomux_config msm_qca1530_liquid_configs[] __initdata = {
-	{
-		.gpio = 128,    /* qca1530 reset */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_qca1530_config,
-		},
-	},
-	{
-		.gpio = 66,     /* qca1530 power extra */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_qca1530_config,
-		},
-	},
-};
-
 void __init apq8084_init_gpiomux(void)
 {
 	int rc;
