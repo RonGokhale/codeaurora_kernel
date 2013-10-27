@@ -82,6 +82,14 @@
 		enable-active-high;
 		gpio = <&msmgpio 39 0>;
 	};
+
+	gnss_qca1530: qcom,qca1530 {
+		compatible = "qcom,qca1530";
+		gpios = <&msmgpio 133 0>;	/* Reset line */
+		pwr-supply = <&pma8084_l26>;	/* Power regulator */
+		pwr2-supply = <&pma8084_l9>;	/* Power regulator */
+		xlna-supply = <&pma8084_l22>;	/* xLNA power supply */
+	};
 };
 
 /include/ "dsi-panel-jdi-1080p-video.dtsi"
@@ -368,7 +376,7 @@
 		qcom,output-type = <0>;		/* CMOS logic */
 		qcom,invert = <0>;		/* Output low initially */
 		qcom,vin-sel = <2>;		/* VIN 2 */
-		qcom,src-sel = <2>;		/* Function 1 */
+		qcom,src-sel = <3>;		/* Function 2 */
 		qcom,out-strength = <2>;	/* Medium */
 		qcom,master-en = <1>;		/* Enable GPIO */
 	};
