@@ -1,0 +1,37 @@
+QCA1530 SOC
+
+QCA1530 is a SoC for position determination using sattelite groups. Typical
+scenario includes usage of GPS and GLONASS satellite navigation systems.
+
+Required properties for QCA1530
+
+- compatible: "qcom,qca1530"
+
+Optional properties for QCA1530
+- gpios: GPIO for reset control
+- pwr-supply: handle to the regulator device tree node
+- pwr2-supply: handle to the second regulator device tree node
+- pwr-gpio: handle the power control using GPIO interface
+- clk-gpio: handle the clock control using GPIO interface
+- xlna-supply: handle to the regulator for xLNA
+- xlna-gpio: handle to xLNA power control using GPIO interface
+
+Example:
+	qcom,gnss {
+		compatible = "qcom,qca1530";
+		gpios = <&msmgpio 128 0>;	/* Reset line */
+		pwr-supply = <&pma8084_l26>;	/* Power regulator */
+		pwr-gpio = <&msmgpio 66 0>;	/* Power GPIO control */
+		clk-gpio = <&msmgpio 17 0>;
+		xlna-supply = <&pma8084_l22>;	/* Power for xLNA */
+	};
+
+The chip operation requires presence of appropriate clock configuration:
+	board-clock.c:
+		CLK_LOOKUP("rtc_clk",	div_clk3.c, "qca1530.1"),
+
+	optionally board-clock.c:
+		CLK_LOOKUP("tcxo_clk",	div_clk2.c, "qca1530.1"),
+
+	board.c:
+		OF_DEV_AUXDATA("qcom,qca1530", 0x0, "qca1530.1", NULL),

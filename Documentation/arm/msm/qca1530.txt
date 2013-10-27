@@ -1,0 +1,16 @@
+Kernel driver qca1530
+======================
+
+Supported chips:
+QCA1530 SoC
+
+Description
+-----------
+QCA1530 is SoC system for multi-band position determination. The system
+supports accurate posisition determination using GPS and GLONASS sattelite
+groups.
+
+Configuration Variables
+-----------------------
+CONFIG_QCOM_QCA1530        - Enables/disables the driver
+
