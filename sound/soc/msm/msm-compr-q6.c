@@ -400,7 +400,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 	struct asm_wma_cfg wma_cfg;
 	struct asm_wmapro_cfg wma_pro_cfg;
 	struct asm_amrwbplus_cfg amrwb_cfg;
-	int ret;
+	int ret,i;
 
 	pr_debug("compressed stream prepare\n");
 	prtd->pcm_size = snd_pcm_lib_buffer_bytes(substream);
@@ -532,6 +532,55 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 		break;
 	case SND_AUDIOCODEC_MP2:
 		pr_debug("%s: SND_AUDIOCODEC_MP2\n", __func__);
+		break;
+        case SND_AUDIOCODEC_PCM:
+		pr_debug("%s: SND_AUDIOCODEC_PCM\n", __func__);
+		pr_debug("prtd->set_channel_map: %d", prtd->set_channel_map);
+		if (!prtd->set_channel_map) {
+			pr_debug("using default channel map");
+				memset(prtd->channel_map, 0,
+				PCM_FORMAT_MAX_NUM_CHANNEL);
+			if (prtd->channel_mode == 1) {
+				prtd->channel_map[0] = PCM_CHANNEL_FC;
+			} else if (prtd->channel_mode == 2) {
+				prtd->channel_map[0] = PCM_CHANNEL_FL;
+				prtd->channel_map[1] = PCM_CHANNEL_FR;
+			} else if (prtd->channel_mode == 4) {
+				prtd->channel_map[0] = PCM_CHANNEL_FL;
+				prtd->channel_map[1] = PCM_CHANNEL_FR;
+				prtd->channel_map[2] = PCM_CHANNEL_LB;
+				prtd->channel_map[3] = PCM_CHANNEL_RB;
+			} else if (prtd->channel_mode == 6) {
+				prtd->channel_map[0] = PCM_CHANNEL_FC;
+				prtd->channel_map[1] = PCM_CHANNEL_FL;
+				prtd->channel_map[2] = PCM_CHANNEL_FR;
+				prtd->channel_map[3] = PCM_CHANNEL_LB;
+				prtd->channel_map[4] = PCM_CHANNEL_RB;
+				prtd->channel_map[5] = PCM_CHANNEL_LFE;
+			} else if (prtd->channel_mode == 8) {
+				prtd->channel_map[0] = PCM_CHANNEL_FC;
+				prtd->channel_map[1] = PCM_CHANNEL_FL;
+				prtd->channel_map[2] = PCM_CHANNEL_FR;
+				prtd->channel_map[3] = PCM_CHANNEL_LB;
+				prtd->channel_map[4] = PCM_CHANNEL_RB;
+				prtd->channel_map[5] = PCM_CHANNEL_LFE;
+				prtd->channel_map[6] = PCM_CHANNEL_FLC;
+				prtd->channel_map[7] = PCM_CHANNEL_FRC;
+			} else {
+				pr_err("%s: ERROR.unsupported num_ch = %u\n",
+				 __func__, prtd->channel_mode);
+			}
+		}
+		for (i = 0; i < PCM_FORMAT_MAX_NUM_CHANNEL; i++) {
+			pr_debug("prtd->channel_map[%d]: %d", i,
+				prtd->channel_map[i]);
+		}
+		ret = q6asm_media_format_block_multi_ch_pcm(prtd->audio_client,
+			runtime->rate, runtime->channels, prtd->channel_map);
+		if (ret < 0){
+			pr_info("%s: CMD Format block failed\n", __func__);
+			return ret;
+		}
 		break;
 	default:
 		return -EINVAL;
@@ -1600,6 +1649,26 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 	return snd_pcm_lib_ioctl(substream, cmd, arg);
 }
 
+static int msm_compr_chmap_ctl_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	int i;
+	char channel_mapping[PCM_FORMAT_MAX_NUM_CHANNEL];
+	struct snd_pcm_chmap *chmap = kcontrol->private_data;
+	struct snd_pcm_substream *substream = chmap->pcm->streams[0].substream;
+	struct msm_audio *prtd = substream->runtime->private_data;
+
+	pr_debug("%s", __func__);
+	for (i = 0; i < PCM_FORMAT_MAX_NUM_CHANNEL; i++)
+		channel_mapping[i] = (char)(ucontrol->value.integer.value[i]);
+	if (prtd) {
+		prtd->set_channel_map = true;
+		memcpy(prtd->channel_map, channel_mapping,
+			PCM_FORMAT_MAX_NUM_CHANNEL);
+	}
+	return 0;
+}
+
 static struct snd_pcm_ops msm_compr_ops = {
 	.open	   = msm_compr_open,
 	.hw_params	= msm_compr_hw_params,
@@ -1612,6 +1681,33 @@ static struct snd_pcm_ops msm_compr_ops = {
 	.restart	= msm_compr_restart,
 };
 
+static int msm_compr_add_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_pcm *pcm = rtd->pcm->streams[0].pcm;
+	struct snd_pcm_chmap *chmap_info;
+	struct snd_kcontrol *kctl;
+	char device_num[3];
+	int i, ret = 0;
+
+	pr_debug("%s, Channel map cntrl add\n", __func__);
+	ret = snd_pcm_add_chmap_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+				NULL, PCM_FORMAT_MAX_NUM_CHANNEL,
+				rtd->dai_link->be_id,
+				&chmap_info);
+	if (ret < 0)
+		return ret;
+	kctl = chmap_info->kctl;
+	for (i = 0; i < kctl->count; i++)
+		kctl->vd[i].access |= SNDRV_CTL_ELEM_ACCESS_WRITE;
+	snprintf(device_num, sizeof(device_num), "%d", pcm->device);
+	strlcat(kctl->id.name, device_num, sizeof(kctl->id.name));
+	pr_debug("%s, Overwriting channel map control name to: %s",
+			 __func__, kctl->id.name);
+	kctl->put = msm_compr_chmap_ctl_put;
+
+	return 0;
+}
+
 static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
@@ -1619,6 +1715,11 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
+
+	ret = msm_compr_add_controls(rtd);
+	if (ret)
+		pr_err("%s, kctl add failed\n", __func__);
+
 	return ret;
 }
 
