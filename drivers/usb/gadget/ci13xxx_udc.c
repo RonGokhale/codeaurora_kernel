@@ -1686,6 +1686,7 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 		if (!mReq->req.no_interrupt)
 			mReq->zptr->token   |= TD_IOC;
 	}
+
 	/*
 	 * TD configuration
 	 * TODO - handle requests which spawns into several TDs
@@ -1726,9 +1727,14 @@ static int _hardware_enqueue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 	/* Remote Wakeup */
 	if (udc->suspended) {
 		if (!udc->remote_wakeup) {
+
 			mReq->req.status = -EAGAIN;
-			dev_dbg(mEp->device, "%s: queue failed (suspend) ept #%d\n",
+
+			dev_dbg(mEp->device,
+				"%s: queue failed (suspend)."
+				" Remote wakeup is not supported. ept #%d\n",
 				__func__, mEp->num);
+
 			return -EAGAIN;
 		}
 		otg_set_suspend(udc->transceiver, 0);
@@ -1897,6 +1903,112 @@ static int _hardware_dequeue(struct ci13xxx_ep *mEp, struct ci13xxx_req *mReq)
 }
 
 /**
+ * purge_rw_queue: Purge requests pending at the remote-wakeup
+ * queue and send them to the HW.
+ *
+ * Go over all of the endpoints and push any pending requests to
+ * the HW queue.
+ */
+static void purge_rw_queue(struct ci13xxx *udc)
+{
+	int i;
+	struct ci13xxx_ep  *mEp  = NULL;
+	struct ci13xxx_req *mReq = NULL;
+
+	/*
+	 * Go over all of the endpoints and push any pending requests to
+	 * the HW queue.
+	 */
+	for (i = 0; i < hw_ep_max; i++) {
+		mEp = &udc->ci13xxx_ep[i];
+
+		while (!list_empty(&udc->ci13xxx_ep[i].rw_queue)) {
+			int retval;
+
+			/* pop oldest request */
+			mReq = list_entry(udc->ci13xxx_ep[i].rw_queue.next,
+					  struct ci13xxx_req, queue);
+
+			list_del_init(&mReq->queue);
+
+			retval = _hardware_enqueue(mEp, mReq);
+
+			if (retval != 0) {
+				dbg_event(_usb_addr(mEp), "QUEUE", retval);
+				mReq->req.status = retval;
+				if (mReq->req.complete != NULL) {
+					if (mEp->type ==
+					    USB_ENDPOINT_XFER_CONTROL)
+						mReq->req.complete(
+							&(_udc->ep0in.ep),
+							&mReq->req);
+					else
+						mReq->req.complete(
+							&mEp->ep,
+							&mReq->req);
+				}
+				retval = 0;
+			}
+
+			if (!retval)
+				list_add_tail(&mReq->queue, &mEp->qh.queue);
+		}
+	}
+
+	udc->rw_pending = false;
+}
+
+/**
+ * release_ep_request: Free and endpoint request and release
+ * resources
+ * @mReq: request
+ * @mEp: endpoint
+ *
+ */
+static void release_ep_request(struct ci13xxx_ep  *mEp,
+			       struct ci13xxx_req *mReq)
+{
+	struct ci13xxx_ep *mEpTemp = mEp;
+
+	unsigned val;
+
+	/* MSM Specific: Clear end point specific register */
+	if (CI13XX_REQ_VENDOR_ID(mReq->req.udc_priv) == MSM_VENDOR_ID) {
+		if (mReq->req.udc_priv & MSM_SPS_MODE) {
+			val = hw_cread(CAP_ENDPTPIPEID +
+				mEp->num * sizeof(u32),
+				~0);
+
+			if (val != MSM_EP_PIPE_ID_RESET_VAL)
+				hw_cwrite(
+					CAP_ENDPTPIPEID +
+					 mEp->num * sizeof(u32),
+					~0, MSM_EP_PIPE_ID_RESET_VAL);
+		}
+	}
+	mReq->req.status = -ESHUTDOWN;
+
+	if (mReq->map) {
+		dma_unmap_single(mEp->device, mReq->req.dma,
+			mReq->req.length,
+			mEp->dir ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+		mReq->req.dma = 0;
+		mReq->map     = 0;
+	}
+
+	if (mReq->req.complete != NULL) {
+		spin_unlock(mEp->lock);
+		if ((mEp->type == USB_ENDPOINT_XFER_CONTROL) &&
+			mReq->req.length)
+			mEpTemp = &_udc->ep0in;
+		mReq->req.complete(&mEpTemp->ep, &mReq->req);
+		if (mEp->type == USB_ENDPOINT_XFER_CONTROL)
+			mReq->req.complete = NULL;
+		spin_lock(mEp->lock);
+	}
+}
+
+/**
  * _ep_nuke: dequeues all endpoint requests
  * @mEp: endpoint
  *
@@ -1907,9 +2019,6 @@ static int _ep_nuke(struct ci13xxx_ep *mEp)
 __releases(mEp->lock)
 __acquires(mEp->lock)
 {
-	struct ci13xxx_ep *mEpTemp = mEp;
-	unsigned val;
-
 	trace("%p", mEp);
 
 	if (mEp == NULL)
@@ -1918,48 +2027,28 @@ __acquires(mEp->lock)
 	hw_ep_flush(mEp->num, mEp->dir);
 
 	while (!list_empty(&mEp->qh.queue)) {
-
 		/* pop oldest request */
-		struct ci13xxx_req *mReq = \
+		struct ci13xxx_req *mReq =
 			list_entry(mEp->qh.queue.next,
 				   struct ci13xxx_req, queue);
 		list_del_init(&mReq->queue);
 
-		/* MSM Specific: Clear end point proprietary register */
-		if (CI13XX_REQ_VENDOR_ID(mReq->req.udc_priv) == MSM_VENDOR_ID) {
-			if (mReq->req.udc_priv & MSM_SPS_MODE) {
-				val = hw_cread(CAP_ENDPTPIPEID +
-					mEp->num * sizeof(u32),
-					~0);
-
-				if (val != MSM_EP_PIPE_ID_RESET_VAL)
-					hw_cwrite(
-						CAP_ENDPTPIPEID +
-						 mEp->num * sizeof(u32),
-						~0, MSM_EP_PIPE_ID_RESET_VAL);
-			}
-		}
-		mReq->req.status = -ESHUTDOWN;
-
-		if (mReq->map) {
-			dma_unmap_single(mEp->device, mReq->req.dma,
-				mReq->req.length,
-				mEp->dir ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
-			mReq->req.dma = 0;
-			mReq->map     = 0;
-		}
-
-		if (mReq->req.complete != NULL) {
-			spin_unlock(mEp->lock);
-			if ((mEp->type == USB_ENDPOINT_XFER_CONTROL) &&
-				mReq->req.length)
-				mEpTemp = &_udc->ep0in;
-			mReq->req.complete(&mEpTemp->ep, &mReq->req);
-			if (mEp->type == USB_ENDPOINT_XFER_CONTROL)
-				mReq->req.complete = NULL;
-			spin_lock(mEp->lock);
-		}
+		release_ep_request(mEp, mReq);
 	}
+
+	/* Clear the requests pending at the remote-wakeup queue */
+	while (!list_empty(&mEp->rw_queue)) {
+
+		/* pop oldest request */
+		struct ci13xxx_req *mReq = \
+			list_entry(mEp->rw_queue.next,
+				   struct ci13xxx_req, queue);
+
+		list_del_init(&mReq->queue);
+
+		release_ep_request(mEp, mReq);
+	}
+
 	return 0;
 }
 
@@ -2089,6 +2178,10 @@ static void isr_resume_handler(struct ci13xxx *udc)
 			otg_set_suspend(udc->transceiver, 0);
 		udc->driver->resume(&udc->gadget);
 		spin_lock(udc->lock);
+
+		if (udc->rw_pending)
+			purge_rw_queue(udc);
+
 		udc->suspended = 0;
 	}
 }
@@ -2760,6 +2853,35 @@ static int ep_queue(struct usb_ep *ep, struct usb_request *req,
 	mReq->req.status = -EINPROGRESS;
 	mReq->req.actual = 0;
 
+	if (udc->rw_pending) {
+		list_add_tail(&mReq->queue, &mEp->rw_queue);
+		retval = 0;
+		goto done;
+	}
+
+	if (udc->suspended) {
+		/* Remote Wakeup */
+		if (!udc->remote_wakeup) {
+
+			dev_dbg(mEp->device,
+					"%s: queue failed (suspend)."
+					" Remote wakeup is not supported. ept #%d\n",
+					__func__, mEp->num);
+
+			retval = -EAGAIN;
+			goto done;
+		}
+
+		list_add_tail(&mReq->queue, &mEp->rw_queue);
+
+		udc->rw_pending = true;
+		schedule_delayed_work(&udc->rw_work,
+				      REMOTE_WAKEUP_DELAY);
+
+		retval = 0;
+		goto done;
+	}
+
 	retval = _hardware_enqueue(mEp, mReq);
 
 	if (retval == -EALREADY) {
@@ -3408,6 +3530,7 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 	for (i = 0; i < hw_ep_max; i++) {
 		struct ci13xxx_ep *mEp = &udc->ci13xxx_ep[i];
 		INIT_LIST_HEAD(&mEp->ep.ep_list);
+		INIT_LIST_HEAD(&mEp->rw_queue);
 	}
 
 	if (!(udc->udc_driver->flags & CI13XXX_REGS_SHARED)) {
