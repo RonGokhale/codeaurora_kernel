@@ -27,6 +27,12 @@
 
 #define DVB_MPQ_NUM_VIDEO_DEVICES CONFIG_DVB_MPQ_NUM_VIDEO_DEVICES
 
+#define MPEG2_PES_STARTCODE_BYTE1 0x00
+#define MPEG2_PES_STARTCODE_BYTE2 0x00
+#define MPEG2_PES_STARTCODE_BYTE3 0x01
+#define MPEG2_SEQHDR_STARTCODE 0xB3
+
+
 /*
  * Input Buffer Requirements for Video Decoder.
  */
@@ -76,6 +82,7 @@ struct mpq_dvb_video_inst {
 	int frame_count;
 	int idr_rcvd;
 	int non_idr_rcvd;
+	u32 framerate;
 };
 
 struct mpq_dvb_video_dev {

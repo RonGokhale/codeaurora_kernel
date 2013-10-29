@@ -82,6 +82,10 @@ static struct dentry *mpq_get_debugfs_root(void)
 	return mpq_debugfs_root;
 }
 
+static void mpq_mpeg2_getframerate(struct mpq_dvb_video_inst *dev_inst,
+	unsigned long streambuff_rawdata_addr);
+static unsigned int mpq_mpeg2_convert_framerate(unsigned int framerate);
+
 void mpq_debugfs_file_create(struct dentry *root, const char *name,
 				u32 *var)
 {
@@ -173,7 +177,6 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 
 		bytes_read = mpq_streambuffer_pkt_read(streambuff, indx,
 			&pkt_hdr, (u8 *)&meta_data);
-
 
 		switch (meta_data.packet_type) {
 		case DMX_FRAMING_INFO_PACKET:
@@ -280,6 +283,13 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 						pkt_hdr.raw_data_len);
 				DBG("Data Read : %d from Packet Size : %d\n",
 					bytes_read, pkt_hdr.raw_data_len);
+				if ((meta_data.info.framing.pattern_type ==
+					DMX_IDX_MPEG_I_FRAME_START)
+					&& (pkt_hdr.raw_data_len >= 8))
+					mpq_mpeg2_getframerate(
+						dev_inst,
+						(u32)(streambuff->raw_data.data)
+						+ pkt_hdr.raw_data_offset);
 				mpq_streambuffer_pkt_dispose(
 					streambuff, indx, 0);
 				size +=	pkt_hdr.raw_data_len;
@@ -2057,7 +2067,6 @@ static int mpq_dvb_video_open(struct inode *inode, struct file *file)
 		mutex_unlock(&mpq_dvb_video_device->lock);
 		return -ENOMEM;
 	}
-
 	/* Set default source to memory for easier handling */
 	dev_inst->source = VIDEO_SOURCE_MEMORY;
 
@@ -2065,6 +2074,7 @@ static int mpq_dvb_video_open(struct inode *inode, struct file *file)
 	dev_inst->picture_type = VIDEO_DECODED_PICTURES_ALL;
 	/* No of frames after SPS/Sequence Header */
 	dev_inst->frame_count  = 0;
+	dev_inst->framerate = 0;
 	mutex_unlock(&mpq_dvb_video_device->lock);
 
 	return rc;
@@ -2161,6 +2171,9 @@ static int mpq_int_vdec_get_fps(struct video_client_ctx *client_ctx,
 	struct vcd_property_hdr vcd_property_hdr;
 	struct vcd_property_frame_rate vcd_frame_rate;
 	u32 vcd_status = VCD_ERR_FAIL;
+	int rc = 0;
+	struct mpq_dvb_video_inst *dev_inst;
+	u32 frame_rate = 0;
 
 	if (NULL == fps)
 		return -EINVAL;
@@ -2174,9 +2187,19 @@ static int mpq_int_vdec_get_fps(struct video_client_ctx *client_ctx,
 	vcd_status = vcd_get_property(client_ctx->vcd_handle,
 				      &vcd_property_hdr, &vcd_frame_rate);
 
-	if (vcd_status)
-		return -EINVAL;
-	else {
+	if (vcd_status) {
+		rc = mpq_get_dev_frm_client(client_ctx, &dev_inst);
+		if (rc == 0) {
+			frame_rate = mpq_mpeg2_convert_framerate(dev_inst->
+							framerate);
+			if (frame_rate)
+				*fps = frame_rate;
+			else
+				rc = -EINVAL;
+		} else
+			rc = -EINVAL;
+		return rc;
+	} else {
 		*fps = (vcd_frame_rate.fps_numerator * 1000)
 			/(vcd_frame_rate.fps_denominator);
 		return 0;
@@ -2323,7 +2346,6 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 {
 	int rc;
 	struct vdec_msginfo vdec_msg_info = {};
-
 	memset(ev, 0, sizeof(struct video_event));
 
 	rc = mpq_int_vid_dec_get_next_msg(client_ctx, &vdec_msg_info);
@@ -2433,6 +2455,77 @@ static enum scan_format map_scan_type(enum vdec_interlaced_format type)
 		return INTERLACE_INTERLEAVE_FRAME_BOTTOM_FIELD_FIRST;
 	return INTERLACE_FRAME_PROGRESSIVE;
 }
+
+void mpq_mpeg2_getframerate(struct mpq_dvb_video_inst *dev_inst,
+					unsigned long streambuff_rawdata_addr)
+{
+	u8 framerate = 0;
+	u8 *metadata_addr = (u8 *)streambuff_rawdata_addr;
+	if ((metadata_addr[0] == MPEG2_PES_STARTCODE_BYTE1) &&
+		(metadata_addr[1] == MPEG2_PES_STARTCODE_BYTE2) &&
+		(metadata_addr[2] == MPEG2_PES_STARTCODE_BYTE3) &&
+		(metadata_addr[3] == MPEG2_SEQHDR_STARTCODE)) {
+		DBG("mpeg2 sequence header found\n");
+		framerate = (metadata_addr[7] & (0x0F));
+		if ((framerate > 0) && (framerate < 9)
+			&& (framerate != dev_inst->framerate)) {
+			struct vid_dec_msg *vdec_msg;
+			dev_inst->framerate = framerate;
+			vdec_msg = kzalloc(sizeof(struct vid_dec_msg),
+						GFP_KERNEL);
+			if (!vdec_msg) {
+				DBG("%s(): cannot allocate vid_dec_msg "\
+					" buffer\n", __func__);
+				return;
+			}
+			vdec_msg->vdec_msg_info.msgcode =
+				VDEC_MSG_EVT_CONFIG_CHANGED;
+			DBG("current framerate: %u\n", dev_inst->framerate);
+			DBG("new framerate: %u\n", framerate);
+			mutex_lock(&dev_inst->client_ctx->msg_queue_lock);
+			list_add_tail(&vdec_msg->list,
+				&dev_inst->client_ctx->msg_queue);
+			mutex_unlock(&dev_inst->client_ctx->msg_queue_lock);
+		}
+	}
+}
+
+unsigned int mpq_mpeg2_convert_framerate(unsigned int framerate)
+{
+	unsigned int frame_rate;
+	switch (framerate) {
+
+	case 1:
+			 frame_rate = 23976;
+			 break;
+	case 2:
+			 frame_rate = 24000;
+			 break;
+	case 3:
+			 frame_rate = 25000;
+			 break;
+	case 4:
+			 frame_rate = 29970;
+			 break;
+	case 5:
+			 frame_rate = 30000;
+			 break;
+	case 6:
+			 frame_rate = 50000;
+			 break;
+	case 7:
+			 frame_rate = 59940;
+			 break;
+	case 8:
+			 frame_rate = 60000;
+			 break;
+	default:
+			 frame_rate = 0;
+	}
+	DBG("frame rate : %d", frame_rate);
+	return frame_rate;
+}
+
 
 static int mpq_dvb_video_play(struct mpq_dvb_video_inst *dev_inst)
 {
@@ -2545,6 +2638,7 @@ static int mpq_dvb_video_ioctl(struct file *file,
 		break;
 	case VIDEO_STOP:
 		DBG("ioctl : VIDEO_STOP\n");
+		dev_inst->framerate = 0;
 		rc = mpq_dvb_video_stop(client_ctx);
 		break;
 	case VIDEO_FREEZE:
