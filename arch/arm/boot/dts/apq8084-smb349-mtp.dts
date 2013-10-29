@@ -16,7 +16,22 @@
 /include/ "apq8084-mtp.dtsi"
 
 / {
-	model = "Qualcomm APQ 8084 MTP";
+	model = "Qualcomm APQ 8084, SMB349 MTP";
 	compatible = "qcom,apq8084-mtp", "qcom,apq8084", "qcom,mtp";
-	qcom,board-id = <8 3>;
+	qcom,board-id = <8 1>;
+};
+
+&i2c_0 {
+	smb349_otg_vreg: smb349-charger@1b {
+		compatible = "qcom,smb349-charger";
+		reg = <0x1b>;
+		interrupt-parent = <&spmi_bus>;
+		interrupts = <0x00 0xcd 0x0>; /* PMA8084 GPIO 14 */
+		qcom,charging-disabled;
+		regulator-name = "smb349_otg_vreg";
+	};
+};
+
+&usb3 {
+	vbus_dwc3-supply = <&smb349_otg_vreg>;
 };
