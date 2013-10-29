@@ -4206,10 +4206,8 @@ static int taiko_startup(struct snd_pcm_substream *substream,
 		 substream->name, substream->stream);
 	if ((taiko_core != NULL) &&
 	    (taiko_core->dev != NULL) &&
-	    (taiko_core->dev->parent != NULL)) {
+	    (taiko_core->dev->parent != NULL))
 		pm_runtime_get_sync(taiko_core->dev->parent);
-		pr_debug("%s: vote requested", __func__);
-	}
 
 	return 0;
 }
@@ -4218,27 +4216,13 @@ static void taiko_shutdown(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
 	struct wcd9xxx *taiko_core = dev_get_drvdata(dai->codec->dev->parent);
-	struct taiko_priv *taiko = snd_soc_codec_get_drvdata(dai->codec);
-	u32 active = 0;
-
 	pr_debug("%s(): substream = %s  stream = %d\n" , __func__,
 		 substream->name, substream->stream);
-
-	if (dai->id <= NUM_CODEC_DAIS) {
-		if (taiko->dai[dai->id].ch_mask) {
-			active = 1;
-			pr_debug("%s(): Codec DAI: chmask[%d] = 0x%lx\n",
-			       __func__, dai->id, taiko->dai[dai->id].ch_mask);
-		}
-	}
-
 	if ((taiko_core != NULL) &&
 	    (taiko_core->dev != NULL) &&
-	    (taiko_core->dev->parent != NULL) &&
-	    (active == 0)) {
+	    (taiko_core->dev->parent != NULL)) {
 		pm_runtime_mark_last_busy(taiko_core->dev->parent);
 		pm_runtime_put(taiko_core->dev->parent);
-		pr_debug("%s: unvote requested", __func__);
 	}
 }
 
@@ -4977,21 +4961,8 @@ static int taiko_codec_enable_slimrx(struct snd_soc_dapm_widget *w,
 		ret = wcd9xxx_cfg_slim_sch_rx(core, &dai->wcd9xxx_ch_list,
 					      dai->rate, dai->bit_width,
 					      &dai->grph);
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_mark_last_busy(core->dev->parent);
-			pm_runtime_put(core->dev->parent);
-			pr_debug("%s: unvote requested", __func__);
-		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_get_sync(core->dev->parent);
-			pr_debug("%s: vote requested", __func__);
-		}
 		ret = wcd9xxx_close_slim_sch_rx(core, &dai->wcd9xxx_ch_list,
 						dai->grph);
 		ret = taiko_codec_enable_slim_chmask(dai, false);
@@ -5001,13 +4972,6 @@ static int taiko_codec_enable_slimrx(struct snd_soc_dapm_widget *w,
 						      dai->grph);
 			pr_debug("%s: Disconnect RX port, ret = %d\n",
 				 __func__, ret);
-		}
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_mark_last_busy(core->dev->parent);
-			pm_runtime_put(core->dev->parent);
-			pr_debug("%s: unvote requested", __func__);
 		}
 		break;
 	}
@@ -5121,21 +5085,8 @@ static int taiko_codec_enable_slimtx(struct snd_soc_dapm_widget *w,
 		ret = wcd9xxx_cfg_slim_sch_tx(core, &dai->wcd9xxx_ch_list,
 					      dai->rate, dai->bit_width,
 					      &dai->grph);
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_mark_last_busy(core->dev->parent);
-			pm_runtime_put(core->dev->parent);
-			pr_debug("%s: unvote requested", __func__);
-		}
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_get_sync(core->dev->parent);
-			pr_debug("%s: vote requested", __func__);
-		}
 		ret = wcd9xxx_close_slim_sch_tx(core, &dai->wcd9xxx_ch_list,
 						dai->grph);
 		ret = taiko_codec_enable_slim_chmask(dai, false);
@@ -5145,13 +5096,6 @@ static int taiko_codec_enable_slimtx(struct snd_soc_dapm_widget *w,
 						      dai->grph);
 			pr_debug("%s: Disconnect RX port, ret = %d\n",
 				 __func__, ret);
-		}
-		if ((core != NULL) &&
-		    (core->dev != NULL) &&
-		    (core->dev->parent != NULL)) {
-			pm_runtime_mark_last_busy(core->dev->parent);
-			pm_runtime_put(core->dev->parent);
-			pr_debug("%s: unvote requested", __func__);
 		}
 		break;
 	}
