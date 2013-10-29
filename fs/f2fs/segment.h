@@ -14,6 +14,8 @@
 #define NULL_SEGNO			((unsigned int)(~0))
 #define NULL_SECNO			((unsigned int)(~0))
 
+#define DEF_RECLAIM_PREFREE_SEGMENTS	100	/* 200MB of prefree segments */
+
 /* L: Logical segment # in volume, R: Relative segment # in main area */
 #define GET_L2R_SEGNO(free_i, segno)	(segno - free_i->start_segno)
 #define GET_R2L_SEGNO(free_i, segno)	(segno + free_i->start_segno)
@@ -90,6 +92,8 @@
 	(blk_addr << ((sbi)->log_blocksize - F2FS_LOG_SECTOR_SIZE))
 #define SECTOR_TO_BLOCK(sbi, sectors)					\
 	(sectors >> ((sbi)->log_blocksize - F2FS_LOG_SECTOR_SIZE))
+#define MAX_BIO_BLOCKS(max_hw_blocks)					\
+	(min((int)max_hw_blocks, BIO_MAX_PAGES))
 
 /* during checkpoint, bio_private is used to synchronize the last bio */
 struct bio_private {
@@ -470,6 +474,11 @@ static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
 						reserved_sections(sbi)));
 }
 
+static inline bool excess_prefree_segs(struct f2fs_sb_info *sbi)
+{
+	return (prefree_segments(sbi) > SM_I(sbi)->rec_prefree_segments);
+}
+
 static inline int utilization(struct f2fs_sb_info *sbi)
 {
 	return div_u64((u64)valid_user_blocks(sbi) * 100, sbi->user_block_count);
@@ -513,16 +522,13 @@ static inline unsigned short curseg_blkoff(struct f2fs_sb_info *sbi, int type)
 	return curseg->next_blkoff;
 }
 
+#ifdef CONFIG_F2FS_CHECK_FS
 static inline void check_seg_range(struct f2fs_sb_info *sbi, unsigned int segno)
 {
 	unsigned int end_segno = SM_I(sbi)->segment_count - 1;
 	BUG_ON(segno > end_segno);
 }
 
-/*
- * This function is used for only debugging.
- * NOTE: In future, we have to remove this function.
- */
 static inline void verify_block_addr(struct f2fs_sb_info *sbi, block_t blk_addr)
 {
 	struct f2fs_sm_info *sm_info = SM_I(sbi);
@@ -556,6 +562,11 @@ static inline void check_block_count(struct f2fs_sb_info *sbi,
 			valid_blocks++;
 	BUG_ON(GET_SIT_VBLOCKS(raw_sit) != valid_blocks);
 }
+#else
+#define check_seg_range(sbi, segno)
+#define verify_block_addr(sbi, blk_addr)
+#define check_block_count(sbi, segno, raw_sit)
+#endif
 
 static inline pgoff_t current_sit_addr(struct f2fs_sb_info *sbi,
 						unsigned int start)
