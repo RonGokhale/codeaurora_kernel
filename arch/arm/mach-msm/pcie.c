@@ -78,7 +78,8 @@
 #define PM_CLK                   0x2
 #define PM_GPIO                  0x4
 #define PM_VREG                  0x8
-#define PM_ALL (PM_IRQ | PM_CLK | PM_GPIO | PM_VREG)
+#define PM_PIPE_CLK              0x10
+#define PM_ALL (PM_IRQ | PM_CLK | PM_GPIO | PM_VREG | PM_PIPE_CLK)
 
 /* Timing Delays */
 #define PERST_PROPAGATION_DELAY_US_MIN        10000
@@ -629,7 +630,7 @@ static int msm_pcie_get_resources(u32 rc_idx, struct platform_device *pdev)
 		vreg_info->hdl =
 				devm_regulator_get(&pdev->dev, vreg_info->name);
 		if (IS_ERR(vreg_info->hdl)) {
-			PCIE_DBG("Vreg %s doesn't exist\n", vreg_info->name);
+			PCIE_DBG("Vreg %s doesn't exist...\n", vreg_info->name);
 			return PTR_ERR(vreg_info->hdl);
 		} else
 			dev->vreg_n++;
@@ -765,6 +766,7 @@ static int msm_pcie_enable(u32 rc_idx, u32 options)
 
 	dev = &msm_pcie_dev[rc_idx];
 
+	dev->link_status = MSM_PCIE_LINK_DEINIT;
 	/* assert PCIe reset link to keep EP in reset */
 
 	gpio_set_value(dev->gpio[MSM_PCIE_GPIO_PERST].num,
@@ -797,11 +799,13 @@ static int msm_pcie_enable(u32 rc_idx, u32 options)
 	/* init PCIe PHY */
 	pcie_phy_init(dev);
 
-	/* Enable the pipe clock */
-	ret = msm_pcie_pipe_clk_init(rc_idx, &dev->pdev->dev);
-	wmb();
-	if (ret)
-		goto link_fail;
+	if (options & PM_PIPE_CLK) {
+		/* Enable the pipe clock */
+		ret = msm_pcie_pipe_clk_init(rc_idx, &dev->pdev->dev);
+		wmb();
+		if (ret)
+			goto link_fail;
+	}
 
 	PCIE_DBG("waiting for phy ready...\n");
 
@@ -865,6 +869,7 @@ static int msm_pcie_enable(u32 rc_idx, u32 options)
 	}
 
 	msm_pcie_config_controller(rc_idx);
+	dev->link_status = MSM_PCIE_LINK_ENABLED;
 
 	if (options & PM_IRQ) {
 		ret = msm_pcie_irq_init(dev);
@@ -878,8 +883,8 @@ link_fail:
 	msm_pcie_clk_deinit(rc_idx);
 clk_fail:
 	msm_pcie_vreg_deinit(rc_idx);
+	msm_pcie_pipe_clk_deinit(rc_idx);
 out:
-
 	mutex_unlock(&setup_lock);
 
 	return ret;
@@ -897,7 +902,6 @@ void msm_pcie_disable(u32 rc_idx, u32 options)
 		msm_pcie_irq_deinit(dev);
 
 	if (options & PM_CLK) {
-		msm_pcie_pipe_clk_deinit(rc_idx);
 		msm_pcie_write_mask(dev->parf + PCIE20_PARF_PHY_CTRL, 0,
 					BIT(0));
 		msm_pcie_clk_deinit(rc_idx);
@@ -905,6 +909,11 @@ void msm_pcie_disable(u32 rc_idx, u32 options)
 
 	if (options & PM_VREG)
 		msm_pcie_vreg_deinit(rc_idx);
+
+	if (options & PM_PIPE_CLK)
+		msm_pcie_pipe_clk_deinit(rc_idx);
+
+	dev->link_status = MSM_PCIE_LINK_DISABLED;
 }
 
 static int msm_pcie_setup(int nr, struct pci_sys_data *sys)
@@ -1171,6 +1180,9 @@ static void msm_pcie_fixup_suspend(struct pci_dev *dev)
 	uint32_t val = 0;
 	u32 rc_idx = pcie_drv.current_rc; /* need to be replaced later */
 
+	if (msm_pcie_dev[rc_idx].link_status != MSM_PCIE_LINK_ENABLED)
+		return;
+
 	pci_save_state(dev);
 
 	spin_lock_irqsave(&msm_pcie_dev[rc_idx].cfg_lock,
@@ -1193,7 +1205,7 @@ static void msm_pcie_fixup_suspend(struct pci_dev *dev)
 	else
 		PCIE_DBG("PM_Enter_L23 is NOT received\n");
 
-	msm_pcie_disable(rc_idx, PM_CLK | PM_VREG);
+	msm_pcie_disable(rc_idx, PM_PIPE_CLK | PM_CLK | PM_VREG);
 
 	PCIE_DBG("enabling wake_n\n");
 
@@ -1207,6 +1219,9 @@ void msm_pcie_fixup_resume_early(struct pci_dev *dev)
 {
 	u32 rc_idx = pcie_drv.current_rc; /* need to be replaced later */
 
+	if (msm_pcie_dev[rc_idx].link_status != MSM_PCIE_LINK_DISABLED)
+		return;
+
 	PCIE_DBG("disabling wake_n\n");
 
 	disable_irq(msm_pcie_dev[rc_idx].wake_n);
@@ -1217,7 +1232,7 @@ void msm_pcie_fixup_resume_early(struct pci_dev *dev)
 	spin_unlock_irqrestore(&msm_pcie_dev[rc_idx].cfg_lock,
 				msm_pcie_dev[rc_idx].irqsave_flags);
 
-	if (msm_pcie_enable(rc_idx, PM_CLK | PM_VREG))
+	if (msm_pcie_enable(rc_idx, PM_PIPE_CLK | PM_CLK | PM_VREG))
 		pr_err("PCIe:failed to enable PCIe link in resume\n");
 	else
 		pci_restore_state(dev);
