@@ -72,6 +72,7 @@ xfs-y				+= xfs_alloc.o \
 				   xfs_dir2_leaf.o \
 				   xfs_dir2_node.o \
 				   xfs_dir2_sf.o \
+				   xfs_dquot_buf.o \
 				   xfs_ialloc.o \
 				   xfs_ialloc_btree.o \
 				   xfs_icreate_item.o \
@@ -103,7 +104,11 @@ xfs-$(CONFIG_XFS_QUOTA)		+= xfs_dquot.o \
 				   xfs_qm_bhv.o \
 				   xfs_qm.o \
 				   xfs_quotaops.o
-xfs-$(CONFIG_XFS_RT)		+= xfs_rtalloc.o
+
+# xfs_rtbitmap is shared with libxfs
+xfs-$(CONFIG_XFS_RT)		+= xfs_rtalloc.o \
+				   xfs_rtbitmap.o
+
 xfs-$(CONFIG_XFS_POSIX_ACL)	+= xfs_acl.o
 xfs-$(CONFIG_PROC_FS)		+= xfs_stats.o
 xfs-$(CONFIG_SYSCTL)		+= xfs_sysctl.o
