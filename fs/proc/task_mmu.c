@@ -95,7 +95,6 @@ static void seq_print_vma_name(struct seq_file *m, struct vm_area_struct *vma)
 {
 	struct mm_struct *mm = vma->vm_mm;
 	char anon_name[NAME_MAX + 1];
-	unsigned long addr;
 	int n;
 
 	n = access_remote_vm(mm, (unsigned long)vma_anon_name(vma),
