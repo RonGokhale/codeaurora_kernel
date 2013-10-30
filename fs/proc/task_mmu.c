@@ -348,7 +348,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma, int is_pid)
 		}
 
 		if (vma_anon_name(vma)) {
-			pad_len_spaces(m, len);
+			seq_pad(m, ' ');
 			seq_print_vma_name(m, vma);
 		}
 	}
