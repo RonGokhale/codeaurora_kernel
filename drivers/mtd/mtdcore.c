@@ -37,6 +37,7 @@
 #include <linux/backing-dev.h>
 #include <linux/gfp.h>
 #include <linux/slab.h>
+#include <linux/major.h>
 
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/partitions.h>
@@ -156,6 +157,9 @@ static ssize_t mtd_type_show(struct device *dev,
 		break;
 	case MTD_UBIVOLUME:
 		type = "ubi";
+		break;
+	case MTD_MLCNANDFLASH:
+		type = "mlc-nand";
 		break;
 	default:
 		type = "unknown";
