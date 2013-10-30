@@ -149,6 +149,8 @@ static netdev_tx_t bgmac_dma_tx_add(struct bgmac *bgmac,
 	dma_desc->ctl0 = cpu_to_le32(ctl0);
 	dma_desc->ctl1 = cpu_to_le32(ctl1);
 
+	netdev_sent_queue(net_dev, skb->len);
+
 	wmb();
 
 	/* Increase ring->end to point empty slot. We tell hardware the first
@@ -178,6 +180,7 @@ static void bgmac_dma_tx_free(struct bgmac *bgmac, struct bgmac_dma_ring *ring)
 	struct device *dma_dev = bgmac->core->dma_dev;
 	int empty_slot;
 	bool freed = false;
+	unsigned bytes_compl = 0, pkts_compl = 0;
 
 	/* The last slot that hardware didn't consume yet */
 	empty_slot = bgmac_read(bgmac, ring->mmio_base + BGMAC_DMA_TX_STATUS);
@@ -195,6 +198,9 @@ static void bgmac_dma_tx_free(struct bgmac *bgmac, struct bgmac_dma_ring *ring)
 					 slot->skb->len, DMA_TO_DEVICE);
 			slot->dma_addr = 0;
 
+			bytes_compl += slot->skb->len;
+			pkts_compl++;
+
 			/* Free memory! :) */
 			dev_kfree_skb(slot->skb);
 			slot->skb = NULL;
@@ -207,6 +213,8 @@ static void bgmac_dma_tx_free(struct bgmac *bgmac, struct bgmac_dma_ring *ring)
 			ring->start = 0;
 		freed = true;
 	}
+
+	netdev_completed_queue(bgmac->net_dev, pkts_compl, bytes_compl);
 
 	if (freed && netif_queue_stopped(bgmac->net_dev))
 		netif_wake_queue(bgmac->net_dev);
@@ -267,6 +275,26 @@ static int bgmac_dma_rx_skb_for_slot(struct bgmac *bgmac,
 		bgmac_warn(bgmac, "DMA address using 0xC0000000 bit(s), it may need translation trick\n");
 
 	return 0;
+}
+
+static void bgmac_dma_rx_setup_desc(struct bgmac *bgmac,
+				    struct bgmac_dma_ring *ring, int desc_idx)
+{
+	struct bgmac_dma_desc *dma_desc = ring->cpu_base + desc_idx;
+	u32 ctl0 = 0, ctl1 = 0;
+
+	if (desc_idx == ring->num_slots - 1)
+		ctl0 |= BGMAC_DESC_CTL0_EOT;
+	ctl1 |= BGMAC_RX_BUF_SIZE & BGMAC_DESC_CTL1_LEN;
+	/* Is there any BGMAC device that requires extension? */
+	/* ctl1 |= (addrext << B43_DMA64_DCTL1_ADDREXT_SHIFT) &
+	 * B43_DMA64_DCTL1_ADDREXT_MASK;
+	 */
+
+	dma_desc->addr_low = cpu_to_le32(lower_32_bits(ring->slots[desc_idx].dma_addr));
+	dma_desc->addr_high = cpu_to_le32(upper_32_bits(ring->slots[desc_idx].dma_addr));
+	dma_desc->ctl0 = cpu_to_le32(ctl0);
+	dma_desc->ctl1 = cpu_to_le32(ctl1);
 }
 
 static int bgmac_dma_rx_read(struct bgmac *bgmac, struct bgmac_dma_ring *ring,
@@ -495,8 +523,6 @@ err_dma_free:
 static void bgmac_dma_init(struct bgmac *bgmac)
 {
 	struct bgmac_dma_ring *ring;
-	struct bgmac_dma_desc *dma_desc;
-	u32 ctl0, ctl1;
 	int i;
 
 	for (i = 0; i < BGMAC_MAX_TX_RINGS; i++) {
@@ -529,23 +555,8 @@ static void bgmac_dma_init(struct bgmac *bgmac)
 		if (ring->unaligned)
 			bgmac_dma_rx_enable(bgmac, ring);
 
-		for (j = 0, dma_desc = ring->cpu_base; j < ring->num_slots;
-		     j++, dma_desc++) {
-			ctl0 = ctl1 = 0;
-
-			if (j == ring->num_slots - 1)
-				ctl0 |= BGMAC_DESC_CTL0_EOT;
-			ctl1 |= BGMAC_RX_BUF_SIZE & BGMAC_DESC_CTL1_LEN;
-			/* Is there any BGMAC device that requires extension? */
-			/* ctl1 |= (addrext << B43_DMA64_DCTL1_ADDREXT_SHIFT) &
-			 * B43_DMA64_DCTL1_ADDREXT_MASK;
-			 */
-
-			dma_desc->addr_low = cpu_to_le32(lower_32_bits(ring->slots[j].dma_addr));
-			dma_desc->addr_high = cpu_to_le32(upper_32_bits(ring->slots[j].dma_addr));
-			dma_desc->ctl0 = cpu_to_le32(ctl0);
-			dma_desc->ctl1 = cpu_to_le32(ctl1);
-		}
+		for (j = 0; j < ring->num_slots; j++)
+			bgmac_dma_rx_setup_desc(bgmac, ring, j);
 
 		bgmac_write(bgmac, ring->mmio_base + BGMAC_DMA_RX_INDEX,
 			    ring->index_base +
@@ -987,6 +998,8 @@ static void bgmac_chip_reset(struct bgmac *bgmac)
 		bgmac_set(bgmac, BGMAC_PHY_CNTL, BGMAC_PC_MTE);
 	bgmac_miiconfig(bgmac);
 	bgmac_phy_init(bgmac);
+
+	netdev_reset_queue(bgmac->net_dev);
 
 	bgmac->int_status = 0;
 }

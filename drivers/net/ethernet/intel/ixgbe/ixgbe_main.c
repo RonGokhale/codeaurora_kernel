@@ -153,7 +153,6 @@ MODULE_VERSION(DRV_VERSION);
 static int ixgbe_read_pci_cfg_word_parent(struct ixgbe_adapter *adapter,
 					  u32 reg, u16 *value)
 {
-	int pos = 0;
 	struct pci_dev *parent_dev;
 	struct pci_bus *parent_bus;
 
@@ -165,11 +164,10 @@ static int ixgbe_read_pci_cfg_word_parent(struct ixgbe_adapter *adapter,
 	if (!parent_dev)
 		return -1;
 
-	pos = pci_find_capability(parent_dev, PCI_CAP_ID_EXP);
-	if (!pos)
+	if (!pci_is_pcie(parent_dev))
 		return -1;
 
-	pci_read_config_word(parent_dev, pos + reg, value);
+	pcie_capability_read_word(parent_dev, reg, value);
 	return 0;
 }
 
@@ -1585,7 +1583,7 @@ static void ixgbe_rx_skb(struct ixgbe_q_vector *q_vector,
 {
 	struct ixgbe_adapter *adapter = q_vector->adapter;
 
-	if (ixgbe_qv_ll_polling(q_vector))
+	if (ixgbe_qv_busy_polling(q_vector))
 		netif_receive_skb(skb);
 	else if (!(adapter->flags & IXGBE_FLAG_IN_NETPOLL))
 		napi_gro_receive(&q_vector->napi, skb);
@@ -2097,7 +2095,7 @@ static int ixgbe_low_latency_recv(struct napi_struct *napi)
 
 	ixgbe_for_each_ring(ring, q_vector->rx) {
 		found = ixgbe_clean_rx_irq(q_vector, ring, 4);
-#ifdef LL_EXTENDED_STATS
+#ifdef BP_EXTENDED_STATS
 		if (found)
 			ring->stats.cleaned += found;
 		else
@@ -7362,19 +7360,16 @@ static const struct net_device_ops ixgbe_netdev_ops = {
  **/
 static inline int ixgbe_enumerate_functions(struct ixgbe_adapter *adapter)
 {
-	struct ixgbe_hw *hw = &adapter->hw;
 	struct list_head *entry;
 	int physfns = 0;
 
-	/* Some cards can not use the generic count PCIe functions method, and
-	 * so must be hardcoded to the correct value.
+	/* Some cards can not use the generic count PCIe functions method,
+	 * because they are behind a parent switch, so we hardcode these with
+	 * the correct number of functions.
 	 */
-	switch (hw->device_id) {
-	case IXGBE_DEV_ID_82599_SFP_SF_QP:
-	case IXGBE_DEV_ID_82599_QSFP_SF_QP:
+	if (ixgbe_pcie_from_parent(&adapter->hw)) {
 		physfns = 4;
-		break;
-	default:
+	} else {
 		list_for_each(entry, &adapter->pdev->bus_list) {
 			struct pci_dev *pdev =
 				list_entry(entry, struct pci_dev, bus_list);

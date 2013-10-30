@@ -140,58 +140,10 @@ static void ixgbevf_set_msglevel(struct net_device *netdev, u32 data)
 
 #define IXGBE_GET_STAT(_A_, _R_) (_A_->stats._R_)
 
-static char *ixgbevf_reg_names[] = {
-	"IXGBE_VFCTRL",
-	"IXGBE_VFSTATUS",
-	"IXGBE_VFLINKS",
-	"IXGBE_VFRXMEMWRAP",
-	"IXGBE_VFFRTIMER",
-	"IXGBE_VTEICR",
-	"IXGBE_VTEICS",
-	"IXGBE_VTEIMS",
-	"IXGBE_VTEIMC",
-	"IXGBE_VTEIAC",
-	"IXGBE_VTEIAM",
-	"IXGBE_VTEITR",
-	"IXGBE_VTIVAR",
-	"IXGBE_VTIVAR_MISC",
-	"IXGBE_VFRDBAL0",
-	"IXGBE_VFRDBAL1",
-	"IXGBE_VFRDBAH0",
-	"IXGBE_VFRDBAH1",
-	"IXGBE_VFRDLEN0",
-	"IXGBE_VFRDLEN1",
-	"IXGBE_VFRDH0",
-	"IXGBE_VFRDH1",
-	"IXGBE_VFRDT0",
-	"IXGBE_VFRDT1",
-	"IXGBE_VFRXDCTL0",
-	"IXGBE_VFRXDCTL1",
-	"IXGBE_VFSRRCTL0",
-	"IXGBE_VFSRRCTL1",
-	"IXGBE_VFPSRTYPE",
-	"IXGBE_VFTDBAL0",
-	"IXGBE_VFTDBAL1",
-	"IXGBE_VFTDBAH0",
-	"IXGBE_VFTDBAH1",
-	"IXGBE_VFTDLEN0",
-	"IXGBE_VFTDLEN1",
-	"IXGBE_VFTDH0",
-	"IXGBE_VFTDH1",
-	"IXGBE_VFTDT0",
-	"IXGBE_VFTDT1",
-	"IXGBE_VFTXDCTL0",
-	"IXGBE_VFTXDCTL1",
-	"IXGBE_VFTDWBAL0",
-	"IXGBE_VFTDWBAL1",
-	"IXGBE_VFTDWBAH0",
-	"IXGBE_VFTDWBAH1"
-};
-
-
 static int ixgbevf_get_regs_len(struct net_device *netdev)
 {
-	return (ARRAY_SIZE(ixgbevf_reg_names)) * sizeof(u32);
+#define IXGBE_REGS_LEN 45
+	return IXGBE_REGS_LEN * sizeof(u32);
 }
 
 static void ixgbevf_get_regs(struct net_device *netdev,
@@ -264,9 +216,6 @@ static void ixgbevf_get_regs(struct net_device *netdev,
 		regs_buff[41 + i] = IXGBE_READ_REG(hw, IXGBE_VFTDWBAL(i));
 	for (i = 0; i < 2; i++)
 		regs_buff[43 + i] = IXGBE_READ_REG(hw, IXGBE_VFTDWBAH(i));
-
-	for (i = 0; i < ARRAY_SIZE(ixgbevf_reg_names); i++)
-		hw_dbg(hw, "%s\t%8.8x\n", ixgbevf_reg_names[i], regs_buff[i]);
 }
 
 static void ixgbevf_get_drvinfo(struct net_device *netdev,
@@ -685,6 +634,85 @@ static int ixgbevf_nway_reset(struct net_device *netdev)
 	return 0;
 }
 
+static int ixgbevf_get_coalesce(struct net_device *netdev,
+				struct ethtool_coalesce *ec)
+{
+	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
+
+	/* only valid if in constant ITR mode */
+	if (adapter->rx_itr_setting <= 1)
+		ec->rx_coalesce_usecs = adapter->rx_itr_setting;
+	else
+		ec->rx_coalesce_usecs = adapter->rx_itr_setting >> 2;
+
+	/* if in mixed tx/rx queues per vector mode, report only rx settings */
+	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count)
+		return 0;
+
+	/* only valid if in constant ITR mode */
+	if (adapter->tx_itr_setting <= 1)
+		ec->tx_coalesce_usecs = adapter->tx_itr_setting;
+	else
+		ec->tx_coalesce_usecs = adapter->tx_itr_setting >> 2;
+
+	return 0;
+}
+
+static int ixgbevf_set_coalesce(struct net_device *netdev,
+				struct ethtool_coalesce *ec)
+{
+	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
+	struct ixgbevf_q_vector *q_vector;
+	int num_vectors, i;
+	u16 tx_itr_param, rx_itr_param;
+
+	/* don't accept tx specific changes if we've got mixed RxTx vectors */
+	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count
+	    && ec->tx_coalesce_usecs)
+		return -EINVAL;
+
+
+	if ((ec->rx_coalesce_usecs > (IXGBE_MAX_EITR >> 2)) ||
+	    (ec->tx_coalesce_usecs > (IXGBE_MAX_EITR >> 2)))
+		return -EINVAL;
+
+	if (ec->rx_coalesce_usecs > 1)
+		adapter->rx_itr_setting = ec->rx_coalesce_usecs << 2;
+	else
+		adapter->rx_itr_setting = ec->rx_coalesce_usecs;
+
+	if (adapter->rx_itr_setting == 1)
+		rx_itr_param = IXGBE_20K_ITR;
+	else
+		rx_itr_param = adapter->rx_itr_setting;
+
+
+	if (ec->tx_coalesce_usecs > 1)
+		adapter->tx_itr_setting = ec->tx_coalesce_usecs << 2;
+	else
+		adapter->tx_itr_setting = ec->tx_coalesce_usecs;
+
+	if (adapter->tx_itr_setting == 1)
+		tx_itr_param = IXGBE_10K_ITR;
+	else
+		tx_itr_param = adapter->tx_itr_setting;
+
+	num_vectors = adapter->num_msix_vectors - NON_Q_VECTORS;
+
+	for (i = 0; i < num_vectors; i++) {
+		q_vector = adapter->q_vector[i];
+		if (q_vector->tx.count && !q_vector->rx.count)
+			/* tx only */
+			q_vector->itr = tx_itr_param;
+		else
+			/* rx only or mixed */
+			q_vector->itr = rx_itr_param;
+		ixgbevf_write_eitr(q_vector);
+	}
+
+	return 0;
+}
+
 static const struct ethtool_ops ixgbevf_ethtool_ops = {
 	.get_settings           = ixgbevf_get_settings,
 	.get_drvinfo            = ixgbevf_get_drvinfo,
@@ -700,6 +728,8 @@ static const struct ethtool_ops ixgbevf_ethtool_ops = {
 	.get_sset_count         = ixgbevf_get_sset_count,
 	.get_strings            = ixgbevf_get_strings,
 	.get_ethtool_stats      = ixgbevf_get_ethtool_stats,
+	.get_coalesce           = ixgbevf_get_coalesce,
+	.set_coalesce           = ixgbevf_set_coalesce,
 };
 
 void ixgbevf_set_ethtool_ops(struct net_device *netdev)
