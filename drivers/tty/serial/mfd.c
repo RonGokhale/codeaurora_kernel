@@ -1451,7 +1451,6 @@ static void serial_hsu_remove(struct pci_dev *pdev)
 		uart_remove_one_port(&serial_hsu_reg, &up->port);
 	}
 
-	pci_set_drvdata(pdev, NULL);
 	free_irq(pdev->irq, priv);
 	pci_disable_device(pdev);
 }
@@ -1504,4 +1503,4 @@ module_init(hsu_pci_init);
 module_exit(hsu_pci_exit);
 
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:medfield-hsu");
+MODULE_DEVICE_TABLE(pci, pci_ids);
