@@ -2858,7 +2858,11 @@ static int __devinit android_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "failed to get mem resource\n");
 	}
 
-	ret = android_create_device(android_dev, composite_driver.usb_core_id);
+	if (pdata)
+		ret = android_create_device(android_dev, pdata->usb_core_id);
+	else
+		ret = android_create_device(android_dev, 0);
+
 	if (ret) {
 		pr_err("%s(): android_create_device failed\n", __func__);
 		goto err_dev;
