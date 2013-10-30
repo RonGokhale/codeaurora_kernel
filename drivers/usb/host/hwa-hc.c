@@ -199,10 +199,14 @@ static int hwahc_op_get_frame_number(struct usb_hcd *usb_hcd)
 {
 	struct wusbhc *wusbhc = usb_hcd_to_wusbhc(usb_hcd);
 	struct hwahc *hwahc = container_of(wusbhc, struct hwahc, wusbhc);
+	struct wahc *wa = &hwahc->wa;
 
-	dev_err(wusbhc->dev, "%s (%p [%p]) UNIMPLEMENTED\n", __func__,
-		usb_hcd, hwahc);
-	return -ENOSYS;
+	/*
+	 * We cannot query the HWA for the WUSB time since that requires sending
+	 * a synchronous URB and this function can be called in_interrupt.
+	 * Instead, query the USB frame number for our parent and use that.
+	 */
+	return usb_get_current_frame_number(wa->usb_dev);
 }
 
 static int hwahc_op_urb_enqueue(struct usb_hcd *usb_hcd, struct urb *urb,
@@ -566,14 +570,10 @@ found:
 		goto error;
 	}
 	wa->wa_descr = wa_descr = (struct usb_wa_descriptor *) hdr;
-	/* Make LE fields CPU order */
-	wa_descr->bcdWAVersion = le16_to_cpu(wa_descr->bcdWAVersion);
-	wa_descr->wNumRPipes = le16_to_cpu(wa_descr->wNumRPipes);
-	wa_descr->wRPipeMaxBlock = le16_to_cpu(wa_descr->wRPipeMaxBlock);
-	if (wa_descr->bcdWAVersion > 0x0100)
+	if (le16_to_cpu(wa_descr->bcdWAVersion) > 0x0100)
 		dev_warn(dev, "Wire Adapter v%d.%d newer than groked v1.0\n",
-			 wa_descr->bcdWAVersion & 0xff00 >> 8,
-			 wa_descr->bcdWAVersion & 0x00ff);
+			 le16_to_cpu(wa_descr->bcdWAVersion) & 0xff00 >> 8,
+			 le16_to_cpu(wa_descr->bcdWAVersion) & 0x00ff);
 	result = 0;
 error:
 	return result;
