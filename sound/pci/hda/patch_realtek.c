@@ -554,8 +554,6 @@ do_sku:
 			nid = portd;
 		else if (tmp == 3)
 			nid = porti;
-		else
-			return 1;
 		if (found_in_nid_list(nid, spec->gen.autocfg.line_out_pins,
 				      spec->gen.autocfg.line_outs))
 			return 1;
@@ -2539,7 +2537,9 @@ enum {
 	ALC269_TYPE_ALC282,
 	ALC269_TYPE_ALC283,
 	ALC269_TYPE_ALC284,
+	ALC269_TYPE_ALC285,
 	ALC269_TYPE_ALC286,
+	ALC269_TYPE_ALC255,
 };
 
 /*
@@ -2558,6 +2558,7 @@ static int alc269_parse_auto_config(struct hda_codec *codec)
 	case ALC269_TYPE_ALC269VC:
 	case ALC269_TYPE_ALC280:
 	case ALC269_TYPE_ALC284:
+	case ALC269_TYPE_ALC285:
 		ssids = alc269va_ssids;
 		break;
 	case ALC269_TYPE_ALC269VB:
@@ -2565,6 +2566,7 @@ static int alc269_parse_auto_config(struct hda_codec *codec)
 	case ALC269_TYPE_ALC282:
 	case ALC269_TYPE_ALC283:
 	case ALC269_TYPE_ALC286:
+	case ALC269_TYPE_ALC255:
 		ssids = alc269_ssids;
 		break;
 	default:
@@ -2652,7 +2654,7 @@ static void alc283_shutup(struct hda_codec *codec)
 			    AC_VERB_SET_AMP_GAIN_MUTE, AMP_OUT_MUTE);
 
 	if (hp_pin_sense)
-		msleep(85);
+		msleep(100);
 
 	snd_hda_codec_write(codec, hp_pin, 0,
 			    AC_VERB_SET_PIN_WIDGET_CONTROL, 0x0);
@@ -2661,7 +2663,7 @@ static void alc283_shutup(struct hda_codec *codec)
 	alc_write_coef_idx(codec, 0x46, val | (3 << 12));
 
 	if (hp_pin_sense)
-		msleep(85);
+		msleep(100);
 	snd_hda_shutup_pins(codec);
 	alc_write_coef_idx(codec, 0x43, 0x9614);
 }
@@ -4125,8 +4127,15 @@ static int patch_alc269(struct hda_codec *codec)
 	case 0x10ec0292:
 		spec->codec_variant = ALC269_TYPE_ALC284;
 		break;
+	case 0x10ec0285:
+	case 0x10ec0293:
+		spec->codec_variant = ALC269_TYPE_ALC285;
+		break;
 	case 0x10ec0286:
 		spec->codec_variant = ALC269_TYPE_ALC286;
+		break;
+	case 0x10ec0255:
+		spec->codec_variant = ALC269_TYPE_ALC255;
 		break;
 	}
 
@@ -4841,6 +4850,7 @@ static int patch_alc680(struct hda_codec *codec)
 static const struct hda_codec_preset snd_hda_preset_realtek[] = {
 	{ .id = 0x10ec0221, .name = "ALC221", .patch = patch_alc269 },
 	{ .id = 0x10ec0233, .name = "ALC233", .patch = patch_alc269 },
+	{ .id = 0x10ec0255, .name = "ALC255", .patch = patch_alc269 },
 	{ .id = 0x10ec0260, .name = "ALC260", .patch = patch_alc260 },
 	{ .id = 0x10ec0262, .name = "ALC262", .patch = patch_alc262 },
 	{ .id = 0x10ec0267, .name = "ALC267", .patch = patch_alc268 },
@@ -4854,9 +4864,11 @@ static const struct hda_codec_preset snd_hda_preset_realtek[] = {
 	{ .id = 0x10ec0282, .name = "ALC282", .patch = patch_alc269 },
 	{ .id = 0x10ec0283, .name = "ALC283", .patch = patch_alc269 },
 	{ .id = 0x10ec0284, .name = "ALC284", .patch = patch_alc269 },
+	{ .id = 0x10ec0285, .name = "ALC285", .patch = patch_alc269 },
 	{ .id = 0x10ec0286, .name = "ALC286", .patch = patch_alc269 },
 	{ .id = 0x10ec0290, .name = "ALC290", .patch = patch_alc269 },
 	{ .id = 0x10ec0292, .name = "ALC292", .patch = patch_alc269 },
+	{ .id = 0x10ec0293, .name = "ALC293", .patch = patch_alc269 },
 	{ .id = 0x10ec0861, .rev = 0x100340, .name = "ALC660",
 	  .patch = patch_alc861 },
 	{ .id = 0x10ec0660, .name = "ALC660-VD", .patch = patch_alc861vd },
