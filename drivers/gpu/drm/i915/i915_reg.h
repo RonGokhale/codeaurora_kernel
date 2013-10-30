@@ -1110,9 +1110,6 @@
 					     _HSW_PIPE_SLICE_CHICKEN_1_A, + \
 					     _HSW_PIPE_SLICE_CHICKEN_1_B)
 
-#define HSW_CLKGATE_DISABLE_PART_1	0x46500
-#define   HSW_DPFC_GATING_DISABLE	(1<<23)
-
 /*
  * GPIO regs
  */
@@ -1480,7 +1477,7 @@
 #define MCHBAR_MIRROR_BASE_SNB	0x140000
 
 /* Memory controller frequency in MCHBAR for Haswell (possible SNB+) */
-#define DCLK 0x5e04
+#define DCLK (MCHBAR_MIRROR_BASE_SNB + 0x5e04)
 
 /** 915-945 and GM965 MCH register controlling DRAM channel access */
 #define DCC			0x10200
@@ -1775,9 +1772,9 @@
 #define GEN6_GT_THREAD_STATUS_CORE_MASK 0x7
 #define GEN6_GT_THREAD_STATUS_CORE_MASK_HSW (0x7 | (0x07 << 16))
 
-#define GEN6_GT_PERF_STATUS	0x145948
-#define GEN6_RP_STATE_LIMITS	0x145994
-#define GEN6_RP_STATE_CAP	0x145998
+#define GEN6_GT_PERF_STATUS	(MCHBAR_MIRROR_BASE_SNB + 0x5948)
+#define GEN6_RP_STATE_LIMITS	(MCHBAR_MIRROR_BASE_SNB + 0x5994)
+#define GEN6_RP_STATE_CAP	(MCHBAR_MIRROR_BASE_SNB + 0x5998)
 
 /*
  * Logical Context regs
@@ -1847,36 +1844,58 @@
 /* Pipe A CRC regs */
 #define _PIPE_CRC_CTL_A		(dev_priv->info->display_mmio_offset + 0x60050)
 #define   PIPE_CRC_ENABLE		(1 << 31)
+/* ivb+ source selection */
 #define   PIPE_CRC_SOURCE_PRIMARY_IVB	(0 << 29)
 #define   PIPE_CRC_SOURCE_SPRITE_IVB	(1 << 29)
 #define   PIPE_CRC_SOURCE_PF_IVB	(2 << 29)
+/* ilk+ source selection */
 #define   PIPE_CRC_SOURCE_PRIMARY_ILK	(0 << 28)
 #define   PIPE_CRC_SOURCE_SPRITE_ILK	(1 << 28)
 #define   PIPE_CRC_SOURCE_PIPE_ILK	(2 << 28)
 /* embedded DP port on the north display block, reserved on ivb */
 #define   PIPE_CRC_SOURCE_PORT_A_ILK	(4 << 28)
 #define   PIPE_CRC_SOURCE_FDI_ILK	(5 << 28) /* reserved on ivb */
+/* vlv source selection */
+#define   PIPE_CRC_SOURCE_PIPE_VLV	(0 << 27)
+#define   PIPE_CRC_SOURCE_HDMIB_VLV	(1 << 27)
+#define   PIPE_CRC_SOURCE_HDMIC_VLV	(2 << 27)
+/* with DP port the pipe source is invalid */
+#define   PIPE_CRC_SOURCE_DP_D_VLV	(3 << 27)
+#define   PIPE_CRC_SOURCE_DP_B_VLV	(6 << 27)
+#define   PIPE_CRC_SOURCE_DP_C_VLV	(7 << 27)
+/* gen3+ source selection */
+#define   PIPE_CRC_SOURCE_PIPE_I9XX	(0 << 28)
+#define   PIPE_CRC_SOURCE_SDVOB_I9XX	(1 << 28)
+#define   PIPE_CRC_SOURCE_SDVOC_I9XX	(2 << 28)
+/* with DP/TV port the pipe source is invalid */
+#define   PIPE_CRC_SOURCE_DP_D_G4X	(3 << 28)
+#define   PIPE_CRC_SOURCE_TV_PRE	(4 << 28)
+#define   PIPE_CRC_SOURCE_TV_POST	(5 << 28)
+#define   PIPE_CRC_SOURCE_DP_B_G4X	(6 << 28)
+#define   PIPE_CRC_SOURCE_DP_C_G4X	(7 << 28)
+/* gen2 doesn't have source selection bits */
+#define   PIPE_CRC_INCLUDE_BORDER_I8XX	(1 << 30)
+
 #define _PIPE_CRC_RES_1_A_IVB		0x60064
 #define _PIPE_CRC_RES_2_A_IVB		0x60068
 #define _PIPE_CRC_RES_3_A_IVB		0x6006c
 #define _PIPE_CRC_RES_4_A_IVB		0x60070
 #define _PIPE_CRC_RES_5_A_IVB		0x60074
 
-#define _PIPE_CRC_RES_RED_A_ILK		0x60060
-#define _PIPE_CRC_RES_GREEN_A_ILK	0x60064
-#define _PIPE_CRC_RES_BLUE_A_ILK	0x60068
-#define _PIPE_CRC_RES_RES1_A_ILK	0x6006c
-#define _PIPE_CRC_RES_RES2_A_ILK	0x60080
+#define _PIPE_CRC_RES_RED_A		(dev_priv->info->display_mmio_offset + 0x60060)
+#define _PIPE_CRC_RES_GREEN_A		(dev_priv->info->display_mmio_offset + 0x60064)
+#define _PIPE_CRC_RES_BLUE_A		(dev_priv->info->display_mmio_offset + 0x60068)
+#define _PIPE_CRC_RES_RES1_A_I915	(dev_priv->info->display_mmio_offset + 0x6006c)
+#define _PIPE_CRC_RES_RES2_A_G4X	(dev_priv->info->display_mmio_offset + 0x60080)
 
 /* Pipe B CRC regs */
-#define _PIPE_CRC_CTL_B			0x61050
 #define _PIPE_CRC_RES_1_B_IVB		0x61064
 #define _PIPE_CRC_RES_2_B_IVB		0x61068
 #define _PIPE_CRC_RES_3_B_IVB		0x6106c
 #define _PIPE_CRC_RES_4_B_IVB		0x61070
 #define _PIPE_CRC_RES_5_B_IVB		0x61074
 
-#define PIPE_CRC_CTL(pipe)	_PIPE(pipe, _PIPE_CRC_CTL_A, _PIPE_CRC_CTL_B)
+#define PIPE_CRC_CTL(pipe)	_PIPE_INC(pipe, _PIPE_CRC_CTL_A, 0x01000)
 #define PIPE_CRC_RES_1_IVB(pipe)	\
 	_PIPE(pipe, _PIPE_CRC_RES_1_A_IVB, _PIPE_CRC_RES_1_B_IVB)
 #define PIPE_CRC_RES_2_IVB(pipe)	\
@@ -1888,16 +1907,16 @@
 #define PIPE_CRC_RES_5_IVB(pipe)	\
 	_PIPE(pipe, _PIPE_CRC_RES_5_A_IVB, _PIPE_CRC_RES_5_B_IVB)
 
-#define PIPE_CRC_RES_RED_ILK(pipe) \
-	_PIPE_INC(pipe, _PIPE_CRC_RES_RED_A_ILK, 0x01000)
-#define PIPE_CRC_RES_GREEN_ILK(pipe) \
-	_PIPE_INC(pipe, _PIPE_CRC_RES_GREEN_A_ILK, 0x01000)
-#define PIPE_CRC_RES_BLUE_ILK(pipe) \
-	_PIPE_INC(pipe, _PIPE_CRC_RES_BLUE_A_ILK, 0x01000)
-#define PIPE_CRC_RES_RES1_ILK(pipe) \
-	_PIPE_INC(pipe, _PIPE_CRC_RES_RES1_A_ILK, 0x01000)
-#define PIPE_CRC_RES_RES2_ILK(pipe) \
-	_PIPE_INC(pipe, _PIPE_CRC_RES_RES2_A_ILK, 0x01000)
+#define PIPE_CRC_RES_RED(pipe) \
+	_PIPE_INC(pipe, _PIPE_CRC_RES_RED_A, 0x01000)
+#define PIPE_CRC_RES_GREEN(pipe) \
+	_PIPE_INC(pipe, _PIPE_CRC_RES_GREEN_A, 0x01000)
+#define PIPE_CRC_RES_BLUE(pipe) \
+	_PIPE_INC(pipe, _PIPE_CRC_RES_BLUE_A, 0x01000)
+#define PIPE_CRC_RES_RES1_I915(pipe) \
+	_PIPE_INC(pipe, _PIPE_CRC_RES_RES1_A_I915, 0x01000)
+#define PIPE_CRC_RES_RES2_G4X(pipe) \
+	_PIPE_INC(pipe, _PIPE_CRC_RES_RES2_A_G4X, 0x01000)
 
 /* Pipe A timing regs */
 #define _HTOTAL_A	(dev_priv->info->display_mmio_offset + 0x60000)

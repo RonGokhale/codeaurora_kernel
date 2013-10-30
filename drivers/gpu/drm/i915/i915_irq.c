@@ -1190,25 +1190,29 @@ static void dp_aux_irq_handler(struct drm_device *dev)
 }
 
 #if defined(CONFIG_DEBUG_FS)
-static void display_pipe_crc_update(struct drm_device *dev, enum pipe pipe,
-				    uint32_t crc0, uint32_t crc1,
-				    uint32_t crc2, uint32_t crc3,
-				    uint32_t crc4)
+static void display_pipe_crc_irq_handler(struct drm_device *dev, enum pipe pipe,
+					 uint32_t crc0, uint32_t crc1,
+					 uint32_t crc2, uint32_t crc3,
+					 uint32_t crc4)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_pipe_crc *pipe_crc = &dev_priv->pipe_crc[pipe];
 	struct intel_pipe_crc_entry *entry;
 	int head, tail;
 
+	spin_lock(&pipe_crc->lock);
+
 	if (!pipe_crc->entries) {
+		spin_unlock(&pipe_crc->lock);
 		DRM_ERROR("spurious interrupt\n");
 		return;
 	}
 
-	head = atomic_read(&pipe_crc->head);
-	tail = atomic_read(&pipe_crc->tail);
+	head = pipe_crc->head;
+	tail = pipe_crc->tail;
 
 	if (CIRC_SPACE(head, tail, INTEL_PIPE_CRC_ENTRIES_NR) < 1) {
+		spin_unlock(&pipe_crc->lock);
 		DRM_ERROR("CRC buffer overflowing\n");
 		return;
 	}
@@ -1223,48 +1227,63 @@ static void display_pipe_crc_update(struct drm_device *dev, enum pipe pipe,
 	entry->crc[4] = crc4;
 
 	head = (head + 1) & (INTEL_PIPE_CRC_ENTRIES_NR - 1);
-	atomic_set(&pipe_crc->head, head);
+	pipe_crc->head = head;
+
+	spin_unlock(&pipe_crc->lock);
 
 	wake_up_interruptible(&pipe_crc->wq);
 }
-
-static void hsw_pipe_crc_update(struct drm_device *dev, enum pipe pipe)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	display_pipe_crc_update(dev, pipe,
-				I915_READ(PIPE_CRC_RES_1_IVB(pipe)),
-				0, 0, 0, 0);
-}
-
-static void ivb_pipe_crc_update(struct drm_device *dev, enum pipe pipe)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	display_pipe_crc_update(dev, pipe,
-				I915_READ(PIPE_CRC_RES_1_IVB(pipe)),
-				I915_READ(PIPE_CRC_RES_2_IVB(pipe)),
-				I915_READ(PIPE_CRC_RES_3_IVB(pipe)),
-				I915_READ(PIPE_CRC_RES_4_IVB(pipe)),
-				I915_READ(PIPE_CRC_RES_5_IVB(pipe)));
-}
-
-static void ilk_pipe_crc_update(struct drm_device *dev, enum pipe pipe)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	display_pipe_crc_update(dev, pipe,
-				I915_READ(PIPE_CRC_RES_RED_ILK(pipe)),
-				I915_READ(PIPE_CRC_RES_GREEN_ILK(pipe)),
-				I915_READ(PIPE_CRC_RES_BLUE_ILK(pipe)),
-				I915_READ(PIPE_CRC_RES_RES1_ILK(pipe)),
-				I915_READ(PIPE_CRC_RES_RES2_ILK(pipe)));
-}
 #else
-static inline void hsw_pipe_crc_update(struct drm_device *dev, int pipe) {}
-static inline void ivb_pipe_crc_update(struct drm_device *dev, int pipe) {}
-static inline void ilk_pipe_crc_update(struct drm_device *dev, int pipe) {}
+static inline void
+display_pipe_crc_irq_handler(struct drm_device *dev, enum pipe pipe,
+			     uint32_t crc0, uint32_t crc1,
+			     uint32_t crc2, uint32_t crc3,
+			     uint32_t crc4) {}
 #endif
+
+
+static void hsw_pipe_crc_irq_handler(struct drm_device *dev, enum pipe pipe)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	display_pipe_crc_irq_handler(dev, pipe,
+				     I915_READ(PIPE_CRC_RES_1_IVB(pipe)),
+				     0, 0, 0, 0);
+}
+
+static void ivb_pipe_crc_irq_handler(struct drm_device *dev, enum pipe pipe)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	display_pipe_crc_irq_handler(dev, pipe,
+				     I915_READ(PIPE_CRC_RES_1_IVB(pipe)),
+				     I915_READ(PIPE_CRC_RES_2_IVB(pipe)),
+				     I915_READ(PIPE_CRC_RES_3_IVB(pipe)),
+				     I915_READ(PIPE_CRC_RES_4_IVB(pipe)),
+				     I915_READ(PIPE_CRC_RES_5_IVB(pipe)));
+}
+
+static void i9xx_pipe_crc_irq_handler(struct drm_device *dev, enum pipe pipe)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t res1, res2;
+
+	if (INTEL_INFO(dev)->gen >= 3)
+		res1 = I915_READ(PIPE_CRC_RES_RES1_I915(pipe));
+	else
+		res1 = 0;
+
+	if (INTEL_INFO(dev)->gen >= 5 || IS_G4X(dev))
+		res2 = I915_READ(PIPE_CRC_RES_RES2_G4X(pipe));
+	else
+		res2 = 0;
+
+	display_pipe_crc_irq_handler(dev, pipe,
+				     I915_READ(PIPE_CRC_RES_RED(pipe)),
+				     I915_READ(PIPE_CRC_RES_GREEN(pipe)),
+				     I915_READ(PIPE_CRC_RES_BLUE(pipe)),
+				     res1, res2);
+}
 
 /* The RPS events need forcewake, so we add them to a work queue and mask their
  * IMR bits until the work is done. Other interrupts can be processed without
@@ -1340,6 +1359,9 @@ static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 				intel_prepare_page_flip(dev, pipe);
 				intel_finish_page_flip(dev, pipe);
 			}
+
+			if (pipe_stats[pipe] & PIPE_CRC_DONE_INTERRUPT_STATUS)
+				i9xx_pipe_crc_irq_handler(dev, pipe);
 		}
 
 		/* Consume port.  Then clear IIR or we'll miss events */
@@ -1443,9 +1465,9 @@ static void ivb_err_int_handler(struct drm_device *dev)
 
 		if (err_int & ERR_INT_PIPE_CRC_DONE(pipe)) {
 			if (IS_IVYBRIDGE(dev))
-				ivb_pipe_crc_update(dev, pipe);
+				ivb_pipe_crc_irq_handler(dev, pipe);
 			else
-				hsw_pipe_crc_update(dev, pipe);
+				hsw_pipe_crc_irq_handler(dev, pipe);
 		}
 	}
 
@@ -1543,10 +1565,10 @@ static void ilk_display_irq_handler(struct drm_device *dev, u32 de_iir)
 			DRM_DEBUG_DRIVER("Pipe B FIFO underrun\n");
 
 	if (de_iir & DE_PIPEA_CRC_DONE)
-		ilk_pipe_crc_update(dev, PIPE_A);
+		i9xx_pipe_crc_irq_handler(dev, PIPE_A);
 
 	if (de_iir & DE_PIPEB_CRC_DONE)
-		ilk_pipe_crc_update(dev, PIPE_B);
+		i9xx_pipe_crc_irq_handler(dev, PIPE_B);
 
 	if (de_iir & DE_PLANEA_FLIP_DONE) {
 		intel_prepare_page_flip(dev, 0);
@@ -2561,7 +2583,8 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u32 enable_mask;
-	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV;
+	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV |
+		PIPE_CRC_DONE_ENABLE;
 	unsigned long irqflags;
 
 	enable_mask = I915_DISPLAY_PORT_INTERRUPT;
@@ -2684,6 +2707,7 @@ static void i8xx_irq_preinstall(struct drm_device * dev)
 static int i8xx_irq_postinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
+	unsigned long irqflags;
 
 	I915_WRITE16(EMR,
 		     ~(I915_ERROR_PAGE_TABLE | I915_ERROR_MEMORY_REFRESH));
@@ -2703,6 +2727,13 @@ static int i8xx_irq_postinstall(struct drm_device *dev)
 		     I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT |
 		     I915_USER_INTERRUPT);
 	POSTING_READ16(IER);
+
+	/* Interrupt setup is already guaranteed to be single-threaded, this is
+	 * just to make the assert_spin_locked check happy. */
+	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
+	i915_enable_pipestat(dev_priv, 0, PIPE_CRC_DONE_ENABLE);
+	i915_enable_pipestat(dev_priv, 1, PIPE_CRC_DONE_ENABLE);
+	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 
 	return 0;
 }
@@ -2790,13 +2821,14 @@ static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 		if (iir & I915_USER_INTERRUPT)
 			notify_ring(dev, &dev_priv->ring[RCS]);
 
-		if (pipe_stats[0] & PIPE_VBLANK_INTERRUPT_STATUS &&
-		    i8xx_handle_vblank(dev, 0, iir))
-			flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(0);
+		for_each_pipe(pipe) {
+			if (pipe_stats[pipe] & PIPE_VBLANK_INTERRUPT_STATUS &&
+			    i8xx_handle_vblank(dev, pipe, iir))
+				flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(pipe);
 
-		if (pipe_stats[1] & PIPE_VBLANK_INTERRUPT_STATUS &&
-		    i8xx_handle_vblank(dev, 1, iir))
-			flip_mask &= ~DISPLAY_PLANE_FLIP_PENDING(1);
+			if (pipe_stats[pipe] & PIPE_CRC_DONE_INTERRUPT_STATUS)
+				i9xx_pipe_crc_irq_handler(dev, pipe);
+		}
 
 		iir = new_iir;
 	}
@@ -2843,6 +2875,7 @@ static int i915_irq_postinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u32 enable_mask;
+	unsigned long irqflags;
 
 	I915_WRITE(EMR, ~(I915_ERROR_PAGE_TABLE | I915_ERROR_MEMORY_REFRESH));
 
@@ -2877,6 +2910,13 @@ static int i915_irq_postinstall(struct drm_device *dev)
 	POSTING_READ(IER);
 
 	i915_enable_asle_pipestat(dev);
+
+	/* Interrupt setup is already guaranteed to be single-threaded, this is
+	 * just to make the assert_spin_locked check happy. */
+	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
+	i915_enable_pipestat(dev_priv, 0, PIPE_CRC_DONE_ENABLE);
+	i915_enable_pipestat(dev_priv, 1, PIPE_CRC_DONE_ENABLE);
+	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 
 	return 0;
 }
@@ -2989,6 +3029,9 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 
 			if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 				blc_event = true;
+
+			if (pipe_stats[pipe] & PIPE_CRC_DONE_INTERRUPT_STATUS)
+				i9xx_pipe_crc_irq_handler(dev, pipe);
 		}
 
 		if (blc_event || (iir & I915_ASLE_INTERRUPT))
@@ -3088,6 +3131,8 @@ static int i965_irq_postinstall(struct drm_device *dev)
 	 * just to make the assert_spin_locked check happy. */
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 	i915_enable_pipestat(dev_priv, 0, PIPE_GMBUS_EVENT_ENABLE);
+	i915_enable_pipestat(dev_priv, 0, PIPE_CRC_DONE_ENABLE);
+	i915_enable_pipestat(dev_priv, 1, PIPE_CRC_DONE_ENABLE);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
 
 	/*
@@ -3233,6 +3278,9 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 
 			if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 				blc_event = true;
+
+			if (pipe_stats[pipe] & PIPE_CRC_DONE_INTERRUPT_STATUS)
+				i9xx_pipe_crc_irq_handler(dev, pipe);
 		}
 
 
