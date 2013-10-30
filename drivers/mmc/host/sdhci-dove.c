@@ -39,7 +39,7 @@ static irqreturn_t sdhci_dove_carddetect_irq(int irq, void *data)
 {
 	struct sdhci_host *host = data;
 
-	tasklet_schedule(&host->card_tasklet);
+	schedule_work(&host->card_detect_work);
 	return IRQ_HANDLED;
 }
 
@@ -149,8 +149,8 @@ static int sdhci_dove_probe(struct platform_device *pdev)
 		goto err_sdhci_add;
 
 	/*
-	 * We must request the IRQ after sdhci_add_host(), as the tasklet only
-	 * gets setup in sdhci_add_host() and we oops.
+	 * We must request the IRQ after sdhci_add_host(), as the workqueue
+	 * only gets setup in sdhci_add_host() and we oops.
 	 */
 	if (gpio_is_valid(priv->gpio_cd)) {
 		ret = request_irq(gpio_to_irq(priv->gpio_cd),

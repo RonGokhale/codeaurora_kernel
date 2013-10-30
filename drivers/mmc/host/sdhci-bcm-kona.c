@@ -120,7 +120,7 @@ static void sdhci_bcm_kona_sd_init(struct sdhci_host *host)
  * Software emulation of the SD card insertion/removal. Set insert=1 for insert
  * and insert=0 for removal. The card detection is done by GPIO. For Broadcom
  * IP to function properly the bit 0 of CORESTAT register needs to be set/reset
- * to generate the CD IRQ handled in sdhci.c which schedules card_tasklet.
+ * to generate the CD IRQ handled in sdhci.c which schedules card_detect_work.
  */
 static int sdhci_bcm_kona_sd_card_emulate(struct sdhci_host *host, int insert)
 {
@@ -316,19 +316,7 @@ err_pltfm_free:
 
 static int __exit sdhci_bcm_kona_remove(struct platform_device *pdev)
 {
-	struct sdhci_host *host = platform_get_drvdata(pdev);
-	int dead;
-	u32 scratch;
-
-	dead = 0;
-	scratch = readl(host->ioaddr + SDHCI_INT_STATUS);
-	if (scratch == (u32)-1)
-		dead = 1;
-	sdhci_remove_host(host, dead);
-
-	sdhci_free_host(host);
-
-	return 0;
+	return sdhci_pltfm_unregister(pdev);
 }
 
 static struct platform_driver sdhci_bcm_kona_driver = {

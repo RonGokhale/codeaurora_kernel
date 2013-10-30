@@ -12,8 +12,10 @@
 #define LINUX_MMC_SDHCI_H
 
 #include <linux/scatterlist.h>
+#include <linux/workqueue.h>
 #include <linux/compiler.h>
 #include <linux/types.h>
+#include <linux/mutex.h>
 #include <linux/io.h>
 #include <linux/mmc/host.h>
 
@@ -114,9 +116,10 @@ struct sdhci_host {
 #if defined(CONFIG_LEDS_CLASS) || defined(CONFIG_LEDS_CLASS_MODULE)
 	struct led_classdev led;	/* LED control */
 	char led_name[32];
+	enum led_brightness brightness;
 #endif
 
-	spinlock_t lock;	/* Mutex */
+	struct mutex lock;	/* Mutex */
 
 	int flags;		/* Host attributes */
 #define SDHCI_USE_SDMA		(1<<0)	/* Host is SDMA capable */
@@ -160,10 +163,10 @@ struct sdhci_host {
 	dma_addr_t adma_addr;	/* Mapped ADMA descr. table */
 	dma_addr_t align_addr;	/* Mapped bounce buffer */
 
-	struct tasklet_struct card_tasklet;	/* Tasklet structures */
-	struct tasklet_struct finish_tasklet;
+	struct work_struct	card_detect_work;
+	struct work_struct	finish_work;
 
-	struct timer_list timer;	/* Timer for timeouts */
+	struct delayed_work	timeout_work;	/* Work for timeouts */
 
 	u32 caps;		/* Alternative CAPABILITY_0 */
 	u32 caps1;		/* Alternative CAPABILITY_1 */
@@ -179,7 +182,7 @@ struct sdhci_host {
 	unsigned int		tuning_count;	/* Timer count for re-tuning */
 	unsigned int		tuning_mode;	/* Re-tuning mode supported by host */
 #define SDHCI_TUNING_MODE_1	0
-	struct timer_list	tuning_timer;	/* Timer for tuning */
+	struct delayed_work	tuning_timeout_work;	/* Work for tuning timeouts */
 
 	unsigned long private[0] ____cacheline_aligned;
 };

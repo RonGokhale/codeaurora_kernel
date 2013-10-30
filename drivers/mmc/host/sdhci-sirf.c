@@ -80,8 +80,8 @@ static int sdhci_sirf_probe(struct platform_device *pdev)
 		goto err_sdhci_add;
 
 	/*
-	 * We must request the IRQ after sdhci_add_host(), as the tasklet only
-	 * gets setup in sdhci_add_host() and we oops.
+	 * We must request the IRQ after sdhci_add_host(), as the workqueue
+	 * only gets setup in sdhci_add_host() and we oops.
 	 */
 	if (gpio_is_valid(priv->gpio_cd)) {
 		ret = mmc_gpio_request_cd(host->mmc, priv->gpio_cd, 0);
