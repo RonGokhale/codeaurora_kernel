@@ -837,18 +837,17 @@ static struct hw_pci pci_v3 __initdata = {
 
 static int __init pci_v3_map_irq_dt(const struct pci_dev *dev, u8 slot, u8 pin)
 {
-	struct of_irq oirq;
+	struct of_phandle_args oirq;
 	int ret;
 
-	ret = of_irq_map_pci(dev, &oirq);
+	ret = of_irq_parse_pci(dev, &oirq);
 	if (ret) {
-		dev_err(&dev->dev, "of_irq_map_pci() %d\n", ret);
+		dev_err(&dev->dev, "of_irq_parse_pci() %d\n", ret);
 		/* Proper return code 0 == NO_IRQ */
 		return 0;
 	}
 
-	return irq_create_of_mapping(oirq.controller, oirq.specifier,
-				     oirq.size);
+	return irq_create_of_mapping(&oirq);
 }
 
 static int __init pci_v3_dtprobe(struct platform_device *pdev,

@@ -583,20 +583,18 @@ err_put_intc_node:
 
 int __init pcibios_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 {
-	struct of_irq dev_irq;
+	struct of_phandle_args dev_irq;
 	int err;
 	int irq;
 
-	err = of_irq_map_pci(dev, &dev_irq);
+	err = of_irq_parse_pci(dev, &dev_irq);
 	if (err) {
 		pr_err("pci %s: unable to get irq map, err=%d\n",
 		       pci_name((struct pci_dev *) dev), err);
 		return 0;
 	}
 
-	irq = irq_create_of_mapping(dev_irq.controller,
-				    dev_irq.specifier,
-				    dev_irq.size);
+	irq = irq_create_of_mapping(&dev_irq);
 
 	if (irq == 0)
 		pr_crit("pci %s: no irq found for pin %u\n",

@@ -199,7 +199,7 @@ void pcibios_set_master(struct pci_dev *dev)
  */
 int pci_read_irq_line(struct pci_dev *pci_dev)
 {
-	struct of_irq oirq;
+	struct of_phandle_args oirq;
 	unsigned int virq;
 
 	/* The current device-tree that iSeries generates from the HV
@@ -217,7 +217,7 @@ int pci_read_irq_line(struct pci_dev *pci_dev)
 	memset(&oirq, 0xff, sizeof(oirq));
 #endif
 	/* Try to get a mapping from the device-tree */
-	if (of_irq_map_pci(pci_dev, &oirq)) {
+	if (of_irq_parse_pci(pci_dev, &oirq)) {
 		u8 line, pin;
 
 		/* If that fails, lets fallback to what is in the config
@@ -243,11 +243,10 @@ int pci_read_irq_line(struct pci_dev *pci_dev)
 			irq_set_irq_type(virq, IRQ_TYPE_LEVEL_LOW);
 	} else {
 		pr_debug(" Got one, spec %d cells (0x%08x 0x%08x...) on %s\n",
-			 oirq.size, oirq.specifier[0], oirq.specifier[1],
-			 of_node_full_name(oirq.controller));
+			 oirq.args_count, oirq.args[0], oirq.args[1],
+			 of_node_full_name(oirq.np));
 
-		virq = irq_create_of_mapping(oirq.controller, oirq.specifier,
-					     oirq.size);
+		virq = irq_create_of_mapping(&oirq);
 	}
 	if (!virq) {
 		pr_debug(" Failed to map !\n");
