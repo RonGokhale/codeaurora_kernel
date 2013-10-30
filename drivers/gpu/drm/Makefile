@@ -18,6 +18,7 @@ drm-y       :=	drm_auth.o drm_buffer.o drm_bufs.o drm_cache.o \
 drm-$(CONFIG_COMPAT) += drm_ioc32.o
 drm-$(CONFIG_DRM_GEM_CMA_HELPER) += drm_gem_cma_helper.o
 drm-$(CONFIG_PCI) += ati_pcigart.o
+drm-$(CONFIG_DRM_PANEL) += drm_panel.o
 
 drm-usb-y   := drm_usb.o
 
@@ -57,4 +58,6 @@ obj-$(CONFIG_DRM_OMAP)	+= omapdrm/
 obj-$(CONFIG_DRM_TILCDC)	+= tilcdc/
 obj-$(CONFIG_DRM_QXL) += qxl/
 obj-$(CONFIG_DRM_MSM) += msm/
+obj-$(CONFIG_DRM_TEGRA) += tegra/
 obj-y			+= i2c/
+obj-y			+= panel/

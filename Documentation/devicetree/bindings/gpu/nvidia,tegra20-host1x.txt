@@ -67,6 +67,7 @@ of the following host1x client modules:
   - nvidia,ddc-i2c-bus: phandle of an I2C controller used for DDC EDID probing
   - nvidia,hpd-gpio: specifies a GPIO used for hotplug detection
   - nvidia,edid: supplies a binary EDID blob
+  - nvidia,panel: phandle of a display panel
 
 - hdmi: High Definition Multimedia Interface
 
@@ -81,6 +82,7 @@ of the following host1x client modules:
   - nvidia,ddc-i2c-bus: phandle of an I2C controller used for DDC EDID probing
   - nvidia,hpd-gpio: specifies a GPIO used for hotplug detection
   - nvidia,edid: supplies a binary EDID blob
+  - nvidia,panel: phandle of a display panel
 
 - tvo: TV encoder output
 
@@ -94,6 +96,20 @@ of the following host1x client modules:
   Required properties:
   - compatible: "nvidia,tegra<chip>-dsi"
   - reg: Physical base address and length of the controller's registers.
+  - clocks: Should contain phandle and clock specifiers for two clocks:
+    the DSI controller clock and the parent clock of the controller.
+  - clock-names: A list of strings containing the name for each clock in
+    the clocks property. Must contain the following two entries:
+    - "dsi": the DSI controller clock
+    - "parent": parent of the DSI controller clock
+  - calibrate: Should contain a phandle and a specifier specifying which
+    pads are used by this DSI output and need to be calibrated.
+
+  Optional properties:
+  - nvidia,ddc-i2c-bus: phandle of an I2C controller used for DDC EDID probing
+  - nvidia,hpd-gpio: specifies a GPIO used for hotplug detection
+  - nvidia,edid: supplies a binary EDID blob
+  - nvidia,panel: phandle of a display panel
 
 Example:
 

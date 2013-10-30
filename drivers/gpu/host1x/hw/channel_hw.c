@@ -16,15 +16,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/host1x.h>
 #include <linux/slab.h>
+
 #include <trace/events/host1x.h>
 
-#include "host1x.h"
-#include "host1x_bo.h"
-#include "channel.h"
-#include "dev.h"
-#include "intr.h"
-#include "job.h"
+#include "../channel.h"
+#include "../dev.h"
+#include "../intr.h"
+#include "../job.h"
 
 #define HOST1X_CHANNEL_SIZE 16384
 #define TRACE_MAX_LENGTH 128U
