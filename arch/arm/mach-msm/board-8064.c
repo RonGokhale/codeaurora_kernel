@@ -2828,7 +2828,6 @@ static struct platform_device *mpq_devices[] __initdata = {
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
 #endif
-	&gpio_ir_recv_pdev,
 	&mpq8064_device_ext_1p2_buck_vreg,
 	&mpq8064_device_ext_1p8_buck_vreg,
 	&mpq8064_device_ext_2p2_buck_vreg,
@@ -2839,7 +2838,6 @@ static struct platform_device *mpq_devices[] __initdata = {
 #endif
 	&rc_input_loopback_pdev,
 	&mpq8064_device_qup_spi_gsbi6,
-	&sp_input_loopback_pdev,
 };
 
 static struct platform_device *mpq8064_hrd_rev2_devices[] __initdata = {
@@ -3785,12 +3783,6 @@ static void __init apq8064_common_init(void)
 			ARRAY_SIZE(common_i2s_devices));
 	}
 
-	if (machine_is_mpq8064_hrd()) {
-		mpq_mcu_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
-		mpq_mcu_comm_dev.dev.platform_data = &mpq_mcu_pdata;
-		platform_device_register(&mpq_mcu_comm_dev);
-	}
-
 	if (machine_is_apq8064_mtp()) {
 		msm_hsic_pdata.log2_irq_thresh = 5,
 		apq8064_device_hsic_host.dev.platform_data = &msm_hsic_pdata;
@@ -3891,6 +3883,17 @@ static void __init apq8064_cdp_init(void)
 		spi_register_board_info(spi_board_info,
 						ARRAY_SIZE(spi_board_info));
 	}
+
+	if ((machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) &&
+		(SOCINFO_VERSION_MAJOR(hrd_version) == 2)) {
+		mpq_mcu_pdata.swfi_latency = msm_rpmrs_levels[0].latency_us;
+		mpq_mcu_comm_dev.dev.platform_data = &mpq_mcu_pdata;
+		platform_device_register(&mpq_mcu_comm_dev);
+		platform_device_register(&sp_input_loopback_pdev);
+	} else {
+		platform_device_register(&gpio_ir_recv_pdev);
+	}
+
 	apq8064_init_fb();
 	apq8064_init_gpu();
 	platform_add_devices(apq8064_footswitch, apq8064_num_footswitch);
