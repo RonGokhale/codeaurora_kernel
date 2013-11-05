@@ -168,6 +168,34 @@ struct platform_device msm8064_device_watchdog = {
 	.resource	= msm_watchdog_resources,
 };
 
+static struct resource mpq_mcu_comm_resources[] = {
+	{
+		.start  = MSM_GPIO_TO_INT(77),
+		.end    = MSM_GPIO_TO_INT(77),
+		.name   = "mpq_wakeup_irq",
+		.flags  = IORESOURCE_IRQ,
+	},
+	{
+		.name	= "mpq_mcu_wakeup",
+		.start	= 77,
+		.end	= 77,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "mpq_state",
+		.start	= 64,
+		.end	= 64,
+		.flags	= IORESOURCE_IO,
+	},
+};
+
+struct platform_device mpq_mcu_comm_dev = {
+	.name	= "mcu_gpio_comm",
+	.id	= -1,
+	.resource = mpq_mcu_comm_resources,
+	.num_resources = ARRAY_SIZE(mpq_mcu_comm_resources),
+};
+
 static struct resource msm_dmov_resource[] = {
 	{
 		.start = ADM_0_SCSS_1_IRQ,
