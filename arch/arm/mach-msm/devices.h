@@ -474,3 +474,7 @@ extern struct platform_device sglte_mdm_8064_device;
 extern struct platform_device sglte2_qsc_8064_device;
 
 extern struct dev_avtimer_data dev_avtimer_pdata;
+
+extern struct platform_device apq_cpudai_mi2s;
+extern struct platform_device apq_cpudai_i2s_rx;
+extern struct platform_device apq_cpudai_i2s_tx;
