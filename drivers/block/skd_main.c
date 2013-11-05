@@ -42,13 +42,10 @@
 #include <linux/wait.h>
 #include <linux/uio.h>
 #include <scsi/scsi.h>
-#include <scsi/scsi_host.h>
-#include <scsi/scsi_tcq.h>
-#include <scsi/scsi_cmnd.h>
 #include <scsi/sg.h>
 #include <linux/io.h>
 #include <linux/uaccess.h>
-#include <asm-generic/unaligned.h>
+#include <asm/unaligned.h>
 
 #include "skd_s1120.h"
 
@@ -452,7 +449,6 @@ MODULE_PARM_DESC(skd_isr_comp_limit, "s1120 isr comp limit (0=none) default=4");
 /* Major device number dynamically assigned. */
 static u32 skd_major;
 
-static struct skd_device *skd_construct(struct pci_dev *pdev);
 static void skd_destruct(struct skd_device *skdev);
 static const struct block_device_operations skd_blockdev_ops;
 static void skd_send_fitmsg(struct skd_device *skdev,
@@ -2593,6 +2589,7 @@ static void skd_do_inq_page_da(struct skd_device *skdev,
 			       volatile struct fit_comp_error_info *skerr,
 			       uint8_t *cdb, uint8_t *buf)
 {
+	struct pci_dev *pdev = skdev->pdev;
 	unsigned max_bytes;
 	struct driver_inquiry_data inq;
 	u16 val;
@@ -2604,36 +2601,22 @@ static void skd_do_inq_page_da(struct skd_device *skdev,
 
 	inq.page_code = DRIVER_INQ_EVPD_PAGE_CODE;
 
-	if (skdev->pdev && skdev->pdev->bus) {
-		skd_get_link_info(skdev->pdev,
-				  &inq.pcie_link_speed, &inq.pcie_link_lanes);
-		inq.pcie_bus_number = cpu_to_be16(skdev->pdev->bus->number);
-		inq.pcie_device_number = PCI_SLOT(skdev->pdev->devfn);
-		inq.pcie_function_number = PCI_FUNC(skdev->pdev->devfn);
+	skd_get_link_info(pdev, &inq.pcie_link_speed, &inq.pcie_link_lanes);
+	inq.pcie_bus_number = cpu_to_be16(pdev->bus->number);
+	inq.pcie_device_number = PCI_SLOT(pdev->devfn);
+	inq.pcie_function_number = PCI_FUNC(pdev->devfn);
 
-		pci_read_config_word(skdev->pdev, PCI_VENDOR_ID, &val);
-		inq.pcie_vendor_id = cpu_to_be16(val);
+	pci_read_config_word(pdev, PCI_VENDOR_ID, &val);
+	inq.pcie_vendor_id = cpu_to_be16(val);
 
-		pci_read_config_word(skdev->pdev, PCI_DEVICE_ID, &val);
-		inq.pcie_device_id = cpu_to_be16(val);
+	pci_read_config_word(pdev, PCI_DEVICE_ID, &val);
+	inq.pcie_device_id = cpu_to_be16(val);
 
-		pci_read_config_word(skdev->pdev, PCI_SUBSYSTEM_VENDOR_ID,
-				     &val);
-		inq.pcie_subsystem_vendor_id = cpu_to_be16(val);
+	pci_read_config_word(pdev, PCI_SUBSYSTEM_VENDOR_ID, &val);
+	inq.pcie_subsystem_vendor_id = cpu_to_be16(val);
 
-		pci_read_config_word(skdev->pdev, PCI_SUBSYSTEM_ID, &val);
-		inq.pcie_subsystem_device_id = cpu_to_be16(val);
-	} else {
-		inq.pcie_bus_number = 0xFFFF;
-		inq.pcie_device_number = 0xFF;
-		inq.pcie_function_number = 0xFF;
-		inq.pcie_link_speed = 0xFF;
-		inq.pcie_link_lanes = 0xFF;
-		inq.pcie_vendor_id = 0xFFFF;
-		inq.pcie_device_id = 0xFFFF;
-		inq.pcie_subsystem_vendor_id = 0xFFFF;
-		inq.pcie_subsystem_device_id = 0xFFFF;
-	}
+	pci_read_config_word(pdev, PCI_SUBSYSTEM_ID, &val);
+	inq.pcie_subsystem_device_id = cpu_to_be16(val);
 
 	/* Driver version, fixed lenth, padded with spaces on the right */
 	inq.driver_version_length = sizeof(inq.driver_version);
@@ -4131,96 +4114,6 @@ static void skd_release_irq(struct skd_device *skdev)
  *****************************************************************************
  */
 
-static int skd_cons_skcomp(struct skd_device *skdev);
-static int skd_cons_skmsg(struct skd_device *skdev);
-static int skd_cons_skreq(struct skd_device *skdev);
-static int skd_cons_skspcl(struct skd_device *skdev);
-static int skd_cons_sksb(struct skd_device *skdev);
-static struct fit_sg_descriptor *skd_cons_sg_list(struct skd_device *skdev,
-						  u32 n_sg,
-						  dma_addr_t *ret_dma_addr);
-static int skd_cons_disk(struct skd_device *skdev);
-
-#define SKD_N_DEV_TABLE         16u
-static u32 skd_next_devno;
-
-static struct skd_device *skd_construct(struct pci_dev *pdev)
-{
-	struct skd_device *skdev;
-	int blk_major = skd_major;
-	int rc;
-
-	skdev = kzalloc(sizeof(*skdev), GFP_KERNEL);
-
-	if (!skdev) {
-		pr_err(PFX "(%s): memory alloc failure\n",
-		       pci_name(pdev));
-		return NULL;
-	}
-
-	skdev->state = SKD_DRVR_STATE_LOAD;
-	skdev->pdev = pdev;
-	skdev->devno = skd_next_devno++;
-	skdev->major = blk_major;
-	skdev->irq_type = skd_isr_type;
-	sprintf(skdev->name, DRV_NAME "%d", skdev->devno);
-	skdev->dev_max_queue_depth = 0;
-
-	skdev->num_req_context = skd_max_queue_depth;
-	skdev->num_fitmsg_context = skd_max_queue_depth;
-	skdev->n_special = skd_max_pass_thru;
-	skdev->cur_max_queue_depth = 1;
-	skdev->queue_low_water_mark = 1;
-	skdev->proto_ver = 99;
-	skdev->sgs_per_request = skd_sgs_per_request;
-	skdev->dbg_level = skd_dbg_level;
-
-	atomic_set(&skdev->device_count, 0);
-
-	spin_lock_init(&skdev->lock);
-
-	INIT_WORK(&skdev->completion_worker, skd_completion_worker);
-
-	pr_debug("%s:%s:%d skcomp\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_skcomp(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d skmsg\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_skmsg(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d skreq\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_skreq(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d skspcl\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_skspcl(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d sksb\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_sksb(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d disk\n", skdev->name, __func__, __LINE__);
-	rc = skd_cons_disk(skdev);
-	if (rc < 0)
-		goto err_out;
-
-	pr_debug("%s:%s:%d VICTORY\n", skdev->name, __func__, __LINE__);
-	return skdev;
-
-err_out:
-	pr_debug("%s:%s:%d construct failed\n",
-		 skdev->name, __func__, __LINE__);
-	skd_destruct(skdev);
-	return NULL;
-}
-
 static int skd_cons_skcomp(struct skd_device *skdev)
 {
 	int rc = 0;
@@ -4306,6 +4199,35 @@ static int skd_cons_skmsg(struct skd_device *skdev)
 
 err_out:
 	return rc;
+}
+
+static struct fit_sg_descriptor *skd_cons_sg_list(struct skd_device *skdev,
+						  u32 n_sg,
+						  dma_addr_t *ret_dma_addr)
+{
+	struct fit_sg_descriptor *sg_list;
+	u32 nbytes;
+
+	nbytes = sizeof(*sg_list) * n_sg;
+
+	sg_list = pci_alloc_consistent(skdev->pdev, nbytes, ret_dma_addr);
+
+	if (sg_list != NULL) {
+		uint64_t dma_address = *ret_dma_addr;
+		u32 i;
+
+		memset(sg_list, 0, nbytes);
+
+		for (i = 0; i < n_sg - 1; i++) {
+			uint64_t ndp_off;
+			ndp_off = (i + 1) * sizeof(struct fit_sg_descriptor);
+
+			sg_list[i].next_desc_ptr = dma_address + ndp_off;
+		}
+		sg_list[i].next_desc_ptr = 0LL;
+	}
+
+	return sg_list;
 }
 
 static int skd_cons_skreq(struct skd_device *skdev)
@@ -4481,35 +4403,6 @@ err_out:
 	return rc;
 }
 
-static struct fit_sg_descriptor *skd_cons_sg_list(struct skd_device *skdev,
-						  u32 n_sg,
-						  dma_addr_t *ret_dma_addr)
-{
-	struct fit_sg_descriptor *sg_list;
-	u32 nbytes;
-
-	nbytes = sizeof(*sg_list) * n_sg;
-
-	sg_list = pci_alloc_consistent(skdev->pdev, nbytes, ret_dma_addr);
-
-	if (sg_list != NULL) {
-		uint64_t dma_address = *ret_dma_addr;
-		u32 i;
-
-		memset(sg_list, 0, nbytes);
-
-		for (i = 0; i < n_sg - 1; i++) {
-			uint64_t ndp_off;
-			ndp_off = (i + 1) * sizeof(struct fit_sg_descriptor);
-
-			sg_list[i].next_desc_ptr = dma_address + ndp_off;
-		}
-		sg_list[i].next_desc_ptr = 0LL;
-	}
-
-	return sg_list;
-}
-
 static int skd_cons_disk(struct skd_device *skdev)
 {
 	int rc = 0;
@@ -4566,49 +4459,91 @@ err_out:
 	return rc;
 }
 
+#define SKD_N_DEV_TABLE         16u
+static u32 skd_next_devno;
+
+static struct skd_device *skd_construct(struct pci_dev *pdev)
+{
+	struct skd_device *skdev;
+	int blk_major = skd_major;
+	int rc;
+
+	skdev = kzalloc(sizeof(*skdev), GFP_KERNEL);
+
+	if (!skdev) {
+		pr_err(PFX "(%s): memory alloc failure\n",
+		       pci_name(pdev));
+		return NULL;
+	}
+
+	skdev->state = SKD_DRVR_STATE_LOAD;
+	skdev->pdev = pdev;
+	skdev->devno = skd_next_devno++;
+	skdev->major = blk_major;
+	skdev->irq_type = skd_isr_type;
+	sprintf(skdev->name, DRV_NAME "%d", skdev->devno);
+	skdev->dev_max_queue_depth = 0;
+
+	skdev->num_req_context = skd_max_queue_depth;
+	skdev->num_fitmsg_context = skd_max_queue_depth;
+	skdev->n_special = skd_max_pass_thru;
+	skdev->cur_max_queue_depth = 1;
+	skdev->queue_low_water_mark = 1;
+	skdev->proto_ver = 99;
+	skdev->sgs_per_request = skd_sgs_per_request;
+	skdev->dbg_level = skd_dbg_level;
+
+	atomic_set(&skdev->device_count, 0);
+
+	spin_lock_init(&skdev->lock);
+
+	INIT_WORK(&skdev->completion_worker, skd_completion_worker);
+
+	pr_debug("%s:%s:%d skcomp\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_skcomp(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d skmsg\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_skmsg(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d skreq\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_skreq(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d skspcl\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_skspcl(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d sksb\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_sksb(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d disk\n", skdev->name, __func__, __LINE__);
+	rc = skd_cons_disk(skdev);
+	if (rc < 0)
+		goto err_out;
+
+	pr_debug("%s:%s:%d VICTORY\n", skdev->name, __func__, __LINE__);
+	return skdev;
+
+err_out:
+	pr_debug("%s:%s:%d construct failed\n",
+		 skdev->name, __func__, __LINE__);
+	skd_destruct(skdev);
+	return NULL;
+}
+
 /*
  *****************************************************************************
  * DESTRUCT (FREE)
  *****************************************************************************
  */
-
-static void skd_free_skcomp(struct skd_device *skdev);
-static void skd_free_skmsg(struct skd_device *skdev);
-static void skd_free_skreq(struct skd_device *skdev);
-static void skd_free_skspcl(struct skd_device *skdev);
-static void skd_free_sksb(struct skd_device *skdev);
-static void skd_free_sg_list(struct skd_device *skdev,
-			     struct fit_sg_descriptor *sg_list,
-			     u32 n_sg, dma_addr_t dma_addr);
-static void skd_free_disk(struct skd_device *skdev);
-
-static void skd_destruct(struct skd_device *skdev)
-{
-	if (skdev == NULL)
-		return;
-
-
-	pr_debug("%s:%s:%d disk\n", skdev->name, __func__, __LINE__);
-	skd_free_disk(skdev);
-
-	pr_debug("%s:%s:%d sksb\n", skdev->name, __func__, __LINE__);
-	skd_free_sksb(skdev);
-
-	pr_debug("%s:%s:%d skspcl\n", skdev->name, __func__, __LINE__);
-	skd_free_skspcl(skdev);
-
-	pr_debug("%s:%s:%d skreq\n", skdev->name, __func__, __LINE__);
-	skd_free_skreq(skdev);
-
-	pr_debug("%s:%s:%d skmsg\n", skdev->name, __func__, __LINE__);
-	skd_free_skmsg(skdev);
-
-	pr_debug("%s:%s:%d skcomp\n", skdev->name, __func__, __LINE__);
-	skd_free_skcomp(skdev);
-
-	pr_debug("%s:%s:%d skdev\n", skdev->name, __func__, __LINE__);
-	kfree(skdev);
-}
 
 static void skd_free_skcomp(struct skd_device *skdev)
 {
@@ -4650,6 +4585,19 @@ static void skd_free_skmsg(struct skd_device *skdev)
 
 	kfree(skdev->skmsg_table);
 	skdev->skmsg_table = NULL;
+}
+
+static void skd_free_sg_list(struct skd_device *skdev,
+			     struct fit_sg_descriptor *sg_list,
+			     u32 n_sg, dma_addr_t dma_addr)
+{
+	if (sg_list != NULL) {
+		u32 nbytes;
+
+		nbytes = sizeof(*sg_list) * n_sg;
+
+		pci_free_consistent(skdev->pdev, nbytes, sg_list, dma_addr);
+	}
 }
 
 static void skd_free_skreq(struct skd_device *skdev)
@@ -4748,19 +4696,6 @@ static void skd_free_sksb(struct skd_device *skdev)
 	skspcl->req.sksg_dma_address = 0;
 }
 
-static void skd_free_sg_list(struct skd_device *skdev,
-			     struct fit_sg_descriptor *sg_list,
-			     u32 n_sg, dma_addr_t dma_addr)
-{
-	if (sg_list != NULL) {
-		u32 nbytes;
-
-		nbytes = sizeof(*sg_list) * n_sg;
-
-		pci_free_consistent(skdev->pdev, nbytes, sg_list, dma_addr);
-	}
-}
-
 static void skd_free_disk(struct skd_device *skdev)
 {
 	struct gendisk *disk = skdev->disk;
@@ -4777,7 +4712,33 @@ static void skd_free_disk(struct skd_device *skdev)
 	skdev->disk = NULL;
 }
 
+static void skd_destruct(struct skd_device *skdev)
+{
+	if (skdev == NULL)
+		return;
 
+
+	pr_debug("%s:%s:%d disk\n", skdev->name, __func__, __LINE__);
+	skd_free_disk(skdev);
+
+	pr_debug("%s:%s:%d sksb\n", skdev->name, __func__, __LINE__);
+	skd_free_sksb(skdev);
+
+	pr_debug("%s:%s:%d skspcl\n", skdev->name, __func__, __LINE__);
+	skd_free_skspcl(skdev);
+
+	pr_debug("%s:%s:%d skreq\n", skdev->name, __func__, __LINE__);
+	skd_free_skreq(skdev);
+
+	pr_debug("%s:%s:%d skmsg\n", skdev->name, __func__, __LINE__);
+	skd_free_skmsg(skdev);
+
+	pr_debug("%s:%s:%d skcomp\n", skdev->name, __func__, __LINE__);
+	skd_free_skcomp(skdev);
+
+	pr_debug("%s:%s:%d skdev\n", skdev->name, __func__, __LINE__);
+	kfree(skdev);
+}
 
 /*
  *****************************************************************************
@@ -4899,6 +4860,14 @@ static int skd_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		}
 	}
 
+	if (!skd_major) {
+		rc = register_blkdev(0, DRV_NAME);
+		if (rc < 0)
+			goto err_out_regions;
+		BUG_ON(!rc);
+		skd_major = rc;
+	}
+
 	skdev = skd_construct(pdev);
 	if (skdev == NULL) {
 		rc = -ENOMEM;
@@ -4920,7 +4889,7 @@ static int skd_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 
 	pci_set_drvdata(pdev, skdev);
-	skdev->pdev = pdev;
+
 	skdev->disk->driverfs_dev = &pdev->dev;
 
 	for (i = 0; i < SKD_MAX_BARS; i++) {
@@ -5396,8 +5365,6 @@ static void skd_log_skreq(struct skd_device *skdev,
 
 static int __init skd_init(void)
 {
-	int rc = 0;
-
 	pr_info(PFX " v%s-b%s loaded\n", DRV_VERSION, DRV_BUILD_ID);
 
 	switch (skd_isr_type) {
@@ -5406,57 +5373,47 @@ static int __init skd_init(void)
 	case SKD_IRQ_MSIX:
 		break;
 	default:
-		pr_info("skd_isr_type %d invalid, re-set to %d\n",
+		pr_err(PFX "skd_isr_type %d invalid, re-set to %d\n",
 		       skd_isr_type, SKD_IRQ_DEFAULT);
 		skd_isr_type = SKD_IRQ_DEFAULT;
 	}
 
-	if (skd_max_queue_depth < 1
-	    || skd_max_queue_depth > SKD_MAX_QUEUE_DEPTH) {
-		pr_info(
-		       "skd_max_queue_depth %d invalid, re-set to %d\n",
+	if (skd_max_queue_depth < 1 ||
+	    skd_max_queue_depth > SKD_MAX_QUEUE_DEPTH) {
+		pr_err(PFX "skd_max_queue_depth %d invalid, re-set to %d\n",
 		       skd_max_queue_depth, SKD_MAX_QUEUE_DEPTH_DEFAULT);
 		skd_max_queue_depth = SKD_MAX_QUEUE_DEPTH_DEFAULT;
 	}
 
 	if (skd_max_req_per_msg < 1 || skd_max_req_per_msg > 14) {
-		pr_info(
-		       "skd_max_req_per_msg %d invalid, re-set to %d\n",
+		pr_err(PFX "skd_max_req_per_msg %d invalid, re-set to %d\n",
 		       skd_max_req_per_msg, SKD_MAX_REQ_PER_MSG_DEFAULT);
 		skd_max_req_per_msg = SKD_MAX_REQ_PER_MSG_DEFAULT;
 	}
 
 	if (skd_sgs_per_request < 1 || skd_sgs_per_request > 4096) {
-		pr_info(
-		       "skd_sg_per_request %d invalid, re-set to %d\n",
+		pr_err(PFX "skd_sg_per_request %d invalid, re-set to %d\n",
 		       skd_sgs_per_request, SKD_N_SG_PER_REQ_DEFAULT);
 		skd_sgs_per_request = SKD_N_SG_PER_REQ_DEFAULT;
 	}
 
 	if (skd_dbg_level < 0 || skd_dbg_level > 2) {
-		pr_info("skd_dbg_level %d invalid, re-set to %d\n",
+		pr_err(PFX "skd_dbg_level %d invalid, re-set to %d\n",
 		       skd_dbg_level, 0);
 		skd_dbg_level = 0;
 	}
 
 	if (skd_isr_comp_limit < 0) {
-		pr_info("skd_isr_comp_limit %d invalid, set to %d\n",
+		pr_err(PFX "skd_isr_comp_limit %d invalid, set to %d\n",
 		       skd_isr_comp_limit, 0);
 		skd_isr_comp_limit = 0;
 	}
 
 	if (skd_max_pass_thru < 1 || skd_max_pass_thru > 50) {
-		pr_info("skd_max_pass_thru %d invalid, re-set to %d\n",
+		pr_err(PFX "skd_max_pass_thru %d invalid, re-set to %d\n",
 		       skd_max_pass_thru, SKD_N_SPECIAL_CONTEXT);
 		skd_max_pass_thru = SKD_N_SPECIAL_CONTEXT;
 	}
-
-	/* Obtain major device number. */
-	rc = register_blkdev(0, DRV_NAME);
-	if (rc < 0)
-		return rc;
-
-	skd_major = rc;
 
 	return pci_register_driver(&skd_driver);
 }
@@ -5465,8 +5422,10 @@ static void __exit skd_exit(void)
 {
 	pr_info(PFX " v%s-b%s unloading\n", DRV_VERSION, DRV_BUILD_ID);
 
-	unregister_blkdev(skd_major, DRV_NAME);
 	pci_unregister_driver(&skd_driver);
+
+	if (skd_major)
+		unregister_blkdev(skd_major, DRV_NAME);
 }
 
 module_init(skd_init);
