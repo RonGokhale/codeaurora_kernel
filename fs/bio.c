@@ -612,6 +612,7 @@ int bio_clone_biovec(struct bio *bio, gfp_t gfp_mask)
 	unsigned nr_iovecs = 0;
 	struct bio_vec bv, *bvl = NULL;
 	struct bvec_iter iter;
+	int i;
 
 	BUG_ON(!bio->bi_pool);
 	BUG_ON(BIO_POOL_IDX(bio) != BIO_POOL_NONE);
@@ -628,8 +629,9 @@ int bio_clone_biovec(struct bio *bio, gfp_t gfp_mask)
 		bvl = bio->bi_inline_vecs;
 	}
 
+	i = 0;
 	bio_for_each_segment(bv, bio, iter)
-		bvl[bio->bi_vcnt++] = bv;
+		bvl[i++] = bv;
 
 	bio->bi_io_vec = bvl;
 	bio->bi_iter.bi_idx = 0;
