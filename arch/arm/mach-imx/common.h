@@ -108,6 +108,7 @@ void tzic_handle_irq(struct pt_regs *);
 #define imx27_handle_irq avic_handle_irq
 #define imx31_handle_irq avic_handle_irq
 #define imx35_handle_irq avic_handle_irq
+#define imx50_handle_irq tzic_handle_irq
 #define imx51_handle_irq tzic_handle_irq
 #define imx53_handle_irq tzic_handle_irq
 
@@ -127,11 +128,6 @@ static inline void imx_smp_prepare(void) {}
 static inline void imx_scu_standby_enable(void) {}
 #endif
 void imx_src_init(void);
-#ifdef CONFIG_HAVE_IMX_SRC
-void imx_src_prepare_restart(void);
-#else
-static inline void imx_src_prepare_restart(void) {}
-#endif
 void imx_gpc_init(void);
 void imx_gpc_pre_suspend(void);
 void imx_gpc_post_resume(void);
