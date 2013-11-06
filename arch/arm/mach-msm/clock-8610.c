@@ -2923,7 +2923,7 @@ static struct clk_lookup msm_clocks_8610[] = {
 	CLK_LOOKUP("core_clk",                  gcc_ce1_clk.c, ""),
 	CLK_LOOKUP("iface_clk",       gcc_copss_smmu_ahb_clk.c, ""),
 	CLK_LOOKUP("iface_clk",        gcc_lpss_smmu_ahb_clk.c, ""),
-	CLK_LOOKUP("core_clk",                  gcc_gp1_clk.c, ""),
+	CLK_LOOKUP("core_clk",                  gcc_gp1_clk.c, "0-000e"),
 	CLK_LOOKUP("core_clk",                  gcc_gp2_clk.c, ""),
 	CLK_LOOKUP("core_clk",                  gcc_gp3_clk.c, ""),
 	CLK_LOOKUP("core_clk",         gcc_lpass_q6_axi_clk.c, ""),
@@ -3042,10 +3042,12 @@ static struct clk_lookup msm_clocks_8610[] = {
 		"fda00c00.qcom,csiphy"),
 	CLK_LOOKUP("csiphy_timer_clk", csi0phytimer_clk.c,
 		"fda00c00.qcom,csiphy"),
+        CLK_LOOKUP("csi_ahb_clk", csi_ahb_clk.c, "fda00c00.qcom,csiphy"),
 	CLK_LOOKUP("csiphy_timer_src_clk", csi1phytimer_clk_src.c,
 		"fda01000.qcom,csiphy"),
 	CLK_LOOKUP("csiphy_timer_clk", csi1phytimer_clk.c,
 		"fda01000.qcom,csiphy"),
+        CLK_LOOKUP("csi_ahb_clk", csi_ahb_clk.c,  "fda01000.qcom,csiphy"),
 
 	/* CSID clocks */
 	CLK_LOOKUP("csi_clk", csi0_clk.c, "fda00000.qcom,csid"),

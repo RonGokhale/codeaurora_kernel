@@ -334,13 +334,15 @@ static void msm_vfe32_process_reg_update(struct vfe_device *vfe_dev,
 		msm_isp_sof_notify(vfe_dev, VFE_RAW_2, ts);
 
 	if (vfe_dev->axi_data.stream_update) {
-	rdi_status = msm_camera_io_r(vfe_dev->vfe_base + VFE32_XBAR_BASE(0));
-	rdi_status |= msm_camera_io_r(vfe_dev->vfe_base + VFE32_XBAR_BASE(4));
+		rdi_status = msm_camera_io_r(vfe_dev->vfe_base +
+						VFE32_XBAR_BASE(0));
+		rdi_status |= msm_camera_io_r(vfe_dev->vfe_base +
+						VFE32_XBAR_BASE(4));
 
-	if (((rdi_status & BIT(7)) || (rdi_status & BIT(7)) ||
+		if (((rdi_status & BIT(7)) || (rdi_status & BIT(7)) ||
 			(rdi_status & BIT(7)) || (rdi_status & BIT(7))) &&
 			(!(irq_status0 & 0x20)))
-		return;
+			return;
 	}
 
 	if (vfe_dev->axi_data.stream_update)
