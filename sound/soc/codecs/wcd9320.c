@@ -248,21 +248,6 @@ MODULE_PARM_DESC(spkr_drv_wrnd,
 
 #define TAIKO_I2S_MASTER_MODE_MASK 0x08
 
-#define TAIKO_DMIC_SAMPLE_RATE_DIV_2	0x0
-#define TAIKO_DMIC_SAMPLE_RATE_DIV_3	0x1
-#define TAIKO_DMIC_SAMPLE_RATE_DIV_4	0x2
-
-#define TAIKO_DMIC_B1_CTL_DIV_2 0x00
-#define TAIKO_DMIC_B1_CTL_DIV_3 0x22
-#define TAIKO_DMIC_B1_CTL_DIV_4 0x44
-
-#define TAIKO_DMIC_B2_CTL_DIV_2 0x00
-#define TAIKO_DMIC_B2_CTL_DIV_3 0x02
-#define TAIKO_DMIC_B2_CTL_DIV_4 0x04
-
-#define TAIKO_ANC_DMIC_X2_ON	0x1
-#define TAIKO_ANC_DMIC_X2_OFF	0x0
-
 #define TAIKO_SLIM_CLOSE_TIMEOUT 1000
 #define TAIKO_SLIM_IRQ_OVERFLOW (1 << 0)
 #define TAIKO_SLIM_IRQ_UNDERFLOW (1 << 1)
@@ -5741,24 +5726,24 @@ static int taiko_handle_pdata(struct taiko_priv *taiko)
 	/* Set the DMIC sample rate */
 	if (pdata->mclk_rate == TAIKO_MCLK_CLK_9P6MHZ) {
 		switch (pdata->dmic_sample_rate) {
-		case TAIKO_DMIC_SAMPLE_RATE_2P4MHZ:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_4;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_4;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_4;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+		case WCD9XXX_DMIC_SAMPLE_RATE_2P4MHZ:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_4;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_4;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_4;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_OFF;
 			break;
-		case TAIKO_DMIC_SAMPLE_RATE_4P8MHZ:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_2;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_2;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_2;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_ON;
+		case WCD9XXX_DMIC_SAMPLE_RATE_4P8MHZ:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_2;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_2;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_2;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_ON;
 			break;
-		case TAIKO_DMIC_SAMPLE_RATE_3P2MHZ:
-		case TAIKO_DMIC_SAMPLE_RATE_UNDEFINED:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_3;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_3;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_3;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+		case WCD9XXX_DMIC_SAMPLE_RATE_3P2MHZ:
+		case WCD9XXX_DMIC_SAMPLE_RATE_UNDEFINED:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_3;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_3;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_3;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_OFF;
 			break;
 		default:
 			pr_err("%s Invalid sample rate %d for mclk %d\n",
@@ -5769,24 +5754,24 @@ static int taiko_handle_pdata(struct taiko_priv *taiko)
 		}
 	} else if (pdata->mclk_rate == TAIKO_MCLK_CLK_12P288MHZ) {
 		switch (pdata->dmic_sample_rate) {
-		case TAIKO_DMIC_SAMPLE_RATE_3P072MHZ:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_4;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_4;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_4;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+		case WCD9XXX_DMIC_SAMPLE_RATE_3P072MHZ:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_4;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_4;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_4;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_OFF;
 			break;
-		case TAIKO_DMIC_SAMPLE_RATE_6P144MHZ:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_2;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_2;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_2;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_ON;
+		case WCD9XXX_DMIC_SAMPLE_RATE_6P144MHZ:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_2;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_2;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_2;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_ON;
 			break;
-		case TAIKO_DMIC_SAMPLE_RATE_4P096MHZ:
-		case TAIKO_DMIC_SAMPLE_RATE_UNDEFINED:
-			dmic_sample_rate_value = TAIKO_DMIC_SAMPLE_RATE_DIV_3;
-			dmic_b1_ctl_value = TAIKO_DMIC_B1_CTL_DIV_3;
-			dmic_b2_ctl_value = TAIKO_DMIC_B2_CTL_DIV_3;
-			anc_ctl_value = TAIKO_ANC_DMIC_X2_OFF;
+		case WCD9XXX_DMIC_SAMPLE_RATE_4P096MHZ:
+		case WCD9XXX_DMIC_SAMPLE_RATE_UNDEFINED:
+			dmic_sample_rate_value = WCD9XXX_DMIC_SAMPLE_RATE_DIV_3;
+			dmic_b1_ctl_value = WCD9XXX_DMIC_B1_CTL_DIV_3;
+			dmic_b2_ctl_value = WCD9XXX_DMIC_B2_CTL_DIV_3;
+			anc_ctl_value = WCD9XXX_ANC_DMIC_X2_OFF;
 			break;
 		default:
 			pr_err("%s Invalid sample rate %d for mclk %d\n",
@@ -6383,6 +6368,18 @@ static const struct wcd9xxx_mbhc_cb mbhc_cb = {
 	.compute_impedance = taiko_compute_impedance,
 };
 
+static const struct wcd9xxx_mbhc_intr cdc_intr_ids = {
+	.poll_plug_rem = WCD9XXX_IRQ_MBHC_REMOVAL,
+	.shortavg_complete = WCD9XXX_IRQ_MBHC_SHORT_TERM,
+	.potential_button_press = WCD9XXX_IRQ_MBHC_PRESS,
+	.button_release = WCD9XXX_IRQ_MBHC_RELEASE,
+	.dce_est_complete = WCD9XXX_IRQ_MBHC_POTENTIAL,
+	.insertion = WCD9XXX_IRQ_MBHC_INSERTION,
+	.hph_left_ocp = WCD9XXX_IRQ_HPH_PA_OCPL_FAULT,
+	.hph_right_ocp = WCD9XXX_IRQ_HPH_PA_OCPR_FAULT,
+	.hs_jack_switch = WCD9320_IRQ_MBHC_JACK_SWITCH,
+};
+
 static int taiko_post_reset_cb(struct wcd9xxx *wcd9xxx)
 {
 	int ret = 0;
@@ -6428,7 +6425,8 @@ static int taiko_post_reset_cb(struct wcd9xxx *wcd9xxx)
 
 		ret = wcd9xxx_mbhc_init(&taiko->mbhc, &taiko->resmgr, codec,
 					taiko_enable_mbhc_micbias,
-					&mbhc_cb, rco_clk_rate, true);
+					&mbhc_cb, &cdc_intr_ids,
+					rco_clk_rate, true);
 		if (ret)
 			pr_err("%s: mbhc init failed %d\n", __func__, ret);
 		else
@@ -6598,7 +6596,8 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 	core_res = &wcd9xxx->core_res;
 	pdata = dev_get_platdata(codec->dev->parent);
 	ret = wcd9xxx_resmgr_init(&taiko->resmgr, codec, core_res, pdata,
-				  &taiko_reg_address, WCD9XXX_CDC_TYPE_TAIKO);
+				  &pdata->micbias, &taiko_reg_address,
+				  WCD9XXX_CDC_TYPE_TAIKO);
 	if (ret) {
 		pr_err("%s: wcd9xxx init failed %d\n", __func__, ret);
 		goto err_init;
@@ -6617,7 +6616,8 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 	/* init and start mbhc */
 	ret = wcd9xxx_mbhc_init(&taiko->mbhc, &taiko->resmgr, codec,
 				taiko_enable_mbhc_micbias,
-				&mbhc_cb, rco_clk_rate, true);
+				&mbhc_cb, &cdc_intr_ids,
+				rco_clk_rate, true);
 	if (ret) {
 		pr_err("%s: mbhc init failed %d\n", __func__, ret);
 		goto err_init;

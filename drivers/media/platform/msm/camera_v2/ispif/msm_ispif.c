@@ -72,6 +72,18 @@ static struct msm_cam_clk_info ispif_8974_reset_clk_info[] = {
 	{"csi0_clk", NO_SET_RATE},
 	{"csi0_pix_clk", NO_SET_RATE},
 	{"csi0_rdi_clk", NO_SET_RATE},
+	{"csi1_src_clk", INIT_RATE},
+	{"csi1_clk", NO_SET_RATE},
+	{"csi1_pix_clk", NO_SET_RATE},
+	{"csi1_rdi_clk", NO_SET_RATE},
+	{"csi2_src_clk", INIT_RATE},
+	{"csi2_clk", NO_SET_RATE},
+	{"csi2_pix_clk", NO_SET_RATE},
+	{"csi2_rdi_clk", NO_SET_RATE},
+	{"csi3_src_clk", INIT_RATE},
+	{"csi3_clk", NO_SET_RATE},
+	{"csi3_pix_clk", NO_SET_RATE},
+	{"csi3_rdi_clk", NO_SET_RATE},
 	{"vfe0_clk_src", INIT_RATE},
 	{"camss_vfe_vfe0_clk", NO_SET_RATE},
 	{"camss_csi_vfe0_clk", NO_SET_RATE},
@@ -110,6 +122,9 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 	CDBG("%s: VFE0 done\n", __func__);
 	if (timeout <= 0) {
 		pr_err("%s: VFE0 reset wait timeout\n", __func__);
+		msm_cam_clk_enable(&ispif->pdev->dev,
+			ispif_8974_reset_clk_info, reset_clk,
+			ARRAY_SIZE(ispif_8974_reset_clk_info), 0);
 		return -ETIMEDOUT;
 	}
 
@@ -120,6 +135,9 @@ static int msm_ispif_reset_hw(struct ispif_device *ispif)
 		CDBG("%s: VFE1 done\n", __func__);
 		if (timeout <= 0) {
 			pr_err("%s: VFE1 reset wait timeout\n", __func__);
+			msm_cam_clk_enable(&ispif->pdev->dev,
+				ispif_8974_reset_clk_info, reset_clk,
+				ARRAY_SIZE(ispif_8974_reset_clk_info), 0);
 			return -ETIMEDOUT;
 		}
 	}
@@ -182,17 +200,17 @@ static int msm_ispif_reset(struct ispif_device *ispif)
 			ispif->base + ISPIF_VFE_m_INTF_CMD_0(i));
 		msm_camera_io_w(ISPIF_STOP_INTF_IMMEDIATELY,
 			ispif->base + ISPIF_VFE_m_INTF_CMD_1(i));
-
+             pr_err("base %x ", (unsigned int)ispif->base);
 		msm_camera_io_w(0, ispif->base +
 			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 0));
 		msm_camera_io_w(0, ispif->base +
 			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 1));
 		msm_camera_io_w(0, ispif->base +
-			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 0));
+			ISPIF_VFE_m_RDI_INTF_n_CID_MASK(i, 0));
 		msm_camera_io_w(0, ispif->base +
-			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 1));
+			ISPIF_VFE_m_RDI_INTF_n_CID_MASK(i, 1));
 		msm_camera_io_w(0, ispif->base +
-			ISPIF_VFE_m_PIX_INTF_n_CID_MASK(i, 2));
+			ISPIF_VFE_m_RDI_INTF_n_CID_MASK(i, 2));
 
 		msm_camera_io_w(0, ispif->base +
 			ISPIF_VFE_m_PIX_INTF_n_CROP(i, 0));
