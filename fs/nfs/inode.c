@@ -274,12 +274,6 @@ void nfs_setsecurity(struct inode *inode, struct nfs_fattr *fattr,
 	if (label == NULL)
 		return;
 
-	if (nfs_server_capable(inode, NFS_CAP_SECURITY_LABEL) == 0)
-		return;
-
-	if (NFS_SERVER(inode)->nfs_client->cl_minorversion < 2)
-		return;
-
 	if ((fattr->valid & NFS_ATTR_FATTR_V4_SECURITY_LABEL) && inode->i_security) {
 		error = security_inode_notifysecctx(inode, label->label,
 				label->len);
@@ -923,6 +917,8 @@ __nfs_revalidate_inode(struct nfs_server *server, struct inode *inode)
 	if (nfsi->cache_validity & NFS_INO_INVALID_ACL)
 		nfs_zap_acl_cache(inode);
 
+	nfs_setsecurity(inode, fattr, label);
+
 	dfprintk(PAGECACHE, "NFS: (%s/%Ld) revalidation complete\n",
 		inode->i_sb->s_id,
 		(long long)NFS_FILEID(inode));
@@ -1209,6 +1205,7 @@ u32 _nfs_display_fhandle_hash(const struct nfs_fh *fh)
 	 * not on the result */
 	return nfs_fhandle_hash(fh);
 }
+EXPORT_SYMBOL_GPL(_nfs_display_fhandle_hash);
 
 /*
  * _nfs_display_fhandle - display an NFS file handle on the console
@@ -1253,6 +1250,7 @@ void _nfs_display_fhandle(const struct nfs_fh *fh, const char *caption)
 		}
 	}
 }
+EXPORT_SYMBOL_GPL(_nfs_display_fhandle);
 #endif
 
 /**
