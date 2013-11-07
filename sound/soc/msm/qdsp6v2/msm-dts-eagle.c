@@ -78,7 +78,7 @@ static int fx_logN(int x) {
   int t, y=0xa65af;
   if(x<0x00008000){x<<=16,y-=0xb1721;} if(x<0x00800000){x<<= 8,y-=0x58b91;}
   if(x<0x08000000){x<<= 4,y-=0x2c5c8;} if(x<0x20000000){x<<= 2,y-=0x162e4;}
-  if(x<0x40000000){x<<= 1,y-=0x0b172;}
+  if(x<0x40000000){x<<= 1,y-=0x0b172;} 
   t=x+(x>>1); if((t&0x80000000)==0){x=t, y-=0x067cd;}
   t=x+(x>>2); if((t&0x80000000)==0){x=t, y-=0x03920;}
   t=x+(x>>3); if((t&0x80000000)==0){x=t, y-=0x01e27;}
@@ -136,7 +136,7 @@ static int volume_cmds_alloc1(int size) {
     if(vol_cmds)
         vol_cmds_desc = kzalloc(vol_cmd_cnt * sizeof(vol_cmds_desc_), GFP_KERNEL);
     if(vol_cmds_desc)
-        return 0;
+        return 0;    
     return -1;
 }
 
@@ -144,7 +144,7 @@ static int volume_cmds_alloc1(int size) {
 static int volume_cmds_alloc2(int idx, int size) {
     if(vol_cmds[idx])
         kfree(vol_cmds[idx]);
-    vol_cmds[idx] = kzalloc(size, GFP_KERNEL);
+    vol_cmds[idx] = kzalloc(size, GFP_KERNEL);    
     if(vol_cmds[idx])
         return 0;
     vol_cmds_desc[idx][0] = 0;
@@ -154,10 +154,11 @@ static int volume_cmds_alloc2(int idx, int size) {
 static void _setup_cache_target_mapping(void)
 {
     int i;
-    pr_info("DTS_EAGLE_DRIVER: %s called\n", __func__);
     for (i = 0; i < AUDIO_DEVICE_OUT_COUNT; i++) {
-        _cache_targets[i][BETD_OFFSET] = 0xFFFFFFFF;
-        _cache_targets[i][BETD_COMMAND] = _cache_targets[i][BETD_SIZE] = 0;
+        _cache_targets[AUDIO_DEVICE_OUT_EARPIECE][BETD_OFFSET] =
+                                0xFFFFFFFF;
+        _cache_targets[AUDIO_DEVICE_OUT_EARPIECE][BETD_COMMAND] =
+        _cache_targets[AUDIO_DEVICE_OUT_EARPIECE][BETD_SIZE] = 0;
     }
 
     _cache_targets[AUDIO_DEVICE_OUT_EARPIECE][BETD_ID] =
@@ -215,12 +216,12 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
     struct dts_eagle_param_desc depd;
     pr_info("DTS_EAGLE_DRIVER_PRE: %s called (set [pre] param)\n",
         __func__);
-
+    
     if(_depc_size == 0) {
         pr_err("DTS_EAGLE_DRIVER_VOLUME: driver cache not initialized.\n");
         return -EFAULT;
     }
-
+    
     if (copy_from_user((void *)&depd, (void *)arg, sizeof(depd))) {
         pr_err("DTS_EAGLE_DRIVER_PRE: error copying dts_eagle_param_desc\n");
         return -EFAULT;
@@ -249,33 +250,35 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 static const int log10_10_inv_x20 = 0x0008af84;
 int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain) {
     int i, idx, val;
+    pr_debug("DTS_EAGLE_DRIVER_VOLUME: %s called\n", __func__);   
 
     if(_depc_size == 0) {
         pr_err("DTS_EAGLE_DRIVER_VOLUME: driver cache not initialized.\n");
         return -1;
     }
-
+        
     for(i = 0; i < vol_cmd_cnt; i++) {
         if(vol_cmds_desc[i][0] & 0x8000) {
             idx = (sizeof(struct dts_eagle_param_desc)/sizeof(int)) +
-                      (vol_cmds_desc[i][0]&0x3FF);
+                      (vol_cmds_desc[i][0]&0x3FF);    
             val = fx_logN((lgain+rgain) << 2);
-            val = ((long long)val * log10_10_inv_x20) >> 16;
+            val = ((long long)val * log10_10_inv_x20) >> 16;            
             vol_cmds[i][idx] =
                 clamp((int)(((long long)val * vol_cmds_desc[i][1]) >> 16),
-                      vol_cmds_desc[i][2], vol_cmds_desc[i][3]);
-            pr_debug("DTS_EAGLE_DRIVER_VOLUME: loop %i cmd desc found %i, idx = %i. volume info: lgain = %i, rgain = %i, volume = %i (scale %i, min %i, max %i)\n",
+                      vol_cmds_desc[i][2], vol_cmds_desc[i][3]);            
+            pr_debug("DTS_EAGLE_DRIVER_VOLUME: loop %i - cmd desc found %i, idx = %i. volume info: lgain = %i, rgain = %i, volume = %i (scale_inv %i, min %i, max %i)\n",
                       i, vol_cmds_desc[i][0], idx, lgain, rgain, vol_cmds[i][idx], vol_cmds_desc[i][1], vol_cmds_desc[i][2], vol_cmds_desc[i][3]);
         }
+        pr_debug("DTS_EAGLE_DRIVER_VOLUME: loop %i - sending data 0x%X %i %i %i %i(...)\n", i, vol_cmds[i][0], vol_cmds[i][1], vol_cmds[i][2], vol_cmds[i][3], vol_cmds[i][4]);
         memcpy((void *)&_depc[vol_cmds[i][2]], &vol_cmds[i][4],
                 vol_cmds[i][1]);
         if (dts_eagle_open_pre(ac, vol_cmds[i][0], vol_cmds[i][1],
                    (void *)&_depc[vol_cmds[i][2]])) {
-            pr_err("DTS_EAGLE_DRIVER_VOLUME: loop %i - volume set failed with id 0x%X, size %i, offset %i, cmd_desc %i, scale %i, min %i, max %i, data(...) %i\n",
-                 i, vol_cmds[i][0], vol_cmds[i][1], vol_cmds[i][2], vol_cmds_desc[i][0], vol_cmds_desc[i][1], vol_cmds_desc[i][2], vol_cmds_desc[i][3], vol_cmds[i][4]);
+            pr_err("DTS_EAGLE_DRIVER_VOLUME: volume set failed with id = 0x%X and size = %d\n",
+                vol_cmds[i][0], vol_cmds[i][1]);
         } else {
-            pr_debug("DTS_EAGLE_DRIVER_VOLUME: loop %i - volume set succeeded with id 0x%X, size %i, offset %i, cmd_desc %i, scale %i, min %i, max %i, data(...) %i\n",
-                 i, vol_cmds[i][0], vol_cmds[i][1], vol_cmds[i][2], vol_cmds_desc[i][0], vol_cmds_desc[i][1], vol_cmds_desc[i][2], vol_cmds_desc[i][3], vol_cmds[i][4]);
+            pr_debug("DTS_EAGLE_DRIVER_VOLUME: volume set succeeded with id = 0x%X and size = %d\n",
+                 vol_cmds[i][0], vol_cmds[i][1]);
         }
     }
     return 0;
@@ -454,9 +457,9 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
             return -EFAULT;
         }
         target[0] &= 0x00FFFFFF;
-        if (target[0] + target[2] >= _depc_size || !target[0] || !target[1] || !target[2]) {
-            pr_err("DTS_EAGLE_DRIVER_POST: target offset and/or size out of range or zero, or invalid parameter sent (offset %u, size %u, cache size limit is %u, parameter sent 0x%X)\n",
-                target[0], target[2], _depc_size, target[1]);
+        if (target[0] + target[2] >= _depc_size) {
+            pr_err("DTS_EAGLE_DRIVER_POST: target offset and size out of range (offset %u, size %u, cache size limit is %u)\n",
+                target[0], target[2], _depc_size);
             return -EFAULT;
         }
         _cache_targets[device_idx][BETD_OFFSET] = target[0];
@@ -472,7 +475,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                    sizeof(target))) {
             pr_err("DTS_EAGLE_DRIVER_POST: error reading license index.\n");
             return -EFAULT;
-        }
+        }        
         size_only = target & (1<<31) ? 1 : 0;
         target &= 0x7FFFFFFF;
         if(target < 0 || target >= SEC_BLOB_MAX_CNT) {
@@ -539,7 +542,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                         target[0]);
                 kfree(sec_blob[target[0]]);
                 sec_blob[target[0]] = NULL;
-            }
+            }            
         }
         pr_debug("DTS_EAGLE_DRIVER_POST: allocating %i bytes for license index %i\n",
                   target[1], target[0]);
@@ -553,7 +556,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
         if (copy_from_user((void *)&(((int*)sec_blob[target[0]])[1]),
                 (void *)(((char *)arg)+sizeof(target)),
                 target[1])) {
-            pr_err("DTS_EAGLE_DRIVER_POST: error copying license to index %i, size %i\n",
+            pr_err("DTS_EAGLE_DRIVER_POST: error copying license to index %i, size %i\n", 
                     target[0], target[1]);
             return -EFAULT;
         } else {
@@ -565,7 +568,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
     case DTS_EAGLE_IOCTL_SEND_LICENSE: {
         int target = 0;
         pr_info("DTS_EAGLE_DRIVER_POST: %s called with control 0x%X (send license)\n",
-            __func__, cmd);
+            __func__, cmd);            
         if (copy_from_user((void *)&target, (void *)arg,
                    sizeof(int))) {
             pr_err("DTS_EAGLE_DRIVER_POST: error reading license index.\n");
@@ -580,20 +583,20 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
             pr_err("DTS_EAGLE_DRIVER_POST: license index %i is invalid\n", target);
             return -EINVAL;
         }
-        if (core_set_dts_eagle(((int*)sec_blob[target])[0],
+        if (core_set_dts_eagle(((int*)sec_blob[target])[0], 
                                (char*)&((int*)sec_blob[target])[1]) < 0) {
             pr_err("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle failed with id = %i\n",
                     target);
         } else {
             pr_debug("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle succeeded with id = %i\n",
                       target);
-        }
+        }       
         break;
     }
     case DTS_EAGLE_IOCTL_SET_VOLUME_COMMANDS: {
         int spec = 0;
         pr_info("DTS_EAGLE_DRIVER_POST: %s called with control 0x%X (set volume commands)\n",
-            __func__, cmd);
+            __func__, cmd);            
         if (copy_from_user((void *)&spec, (void *)arg,
                     sizeof(int))) {
             pr_err("DTS_EAGLE_DRIVER_POST: error reading volume command specifier.\n");
@@ -611,7 +614,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                 pr_err("DTS_EAGLE_DRIVER_POST: error allocating memory for volume controls.\n");
                 return -ENOMEM;
             }
-            if (copy_from_user((void*)&vol_cmds_desc[idx],
+            if (copy_from_user((void*)&vol_cmds_desc[idx], 
                                (void*)(((char*)arg)+sizeof(int)),
                                sizeof(vol_cmds_desc_))) {
                 pr_err("DTS_EAGLE_DRIVER_POST: error reading volume command descriptor.\n");
@@ -620,12 +623,12 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
             pr_debug("DTS_EAGLE_DRIVER_POST: setting volume command %i spec (size %i): %i %i %i %i\n",
                       idx, sizeof(vol_cmds_desc_), vol_cmds_desc[idx][0],
                       vol_cmds_desc[idx][1], vol_cmds_desc[idx][2], vol_cmds_desc[idx][3]);
-            if (copy_from_user((void*)vol_cmds[idx],
+            if (copy_from_user((void*)vol_cmds[idx], 
                                (void*)(((char*)arg) + (sizeof(int) +
                                sizeof(vol_cmds_desc_))), size)) {
                 pr_err("DTS_EAGLE_DRIVER_POST: error reading volume command string.\n");
                 return -EFAULT;
-            }
+            } 
         } else {
             pr_debug("DTS_EAGLE_DRIVER_POST: setting volume command size\n");
             if (spec < 0 || spec > VOL_CMD_CNT_MAX) {
@@ -633,7 +636,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                 return -EFAULT;
             } else if (spec == 0) {
                 pr_info("DTS_EAGLE_DRIVER_POST: request to free volume commands.\n");
-                volume_cmds_free();
+                volume_cmds_free();                
                 break;
             }
             pr_debug("DTS_EAGLE_DRIVER_POST: setting volume command size requested = %i\n", spec);
@@ -661,23 +664,23 @@ int msm_dts_eagle_send_cache_pre(struct audio_client *ac)
 {
     if (_depc_size == 0 || !_depc || _pre_size == 0 || _pre_cmd == 0 ||
         _pre_size > _depc_size) {
-        pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, general error - cache size = %u, cache ptr = %p, size = %u, cmd = %u\n",
+        pr_err("DTS_EAGLE_DRIVER_PRE: in %s, general error - cache size = %u, cache ptr = %p, size = %u, cmd = %u\n",
             __func__, _depc_size, _depc, _pre_size, _pre_cmd);
         return -EINVAL;
     }
-
-    pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: first 6 integers %i %i %i %i %i %i (30th %i)\n",
+    
+    pr_debug("DTS_EAGLE_DRIVER_PRE: first 6 integers %i %i %i %i %i %i (30th %i)\n",
           *((int *)&_depc[0]), *((int *)&_depc[4]),
           *((int *)&_depc[8]), *((int *)&_depc[12]),
           *((int *)&_depc[16]), *((int *)&_depc[20]), *((int *)&_depc[120]));
-    pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to stream, with param = 0x%X and size = %d\n",
+    pr_debug("DTS_EAGLE_DRIVER_PRE: sending full data block to stream, with param = 0x%X and size = %d\n",
           _pre_cmd, _pre_size);
 
     if (dts_eagle_open_pre(ac, _pre_cmd, _pre_size, (void *)_depc)) {
-        pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, dts_eagle_open_pre failed with id = %d and size = %d\n",
+        pr_err("DTS_EAGLE_DRIVER_PRE: in %s, dts_eagle_open_pre failed with id = %d and size = %d\n",
             __func__, _pre_cmd, _pre_size);
     } else {
-        pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, dts_eagle_open_pre succeeded with id = %d and size = %d\n",
+        pr_debug("DTS_EAGLE_DRIVER_PRE: in %s, dts_eagle_open_pre succeeded with id = %d and size = %d\n",
              __func__, _pre_cmd, _pre_size);
     }
     return 0;
@@ -696,7 +699,7 @@ int msm_dts_eagle_send_cache_post(int be_idx)
         }
     }
     if (id == -1) {
-        pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, active device not found for back end %i\n",
+        pr_err("DTS_EAGLE_DRIVER_POST: in %s, active device not found for back end %i\n",
             __func__, be_idx);
         return -EINVAL;
     }
@@ -706,24 +709,24 @@ int msm_dts_eagle_send_cache_post(int be_idx)
 
     if (_depc_size == 0 || !_depc || offset <= 0 || size <= 0 || cmd == 0 ||
         (offset + size) > _depc_size) {
-        pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, id %i be_id %i general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
-            __func__, id, be_idx, _depc_size, _depc, offset, size, cmd);
+        pr_err("DTS_EAGLE_DRIVER_POST: in %s, general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
+            __func__, _depc_size, _depc, offset, size, cmd);
         return -EINVAL;
     }
 
-    pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: first 6 integers %i %i %i %i %i %i\n",
+    pr_debug("DTS_EAGLE_DRIVER_POST: first 6 integers %i %i %i %i %i %i\n",
           *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
           *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
           *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]));
-    pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to backend, with device id = %d, be_id = %d, param = 0x%X, offset = %d, and size = %d\n",
+    pr_debug("DTS_EAGLE_DRIVER_POST: sending full data block to backend, with device id = %d, be_id = %d, param = 0x%X, offset = %d, and size = %d\n",
           id, be_idx, cmd, offset, size);
 
     if (dts_eagle_open_post(be_idx, cmd,
         (void *)&_depc[offset], size) < 0) {
-        pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, dts_eagle_open_post failed with id = 0x%X and size = %d\n",
+        pr_err("DTS_EAGLE_DRIVER_POST: in %s, dts_eagle_open_post failed with id = 0x%X and size = %d\n",
             __func__, cmd, size);
     } else {
-        pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, dts_eagle_open_post succeeded with id = 0x%X and size = %d\n",
+        pr_debug("DTS_EAGLE_DRIVER_POST: in %s, dts_eagle_open_post succeeded with id = 0x%X and size = %d\n",
              __func__, cmd, size);
     }
 
