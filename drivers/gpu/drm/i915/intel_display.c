@@ -5293,22 +5293,6 @@ static bool i9xx_get_pipe_config(struct intel_crtc *crtc,
 	if (INTEL_INFO(dev)->gen < 4)
 		pipe_config->double_wide = tmp & PIPECONF_DOUBLE_WIDE;
 
-	if (IS_G4X(dev) || IS_VALLEYVIEW(dev)) {
-		switch (tmp & PIPECONF_BPC_MASK) {
-		case PIPECONF_6BPC:
-			pipe_config->pipe_bpp = 18;
-			break;
-		case PIPECONF_8BPC:
-			pipe_config->pipe_bpp = 24;
-			break;
-		case PIPECONF_10BPC:
-			pipe_config->pipe_bpp = 30;
-			break;
-		default:
-			break;
-		}
-	}
-
 	intel_get_pipe_timings(crtc, pipe_config);
 
 	i9xx_get_pfit_config(crtc, pipe_config);
@@ -6570,22 +6554,79 @@ static void hsw_package_c8_gpu_busy(struct drm_i915_private *dev_priv)
 	}
 }
 
-static void haswell_modeset_global_resources(struct drm_device *dev)
+#define for_each_power_domain(domain, mask)				\
+	for ((domain) = 0; (domain) < POWER_DOMAIN_NUM; (domain)++)	\
+		if ((1 << (domain)) & (mask))
+
+static unsigned long get_pipe_power_domains(struct drm_device *dev,
+					    enum pipe pipe, bool pfit_enabled)
 {
-	bool enable = false;
+	unsigned long mask;
+	enum transcoder transcoder;
+
+	transcoder = intel_pipe_to_cpu_transcoder(dev->dev_private, pipe);
+
+	mask = BIT(POWER_DOMAIN_PIPE(pipe));
+	mask |= BIT(POWER_DOMAIN_TRANSCODER(transcoder));
+	if (pfit_enabled)
+		mask |= BIT(POWER_DOMAIN_PIPE_PANEL_FITTER(pipe));
+
+	return mask;
+}
+
+void intel_display_set_init_power(struct drm_device *dev, bool enable)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (dev_priv->power_domains.init_power_on == enable)
+		return;
+
+	if (enable)
+		intel_display_power_get(dev, POWER_DOMAIN_INIT);
+	else
+		intel_display_power_put(dev, POWER_DOMAIN_INIT);
+
+	dev_priv->power_domains.init_power_on = enable;
+}
+
+static void modeset_update_power_wells(struct drm_device *dev)
+{
+	unsigned long pipe_domains[I915_MAX_PIPES] = { 0, };
 	struct intel_crtc *crtc;
 
+	/*
+	 * First get all needed power domains, then put all unneeded, to avoid
+	 * any unnecessary toggling of the power wells.
+	 */
 	list_for_each_entry(crtc, &dev->mode_config.crtc_list, base.head) {
+		enum intel_display_power_domain domain;
+
 		if (!crtc->base.enabled)
 			continue;
 
-		if (crtc->pipe != PIPE_A || crtc->config.pch_pfit.enabled ||
-		    crtc->config.cpu_transcoder != TRANSCODER_EDP)
-			enable = true;
+		pipe_domains[crtc->pipe] = get_pipe_power_domains(dev,
+						crtc->pipe,
+						crtc->config.pch_pfit.enabled);
+
+		for_each_power_domain(domain, pipe_domains[crtc->pipe])
+			intel_display_power_get(dev, domain);
 	}
 
-	intel_set_power_well(dev, enable);
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, base.head) {
+		enum intel_display_power_domain domain;
 
+		for_each_power_domain(domain, crtc->enabled_power_domains)
+			intel_display_power_put(dev, domain);
+
+		crtc->enabled_power_domains = pipe_domains[crtc->pipe];
+	}
+
+	intel_display_set_init_power(dev, false);
+}
+
+static void haswell_modeset_global_resources(struct drm_device *dev)
+{
+	modeset_update_power_wells(dev);
 	hsw_update_package_c8(dev);
 }
 
@@ -6948,6 +6989,11 @@ static void ironlake_write_eld(struct drm_connector *connector,
 		aud_config = IBX_AUD_CFG(pipe);
 		aud_cntl_st = IBX_AUD_CNTL_ST(pipe);
 		aud_cntrl_st2 = IBX_AUD_CNTL_ST2;
+	} else if (IS_VALLEYVIEW(connector->dev)) {
+		hdmiw_hdmiedid = VLV_HDMIW_HDMIEDID(pipe);
+		aud_config = VLV_AUD_CFG(pipe);
+		aud_cntl_st = VLV_AUD_CNTL_ST(pipe);
+		aud_cntrl_st2 = VLV_AUD_CNTL_ST2;
 	} else {
 		hdmiw_hdmiedid = CPT_HDMIW_HDMIEDID(pipe);
 		aud_config = CPT_AUD_CFG(pipe);
@@ -6957,8 +7003,19 @@ static void ironlake_write_eld(struct drm_connector *connector,
 
 	DRM_DEBUG_DRIVER("ELD on pipe %c\n", pipe_name(pipe));
 
-	i = I915_READ(aud_cntl_st);
-	i = (i >> 29) & DIP_PORT_SEL_MASK;		/* DIP_Port_Select, 0x1 = PortB */
+	if (IS_VALLEYVIEW(connector->dev))  {
+		struct intel_encoder *intel_encoder;
+		struct intel_digital_port *intel_dig_port;
+
+		intel_encoder = intel_attached_encoder(connector);
+		intel_dig_port = enc_to_dig_port(&intel_encoder->base);
+		i = intel_dig_port->port;
+	} else {
+		i = I915_READ(aud_cntl_st);
+		i = (i >> 29) & DIP_PORT_SEL_MASK;
+		/* DIP_Port_Select, 0x1 = PortB */
+	}
+
 	if (!i) {
 		DRM_DEBUG_DRIVER("Audio directed to unknown port\n");
 		/* operate blindly on all ports */
@@ -7289,8 +7346,8 @@ static int intel_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	intel_crtc->cursor_x = x;
-	intel_crtc->cursor_y = y;
+	intel_crtc->cursor_x = clamp_t(int, x, SHRT_MIN, SHRT_MAX);
+	intel_crtc->cursor_y = clamp_t(int, y, SHRT_MIN, SHRT_MAX);
 
 	if (intel_crtc->active)
 		intel_crtc_update_cursor(crtc, intel_crtc->cursor_bo != NULL);
@@ -9817,6 +9874,18 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	drm_crtc_helper_add(&intel_crtc->base, &intel_helper_funcs);
 }
 
+enum pipe intel_get_pipe_from_connector(struct intel_connector *connector)
+{
+	struct drm_encoder *encoder = connector->base.encoder;
+
+	WARN_ON(!mutex_is_locked(&connector->base.dev->mode_config.mutex));
+
+	if (!encoder)
+		return INVALID_PIPE;
+
+	return to_intel_crtc(encoder->crtc)->pipe;
+}
+
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file)
 {
@@ -10276,7 +10345,8 @@ static void intel_init_display(struct drm_device *dev)
 		}
 	} else if (IS_G4X(dev)) {
 		dev_priv->display.write_eld = g4x_write_eld;
-	}
+	} else if (IS_VALLEYVIEW(dev))
+		dev_priv->display.write_eld = ironlake_write_eld;
 
 	/* Default just returns -ENODEV to indicate unsupported */
 	dev_priv->display.queue_flip = intel_default_queue_flip;
@@ -11056,7 +11126,7 @@ intel_display_capture_error_state(struct drm_device *dev)
 	if (INTEL_INFO(dev)->num_pipes == 0)
 		return NULL;
 
-	error = kmalloc(sizeof(*error), GFP_ATOMIC);
+	error = kzalloc(sizeof(*error), GFP_ATOMIC);
 	if (error == NULL)
 		return NULL;
 
@@ -11064,6 +11134,9 @@ intel_display_capture_error_state(struct drm_device *dev)
 		error->power_well_driver = I915_READ(HSW_PWR_WELL_DRIVER);
 
 	for_each_pipe(i) {
+		if (!intel_display_power_enabled(dev, POWER_DOMAIN_PIPE(i)))
+			continue;
+
 		if (INTEL_INFO(dev)->gen <= 6 || IS_VALLEYVIEW(dev)) {
 			error->cursor[i].control = I915_READ(CURCNTR(i));
 			error->cursor[i].position = I915_READ(CURPOS(i));
@@ -11097,6 +11170,10 @@ intel_display_capture_error_state(struct drm_device *dev)
 	for (i = 0; i < error->num_transcoders; i++) {
 		enum transcoder cpu_transcoder = transcoders[i];
 
+		if (!intel_display_power_enabled(dev,
+				POWER_DOMAIN_TRANSCODER(cpu_transcoder)))
+			continue;
+
 		error->transcoder[i].cpu_transcoder = cpu_transcoder;
 
 		error->transcoder[i].conf = I915_READ(PIPECONF(cpu_transcoder));
@@ -11107,12 +11184,6 @@ intel_display_capture_error_state(struct drm_device *dev)
 		error->transcoder[i].vblank = I915_READ(VBLANK(cpu_transcoder));
 		error->transcoder[i].vsync = I915_READ(VSYNC(cpu_transcoder));
 	}
-
-	/* In the code above we read the registers without checking if the power
-	 * well was on, so here we have to clear the FPGA_DBG_RM_NOCLAIM bit to
-	 * prevent the next I915_WRITE from detecting it and printing an error
-	 * message. */
-	intel_uncore_clear_errors(dev);
 
 	return error;
 }
@@ -11158,7 +11229,7 @@ intel_display_print_error_state(struct drm_i915_error_state_buf *m,
 	}
 
 	for (i = 0; i < error->num_transcoders; i++) {
-		err_printf(m, "  CPU transcoder: %c\n",
+		err_printf(m, "CPU transcoder: %c\n",
 			   transcoder_name(error->transcoder[i].cpu_transcoder));
 		err_printf(m, "  CONF: %08x\n", error->transcoder[i].conf);
 		err_printf(m, "  HTOTAL: %08x\n", error->transcoder[i].htotal);
