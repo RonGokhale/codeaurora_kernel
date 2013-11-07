@@ -286,15 +286,22 @@ static int msm_vidc_load_bus_vector(struct platform_device *pdev,
 	}
 	bus_pdata->name = bus_pdata_config->name;
 	for (i = 0; i < bus_pdata->num_usecases; i++) {
-		bus_pdata->usecase[i].vectors = kzalloc(
-			sizeof(*bus_pdata->usecase[i].vectors) * num_ports,
-			GFP_KERNEL);
 		if (!bus_pdata->usecase) {
 			dprintk(VIDC_ERR,
 				"%s Failed to alloc bus_pdata usecase\n",
 				__func__);
 			break;
 		}
+		bus_pdata->usecase[i].vectors = kzalloc(
+			sizeof(*bus_pdata->usecase[i].vectors) * num_ports,
+			GFP_KERNEL);
+		if (!bus_pdata->usecase[i].vectors) {
+			dprintk(VIDC_ERR,
+					"%s Failed to alloc usecase vectors\n", __func__);
+			rc = -ENOMEM;
+			goto err_parse_dt;
+		}
+
 		for (j = 0; j < num_ports; j++) {
 			bus_pdata->usecase[i].vectors[j].ab = (u64)values[i].ab
 									* 1000;
