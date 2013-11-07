@@ -400,7 +400,6 @@ config ARCH_GEMINI
 	select CLKSRC_MMIO
 	select CPU_FA526
 	select GENERIC_CLOCKEVENTS
-	select NEED_MACH_GPIO_H
 	help
 	  Support for the Cortina Systems Gemini family SoCs
 
@@ -489,7 +488,7 @@ config ARCH_IOP32X
 	depends on MMU
 	select ARCH_REQUIRE_GPIOLIB
 	select CPU_XSCALE
-	select NEED_MACH_GPIO_H
+	select GPIO_IOP
 	select NEED_RET_TO_USER
 	select PCI
 	select PLAT_IOP
@@ -502,7 +501,7 @@ config ARCH_IOP33X
 	depends on MMU
 	select ARCH_REQUIRE_GPIOLIB
 	select CPU_XSCALE
-	select NEED_MACH_GPIO_H
+	select GPIO_IOP
 	select NEED_RET_TO_USER
 	select PCI
 	select PLAT_IOP
@@ -593,7 +592,6 @@ config ARCH_MMP
 	select GPIO_PXA
 	select IRQ_DOMAIN
 	select MULTI_IRQ_HANDLER
-	select NEED_MACH_GPIO_H
 	select NEED_MACH_TIMEX_H
 	select PINCTRL
 	select PLAT_PXA
@@ -658,7 +656,6 @@ config ARCH_PXA
 	select GPIO_PXA
 	select HAVE_IDE
 	select MULTI_IRQ_HANDLER
-	select NEED_MACH_GPIO_H
 	select NEED_MACH_TIMEX_H
 	select PLAT_PXA
 	select SPARSE_IRQ
