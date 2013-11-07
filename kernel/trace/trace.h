@@ -192,8 +192,8 @@ struct trace_array {
 #ifdef CONFIG_FTRACE_SYSCALLS
 	int			sys_refcount_enter;
 	int			sys_refcount_exit;
-	DECLARE_BITMAP(enabled_enter_syscalls, NR_syscalls);
-	DECLARE_BITMAP(enabled_exit_syscalls, NR_syscalls);
+	struct ftrace_event_file *enter_syscall_files[NR_syscalls];
+	struct ftrace_event_file *exit_syscall_files[NR_syscalls];
 #endif
 	int			stop_count;
 	int			clock_id;
@@ -730,15 +730,16 @@ extern void __trace_graph_return(struct trace_array *tr,
 #ifdef CONFIG_DYNAMIC_FTRACE
 /* TODO: make this variable */
 #define FTRACE_GRAPH_MAX_FUNCS		32
-extern int ftrace_graph_filter_enabled;
 extern int ftrace_graph_count;
 extern unsigned long ftrace_graph_funcs[FTRACE_GRAPH_MAX_FUNCS];
+extern int ftrace_graph_notrace_count;
+extern unsigned long ftrace_graph_notrace_funcs[FTRACE_GRAPH_MAX_FUNCS];
 
 static inline int ftrace_graph_addr(unsigned long addr)
 {
 	int i;
 
-	if (!ftrace_graph_filter_enabled)
+	if (!ftrace_graph_count)
 		return 1;
 
 	for (i = 0; i < ftrace_graph_count; i++) {
@@ -758,10 +759,30 @@ static inline int ftrace_graph_addr(unsigned long addr)
 
 	return 0;
 }
+
+static inline int ftrace_graph_notrace_addr(unsigned long addr)
+{
+	int i;
+
+	if (!ftrace_graph_notrace_count)
+		return 0;
+
+	for (i = 0; i < ftrace_graph_notrace_count; i++) {
+		if (addr == ftrace_graph_notrace_funcs[i])
+			return 1;
+	}
+
+	return 0;
+}
 #else
 static inline int ftrace_graph_addr(unsigned long addr)
 {
 	return 1;
+}
+
+static inline int ftrace_graph_notrace_addr(unsigned long addr)
+{
+	return 0;
 }
 #endif /* CONFIG_DYNAMIC_FTRACE */
 #else /* CONFIG_FUNCTION_GRAPH_TRACER */
@@ -986,9 +1007,9 @@ struct filter_pred {
 
 extern enum regex_type
 filter_parse_regex(char *buff, int len, char **search, int *not);
-extern void print_event_filter(struct ftrace_event_call *call,
+extern void print_event_filter(struct ftrace_event_file *file,
 			       struct trace_seq *s);
-extern int apply_event_filter(struct ftrace_event_call *call,
+extern int apply_event_filter(struct ftrace_event_file *file,
 			      char *filter_string);
 extern int apply_subsystem_event_filter(struct ftrace_subsystem_dir *dir,
 					char *filter_string);
@@ -998,20 +1019,6 @@ extern int filter_assign_type(const char *type);
 
 struct ftrace_event_field *
 trace_find_event_field(struct ftrace_event_call *call, char *name);
-
-static inline int
-filter_check_discard(struct ftrace_event_call *call, void *rec,
-		     struct ring_buffer *buffer,
-		     struct ring_buffer_event *event)
-{
-	if (unlikely(call->flags & TRACE_EVENT_FL_FILTERED) &&
-	    !filter_match_preds(call->filter, rec)) {
-		ring_buffer_discard_commit(buffer, event);
-		return 1;
-	}
-
-	return 0;
-}
 
 extern void trace_event_enable_cmd_record(bool enable);
 extern int event_trace_add_tracer(struct dentry *parent, struct trace_array *tr);
