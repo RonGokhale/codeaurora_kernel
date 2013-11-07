@@ -37,7 +37,7 @@
 #include "q6core.h"
 
 #define ION_MEM_SIZE 131072
-#define DEPC_MAX_SIZE 0x200000
+#define DEPC_MAX_SIZE 0x100000
 
 /* backend cache links */
 enum {
@@ -237,11 +237,11 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
     }
     if (dts_eagle_open_pre(ac, depd.id, depd.size,
                    (void *)&_depc[depd.offset])) {
-        pr_err("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre failed with id = 0x%X, size = %d, offset = %d\n",
-            depd.id, depd.size, depd.offset);
+        pr_err("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre failed with id = 0x%X and size = %d\n",
+            depd.id, depd.size);
     } else {
-        pr_debug("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre succeeded with id = 0x%X, size = %d, offset = %d\n",
-             depd.id, depd.size, depd.offset);
+        pr_debug("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre succeeded with id = 0x%X and size = %d\n",
+             depd.id, depd.size);
     }
     return 0;
 }
@@ -415,11 +415,11 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
                         _cache_targets[depd.target][BETD_ID],
                         depd.id, (void *)&_depc[offset],
                         depd.size) < 0) {
-                    pr_err("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post failed with id = 0x%X, size = %d, offset = %d, target = %d, global offset = %d\n",
-                        depd.id, depd.size, depd.offset, depd.target, offset);
+                    pr_err("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post failed with id = 0x%X and size = %d\n",
+                        depd.id, depd.size);
                 } else {
-                    pr_debug("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post succeeded with id = 0x%X, size = %d, offset = %d, target = %d, global offset = %d\n",
-                        depd.id, depd.size, depd.offset, depd.target, offset);
+                    pr_debug("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post succeeded with id = 0x%X and size = %d\n",
+                        depd.id, depd.size);
                 }
             } else {
                 pr_debug("DTS_EAGLE_DRIVER_POST: backend not active");
