@@ -38,42 +38,50 @@ int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain);
 
 int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg);
 
+int dts_eagle_open_post(int port_id, int param_id, void *data, int size);
+
 void dts_ion_memmap(struct param_outband *po);
 #else
-static inline int msm_dts_eagle_send_cache_post(int be_idx)
+int msm_dts_eagle_send_cache(int be_idx)
 {
     return 0;
 }
 
-static inline int msm_dts_eagle_send_cache_pre(struct audio_client *ac)
+int msm_dts_eagle_send_cache_pre(struct audio_client *ac)
 {
     return 0;
 }
 
-static inline int msm_dts_eagle_pcm_new(struct snd_soc_pcm_runtime *runtime,
+int msm_dts_eagle_pcm_new(struct snd_soc_pcm_runtime *runtime,
               struct msm_pcm_routing_bdai_data *msm_bedais)
 {
     pr_debug("%s\n", __func__);
     return 0;
 }
 
-static inline void msm_dts_eagle_pcm_free(struct snd_pcm *pcm)
+void msm_dts_eagle_pcm_free(struct snd_pcm *pcm)
 {
     pr_debug("%s\n", __func__);
 }
 
-static inline int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain) {
+int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain) {
     pr_debug("%s\n", __func__);
     return 0;
 }
 
-static inline int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
+int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 {
     pr_debug("%s\n", __func__);
     return -EFAULT;
 }
 
-static inline void dts_ion_memmap(struct param_outband *po)
+int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
+{
+    pr_debug("%s\n", __func__);
+    return -EFAULT;
+}
+
+void dts_ion_memmap(struct param_outband *po)
 {
     pr_debug("%s\n", __func__);
 }
