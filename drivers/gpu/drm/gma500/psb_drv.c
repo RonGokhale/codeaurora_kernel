@@ -359,7 +359,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	drm_irq_install(dev);
 
-	dev->vblank_disable_allowed = 1;
+	dev->vblank_disable_allowed = true;
 
 	dev->max_vblank_count = 0xffffff; /* only 24 bits of frame count */
 
@@ -449,7 +449,7 @@ static int psb_gamma_ioctl(struct drm_device *dev, void *data,
 	obj = drm_mode_object_find(dev, obj_id, DRM_MODE_OBJECT_CONNECTOR);
 	if (!obj) {
 		dev_dbg(dev->dev, "Invalid Connector object.\n");
-		return -EINVAL;
+		return -ENOENT;
 	}
 
 	connector = obj_to_connector(obj);
@@ -491,7 +491,7 @@ static int psb_mode_operation_ioctl(struct drm_device *dev, void *data,
 		obj = drm_mode_object_find(dev, obj_id,
 					DRM_MODE_OBJECT_CONNECTOR);
 		if (!obj) {
-			ret = -EINVAL;
+			ret = -ENOENT;
 			goto mode_op_out;
 		}
 
@@ -646,7 +646,6 @@ static struct drm_driver driver = {
 	.preclose = psb_driver_preclose,
 	.postclose = psb_driver_close,
 
-	.gem_init_object = psb_gem_init_object,
 	.gem_free_object = psb_gem_free_object,
 	.gem_vm_ops = &psb_gem_vm_ops,
 	.dumb_create = psb_gem_dumb_create,
