@@ -3050,55 +3050,6 @@ fail_cmd:
 	return rc;
 }
 
-struct asm_dts_eagle_param {
-	struct apr_hdr	hdr;
-	struct asm_stream_cmd_set_pp_params_v2 param;
-	struct asm_stream_param_data_v2 data;
-} __packed;
-
-int dts_eagle_open_pre(struct audio_client *ac, int param_id, int size,
-		       void *data)
-{
-	int sz = sizeof(struct asm_dts_eagle_param) + size, rc = 0;
-	struct asm_dts_eagle_param *ad = kzalloc(sz, GFP_KERNEL);
-
-	q6asm_add_hdr_async(ac, &ad->hdr, sz, 1);
-	ad->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
-	ad->param.data_payload_addr_lsw = 0;
-	ad->param.data_payload_addr_msw = 0;
-
-	ad->param.mem_map_handle = 0;
-	ad->param.data_payload_size = size +
-				      sizeof(struct asm_stream_param_data_v2);
-	ad->data.module_id = AUDPROC_MODULE_ID_DTS_HPX_PREMIX;
-	ad->data.param_id = param_id;
-	ad->data.param_size = size;
-	ad->data.reserved = 0;
-
-	memcpy(((char *)ad) + sizeof(struct asm_dts_eagle_param), data, size);
-
-	rc = apr_send_pkt(ac->apr, (uint32_t *)ad);
-	if (rc < 0) {
-		pr_err("%s: set-params send failed paramid[0x%x]\n", __func__,
-						ad->data.param_id);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
-	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
-	if (!rc) {
-		pr_err("%s: timeout, set-params paramid[0x%x]\n", __func__,
-						ad->data.param_id);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-	rc = 0;
-fail_cmd:
-	kfree(ad);
-	return rc;
-}
-
 int q6asm_set_volume(struct audio_client *ac, int volume)
 {
 	struct asm_volume_ctrl_master_gain vol;

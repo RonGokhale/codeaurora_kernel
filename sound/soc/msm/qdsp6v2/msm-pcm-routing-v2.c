@@ -35,7 +35,20 @@
 #include "msm-dolby-dap-config.h"
 #include "q6voice.h"
 #include "q6core.h"
-#include "msm-dts-eagle.h"
+
+struct msm_pcm_routing_bdai_data {
+	u16 port_id; /* AFE port ID */
+	u8 active; /* track if this backend is enabled */
+	unsigned long fe_sessions; /* Front-end sessions */
+	u64 port_sessions; /* track Tx BE ports -> Rx BE
+			    * number of BE should not exceed
+			    * the size of this field
+			    */
+	unsigned int  sample_rate;
+	unsigned int  channel;
+	unsigned int  format;
+	unsigned long perf_mode;
+};
 
 #define INVALID_SESSION -1
 #define SESSION_TYPE_RX 0
@@ -183,58 +196,47 @@ int get_topology(int path_type)
 }
 
 #define SLIMBUS_EXTPROC_RX AFE_PORT_INVALID
-struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
-	{ PRIMARY_I2S_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_PRI_I2S_RX},
-	{ PRIMARY_I2S_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_PRI_I2S_TX},
-	{ SLIMBUS_0_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_0_RX},
-	{ SLIMBUS_0_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_0_TX},
-	{ HDMI_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_HDMI},
-	{ INT_BT_SCO_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_BT_SCO_RX},
-	{ INT_BT_SCO_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_BT_SCO_TX},
-	{ INT_FM_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_FM_RX},
-	{ INT_FM_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_FM_RX},
-	{ RT_PROXY_PORT_001_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_AFE_PCM_RX},
-	{ RT_PROXY_PORT_001_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_AFE_PCM_TX},
-	{ AFE_PORT_ID_PRIMARY_PCM_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_AUXPCM_RX},
-	{ AFE_PORT_ID_PRIMARY_PCM_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_AUXPCM_TX},
-	{ VOICE_PLAYBACK_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_VOICE_PLAYBACK_TX},
-	{ VOICE_RECORD_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INCALL_RECORD_RX},
-	{ VOICE_RECORD_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_INCALL_RECORD_TX},
-	{ MI2S_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_MI2S_RX},
-	{ MI2S_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_MI2S_TX},
-	{ SECONDARY_I2S_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SEC_I2S_RX},
-	{ SLIMBUS_1_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_1_RX},
-	{ SLIMBUS_1_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_1_TX},
-	{ SLIMBUS_4_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_4_RX},
-	{ SLIMBUS_4_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_4_TX},
-	{ SLIMBUS_3_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_3_RX},
-	{ SLIMBUS_3_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_3_RX},
-	{ SLIMBUS_5_TX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_5_TX },
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_RX},
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_TX},
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_1_TX},
-	{ AFE_PORT_ID_QUATERNARY_MI2S_RX, 0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_QUAT_MI2S_RX},
-	{ AFE_PORT_ID_QUATERNARY_MI2S_TX, 0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_QUAT_MI2S_TX},
-	{ AFE_PORT_ID_SECONDARY_MI2S_RX,  0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_SEC_MI2S_RX},
-	{ AFE_PORT_ID_SECONDARY_MI2S_TX,  0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_SEC_MI2S_TX},
-	{ AFE_PORT_ID_PRIMARY_MI2S_RX,    0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_PRI_MI2S_RX},
-	{ AFE_PORT_ID_PRIMARY_MI2S_TX,    0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_PRI_MI2S_TX},
-	{ AFE_PORT_ID_TERTIARY_MI2S_RX,   0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_TERT_MI2S_RX},
-	{ AFE_PORT_ID_TERTIARY_MI2S_TX,   0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_TERT_MI2S_TX},
-	{ AUDIO_PORT_ID_I2S_RX,           0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_AUDIO_I2S_RX},
-	{ AFE_PORT_ID_SECONDARY_PCM_RX,	  0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_SEC_AUXPCM_RX},
-	{ AFE_PORT_ID_SECONDARY_PCM_TX,   0, 0, 0, 0, 0, 0, 0,
-		LPASS_BE_SEC_AUXPCM_TX}
+static struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
+	{ PRIMARY_I2S_RX, 0, 0, 0, 0, 0},
+	{ PRIMARY_I2S_TX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_0_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_0_TX, 0, 0, 0, 0, 0},
+	{ HDMI_RX, 0, 0, 0, 0, 0},
+	{ INT_BT_SCO_RX, 0, 0, 0, 0, 0},
+	{ INT_BT_SCO_TX, 0, 0, 0, 0, 0},
+	{ INT_FM_RX, 0, 0, 0, 0, 0},
+	{ INT_FM_TX, 0, 0, 0, 0, 0},
+	{ RT_PROXY_PORT_001_RX, 0, 0, 0, 0, 0},
+	{ RT_PROXY_PORT_001_TX, 0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_PRIMARY_PCM_RX, 0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_PRIMARY_PCM_TX, 0, 0, 0, 0, 0},
+	{ VOICE_PLAYBACK_TX, 0, 0, 0, 0, 0},
+	{ VOICE_RECORD_RX, 0, 0, 0, 0, 0},
+	{ VOICE_RECORD_TX, 0, 0, 0, 0, 0},
+	{ MI2S_RX, 0, 0, 0, 0, 0},
+	{ MI2S_TX, 0, 0, 0, 0},
+	{ SECONDARY_I2S_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_1_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_1_TX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_4_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_4_TX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_3_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_3_TX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_5_TX, 0, 0, 0, 0, 0 },
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0},
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_QUATERNARY_MI2S_RX, 0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_QUATERNARY_MI2S_TX, 0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_SECONDARY_MI2S_RX,  0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_SECONDARY_MI2S_TX,  0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_PRIMARY_MI2S_RX,    0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_PRIMARY_MI2S_TX,    0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_TERTIARY_MI2S_RX,   0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_TERTIARY_MI2S_TX,   0, 0, 0, 0, 0},
+	{ AUDIO_PORT_ID_I2S_RX,           0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_SECONDARY_PCM_RX,	  0, 0, 0, 0, 0},
+	{ AFE_PORT_ID_SECONDARY_PCM_TX,   0, 0, 0, 0, 0},
 };
 
 
@@ -257,19 +259,6 @@ static int fe_dai_map[MSM_FRONTEND_DAI_MM_SIZE][2] = {
 	/* MULTIMEDIA8 */
 	{INVALID_SESSION, INVALID_SESSION},
 };
-
-int get_is_backend_active(int port_id)
-{
-	int i;
-	for (i = 0; i < MSM_BACKEND_DAI_MAX; i++) {
-		if (msm_bedais[i].port_id == port_id) {
-			pr_debug("backend found: %i", port_id);
-			return msm_bedais[i].active;
-		}
-	}
-	pr_debug("backend not found: %i", port_id);
-	return 0;
-}
 
 static uint8_t is_be_dai_extproc(int be_dai)
 {
@@ -423,9 +412,6 @@ void msm_pcm_routing_reg_phy_stream(int fedai_id, bool perf_mode,
 						msm_bedais[i].channel) < 0)
 					pr_err("%s: Err init dolby dap\n",
 						__func__);
-			if ((topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX)
-			    && (!perf_mode))
-				msm_dts_eagle_send_cache_post(port_id);
 		}
 	}
 	if (payload.num_copps)
@@ -560,9 +546,6 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 				if (dolby_dap_init(port_id, channels) < 0)
 					pr_err("%s: Err init dolby dap\n",
 						__func__);
-			if ((topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX)
-			    && (!perf_mode))
-				msm_dts_eagle_send_cache_post(port_id);
 		}
 	} else {
 		if (test_bit(val, &msm_bedais[reg].fe_sessions) &&
@@ -3593,9 +3576,6 @@ static int msm_pcm_routing_prepare(struct snd_pcm_substream *substream)
 				if (dolby_dap_init(port_id, channels) < 0)
 					pr_err("%s: Err init dolby dap\n",
 						__func__);
-			if ((topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX)
-			    && (!perf_mode))
-				msm_dts_eagle_send_cache_post(port_id);
 		}
 	}
 
@@ -3709,23 +3689,11 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	return 0;
 }
 
-int msm_routing_pcm_new(struct snd_soc_pcm_runtime *runtime)
-{
-	return msm_dts_eagle_pcm_new(runtime, msm_bedais);
-}
-
-void msm_routing_pcm_free(struct snd_pcm *pcm)
-{
-	msm_dts_eagle_pcm_free(pcm);
-}
-
 static struct snd_soc_platform_driver msm_soc_routing_platform = {
 	.ops		= &msm_routing_pcm_ops,
 	.probe		= msm_routing_probe,
 	.read		= msm_routing_read,
 	.write		= msm_routing_write,
-	.pcm_new	= msm_routing_pcm_new,
-	.pcm_free	= msm_routing_pcm_free,
 };
 
 static __devinit int msm_routing_pcm_probe(struct platform_device *pdev)

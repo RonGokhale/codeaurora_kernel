@@ -133,31 +133,6 @@ void ocm_core_open(void)
 		pr_err("%s: Unable to register CORE\n", __func__);
 }
 
-uint32_t core_set_dts_eagle(void* data)
-{
-	struct adsp_dts_eagle payload;
-	int rc = 0;
-	pr_debug("%s\n", __func__);
-	ocm_core_open();
-	if (q6core_lcl.core_handle_q) {
-		payload.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
-			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-		payload.hdr.pkt_size = sizeof(struct adsp_dts_eagle);
-		payload.hdr.src_port = 0;
-		payload.hdr.dest_port = 0;
-		payload.hdr.token = 0;
-		payload.hdr.opcode = ADSP_CMD_SET_DTS_EAGLE_DATA_ID;
-		payload.data[0] = 0;
-		pr_debug("Send DTS Eagle DATA opcode=%x \n", payload.hdr.opcode);
-		rc = apr_send_pkt(q6core_lcl.core_handle_q,
-						(uint32_t *)&payload);
-		if (rc < 0)
-			pr_err("%s: SET_DTS_EAGLE_DATA failed op[0x%x]rc[%d]\n",
-				__func__, payload.hdr.opcode, rc);
-	}
-	return rc;
-}
-
 uint32_t core_set_dolby_manufacturer_id(int manufacturer_id)
 {
 	struct adsp_dolby_manufacturer_id payload;

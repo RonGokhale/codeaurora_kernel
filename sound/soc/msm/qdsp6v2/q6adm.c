@@ -25,10 +25,9 @@
 #include <sound/q6adm-v2.h>
 #include <sound/q6audio-v2.h>
 #include <sound/q6afe-v2.h>
-#include <sound/asound.h>
 
 #include "audio_acdb.h"
-#include "msm-dts-eagle.h"
+
 
 #define TIMEOUT_MS 1000
 
@@ -62,8 +61,6 @@ struct adm_ctl {
 	atomic_t mem_map_cal_handles[ADM_MAX_CAL_TYPES];
 	atomic_t mem_map_cal_index;
 
-	struct param_outband outband_memmap;
-
 	int set_custom_topology;
 	int ec_ref_rx;
 };
@@ -80,76 +77,6 @@ static struct adm_multi_ch_map multi_ch_map = { false,
 					      };
 
 static int adm_dolby_get_parameters[ADM_GET_PARAMETER_LENGTH];
-
-int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
-{
-	struct adm_cmd_set_pp_params_v5	adm_p;
-	int ret = 0, index, *update_params_value;
-
-	pr_debug("DTS_EAGLE_ADM - %s\n", __func__);
-
-	index = afe_get_port_index(port_id);
-	if (index < 0 || index >= AFE_MAX_PORTS) {
-		pr_err("DTS_EAGLE_ADM - %s: invalid port idx %d portid %#x\n",
-				__func__, index, port_id);
-		ret = -EINVAL;
-		goto fail_cmd;
-	}
-
-	update_params_value = (int *)this_adm.outband_memmap.kvaddr;
-	*update_params_value++ = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
-	*update_params_value++ = param_id;
-	*update_params_value++ = size;
-	memcpy(update_params_value, data, size);
-
-#ifdef FILE_CAPTURE
-	filedump_write((char *)this_adm.outband_memmap.kvaddr, size+12);
-#endif
-
-	adm_p.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-		APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-	adm_p.hdr.pkt_size = APR_PKT_SIZE(APR_HDR_SIZE, sizeof(adm_p));
-	adm_p.hdr.src_svc = APR_SVC_ADM;
-	adm_p.hdr.src_domain = APR_DOMAIN_APPS;
-	adm_p.hdr.src_port = port_id;
-	adm_p.hdr.dest_svc = APR_SVC_ADM;
-	adm_p.hdr.dest_domain = APR_DOMAIN_ADSP;
-	adm_p.hdr.dest_port = atomic_read(&this_adm.copp_id[index]);
-	adm_p.hdr.token = port_id;
-	adm_p.hdr.opcode = ADM_CMD_SET_PP_PARAMS_V5;
-	adm_p.payload_addr_lsw = this_adm.outband_memmap.paddr;
-	adm_p.payload_addr_msw = 0;
-	adm_p.mem_map_handle = atomic_read(&this_adm.mem_map_cal_handles[
-				atomic_read(&this_adm.mem_map_cal_index)]);
-	adm_p.payload_size = size + 12 /*see update_params_value header above*/;
-
-	atomic_set(&this_adm.copp_stat[index], 0);
-
-	pr_debug("DTS_EAGLE_ADM - %s: Command was sent now check Q6 - port id = %d, size %d, module id %x, param id %x.\n",
-			__func__, adm_p.hdr.dest_port,
-			adm_p.payload_size, AUDPROC_MODULE_ID_DTS_HPX_POSTMIX,
-			param_id);
-
-	ret = apr_send_pkt(this_adm.apr, (uint32_t *)&adm_p);
-	if (ret < 0) {
-		pr_err("DTS_EAGLE_ADM - %s: ADM enable for port %d failed\n", __func__,
-			port_id);
-		ret = -EINVAL;
-		goto fail_cmd;
-	}
-	/* Wait for the callback with copp id */
-	ret = wait_event_timeout(this_adm.wait[index], 1,
-			msecs_to_jiffies(TIMEOUT_MS));
-	if (!ret) {
-		pr_err("DTS_EAGLE_ADM - %s: set params timed out port = %d\n",
-			__func__, port_id);
-		ret = -EINVAL;
-		goto fail_cmd;
-	}
-
-fail_cmd:
-	return ret;
-}
 
 int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 {
@@ -1055,25 +982,6 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 		atomic_set(&this_adm.copp_perf_mode[index], 1);
 	}
 
-	if (topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX) {
-		int res;
-/*
-		if (this_adm.outband_memmap.paddr != 0)
-			adm_memory_unmap_regions(port_id,
-						 &this_adm.outband_memmap.paddr,
-						 &this_adm.outband_memmap.size,
-						 1);
-*/
-		dts_ion_memmap(&this_adm.outband_memmap);
-		res = adm_memory_map_regions(port_id,
-					     &this_adm.outband_memmap.paddr, 0,
-					     &this_adm.outband_memmap.size, 1);
-		if (res < 0)
-			pr_err("%s: DTS EAGLE mmap did not work! addr = 0x%x, size = %d\n",
-				__func__, this_adm.outband_memmap.paddr,
-				this_adm.outband_memmap.size);
-	}
-
 	/* Create a COPP if port id are not enabled */
 	if ((!perf_mode && (atomic_read(&this_adm.copp_cnt[index]) == 0)) ||
 		(perf_mode &&
@@ -1330,7 +1238,7 @@ int adm_matrix_map(int session_id, int path, int num_copps,
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	if (0/*!perf_mode*/) {
+	if (!perf_mode) {
 		for (i = 0; i < num_copps; i++)
 			send_adm_cal(port_id[i], path);
 
