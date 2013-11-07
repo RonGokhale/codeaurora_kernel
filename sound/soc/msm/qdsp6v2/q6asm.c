@@ -1558,14 +1558,6 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 	if (open.postprocopo_id == 0)
 		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT;
 
-    // temporarily force DTS EAGLE premix topology
-	if (!ac->perf_mode)
-		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX;
-
-    // For DTS EAGLE only, force 24 bit
-    if (open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX)
-         open.bits_per_sample = 24;
-
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
 		open.dec_fmt_id = ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V2;
