@@ -2336,7 +2336,7 @@ int mdp_blit(struct fb_info *info, struct mdp_blit_req *req)
 	}
 	is_bpp_4 = (ret == 4) ? 1 : 0;
 
-	if ((is_bpp_4 && (remainder == 6 || remainder == 14))) {
+	if (is_bpp_4 && (remainder == 6 || remainder == 14) && !(req->flags & CONST_COLOR)) {
 
 		/* make new request as provide by user */
 		splitreq = *req;
