@@ -2061,8 +2061,7 @@ static inline void hci_ev_tune_status(struct radio_hci_dev *hdev,
 
 	if (radio->fm_st_rsp.station_rsp.stereo_prg)
 		iris_q_event(radio, IRIS_EVT_STEREO);
-
-	if (radio->fm_st_rsp.station_rsp.mute_mode)
+	else if (radio->fm_st_rsp.station_rsp.stereo_prg == 0)
 		iris_q_event(radio, IRIS_EVT_MONO);
 
 	if (radio->fm_st_rsp.station_rsp.rds_sync_status)
@@ -2436,9 +2435,11 @@ static void hci_ev_af_list(struct radio_hci_dev *hdev,
 		FMDERR("AF list size received more than available size");
 		return;
 	}
-	memcpy(&ev.af_list[0], &skb->data[AF_LIST_OFFSET], ev.af_size);
+	memcpy(&ev.af_list[0], &skb->data[AF_LIST_OFFSET],
+					ev.af_size * sizeof(int));
 	iris_q_event(radio, IRIS_EVT_NEW_AF_LIST);
-	iris_q_evt_data(radio, (char *)&ev, sizeof(ev), IRIS_BUF_AF_LIST);
+	iris_q_evt_data(radio, (char *)&ev, (7 + ev.af_size * sizeof(int)),
+							IRIS_BUF_AF_LIST);
 }
 
 static void hci_ev_rds_lock_status(struct radio_hci_dev *hdev,
@@ -3207,7 +3208,7 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 			}
 			break;
 		case FM_TRANS:
-			if (!is_enable_tx_possible(radio) != 0)
+			if (is_enable_tx_possible(radio) != 0)
 				return -EINVAL;
 			radio->mode = FM_TRANS_TURNING_ON;
 			retval = hci_cmd(HCI_FM_ENABLE_TRANS_CMD,
@@ -4121,6 +4122,7 @@ static int iris_vidioc_querycap(struct file *file, void *priv,
 	radio = video_get_drvdata(video_devdata(file));
 	strlcpy(capability->driver, DRIVER_NAME, sizeof(capability->driver));
 	strlcpy(capability->card, DRIVER_CARD, sizeof(capability->card));
+	capability->capabilities = V4L2_CAP_TUNER | V4L2_CAP_RADIO;
 	radio->g_cap = capability;
 	return 0;
 }

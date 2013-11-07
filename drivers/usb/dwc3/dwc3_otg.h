@@ -41,7 +41,7 @@ struct dwc3_otg {
 	struct dwc3		*dwc;
 	void __iomem		*regs;
 	struct regulator	*vbus_otg;
-	struct work_struct	sm_work;
+	struct delayed_work	sm_work;
 	struct dwc3_charger	*charger;
 	struct dwc3_ext_xceiv	*ext_xceiv;
 #define ID		0
@@ -51,6 +51,7 @@ struct dwc3_otg {
 	struct completion	dwc3_xcvr_vbus_init;
 	int			host_bus_suspend;
 	int			charger_retry_count;
+	int			vbus_retry_count;
 };
 
 /**
@@ -114,7 +115,8 @@ struct dwc3_ext_xceiv {
 	void	(*notify_ext_events)(struct usb_otg *otg,
 					enum dwc3_ext_events ext_event);
 	/* for block reset USB core */
-	void	(*ext_block_reset)(bool core_reset);
+	void	(*ext_block_reset)(struct dwc3_ext_xceiv *ext_xceiv,
+					bool core_reset);
 };
 
 /* for external transceiver driver */

@@ -25,8 +25,8 @@
 #define Q6_PIL_GET_DELAY_MS 100
 #define BOOT_CMD 1
 
-static ssize_t adsp_boot_store(struct kobject *kobj,\
-	struct kobj_attribute *attr,\
+static ssize_t adsp_boot_store(struct kobject *kobj,
+	struct kobj_attribute *attr,
 	const char *buf, size_t count);
 
 struct adsp_loader_private {
@@ -43,7 +43,7 @@ static struct attribute *attrs[] = {
 	NULL,
 };
 
-struct platform_device *adsp_private;
+static struct platform_device *adsp_private;
 
 static void adsp_loader_do(struct platform_device *pdev)
 {
@@ -54,25 +54,36 @@ static void adsp_loader_do(struct platform_device *pdev)
 	int rc = 0;
 	u32 adsp_state;
 
+	if (!pdev) {
+		dev_err(&pdev->dev, "%s: Platform device null \n", __func__);
+		goto fail;
+	}
+
+	if (!pdev->dev.of_node) {
+		dev_err(&pdev->dev,
+			"%s: Device tree information missing \n", __func__);
+		goto fail;
+	}
+
 	rc = of_property_read_u32(pdev->dev.of_node, adsp_dt, &adsp_state);
 	if (rc) {
 		dev_err(&pdev->dev,
 			"%s: ADSP state = %x\n", __func__, adsp_state);
-		return;
+		goto fail;
 	}
 
 	if (adsp_state == APR_SUBSYS_DOWN) {
-		if (pdev) {
-			priv = platform_get_drvdata(pdev);
-		} else {
-			pr_err("%s: Private data get failed\n", __func__);
+		priv = platform_get_drvdata(pdev);
+		if (!priv) {
+			dev_err(&pdev->dev,
+				" %s: Private data get failed\n", __func__);
 			goto fail;
 		}
 
 
 		priv->pil_h = subsystem_get("adsp");
 		if (IS_ERR(priv->pil_h)) {
-			pr_err("%s: pil get failed,\n",
+			dev_err(&pdev->dev, "%s: pil get failed,\n",
 				__func__);
 			goto fail;
 		}
@@ -86,11 +97,11 @@ static void adsp_loader_do(struct platform_device *pdev)
 	}
 
 
-	pr_info("%s: Q6/ADSP image is loaded\n", __func__);
+	dev_info(&pdev->dev, "%s: Q6/ADSP image is loaded\n", __func__);
 	return;
 fail:
 
-	pr_err("%s: Q6/ADSP image loading failed\n", __func__);
+	dev_err(&pdev->dev, "%s: Q6/ADSP image loading failed\n", __func__);
 	return;
 }
 
@@ -104,7 +115,7 @@ static ssize_t adsp_boot_store(struct kobject *kobj,
 	sscanf(buf, "%du", &boot);
 
 	if (boot == BOOT_CMD) {
-		pr_info("%s:going to call adsp_loader_do", __func__);
+		pr_debug("%s:going to call adsp_loader_do", __func__);
 		adsp_loader_do(adsp_private);
 	}
 	return count;
@@ -118,8 +129,9 @@ static int adsp_loader_init_sysfs(struct platform_device *pdev)
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv) {
-		pr_err("memory alloc failed\n");
-		return -ENOMEM;
+		dev_err(&pdev->dev, "%s: memory alloc failed\n", __func__);
+		ret = -ENOMEM;
+		return ret;
 	}
 
 	platform_set_drvdata(pdev, priv);
@@ -130,8 +142,9 @@ static int adsp_loader_init_sysfs(struct platform_device *pdev)
 				sizeof(*(priv->attr_group)),
 				GFP_KERNEL);
 	if (!priv->attr_group) {
-		pr_err("%s: malloc attr_group failed\n",
+		dev_err(&pdev->dev, "%s: malloc attr_group failed\n",
 						__func__);
+		ret = -ENOMEM;
 		goto error_return;
 	}
 
@@ -139,14 +152,15 @@ static int adsp_loader_init_sysfs(struct platform_device *pdev)
 
 	priv->boot_adsp_obj = kobject_create_and_add("boot_adsp", kernel_kobj);
 	if (!priv->boot_adsp_obj) {
-		pr_err("%s: sysfs create and add failed\n",
+		dev_err(&pdev->dev, "%s: sysfs create and add failed\n",
 						__func__);
+		ret = -ENOMEM;
 		goto error_return;
 	}
 
 	ret = sysfs_create_group(priv->boot_adsp_obj, priv->attr_group);
 	if (ret) {
-		pr_err("%s: sysfs create group failed %d\n", \
+		dev_err(&pdev->dev, "%s: sysfs create group failed %d\n", \
 							__func__, ret);
 		goto error_return;
 	}
@@ -156,10 +170,6 @@ static int adsp_loader_init_sysfs(struct platform_device *pdev)
 	return 0;
 
 error_return:
-	if (priv->attr_group) {
-		devm_kfree(&pdev->dev, priv->attr_group);
-		priv->attr_group = NULL;
-	}
 
 	if (priv->boot_adsp_obj) {
 		kobject_del(priv->boot_adsp_obj);
@@ -189,14 +199,6 @@ static int adsp_loader_remove(struct platform_device *pdev)
 		priv->boot_adsp_obj = NULL;
 	}
 
-	if (priv->attr_group) {
-		devm_kfree(&pdev->dev, priv->attr_group);
-		priv->attr_group = NULL;
-	}
-
-	devm_kfree(&pdev->dev, priv);
-	adsp_private = NULL;
-
 	return 0;
 }
 
@@ -204,7 +206,7 @@ static int adsp_loader_probe(struct platform_device *pdev)
 {
 	int ret = adsp_loader_init_sysfs(pdev);
 	if (ret != 0) {
-		pr_err("Error in initing sysfs\n");
+		dev_err(&pdev->dev, "%s: Error in initing sysfs\n", __func__);
 		return ret;
 	}
 

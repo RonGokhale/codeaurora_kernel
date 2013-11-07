@@ -169,11 +169,19 @@
 		compatible = "qcom,cpp";
 		reg = <0xfda04000 0x100>,
 			<0xfda40000 0x200>,
-			<0xfda18000 0x008>;
+			<0xfda18000 0x018>;
 		reg-names = "cpp", "cpp_vbif", "cpp_hw";
 		interrupts = <0 49 0>;
 		interrupt-names = "cpp";
 		vdd-supply = <&gdsc_vfe>;
+	};
+
+	led_flash0: qcom,camera-led-flash {
+		cell-index = <0>;
+		compatible = "qcom,camera-led-flash";
+		qcom,flash-type = <1>;
+		qcom,flash-source = <&pm8941_flash0 &pm8941_flash1>;
+		qcom,torch-source = <&pm8941_torch>;
 	};
 
 	cci: qcom,cci@fda0C000 {
