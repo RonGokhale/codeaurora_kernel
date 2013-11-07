@@ -16,25 +16,41 @@
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/platform_device.h>
+#include <linux/bitops.h>
 #include <linux/mutex.h>
+#include <linux/of_device.h>
+#include <sound/core.h>
+#include <sound/soc.h>
+#include <sound/soc-dapm.h>
+#include <sound/pcm.h>
+#include <sound/initval.h>
+#include <sound/control.h>
+#include <sound/q6adm-v2.h>
+#include <sound/q6asm-v2.h>
+#include <sound/q6afe-v2.h>
+#include <sound/tlv.h>
 #include <linux/kernel.h>
+
 #include <linux/slab.h>
+#include <sound/hwdep.h>
+#include <linux/sysfs.h>
+
+#include <sound/asound.h>
+#include <sound/pcm_params.h>
+#include <mach/qdsp6v2/q6core.h>
+
+#include "msm-pcm-routing-v2.h"
+
+#include <mach/qdsp6v2/rtac.h>
+#include <sound/apr_audio-v2.h>
+#include <mach/qdsp6v2/apr.h>
+#include <sound/q6audio-v2.h>
+#include "audio_acdb.h"
+#include "msm-dts-eagle.h"
 #include <linux/msm_ion.h>
 #include <linux/mm.h>
 #include <linux/msm_audio_ion.h>
-#include <sound/core.h>
-#include <sound/soc.h>
-#include <sound/pcm.h>
-#include <sound/q6adm-v2.h>
-#include <sound/q6asm-v2.h>
-#include <sound/apr_audio-v2.h>
-#include <sound/q6audio-v2.h>
-#include <sound/asound.h>
-#include <sound/hwdep.h>
-
-#include "msm-pcm-routing-v2.h"
-#include "msm-dts-eagle.h"
-#include "q6core.h"
 
 #define ION_MEM_SIZE 131072
 #define DEPC_MAX_SIZE 0x100000
@@ -99,9 +115,9 @@ static unsigned int _pre_size = 0;
 /* ION states */
 static struct ion_client        *ion_client = NULL;
 static struct ion_handle        *ion_handle = NULL;
-static ion_phys_addr_t paddr = 0;
-static size_t pa_len = 0;
-static void *vaddr = NULL;
+ion_phys_addr_t paddr = 0;
+size_t pa_len = 0;
+void *vaddr = NULL;
 
 #define SEC_BLOB_MAX_CNT 10
 #define SEC_BLOB_MAX_SIZE 0x4004 /*extra 4 for size*/
@@ -109,10 +125,10 @@ static char* sec_blob[SEC_BLOB_MAX_CNT] = {NULL};
 
 // volume controls
 #define VOL_CMD_CNT_MAX 10
-static int vol_cmd_cnt = 0;
-static int** vol_cmds = NULL;
+int vol_cmd_cnt = 0;
+int** vol_cmds = NULL;
 typedef int vol_cmds_desc_[4];
-static vol_cmds_desc_* vol_cmds_desc = NULL;
+vol_cmds_desc_* vol_cmds_desc = NULL;
 
 static void volume_cmds_free(void) {
     int i;
@@ -216,12 +232,6 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
     struct dts_eagle_param_desc depd;
     pr_info("DTS_EAGLE_DRIVER_PRE: %s called (set [pre] param)\n",
         __func__);
-    
-    if(_depc_size == 0) {
-        pr_err("DTS_EAGLE_DRIVER_VOLUME: driver cache not initialized.\n");
-        return -EFAULT;
-    }
-    
     if (copy_from_user((void *)&depd, (void *)arg, sizeof(depd))) {
         pr_err("DTS_EAGLE_DRIVER_PRE: error copying dts_eagle_param_desc\n");
         return -EFAULT;
@@ -250,12 +260,7 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 static const int log10_10_inv_x20 = 0x0008af84;
 int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain) {
     int i, idx, val;
-    pr_debug("DTS_EAGLE_DRIVER_VOLUME: %s called\n", __func__);   
-
-    if(_depc_size == 0) {
-        pr_err("DTS_EAGLE_DRIVER_VOLUME: driver cache not initialized.\n");
-        return -1;
-    }
+    pr_debug("DTS_EAGLE_DRIVER_VOLUME: %s called\n", __func__);    
         
     for(i = 0; i < vol_cmd_cnt; i++) {
         if(vol_cmds_desc[i][0] & 0x8000) {
@@ -512,7 +517,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
         break;
     }
     case DTS_EAGLE_IOCTL_SET_LICENSE: {
-        int target[2] = {0, 0};
+        int target[4] = {0, 0, 0, 0};
         pr_info("DTS_EAGLE_DRIVER_POST: %s called with control 0x%X (set license)\n",
             __func__, cmd);
         if (copy_from_user((void *)target, (void *)arg,
@@ -522,7 +527,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
         }
         if(target[0] < 0 || target[0] >= SEC_BLOB_MAX_CNT) {
             pr_err("DTS_EAGLE_DRIVER_POST: license index %i out of bounds (max index is %i)\n",
-                   target[0], SEC_BLOB_MAX_CNT-1);
+                   target[0], SEC_BLOB_MAX_CNT);
             return -EFAULT;
         }
         if(target[1] == 0) {
@@ -554,7 +559,7 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
         }
         ((int*)sec_blob[target[0]])[0] = target[1];
         if (copy_from_user((void *)&(((int*)sec_blob[target[0]])[1]),
-                (void *)(((char *)arg)+sizeof(target)),
+               (void *)(((char *)arg)+sizeof(target)),
                 target[1])) {
             pr_err("DTS_EAGLE_DRIVER_POST: error copying license to index %i, size %i\n", 
                     target[0], target[1]);
@@ -563,34 +568,31 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
             pr_debug("DTS_EAGLE_DRIVER_POST: license file %i bytes long copied to index license index %i\n",
                   target[1], target[0]);
         }
+        if(target[2]) {
+            pr_info("DTS_EAGLE_DRIVER_POST: request send license index %i to qdsp backend_id %i (size %i, param 0x%X).",
+                    target[0], target[3], target[1], target[2]);
+            if (get_is_backend_active(
+                _cache_targets[target[3]][BETD_ID])) {
+                if (dts_eagle_open_post(
+                        _cache_targets[target[3]][BETD_ID],
+                        target[2], (void *)&(((int*)sec_blob[target[0]])[1]),
+                        target[1]) < 0) {
+                    pr_err("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post failed with id = 0x%X and size = %d\n",
+                        target[2], target[1]);
+                } else {
+                    pr_debug("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post succeeded with id = 0x%X and size = %d\n",
+                        target[2],  target[1]);
+                }
+            } else {
+                pr_err("DTS_EAGLE_DRIVER_POST: backend not active");
+            }    
+        }
         break;
     }
     case DTS_EAGLE_IOCTL_SEND_LICENSE: {
-        int target = 0;
         pr_info("DTS_EAGLE_DRIVER_POST: %s called with control 0x%X (send license)\n",
-            __func__, cmd);            
-        if (copy_from_user((void *)&target, (void *)arg,
-                   sizeof(int))) {
-            pr_err("DTS_EAGLE_DRIVER_POST: error reading license index.\n");
-            return -EFAULT;
-        }
-        if (target >= SEC_BLOB_MAX_CNT) {
-            pr_err("DTS_EAGLE_DRIVER_POST: license index %i out of bounds (max index is %i)\n",
-                    target, SEC_BLOB_MAX_CNT-1);
-            return -EINVAL;
-        }
-        if (!sec_blob[target] || ((int*)sec_blob[target])[0] <= 0) {
-            pr_err("DTS_EAGLE_DRIVER_POST: license index %i is invalid\n", target);
-            return -EINVAL;
-        }
-        if (core_set_dts_eagle(((int*)sec_blob[target])[0], 
-                               (char*)&((int*)sec_blob[target])[1]) < 0) {
-            pr_err("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle failed with id = %i\n",
-                    target);
-        } else {
-            pr_debug("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle succeeded with id = %i\n",
-                      target);
-        }       
+            __func__, cmd);
+        //core_set_dts_eagle();
         break;
     }
     case DTS_EAGLE_IOCTL_SET_VOLUME_COMMANDS: {

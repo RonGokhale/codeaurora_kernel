@@ -9,7 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#define DEBUG
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -123,6 +122,7 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 	return 0;
 }
 
+
 void ocm_core_open(void)
 {
 	if (q6core_lcl.core_handle_q == NULL)
@@ -133,43 +133,27 @@ void ocm_core_open(void)
 		pr_err("%s: Unable to register CORE\n", __func__);
 }
 
-#define DTS_EAGLE_LICENSE_ID           0x00028346
-int core_set_dts_eagle(int size, char* data)
+uint32_t core_set_dts_eagle(void* data)
 {
-	struct adsp_dts_eagle *payload = NULL;
-	int rc = 0, size_aligned4byte;
-    
+	struct adsp_dts_eagle payload;
+	int rc = 0;
 	pr_debug("%s\n", __func__);
-    if(size <= 0 || !data) {
-        pr_err("invalid size %i or pointer %p.\n", size, data);
-        return -EINVAL;
-    }    
-    size_aligned4byte = (size+3) & 0xFFFFFFFC;    
 	ocm_core_open();
 	if (q6core_lcl.core_handle_q) {
-        payload = kzalloc(sizeof(struct adsp_dts_eagle) + size_aligned4byte, GFP_KERNEL);
-        if(!payload) {
-            pr_err("out of memory (aligned size %i).\n", size_aligned4byte);
-            return -ENOMEM;
-        }        
-		payload->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
-                                 APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
-		payload->hdr.pkt_size = sizeof(struct adsp_dts_eagle) + size_aligned4byte;
-		payload->hdr.src_port = 0;
-		payload->hdr.dest_port = 0;
-		payload->hdr.token = 0;
-		payload->hdr.opcode = ADSP_CMD_SET_DTS_EAGLE_DATA_ID;
-        payload->id = DTS_EAGLE_LICENSE_ID;
-        payload->overwrite = 1;
-        payload->size = size;
-		memcpy(payload->data, data, size);        
+		payload.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
+			APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		payload.hdr.pkt_size = sizeof(struct adsp_dts_eagle);
+		payload.hdr.src_port = 0;
+		payload.hdr.dest_port = 0;
+		payload.hdr.token = 0;
+		payload.hdr.opcode = ADSP_CMD_SET_DTS_EAGLE_DATA_ID;
+		payload.data[0] = 0;
+		pr_debug("Send DTS Eagle DATA opcode=%x \n", payload.hdr.opcode);
 		rc = apr_send_pkt(q6core_lcl.core_handle_q,
-						(uint32_t *)payload);
-		if (rc < 0) {
+						(uint32_t *)&payload);
+		if (rc < 0)
 			pr_err("%s: SET_DTS_EAGLE_DATA failed op[0x%x]rc[%d]\n",
-				__func__, payload->hdr.opcode, rc);
-        }
-        kfree(payload);        
+				__func__, payload.hdr.opcode, rc);
 	}
 	return rc;
 }
