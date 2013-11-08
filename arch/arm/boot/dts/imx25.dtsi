@@ -10,6 +10,8 @@
  */
 
 #include "skeleton.dtsi"
+#include "imx25-pinfunc.h"
+#include "imx25-pingrp.h"
 
 / {
 	aliases {
@@ -173,7 +175,7 @@
 				status = "disabled";
 			};
 
-			iomuxc@43fac000{
+			iomuxc: iomuxc@43fac000 {
 				compatible = "fsl,imx25-iomuxc";
 				reg = <0x43fac000 0x4000>;
 			};
