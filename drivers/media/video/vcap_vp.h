@@ -17,9 +17,6 @@
 
 #include <media/vcap_v4l2.h>
 
-#define VCAP_BASE (dev->vcapbase)
-#define VCAP_OFFSET(off) (VCAP_BASE + off)
-
 #define VCAP_VP_INT_STATUS (VCAP_BASE + 0x404)
 #define VCAP_VP_INT_CLEAR (VCAP_BASE + 0x40C)
 
@@ -90,9 +87,15 @@
 
 #define VP_PIC_DONE (0x1 << 0)
 #define VP_MODE_CHANGE (0x1 << 8)
+#define VP_TUNING_BAL_MODE 8
 
 #define VP_NR_MAX_WINDOW 120
 #define VP_NR_MAX_RATIO  16
+#define VP_NR_MAX_LIMIT  0xFF
+#define VP_NR_DYNAMIC_THRESHOLD 0x000F0000
+
+#define VP_TUNING_MAX  0x7
+#define VP_TUNING_BAL_INVALID  0x4
 
 #define BITS_MASK(start, num_of_bits) \
 	(((1 << (num_of_bits)) - 1) << (start))
@@ -110,6 +113,10 @@ void deinit_nr_buf(struct vcap_client_data *c_data);
 int nr_s_param(struct vcap_client_data *c_data, struct nr_param *param);
 void nr_g_param(struct vcap_client_data *c_data, struct nr_param *param);
 void s_default_nr_val(struct nr_param *param);
+int vp_set_tuning_param(struct vcap_client_data *c_data,
+		struct tuning_param *param);
+int vp_get_tuning_param(struct vcap_client_data *c_data,
+		struct tuning_param *param);
 int kickoff_vp(struct vcap_client_data *c_data);
 int continue_vp(struct vcap_client_data *c_data);
 int vp_dummy_event(struct vcap_client_data *c_data);

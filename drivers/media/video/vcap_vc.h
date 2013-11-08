@@ -19,13 +19,7 @@
 
 #define VCAP_HARDWARE_VERSION 0x10000000
 
-#define VCAP_BASE (dev->vcapbase)
-#define VCAP_OFFSET(off) (VCAP_BASE + off)
-
 #define VCAP_HARDWARE_VERSION_REG (VCAP_BASE + 0x0000)
-
-#define VCAP_SW_RESET_REQ (VCAP_BASE + 0x0024)
-#define VCAP_SW_RESET_STATUS (VCAP_BASE + 0x0028)
 
 #define VCAP_VC_CTRL (VCAP_BASE + 0x0800)
 #define VCAP_VC_NPL_CTRL (VCAP_BASE + 0x0804)
@@ -68,6 +62,9 @@
 #define VCAP_VC_TIMESTAMP (VCAP_BASE + 0x0034)
 
 #define VC_BUFFER_WRITTEN (0x3 << 1)
+#define VC_BUFFER_MASK 0x7E
+#define VC_ERR_MASK 0xE0001E00
+#define VC_VSYNC_MASK 0x1
 
 int vc_start_capture(struct vcap_client_data *c_data);
 int vc_hw_kick_off(struct vcap_client_data *c_data);
@@ -75,5 +72,7 @@ void vc_stop_capture(struct vcap_client_data *c_data);
 int config_vc_format(struct vcap_client_data *c_data);
 int detect_vc(struct vcap_dev *dev);
 int deinit_vc(void);
+int vc_pause(struct vcap_client_data *c_data);
+int vc_resume(struct vcap_client_data *c_data);
 irqreturn_t vc_handler(struct vcap_dev *dev);
 #endif
