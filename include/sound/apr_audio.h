@@ -648,18 +648,6 @@ struct adm_cmd_memory_unmap_regions{
 #define ASM_OPEN_READ_PERF_MODE_BIT			(1<<29)
 #define ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT		(1<<13)
 
-/* SRS TRUMEDIA GUIDS */
-/* topology */
-#define SRS_TRUMEDIA_TOPOLOGY_ID			0x00010D90
-/* module */
-#define SRS_TRUMEDIA_MODULE_ID				0x10005010
-/* parameters */
-#define SRS_TRUMEDIA_PARAMS				0x10005011
-#define SRS_TRUMEDIA_PARAMS_WOWHD			0x10005012
-#define SRS_TRUMEDIA_PARAMS_CSHP			0x10005013
-#define SRS_TRUMEDIA_PARAMS_HPF				0x10005014
-#define SRS_TRUMEDIA_PARAMS_PEQ				0x10005015
-#define SRS_TRUMEDIA_PARAMS_HL				0x10005016
 
 #define ASM_MAX_EQ_BANDS 12
 
@@ -1745,18 +1733,36 @@ struct asm_svc_cmdrsp_get_wallclock_time{
 #define ADSP_ENOTIMPL     0x00000011 /* Operation is not implemented. */
 #define ADSP_ENEEDMORE    0x00000012 /* Operation needs more data or resources*/
 
-/* SRS TRUMEDIA start */
-#define SRS_ID_GLOBAL	0x00000001
-#define SRS_ID_WOWHD	0x00000002
-#define SRS_ID_CSHP	0x00000003
-#define SRS_ID_HPF	0x00000004
-#define SRS_ID_PEQ	0x00000005
-#define SRS_ID_HL	0x00000006
+/* SRS TRUMEDIA GUIDS */
+#define SRS_TRUMEDIA_TOPOLOGY_ID    0x00010D90
+#define SRS_TRUMEDIA_MODULE_ID      0x10005010
+#define SRS_TRUMEDIA_PARAMS         0x10005011
+#define SRS_TRUMEDIA_PARAMS_WOWHD   0x10005012
+#define SRS_TRUMEDIA_PARAMS_CSHP    0x10005013
+#define SRS_TRUMEDIA_PARAMS_HPF     0x10005014
+#define SRS_TRUMEDIA_PARAMS_PEQ     0x10005015
+#define SRS_TRUMEDIA_PARAMS_HL      0x10005016
 
-#define SRS_CMD_UPLOAD		0x7FFF0000
-#define SRS_PARAM_INDEX_MASK	0x80000000
-#define SRS_PARAM_OFFSET_MASK	0x3FFF0000
-#define SRS_PARAM_VALUE_MASK	0x0000FFFF
+/* SRS STUDIO SOUND 3D GUIDS */
+#define SRS_SS3D_TOPOLOGY_ID        0x00010720
+#define SRS_SS3D_MODULE_ID          0x10005020
+#define SRS_SS3D_PARAMS             0x10005021
+#define SRS_SS3D_PARAMS_CTRL        0x10005022
+#define SRS_SS3D_PARAMS_FILTER      0x10005023
+
+/* SRS ALSA CMD MASKS */
+#define SRS_CMD_UPLOAD              0x7FFF0000
+#define SRS_PARAM_INDEX_MASK        0x80000000
+#define SRS_PARAM_OFFSET_MASK       0x3FFF0000
+#define SRS_PARAM_VALUE_MASK        0x0000FFFF
+
+/* SRS TRUMEDIA start */
+#define SRS_ID_GLOBAL               0x00000001
+#define SRS_ID_WOWHD                0x00000002
+#define SRS_ID_CSHP                 0x00000003
+#define SRS_ID_HPF                  0x00000004
+#define SRS_ID_PEQ                  0x00000005
+#define SRS_ID_HL                   0x00000006
 
 struct srs_trumedia_params_GLOBAL {
 	uint8_t                  v1;
@@ -1834,6 +1840,7 @@ struct srs_trumedia_params {
 	struct srs_trumedia_params_PEQ		peq;
 	struct srs_trumedia_params_HL		hl;
 } __packed;
+
 int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params);
 /* SRS TruMedia end */
 
