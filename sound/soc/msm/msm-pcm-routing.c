@@ -81,6 +81,9 @@ static int msm_route_compressed_vol_control;
 static const DECLARE_TLV_DB_LINEAR(compressed_rx_vol_gain, 0,
 			INT_RX_LR_VOL_MAX_STEPS);
 
+static int msm_route_compressed2_vol_control;
+static const DECLARE_TLV_DB_LINEAR(compressed2_rx_vol_gain, 0,
+			INT_RX_VOL_MAX_STEPS);
 static int msm_route_ec_ref_rx;
 static int msm_route_ext_ec_ref;
 
@@ -995,6 +998,22 @@ static int msm_routing_set_compressed_vol_mixer(struct snd_kcontrol *kcontrol,
 		msm_route_compressed_vol_control =
 			ucontrol->value.integer.value[0];
 
+	return 0;
+}
+
+static int msm_routing_get_compressed2_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = msm_route_compressed2_vol_control;
+	return 0;
+}
+
+static int msm_routing_set_compressed2_vol_mixer(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	if (!compressed_set_volume(ucontrol->value.integer.value[0]))
+		msm_route_compressed2_vol_control =
+			ucontrol->value.integer.value[0];
 	return 0;
 }
 
@@ -3204,6 +3223,9 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	snd_soc_add_platform_controls(platform,
 				compressed_vol_mixer_controls,
 			ARRAY_SIZE(compressed_vol_mixer_controls));
+	snd_soc_add_platform_controls(platform,
+				compressed2_vol_mixer_controls,
+			ARRAY_SIZE(compressed2_vol_mixer_controls));
 
 	snd_soc_add_platform_controls(platform,
 				lpa_SRS_trumedia_controls,
