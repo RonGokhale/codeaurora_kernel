@@ -146,14 +146,14 @@ free:
 out:
 	return ERR_PTR(err);
 }
-EXPORT_SYMBOL_GPL(tegra_mipi_request);
+EXPORT_SYMBOL(tegra_mipi_request);
 
 void tegra_mipi_free(struct tegra_mipi_device *device)
 {
 	platform_device_put(device->pdev);
 	kfree(device);
 }
-EXPORT_SYMBOL_GPL(tegra_mipi_free);
+EXPORT_SYMBOL(tegra_mipi_free);
 
 static int tegra_mipi_wait(struct tegra_mipi *mipi)
 {
@@ -214,7 +214,7 @@ int tegra_mipi_calibrate(struct tegra_mipi_device *device)
 
 	return err;
 }
-EXPORT_SYMBOL_GPL(tegra_mipi_calibrate);
+EXPORT_SYMBOL(tegra_mipi_calibrate);
 
 static int tegra_mipi_probe(struct platform_device *pdev)
 {
