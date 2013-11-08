@@ -935,7 +935,6 @@ static void msm_mi2s_shutdown(struct snd_pcm_substream *substream)
 		clk_put(mi2s_bit_clk);
 		mi2s_bit_clk = NULL;
 	}
-	msm_mi2s_free_gpios();
 }
 
 static int configure_mi2s_gpio(void)
@@ -968,7 +967,6 @@ static int msm_mi2s_startup(struct snd_pcm_substream *substream)
 	int ret = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	configure_mi2s_gpio();
 	mi2s_bit_clk = clk_get(cpu_dai->dev, "bit_clk");
 	if (IS_ERR(mi2s_bit_clk))
 		return PTR_ERR(mi2s_bit_clk);
@@ -1148,7 +1146,6 @@ static void mpq8064_sec_i2s_rx_shutdown(struct snd_pcm_substream *substream)
 			clk_put(sec_i2s_rx_osr_clk);
 			sec_i2s_rx_osr_clk = NULL;
 		}
-		mpq8064_sec_i2s_rx_free_gpios();
 	}
 	pr_info("%s(): substream = %s  stream = %d\n", __func__,
 		 substream->name, substream->stream);
@@ -1187,7 +1184,6 @@ static int mpq8064_sec_i2s_rx_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		configure_sec_i2s_rx_gpio();
 		sec_i2s_rx_osr_clk = clk_get(cpu_dai->dev, "osr_clk");
 		if (IS_ERR(sec_i2s_rx_osr_clk)) {
 			pr_err("Failed to get sec_i2s_rx_osr_clk\n");
@@ -1763,6 +1759,8 @@ static int __init msm_audio_init(void)
 	} else
 		msm_headset_gpios_configured = 1;
 
+	configure_sec_i2s_rx_gpio();
+	configure_mi2s_gpio();
 	return ret;
 
 }
@@ -1775,6 +1773,8 @@ static void __exit msm_audio_exit(void)
 		return ;
 	}
 	msm_free_headset_mic_gpios();
+	mpq8064_sec_i2s_rx_free_gpios();
+	msm_mi2s_free_gpios();
 	platform_device_unregister(msm_snd_device);
 	kfree(mbhc_cfg.calibration);
 }
