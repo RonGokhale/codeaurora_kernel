@@ -25,6 +25,7 @@
 #include <linux/clockchips.h>
 #include <linux/completion.h>
 #include <linux/cpufreq.h>
+#include <linux/irq_work.h>
 
 #include <linux/atomic.h>
 #include <asm/smp.h>
@@ -66,6 +67,7 @@ enum ipi_msg_type {
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
+	IPI_IRQ_WORK,
 	IPI_COMPLETION,
 };
 
@@ -449,6 +451,14 @@ void arch_send_call_function_single_ipi(int cpu)
 	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC_SINGLE);
 }
 
+#ifdef CONFIG_IRQ_WORK
+void arch_irq_work_raise(void)
+{
+	if (is_smp())
+		smp_cross_call(cpumask_of(smp_processor_id()), IPI_IRQ_WORK);
+}
+#endif
+
 static const char *ipi_types[NR_IPI] = {
 #define S(x,s)	[x] = s
 	S(IPI_WAKEUP, "CPU wakeup interrupts"),
@@ -457,6 +467,7 @@ static const char *ipi_types[NR_IPI] = {
 	S(IPI_CALL_FUNC, "Function call interrupts"),
 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts"),
 	S(IPI_CPU_STOP, "CPU stop interrupts"),
+	S(IPI_IRQ_WORK, "IRQ work interrupts"),
 	S(IPI_COMPLETION, "completion interrupts"),
 };
 
@@ -579,6 +590,14 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		ipi_cpu_stop(cpu);
 		irq_exit();
 		break;
+
+#ifdef CONFIG_IRQ_WORK
+	case IPI_IRQ_WORK:
+		irq_enter();
+		irq_work_run();
+		irq_exit();
+		break;
+#endif
 
 	case IPI_COMPLETION:
 		irq_enter();
