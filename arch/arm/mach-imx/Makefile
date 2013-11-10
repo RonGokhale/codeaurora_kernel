@@ -102,8 +102,8 @@ obj-$(CONFIG_SOC_IMX6SL) += clk-imx6sl.o mach-imx6sl.o
 
 ifeq ($(CONFIG_PM),y)
 obj-$(CONFIG_SOC_IMX6Q) += pm-imx6q.o headsmp.o
-# i.MX6SL reuses pm-imx6q.c
-obj-$(CONFIG_SOC_IMX6SL) += pm-imx6q.o
+# i.MX6SL reuses i.MX6Q code
+obj-$(CONFIG_SOC_IMX6SL) += pm-imx6q.o headsmp.o
 endif
 
 # i.MX5 based machines
@@ -112,6 +112,7 @@ obj-$(CONFIG_MACH_EUKREA_CPUIMX51SD) += mach-cpuimx51sd.o
 obj-$(CONFIG_MACH_EUKREA_MBIMXSD51_BASEBOARD) += eukrea_mbimxsd51-baseboard.o
 
 obj-$(CONFIG_MACH_IMX51_DT) += imx51-dt.o
+obj-$(CONFIG_SOC_IMX50) += mach-imx50.o
 obj-$(CONFIG_SOC_IMX53) += mach-imx53.o
 
 obj-$(CONFIG_SOC_VF610) += clk-vf610.o mach-vf610.o
