@@ -4500,11 +4500,6 @@ struct platform_device msm8960_cache_dump_device = {
 	},
 };
 
-struct dev_avtimer_data dev_avtimer_pdata = {
-	.avtimer_msw_phy_addr = AVTIMER_MSW_PHYSICAL_ADDRESS,
-	.avtimer_lsw_phy_addr = AVTIMER_LSW_PHYSICAL_ADDRESS,
-};
-
 #define MDM2AP_ERRFATAL			40
 #define AP2MDM_ERRFATAL			80
 #define MDM2AP_STATUS			24
