@@ -169,11 +169,11 @@ static int __devinit user_sp_input_probe(struct platform_device *pdev)
 	}
 
 	spdev->driver_type = RC_DRIVER_SCANCODE;
-	spdev->allowed_protos = RC_TYPE_OTHER;
+	spdev->allowed_protos = RC_TYPE_NEC;
 	spdev->input_name = USER_SP_INPUT_DEV_NAME;
 	spdev->input_id.bustype = BUS_HOST;
 	spdev->driver_name = USER_SP_INPUT_DRV_NAME;
-	spdev->map_name = RC_MAP_RC6_PHILIPS;
+	spdev->map_name = RC_MAP_SAMSUNG_NECX;
 
 	retval = rc_register_device(spdev);
 	if (retval < 0) {
