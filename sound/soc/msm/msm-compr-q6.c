@@ -33,6 +33,7 @@
 #include <sound/timer.h>
 #include <sound/pcm.h>
 #include <mach/qdsp6v2/q6core.h>
+#include <sound/pcm.h>
 
 #include "msm-compr-q6.h"
 #include "msm-pcm-routing.h"
@@ -651,7 +652,6 @@ static int msm_compr_restart(struct snd_pcm_substream *substream)
 				(prtd->out_head + 1) & (runtime->periods - 1);
 
 		runtime->render_flag &= ~SNDRV_RENDER_STOPPED;
-		atomic_set(&prtd->pending_buffer, 0);
 		return 0;
 	}
 	return 0;
