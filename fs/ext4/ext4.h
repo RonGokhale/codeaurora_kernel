@@ -29,6 +29,7 @@
 #include <linux/wait.h>
 #include <linux/blockgroup_lock.h>
 #include <linux/percpu_counter.h>
+#include <linux/ratelimit.h>
 #include <crypto/hash.h>
 #ifdef __KERNEL__
 #include <linux/compat.h>
@@ -722,10 +723,15 @@ static inline __le32 ext4_encode_extra_time(struct timespec *time)
 
 static inline void ext4_decode_extra_time(struct timespec *time, __le32 extra)
 {
-       if (sizeof(time->tv_sec) > 4)
-	       time->tv_sec |= (__u64)(le32_to_cpu(extra) & EXT4_EPOCH_MASK)
-			       << 32;
-       time->tv_nsec = (le32_to_cpu(extra) & EXT4_NSEC_MASK) >> EXT4_EPOCH_BITS;
+	if (sizeof(time->tv_sec) > 4) {
+		u64 extra_bits = le32_to_cpu(extra) & EXT4_EPOCH_MASK;
+		if (time->tv_sec > 0 || extra_bits != EXT4_EPOCH_MASK) {
+			time->tv_sec &= 0xFFFFFFFF;
+			time->tv_sec |= extra_bits << 32;
+		}
+	}
+	time->tv_nsec = (le32_to_cpu(extra) & EXT4_NSEC_MASK) >>
+		EXT4_EPOCH_BITS;
 }
 
 #define EXT4_INODE_SET_XTIME(xtime, inode, raw_inode)			       \
@@ -1314,6 +1320,11 @@ struct ext4_sb_info {
 	unsigned long s_es_last_sorted;
 	struct percpu_counter s_extent_cache_cnt;
 	spinlock_t s_es_lru_lock ____cacheline_aligned_in_smp;
+
+	/* Ratelimit ext4 messages. */
+	struct ratelimit_state s_err_ratelimit_state;
+	struct ratelimit_state s_warning_ratelimit_state;
+	struct ratelimit_state s_msg_ratelimit_state;
 };
 
 static inline struct ext4_sb_info *EXT4_SB(struct super_block *sb)
