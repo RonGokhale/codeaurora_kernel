@@ -40,6 +40,11 @@
 
 #define PDEV_NAME_LEN 20
 
+static char *host_override_phy_init;
+module_param(host_override_phy_init, charp, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(override_phy_init,
+	"Override HSUSB PHY Init Settings for Host only port");
+
 struct msm_hcd {
 	struct ehci_hcd				ehci;
 	struct device				*dev;
@@ -435,6 +440,37 @@ static int msm_ulpi_write(struct msm_hcd *mhcd, u32 val, u32 reg)
 	return 0;
 }
 
+static void ulpi_init(struct msm_hcd *mhcd)
+{
+	const struct msm_usb_host_platform_data *pdata;
+	int aseq[10];
+	int *seq = NULL;
+	pdata = mhcd->dev->platform_data;
+
+	if (host_override_phy_init) {
+		pr_debug("%s(): HOST ONLY PORT PHY Init:%s\n", __func__,
+				host_override_phy_init);
+		get_options(host_override_phy_init, ARRAY_SIZE(aseq), aseq);
+		seq = &aseq[1];
+	} else {
+		seq = pdata->phy_init_seq;
+	}
+
+	if (!seq)
+		return;
+
+	while (seq[0] >= 0) {
+		if (host_override_phy_init)
+			pr_debug("ulpi: write 0x%02x to 0x%02x\n",
+					seq[0], seq[1]);
+
+		dev_vdbg(mhcd->dev, "ulpi: write 0x%02x to 0x%02x\n",
+				seq[0], seq[1]);
+		msm_ulpi_write(mhcd, seq[0], seq[1]);
+		seq += 2;
+	}
+}
+
 static int msm_ehci_link_clk_reset(struct msm_hcd *mhcd, bool assert)
 {
 	int ret;
@@ -525,7 +561,7 @@ static int msm_hsusb_reset(struct msm_hcd *mhcd)
 
 	writel_relaxed(0x0, USB_AHBBURST);
 	writel_relaxed(0x08, USB_AHBMODE);
-
+	ulpi_init(mhcd);
 	/* Ensure that RESET operation is completed before turning off clock */
 	mb();
 	clk_disable_unprepare(mhcd->alt_core_clk);
