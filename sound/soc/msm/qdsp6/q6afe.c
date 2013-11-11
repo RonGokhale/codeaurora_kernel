@@ -1760,8 +1760,31 @@ int afe_close(int port_id)
 	}
 
 	if ((port_id == RT_PROXY_DAI_001_RX) ||
-		(port_id == RT_PROXY_DAI_002_TX))
-		return 0;
+		(port_id == RT_PROXY_DAI_002_TX)) {
+		pr_debug("%s: before decrementing pcm_afe_instance %d\n",
+				__func__, pcm_afe_instance[port_id & 0x1]);
+		port_id = VIRTUAL_ID_TO_PORTID(port_id);
+		pcm_afe_instance[port_id & 0x1]--;
+		if (!(pcm_afe_instance[port_id & 0x1] == 0 &&
+			proxy_afe_instance[port_id & 0x1] == 0))
+			return 0;
+		else
+			afe_close_done[port_id & 0x1] = true;
+	}
+
+	if ((port_id == RT_PROXY_DAI_002_RX) ||
+		(port_id == RT_PROXY_DAI_001_TX)) {
+		pr_debug("%s: before decrementing proxy_afe_instance %d\n",
+				__func__, proxy_afe_instance[port_id & 0x1]);
+		port_id = VIRTUAL_ID_TO_PORTID(port_id);
+		proxy_afe_instance[port_id & 0x1]--;
+		if (!(pcm_afe_instance[port_id & 0x1] == 0 &&
+			proxy_afe_instance[port_id & 0x1] == 0))
+			return 0;
+		else
+			afe_close_done[port_id & 0x1] = true;
+	}
+
 	port_id = afe_convert_virtual_to_portid(port_id);
 
 	stop.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
