@@ -1091,12 +1091,16 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 		.rampingcurve = SOFT_VOLUME_CURVE_LINEAR,
 	};
 */
+	short bit_width = 16;
+
 	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		dir = IN;
 	else
 		dir = OUT;
 
+	if (params_format(params) == SNDRV_PCM_FORMAT_S24_LE)
+		bit_width = 24;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		switch (compr->info.codec_param.codec.id) {
@@ -1114,8 +1118,12 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 			}
 			break;
 		default:
-			ret = q6asm_open_write(prtd->audio_client,
-					compr->codec);
+			if (bit_width == 24)
+				ret = q6asm_open_write_v2(prtd->audio_client,
+						compr->codec, bit_width);
+			else
+				ret = q6asm_open_write(prtd->audio_client,
+						compr->codec);
 			if (ret < 0) {
 				pr_err("%s: Session out open failed\n",
 					__func__);
@@ -1141,7 +1149,8 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 						__func__);
 				ret = q6asm_open_transcode_loopback(
 					prtd->enc_audio_client,
-					params_channels(params));
+					params_channels(params),
+					bit_width);
 				if (ret < 0) {
 					pr_err("%s: Session transcode " \
 						"loopback open failed\n",
