@@ -728,6 +728,8 @@ void __init apq8064_init_cam(void)
 	/* for SGLTE2 platform, do not configure i2c/gpiomux gsbi4 is used for
 	 * some other purpose */
 	if (socinfo_get_platform_subtype() != PLATFORM_SUBTYPE_SGLTE2) {
+	if (!(machine_is_mpq8064_cdp() || machine_is_mpq8064_hrd() ||
+		machine_is_mpq8064_dtv() || machine_is_mpq8064_dma()))
 		msm_gpiomux_install(apq8064_cam_common_configs,
 			ARRAY_SIZE(apq8064_cam_common_configs));
 	}
