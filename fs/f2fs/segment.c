@@ -274,6 +274,7 @@ static void f2fs_issue_discard(struct f2fs_sb_info *sbi,
 
 	blkdev_issue_discard(sbi->sb->s_bdev, sector_addr, sector_len,
 							GFP_NOFS, 0);
+	trace_f2fs_issue_discard(sbi->sb, blkstart, blklen);
 }
 
 static void add_discard_addrs(struct f2fs_sb_info *sbi,
