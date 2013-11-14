@@ -98,7 +98,7 @@ struct smbios_entry_point {
 	u8 int_checksum;
 	u16 st_length;
 	u32 st_address;
-	u16 number_of_entrys;
+	u16 number_of_entries;
 	u8 bcd_rev;
 } __attribute__ ((packed));
 
@@ -115,7 +115,7 @@ enum smbios_entry_point_offsets {
 	INT_CHECKSUM =		offsetof(struct smbios_entry_point, int_checksum),
 	ST_LENGTH =		offsetof(struct smbios_entry_point, st_length),
 	ST_ADDRESS =		offsetof(struct smbios_entry_point, st_address),
-	NUMBER_OF_ENTRYS =	offsetof(struct smbios_entry_point, number_of_entrys),
+	NUMBER_OF_ENTRIES =	offsetof(struct smbios_entry_point, number_of_entries),
 	BCD_REV =		offsetof(struct smbios_entry_point, bcd_rev),
 };
 
