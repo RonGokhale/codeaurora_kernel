@@ -802,11 +802,8 @@ int iscsit_setup_scsi_cmd(struct iscsi_conn *conn, struct iscsi_cmd *cmd,
 
 	spin_lock_bh(&conn->sess->session_stats_lock);
 	conn->sess->cmd_pdus++;
-	if (conn->sess->se_sess->se_node_acl) {
-		spin_lock(&conn->sess->se_sess->se_node_acl->stats_lock);
-		conn->sess->se_sess->se_node_acl->num_cmds++;
-		spin_unlock(&conn->sess->se_sess->se_node_acl->stats_lock);
-	}
+	if (conn->sess->se_sess->se_node_acl)
+		atomic_long_inc(&conn->sess->se_sess->se_node_acl->num_cmds);
 	spin_unlock_bh(&conn->sess->session_stats_lock);
 
 	hdr			= (struct iscsi_scsi_req *) buf;
@@ -1256,11 +1253,9 @@ iscsit_check_dataout_hdr(struct iscsi_conn *conn, unsigned char *buf,
 	/* iSCSI write */
 	spin_lock_bh(&conn->sess->session_stats_lock);
 	conn->sess->rx_data_octets += payload_length;
-	if (conn->sess->se_sess->se_node_acl) {
-		spin_lock(&conn->sess->se_sess->se_node_acl->stats_lock);
-		conn->sess->se_sess->se_node_acl->write_bytes += payload_length;
-		spin_unlock(&conn->sess->se_sess->se_node_acl->stats_lock);
-	}
+	if (conn->sess->se_sess->se_node_acl)
+		atomic_long_add(payload_length,
+				&conn->sess->se_sess->se_node_acl->write_bytes);
 	spin_unlock_bh(&conn->sess->session_stats_lock);
 
 	if (payload_length > conn->conn_ops->MaxXmitDataSegmentLength) {
@@ -2633,11 +2628,9 @@ static int iscsit_send_datain(struct iscsi_cmd *cmd, struct iscsi_conn *conn)
 
 	spin_lock_bh(&conn->sess->session_stats_lock);
 	conn->sess->tx_data_octets += datain.length;
-	if (conn->sess->se_sess->se_node_acl) {
-		spin_lock(&conn->sess->se_sess->se_node_acl->stats_lock);
-		conn->sess->se_sess->se_node_acl->read_bytes += datain.length;
-		spin_unlock(&conn->sess->se_sess->se_node_acl->stats_lock);
-	}
+	if (conn->sess->se_sess->se_node_acl)
+		atomic_long_add(datain.length,
+				&conn->sess->se_sess->se_node_acl->read_bytes);
 	spin_unlock_bh(&conn->sess->session_stats_lock);
 	/*
 	 * Special case for successfully execution w/ both DATAIN
