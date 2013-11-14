@@ -163,15 +163,6 @@ config AUDIO_OCMEM
 	 OCMEM gets exercised for low-power
 	 audio and voice use cases.
 
-config DTS_EAGLE
-	bool "Enable DTS Eagle Support"
-	depends on SND_SOC_MSM8974
-	help
-	 To add DTS Eagle support
-	 on QDSP6 targets.
-	 Eagle is a DTS pre/post processing
-	 package that includes Headphone X.
-
 config DOLBY_DAP
 	bool "Enable Dolby DAP"
 	depends on SND_SOC_MSM8974
@@ -191,7 +182,6 @@ config SND_SOC_MSM8974
 	select SND_SOC_WCD9320
 	select SND_DYNAMIC_MINORS
 	select AUDIO_OCMEM
-	select DTS_EAGLE
 	select DOLBY_DAP
 	help
 	 To add support for SoC audio on MSM8974.

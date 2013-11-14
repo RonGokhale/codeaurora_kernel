@@ -336,11 +336,6 @@ int q6asm_equalizer(struct audio_client *ac, void *eq);
 /* Send Volume Command */
 int q6asm_set_volume(struct audio_client *ac, int volume);
 
-int dts_eagle_open_pre(struct audio_client *ac, int param_id, int size,
-						void *data);
-int dts_eagle_open_get_pre(struct audio_client *ac, int param_id, int size,
-						void *data);
-
 /* Set SoftPause Params */
 int q6asm_set_softpause(struct audio_client *ac,
 			struct asm_softpause_params *param);
