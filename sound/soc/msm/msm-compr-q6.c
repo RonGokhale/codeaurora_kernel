@@ -432,6 +432,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 	prtd->out_head = 0;
 	atomic_set(&prtd->out_count, runtime->periods);
         prtd->delay = 0;
+        prtd->run_mode = 0;
 
 	if (prtd->enabled)
 		return 0;
@@ -753,9 +754,9 @@ static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 		if(substream->stream == SNDRV_PCM_STREAM_PLAYBACK ){
-			pr_debug("%s: Trigger start with delay %llu\n",
-					__func__, prtd->delay);
-			q6asm_run_nowait(prtd->audio_client, 0,
+			pr_debug("%s: Trigger start with delay %llu\n run_mode %d",
+					__func__, prtd->delay, prtd->run_mode);
+			q6asm_run_nowait(prtd->audio_client, prtd->run_mode,
 					prtd->delay & (mask << 32),
 					prtd->delay & mask);
 		}
@@ -1536,7 +1537,11 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 					1);
 		}
 		return 0;
-
+	case SNDRV_COMPRESS_SET_RUN_MODE: {
+		prtd->run_mode = *((int *) arg);
+		pr_debug("run mode %d\n", prtd->run_mode);
+		return 0;
+	}
      case SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW: {
 		struct snd_avsync_window render_window;
 		int param;

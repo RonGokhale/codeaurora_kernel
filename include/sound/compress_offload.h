@@ -189,6 +189,7 @@ struct snd_avsync_statistics {
  * SNDRV_COMPRESS_DRAIN: Play till end of buffers and stop after that
  * SNDRV_COMPRESS_SET_ROUTING: Connect and disconnect the ADM and AFE
  * connections dynamically
+ * SNDRV_COMPRESS_SET_RUN_MODE: set run mode for DSP session.
  * SNDRV_COMPRESS_IOCTL_VERSION: Query the API version
  */
 #define SNDRV_COMPRESS_IOCTL_VERSION	_IOR('C', 0x00, int)
@@ -207,6 +208,7 @@ struct snd_avsync_statistics {
 #define SNDRV_COMPRESS_SET_ROUTING	_IOR('C', 0x35,\
 						struct snd_compr_routing)
 #define SNDRV_COMPRESS_SET_START_DELAY  _IOW('A', 0x36, uint64_t)
+#define SNDRV_COMPRESS_SET_RUN_MODE     _IOW('C', 0x39, int)
 #define SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW  _IOW('C', 0x40,\
 						struct snd_avsync_window)
 #define SNDRV_COMPRESS_SET_AVSYNC_STAT_WINDOW  _IOW('C', 0x41,\
