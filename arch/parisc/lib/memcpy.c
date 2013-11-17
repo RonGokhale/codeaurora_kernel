@@ -460,7 +460,7 @@ handle_store_error:
 
 
 /* Returns 0 for success, otherwise, returns number of bytes not transferred. */
-static unsigned long pa_memcpy(void *dstp, const void *srcp, unsigned long len)
+static noinline unsigned long pa_memcpy(void *dstp, const void *srcp, unsigned long len)
 {
 	unsigned long ret, fault_addr, reference;
 	struct exception_data *d;
