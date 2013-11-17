@@ -45,7 +45,11 @@ static inline int __range_not_ok(unsigned long addr, unsigned long size,
 				 unsigned long limit)
 {
 	unsigned long __newaddr = addr + size;
-	return (__newaddr < addr || __newaddr > limit || size > limit);
+
+	if (segment_eq(get_fs(), KERNEL_DS))
+		return 0;
+
+	return (addr < PAGE_SIZE || __newaddr > limit || size > limit);
 }
 
 /**
