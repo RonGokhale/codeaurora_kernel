@@ -15,6 +15,16 @@
 
 #include <linux/seqlock.h>
 
+#if defined(CONFIG_NFS_V4_2)
+#define NFS4_MAX_MINOR_VERSION 2
+#else
+#if defined(CONFIG_NFS_V4_1)
+#define NFS4_MAX_MINOR_VERSION 1
+#else
+#define NFS4_MAX_MINOR_VERSION 0
+#endif /* CONFIG_NFS_V4_1 */
+#endif /* CONFIG_NFS_V4_2 */
+
 struct idmap;
 
 enum nfs4_client_state {
@@ -364,6 +374,21 @@ nfs4_state_protect_write(struct nfs_client *clp, struct rpc_clnt **clntp,
 {
 }
 #endif /* CONFIG_NFS_V4_1 */
+
+#ifdef CONFIG_NFS_V4_SECURITY_LABEL
+extern struct nfs4_label *nfs4_label_alloc(struct nfs_server *server, gfp_t flags);
+static inline void nfs4_label_free(struct nfs4_label *label)
+{
+	if (label) {
+		kfree(label->label);
+		kfree(label);
+	}
+	return;
+}
+#else
+static inline struct nfs4_label *nfs4_label_alloc(struct nfs_server *server, gfp_t flags) { return NULL; }
+static inline void nfs4_label_free(void *label) {}
+#endif /* CONFIG_NFS_V4_SECURITY_LABEL */
 
 extern const struct nfs4_minor_version_ops *nfs_v4_minor_ops[];
 
