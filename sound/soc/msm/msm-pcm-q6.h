@@ -84,6 +84,7 @@ struct msm_audio {
 	atomic_t pending_buffer;
 	bool set_channel_map;
 	char channel_map[8];
+	uint64_t delay;
 };
 
 struct output_meta_data_st {

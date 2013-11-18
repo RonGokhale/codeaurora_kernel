@@ -63,6 +63,8 @@
 #define CMD_CLOSE          0x0004
 #define CMD_OUT_FLUSH      0x0005
 
+#define ABSOLUTE_DELAY     0x1
+#define RELATIVE_DELAY     0x2
 /* bit 0:1 represents priority of stream */
 #define STREAM_PRIORITY_NORMAL	0x0000
 #define STREAM_PRIORITY_LOW	0x0001

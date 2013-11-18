@@ -206,6 +206,7 @@ struct snd_avsync_statistics {
 #define SNDRV_COMPRESS_DRAIN		_IO('C', 0x34)
 #define SNDRV_COMPRESS_SET_ROUTING	_IOR('C', 0x35,\
 						struct snd_compr_routing)
+#define SNDRV_COMPRESS_SET_START_DELAY  _IOW('A', 0x36, uint64_t)
 #define SNDRV_COMPRESS_SET_AVSYNC_RENDER_WINDOW  _IOW('C', 0x40,\
 						struct snd_avsync_window)
 #define SNDRV_COMPRESS_SET_AVSYNC_STAT_WINDOW  _IOW('C', 0x41,\
