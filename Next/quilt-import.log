@@ -1,0 +1,3 @@
+Importing jdelvare-hwmon based on f63c4824aa1b745cf283453fd53385230307d8d1
+	quilt series is empty
+$ git branch -f jdelvare-hwmon/master f63c4824aa1b745cf283453fd53385230307d8d1
