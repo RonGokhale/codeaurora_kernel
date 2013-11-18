@@ -36,7 +36,6 @@
 #include <linux/nfs_fs.h>
 #include <linux/sunrpc/rpc_pipe_fs.h>
 
-#include "../nfs4_fs.h"
 #include "../pnfs.h"
 #include "../netns.h"
 
