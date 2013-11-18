@@ -1443,9 +1443,15 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 	int off, ret = 0;
 	u32 xres = mfd->fbi->var.xres;
 	u32 yres = mfd->fbi->var.yres;
-	int roi_w = min(xres - img->dx, img->width);
-	int roi_h = min(yres - img->dy, img->height);
-	int roi_size = (roi_h << 16) | roi_w;
+	u32 start_x = img->dx;
+	u32 start_y = img->dy;
+	u32 roi_x = 0;
+	u32 roi_y = 0;
+	int roi_w = 0;
+	int roi_h = 0;
+	int roi_size = 0;
+
+	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, MDSS_MDP_MIXER_MUX_DEFAULT);
 
 	if (!mfd->cursor_buf && (cursor->set & FB_CUR_SETIMAGE)) {
 		mfd->cursor_buf = dma_alloc_coherent(NULL, MDSS_MDP_CURSOR_SIZE,
@@ -1468,14 +1474,16 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 			       ret);
 			return -ENOMEM;
 		}
+
+		mixer->cursor_hotx = 0;
+		mixer->cursor_hoty = 0;
 	}
 
-	mixer = mdss_mdp_mixer_get(mdp5_data->ctl, MDSS_MDP_MIXER_MUX_DEFAULT);
 	off = MDSS_MDP_REG_LM_OFFSET(mixer->num);
 
 	if ((img->width > MDSS_MDP_CURSOR_WIDTH) ||
 		(img->height > MDSS_MDP_CURSOR_HEIGHT) ||
-		(img->depth != 32) || (img->dx >= xres) || (img->dy >= yres))
+		(img->depth != 32) || (start_x >= xres) || (start_y >= yres))
 		return -EINVAL;
 
 	pr_debug("mixer=%d enable=%x set=%x\n", mixer->num, cursor->enable,
@@ -1484,9 +1492,40 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
 	blendcfg = MDSS_MDP_REG_READ(off + MDSS_MDP_REG_LM_CURSOR_BLEND_CONFIG);
 
+	if (cursor->set & FB_CUR_SETHOT) {
+		if ((cursor->hot.x < img->width) && (cursor->hot.y < img->height)) {
+			mixer->cursor_hotx = cursor->hot.x;
+			mixer->cursor_hoty = cursor->hot.y;
+			cursor->set |= FB_CUR_SETPOS; // Update cursor position
+		}
+		else {
+			pr_err("Invalid cursor hotspot coordinates\n");
+			return -EINVAL;
+		}
+	}
+
+	if (start_x > mixer->cursor_hotx) {
+		start_x -= mixer->cursor_hotx;
+	} else {
+		roi_x = mixer->cursor_hotx - start_x;
+		start_x = 0;
+	}
+	if (start_y > mixer->cursor_hoty) {
+		start_y -= mixer->cursor_hoty;
+	} else {
+		roi_y = mixer->cursor_hoty - start_y;
+		start_y = 0;
+	}
+
+	roi_w = min(xres - start_x, img->width - roi_x);
+	roi_h = min(yres - start_y, img->height - roi_y);
+	roi_size = (roi_h << 16) | roi_w;
+
 	if (cursor->set & FB_CUR_SETPOS) {
+		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_XY,
+				(roi_y << 16 ) | roi_x);
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_START_XY,
-				(img->dy << 16) | img->dx);
+				(start_y << 16) | start_x);
 		MDSS_MDP_REG_WRITE(off + MDSS_MDP_REG_LM_CURSOR_SIZE, roi_size);
 	}
 
@@ -1549,6 +1588,9 @@ static int mdss_mdp_hw_cursor_update(struct msm_fb_data_type *mfd,
 				   MDSS_MDP_REG_LM_CURSOR_BLEND_TRANSP_HIGH1,
 				   ((img->bg_color & 0xff0000) >> 16));
 		}
+
+		mixer->cursor_hotx = 0;
+		mixer->cursor_hoty = 0;
 	}
 
 	if (!cursor->enable != !(blendcfg & 0x1)) {
