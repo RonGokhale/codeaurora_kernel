@@ -2793,13 +2793,6 @@ static int msm8x10_wcd_setup_zdet(struct wcd9xxx_mbhc *mbhc,
 	struct msm8x10_wcd_priv *wcd_priv = snd_soc_codec_get_drvdata(codec);
 	const int mux_wait_us = 25;
 
-	switch (stage) {
-	case PRE_MEAS:
-		dev_dbg(codec->dev, "%s: PRE_MEAS\n", __func__);
-		INIT_LIST_HEAD(&wcd_priv->reg_save_restore);
-		/* Configure PA */
-		msm8x10_wcd_prepare_hph_pa(mbhc->codec,
-					   &wcd_priv->reg_save_restore);
 #define __wr(reg, mask, value)					\
 	do {							\
 		ret = wcd9xxx_soc_update_bits_push(codec,	\
@@ -2808,6 +2801,14 @@ static int msm8x10_wcd_setup_zdet(struct wcd9xxx_mbhc *mbhc,
 		if (ret < 0)					\
 			return ret;				\
 	 } while (0)
+
+	switch (stage) {
+	case PRE_MEAS:
+		dev_dbg(codec->dev, "%s: PRE_MEAS\n", __func__);
+		INIT_LIST_HEAD(&wcd_priv->reg_save_restore);
+		/* Configure PA */
+		msm8x10_wcd_prepare_hph_pa(mbhc->codec,
+					   &wcd_priv->reg_save_restore);
 
 		/* Setup MBHC */
 		__wr(WCD9XXX_A_MBHC_SCALING_MUX_1, 0x7F, 0x40);
