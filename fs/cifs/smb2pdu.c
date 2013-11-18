@@ -1214,10 +1214,17 @@ SMB2_ioctl(const unsigned int xid, struct cifs_tcon *tcon, u64 persistent_fid,
 	rc = SendReceive2(xid, ses, iov, num_iovecs, &resp_buftype, 0);
 	rsp = (struct smb2_ioctl_rsp *)iov[0].iov_base;
 
-	if (rc != 0) {
+	if ((rc != 0) && (rc != -EINVAL)) {
 		if (tcon)
 			cifs_stats_fail_inc(tcon, SMB2_IOCTL_HE);
 		goto ioctl_exit;
+	} else if (rc == -EINVAL) {
+		if ((opcode != FSCTL_SRV_COPYCHUNK_WRITE) &&
+		    (opcode != FSCTL_SRV_COPYCHUNK)) {
+			if (tcon)
+				cifs_stats_fail_inc(tcon, SMB2_IOCTL_HE);
+			goto ioctl_exit;
+		}
 	}
 
 	/* check if caller wants to look at return data or just return rc */
@@ -2154,11 +2161,9 @@ send_set_info(const unsigned int xid, struct cifs_tcon *tcon,
 	rc = SendReceive2(xid, ses, iov, num, &resp_buftype, 0);
 	rsp = (struct smb2_set_info_rsp *)iov[0].iov_base;
 
-	if (rc != 0) {
+	if (rc != 0)
 		cifs_stats_fail_inc(tcon, SMB2_SET_INFO_HE);
-		goto out;
-	}
-out:
+
 	free_rsp_buf(resp_buftype, rsp);
 	kfree(iov);
 	return rc;
