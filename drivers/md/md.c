@@ -112,7 +112,7 @@ static inline int speed_max(struct mddev *mddev)
 
 static struct ctl_table_header *raid_table_header;
 
-static ctl_table raid_table[] = {
+static struct ctl_table raid_table[] = {
 	{
 		.procname	= "speed_limit_min",
 		.data		= &sysctl_speed_limit_min,
@@ -130,7 +130,7 @@ static ctl_table raid_table[] = {
 	{ }
 };
 
-static ctl_table raid_dir_table[] = {
+static struct ctl_table raid_dir_table[] = {
 	{
 		.procname	= "raid",
 		.maxlen		= 0,
@@ -140,7 +140,7 @@ static ctl_table raid_dir_table[] = {
 	{ }
 };
 
-static ctl_table raid_root_table[] = {
+static struct ctl_table raid_root_table[] = {
 	{
 		.procname	= "dev",
 		.maxlen		= 0,
@@ -562,9 +562,17 @@ static struct mddev * mddev_find(dev_t unit)
 	goto retry;
 }
 
-static inline int mddev_lock(struct mddev * mddev)
+static inline int __must_check mddev_lock(struct mddev * mddev)
 {
 	return mutex_lock_interruptible(&mddev->reconfig_mutex);
+}
+
+/* Sometimes we need to take the lock in a situation where
+ * failure due to interrupts is not acceptable.
+ */
+static inline void mddev_lock_nointr(struct mddev * mddev)
+{
+	mutex_lock(&mddev->reconfig_mutex);
 }
 
 static inline int mddev_is_locked(struct mddev *mddev)
@@ -2978,7 +2986,7 @@ rdev_size_store(struct md_rdev *rdev, const char *buf, size_t len)
 		for_each_mddev(mddev, tmp) {
 			struct md_rdev *rdev2;
 
-			mddev_lock(mddev);
+			mddev_lock_nointr(mddev);
 			rdev_for_each(rdev2, mddev)
 				if (rdev->bdev == rdev2->bdev &&
 				    rdev != rdev2 &&
@@ -2994,7 +3002,7 @@ rdev_size_store(struct md_rdev *rdev, const char *buf, size_t len)
 				break;
 			}
 		}
-		mddev_lock(my_mddev);
+		mddev_lock_nointr(my_mddev);
 		if (overlap) {
 			/* Someone else could have slipped in a size
 			 * change here, but doing so is just silly.
@@ -3580,6 +3588,7 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 		mddev->in_sync = 1;
 		del_timer_sync(&mddev->safemode_timer);
 	}
+	blk_set_stacking_limits(&mddev->queue->limits);
 	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
 	mddev_resume(mddev);
@@ -5258,7 +5267,7 @@ static void __md_stop_writes(struct mddev *mddev)
 
 void md_stop_writes(struct mddev *mddev)
 {
-	mddev_lock(mddev);
+	mddev_lock_nointr(mddev);
 	__md_stop_writes(mddev);
 	mddev_unlock(mddev);
 }
@@ -5291,19 +5300,30 @@ EXPORT_SYMBOL_GPL(md_stop);
 static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 {
 	int err = 0;
+	int did_freeze = 0;
+
+	if (!test_bit(MD_RECOVERY_FROZEN, &mddev->recovery)) {
+		did_freeze = 1;
+		set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+		md_wakeup_thread(mddev->thread);
+	}
+	if (mddev->sync_thread)
+		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
+	mddev_unlock(mddev);
+	wait_event(resync_wait, mddev->sync_thread == NULL);
+	mddev_lock_nointr(mddev);
+
 	mutex_lock(&mddev->open_mutex);
-	if (atomic_read(&mddev->openers) > !!bdev) {
+	if (atomic_read(&mddev->openers) > !!bdev ||
+	    mddev->sync_thread ||
+	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
 		printk("md: %s still in use.\n",mdname(mddev));
+		if (did_freeze) {
+			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+			md_wakeup_thread(mddev->thread);
+		}
 		err = -EBUSY;
 		goto out;
-	}
-	if (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags)) {
-		/* Someone opened the device since we flushed it
-		 * so page cache could be dirty and it is too late
-		 * to flush.  So abort
-		 */
-		mutex_unlock(&mddev->open_mutex);
-		return -EBUSY;
 	}
 	if (mddev->pers) {
 		__md_stop_writes(mddev);
@@ -5315,7 +5335,7 @@ static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 		set_disk_ro(mddev->gendisk, 1);
 		clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
 		sysfs_notify_dirent_safe(mddev->sysfs_state);
-		err = 0;	
+		err = 0;
 	}
 out:
 	mutex_unlock(&mddev->open_mutex);
@@ -5331,20 +5351,34 @@ static int do_md_stop(struct mddev * mddev, int mode,
 {
 	struct gendisk *disk = mddev->gendisk;
 	struct md_rdev *rdev;
+	int did_freeze = 0;
+
+	if (!test_bit(MD_RECOVERY_FROZEN, &mddev->recovery)) {
+		did_freeze = 1;
+		set_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+		md_wakeup_thread(mddev->thread);
+	}
+	if (mddev->sync_thread) {
+		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
+		/* Thread might be blocked waiting for metadata update
+		 * which will now never happen */
+		wake_up_process(mddev->sync_thread->tsk);
+	}
+	mddev_unlock(mddev);
+	wait_event(resync_wait, mddev->sync_thread == NULL);
+	mddev_lock_nointr(mddev);
 
 	mutex_lock(&mddev->open_mutex);
 	if (atomic_read(&mddev->openers) > !!bdev ||
-	    mddev->sysfs_active) {
+	    mddev->sysfs_active ||
+	    mddev->sync_thread ||
+	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
 		printk("md: %s still in use.\n",mdname(mddev));
 		mutex_unlock(&mddev->open_mutex);
-		return -EBUSY;
-	}
-	if (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags)) {
-		/* Someone opened the device since we flushed it
-		 * so page cache could be dirty and it is too late
-		 * to flush.  So abort
-		 */
-		mutex_unlock(&mddev->open_mutex);
+		if (did_freeze) {
+			clear_bit(MD_RECOVERY_FROZEN, &mddev->recovery);
+			md_wakeup_thread(mddev->thread);
+		}
 		return -EBUSY;
 	}
 	if (mddev->pers) {
@@ -6551,7 +6585,7 @@ static int md_ioctl(struct block_device *bdev, fmode_t mode,
 				wait_event(mddev->sb_wait,
 					   !test_bit(MD_CHANGE_DEVS, &mddev->flags) &&
 					   !test_bit(MD_CHANGE_PENDING, &mddev->flags));
-				mddev_lock(mddev);
+				mddev_lock_nointr(mddev);
 			}
 		} else {
 			err = -EROFS;
@@ -7559,6 +7593,8 @@ void md_do_sync(struct md_thread *thread)
 
 		if (kthread_should_stop())
 			goto interrupted;
+		if (test_bit(MD_RECOVERY_INTR, &mddev->recovery))
+			break;
 
 
 		/*
@@ -7894,6 +7930,7 @@ void md_reap_sync_thread(struct mddev *mddev)
 
 	/* resync has finished, collect result */
 	md_unregister_thread(&mddev->sync_thread);
+	wake_up(&resync_wait);
 	if (!test_bit(MD_RECOVERY_INTR, &mddev->recovery) &&
 	    !test_bit(MD_RECOVERY_REQUESTED, &mddev->recovery)) {
 		/* success...*/
