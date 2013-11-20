@@ -350,6 +350,8 @@ cifsConvertToUTF16(__le16 *target, const char *source, int srclen,
 	}
 
 ctoUTF16_out:
+	/* Null terminate the string */
+	put_unaligned(0, &target[j]);
 	return j;
 }
 
