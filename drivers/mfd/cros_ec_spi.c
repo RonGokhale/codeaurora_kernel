@@ -50,10 +50,11 @@
 /*
   * Time between raising the SPI chip select (for the end of a
   * transaction) and dropping it again (for the next transaction).
-  * If we go too fast, the EC will miss the transaction. It seems
-  * that 50us is enough with the 16MHz STM32 EC.
+  * If we go too fast, the EC will miss the transaction. We know that we
+  * need at least 70 us with the 16 MHz STM32 EC, so go with 200 us to be
+  * safe.
   */
-#define EC_SPI_RECOVERY_TIME_NS	(50 * 1000)
+#define EC_SPI_RECOVERY_TIME_NS	(200 * 1000)
 
 /**
  * struct cros_ec_spi - information about a SPI-connected EC
@@ -75,7 +76,9 @@ static void debug_packet(struct device *dev, const char *name, u8 *ptr,
 
 	dev_dbg(dev, "%s: ", name);
 	for (i = 0; i < len; i++)
-		dev_cont(dev, " %02x", ptr[i]);
+		pr_cont(" %02x", ptr[i]);
+
+	pr_cont("\n");
 #endif
 }
 
