@@ -806,11 +806,7 @@ static int lvb_to_version(char *lvb, struct ocfs2_protocol_version *ver)
 		&ocfs2_user_plugin.sp_max_proto;
 
 	memcpy(&pv, lvb, sizeof(struct ocfs2_protocol_version));
-	if ((pv.pv_major == LONG_MIN) || (pv.pv_major == LONG_MAX) ||
-	    (pv.pv_major > (u8)-1) || (pv.pv_major < 1))
-		return -ERANGE;
-	if ((pv.pv_minor == LONG_MIN) || (pv.pv_minor == LONG_MAX) ||
-	    (pv.pv_minor > (u8)-1) || (pv.pv_minor < 0))
+	if (pv.pv_major < 1)
 		return -ERANGE;
 	if ((pv.pv_major != max->pv_major) ||
 	    (pv.pv_minor > max->pv_minor))
