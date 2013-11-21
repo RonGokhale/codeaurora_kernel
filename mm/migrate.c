@@ -442,9 +442,9 @@ int migrate_huge_page_move_mapping(struct address_space *mapping,
 }
 
 /*
- * Gigantic pages are so large that the we do not guarantee
- * that page++ pointer arithmetic will work across the
- * entire page.  We need something more specialized.
+ * Gigantic pages are so large that we do not guarantee that page++ pointer
+ * arithmetic will work across the entire page.  We need something more
+ * specialized.
  */
 static void __copy_gigantic_page(struct page *dst, struct page *src,
 				int nr_pages)
@@ -483,7 +483,7 @@ static void copy_huge_page(struct page *dst, struct page *src)
 		nr_pages = hpage_nr_pages(src);
 	}
 
-	for (i = 0; i < nr_pages; i++ ) {
+	for (i = 0; i < nr_pages; i++) {
 		cond_resched();
 		copy_highpage(dst + i, src + i);
 	}
