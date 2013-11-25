@@ -1617,6 +1617,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 	return 0;
 }
 
+#ifdef CONFIG_DEBUG_FS
 static int kgsl_drm_gem_one_info(int id, void *ptr, void *data)
 {
 	struct drm_gem_object *obj = ptr;
@@ -1669,6 +1670,7 @@ static struct drm_info_list kgsl_drm_debugfs_list[] = {
 	{"gem_info", kgsl_drm_gem_info, DRIVER_GEM},
 };
 #define KGSL_DRM_DEBUGFS_ENTRIES ARRAY_SIZE(kgsl_drm_debugfs_list)
+#endif
 
 static int kgsl_drm_load(struct drm_device *dev, unsigned long flags)
 {
@@ -1738,11 +1740,13 @@ static int kgsl_drm_load(struct drm_device *dev, unsigned long flags)
 		return ret;
 	}
 
+#ifdef CONFIG_DEBUG_FS
 	ret = drm_debugfs_create_files(kgsl_drm_debugfs_list,
 						KGSL_DRM_DEBUGFS_ENTRIES,
 						minor->debugfs_root, minor);
 	if (ret)
 		DRM_DEBUG_DRIVER("failed to create kgsl-drm debugfs.\n");
+#endif
 
 	return 0;
 }
@@ -1754,9 +1758,10 @@ static int kgsl_drm_unload(struct drm_device *dev)
 
 	kfree(dev_priv);
 
+#ifdef CONFIG_DEBUG_FS
 	drm_debugfs_remove_files(kgsl_drm_debugfs_list,
 				KGSL_DRM_DEBUGFS_ENTRIES, dev->primary);
-
+#endif
 	return 0;
 }
 
