@@ -89,6 +89,8 @@ const char *ipa_event_name[] = {
 	__stringify(WLAN_AP_DISCONNECT),
 	__stringify(WLAN_STA_CONNECT),
 	__stringify(WLAN_STA_DISCONNECT),
+	__stringify(ECM_CONNECT),
+	__stringify(ECM_DISCONNECT),
 };
 
 static struct dentry *dent;
@@ -749,7 +751,7 @@ static ssize_t ipa_read_msg(struct file *file, char __user *ubuf,
 	int cnt = 0;
 	int i;
 
-	for (i = 0; i < IPA_EVENT_MAX; i++) {
+	for (i = 0; i < IPA_EVENT_MAX_NUM; i++) {
 		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
 				"msg[%u:%27s] W:%u R:%u\n", i,
 				ipa_event_name[i],

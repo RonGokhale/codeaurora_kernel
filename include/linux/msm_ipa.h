@@ -177,6 +177,12 @@ enum ipa_wlan_event {
 	IPA_EVENT_MAX
 };
 
+enum ipa_ecm_event {
+	ECM_CONNECT = IPA_EVENT_MAX,
+	ECM_DISCONNECT,
+	IPA_EVENT_MAX_NUM
+};
+
 /**
  * enum ipa_rm_resource_name - IPA RM clients identification names
  *
@@ -715,6 +721,11 @@ struct ipa_msg_meta {
 struct ipa_wlan_msg {
 	char name[IPA_RESOURCE_NAME_MAX];
 	uint8_t mac_addr[IPA_MAC_ADDR_SIZE];
+};
+
+struct ipa_ecm_msg {
+	char name[IPA_RESOURCE_NAME_MAX];
+	int ifindex;
 };
 
 /**
