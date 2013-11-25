@@ -23,6 +23,7 @@
 #include "at91_shdwc.h"
 #include "soc.h"
 #include "generic.h"
+#include "pm.h"
 
 struct at91_init_soc __initdata at91_boot_soc;
 
@@ -80,7 +81,7 @@ void __init at91_init_sram(int bank, unsigned long base, unsigned int length)
 
 	desc->pfn = __phys_to_pfn(base);
 	desc->length = length;
-	desc->type = MT_MEMORY_NONCACHED;
+	desc->type = MT_MEMORY_RWX_NONCACHED;
 
 	pr_info("AT91: sram at 0x%lx of 0x%x mapped at 0x%lx\n",
 		base, length, desc->virtual);
@@ -376,15 +377,16 @@ static void at91_dt_rstc(void)
 }
 
 static struct of_device_id ramc_ids[] = {
-	{ .compatible = "atmel,at91rm9200-sdramc" },
-	{ .compatible = "atmel,at91sam9260-sdramc" },
-	{ .compatible = "atmel,at91sam9g45-ddramc" },
+	{ .compatible = "atmel,at91rm9200-sdramc", .data = at91rm9200_standby },
+	{ .compatible = "atmel,at91sam9260-sdramc", .data = at91sam9_sdram_standby },
+	{ .compatible = "atmel,at91sam9g45-ddramc", .data = at91_ddr_standby },
 	{ /*sentinel*/ }
 };
 
 static void at91_dt_ramc(void)
 {
 	struct device_node *np;
+	const struct of_device_id *of_id;
 
 	np = of_find_matching_node(NULL, ramc_ids);
 	if (!np)
@@ -395,6 +397,12 @@ static void at91_dt_ramc(void)
 		panic("unable to map ramc[0] cpu registers\n");
 	/* the controller may have 2 banks */
 	at91_ramc_base[1] = of_iomap(np, 1);
+
+	of_id = of_match_node(ramc_ids, np);
+	if (!of_id)
+		pr_warn("AT91: ramc no standby function available\n");
+	else
+		at91_pm_set_standby(of_id->data);
 
 	of_node_put(np);
 }

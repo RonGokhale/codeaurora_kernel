@@ -1079,7 +1079,7 @@ static int be_vid_config(struct be_adapter *adapter)
 			vids[num++] = cpu_to_le16(i);
 
 	status = be_cmd_vlan_config(adapter, adapter->if_handle,
-				    vids, num, 1, 0);
+				    vids, num, 0);
 
 	if (status) {
 		/* Set to VLAN promisc mode as setting VLAN filter failed */
@@ -2148,6 +2148,9 @@ static int be_tx_qs_create(struct be_adapter *adapter)
 		if (status)
 			return status;
 
+		u64_stats_init(&txo->stats.sync);
+		u64_stats_init(&txo->stats.sync_compl);
+
 		/* If num_evt_qs is less than num_tx_qs, then more than
 		 * one txq share an eq
 		 */
@@ -2209,6 +2212,7 @@ static int be_rx_cqs_create(struct be_adapter *adapter)
 		if (rc)
 			return rc;
 
+		u64_stats_init(&rxo->stats.sync);
 		eq = &adapter->eq_obj[i % adapter->num_evt_qs].q;
 		rc = be_cmd_cq_create(adapter, cq, eq, false, 3);
 		if (rc)
@@ -2671,6 +2675,11 @@ static int be_close(struct net_device *netdev)
 	be_tx_compl_clean(adapter);
 
 	be_rx_qs_destroy(adapter);
+
+	for (i = 1; i < (adapter->uc_macs + 1); i++)
+		be_cmd_pmac_del(adapter, adapter->if_handle,
+				adapter->pmac_id[i], 0);
+	adapter->uc_macs = 0;
 
 	for_all_evt_queues(adapter, eqo, i) {
 		if (msix_enabled(adapter))
