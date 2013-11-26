@@ -148,7 +148,7 @@ static const struct sh_mmcif_plat_data mmcif1_pdata __initconst = {
 };
 
 static const struct resource mmcif1_resources[] __initconst = {
-	DEFINE_RES_MEM_NAMED(0xee220000, 0x80, "MMCIF1"),
+	DEFINE_RES_MEM(0xee220000, 0x80),
 	DEFINE_RES_IRQ(gic_spi(170)),
 };
 
@@ -245,7 +245,9 @@ static void __init lager_init(void)
 {
 	lager_add_standard_devices();
 
-	phy_register_fixup_for_id("r8a7790-ether-ff:01", lager_ksz8041_fixup);
+	if (IS_ENABLED(CONFIG_PHYLIB))
+		phy_register_fixup_for_id("r8a7790-ether-ff:01",
+					  lager_ksz8041_fixup);
 }
 
 static const char * const lager_boards_compat_dt[] __initconst = {
