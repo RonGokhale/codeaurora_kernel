@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -440,4 +440,23 @@ struct platform_device fsm9xxx_device_watchdog = {
 	.num_resources	= ARRAY_SIZE(msm_watchdog_resources),
 	.resource	= msm_watchdog_resources,
 };
+
+/*
+ * PRNG
+ */
+
+#ifdef CONFIG_HW_RANDOM_MSM
+static struct resource rng_resources = {
+	.flags = IORESOURCE_MEM,
+	.start = MSM_PRNG_PHYS,
+	.end   = MSM_PRNG_PHYS + SZ_512 - 1,
+};
+
+struct platform_device msm_device_rng = {
+	.name          = "msm_rng",
+	.id            = -1,
+	.num_resources = 1,
+	.resource      = &rng_resources,
+};
+#endif
 

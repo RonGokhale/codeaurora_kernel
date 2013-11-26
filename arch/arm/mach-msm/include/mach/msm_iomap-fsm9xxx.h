@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -83,5 +83,8 @@
 
 #define MSM_UART3_PHYS        0x94100000
 #define MSM_UART3_SIZE        SZ_4K
+
+#define MSM_PRNG_PHYS         0x940F0000
+#define MSM_PRNG_SIZE         SZ_4K
 
 #endif
