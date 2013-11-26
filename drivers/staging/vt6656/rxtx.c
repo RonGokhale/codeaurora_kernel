@@ -64,16 +64,16 @@
 
 static int          msglevel                = MSG_LEVEL_INFO;
 
-const u16 wTimeStampOff[2][MAX_RATE] = {
+static const u16 wTimeStampOff[2][MAX_RATE] = {
         {384, 288, 226, 209, 54, 43, 37, 31, 28, 25, 24, 23}, // Long Preamble
         {384, 192, 130, 113, 54, 43, 37, 31, 28, 25, 24, 23}, // Short Preamble
     };
 
-const u16 wFB_Opt0[2][5] = {
+static const u16 wFB_Opt0[2][5] = {
         {RATE_12M, RATE_18M, RATE_24M, RATE_36M, RATE_48M}, // fallback_rate0
         {RATE_12M, RATE_12M, RATE_18M, RATE_24M, RATE_36M}, // fallback_rate1
     };
-const u16 wFB_Opt1[2][5] = {
+static const u16 wFB_Opt1[2][5] = {
         {RATE_12M, RATE_18M, RATE_24M, RATE_24M, RATE_36M}, // fallback_rate0
         {RATE_6M , RATE_6M,  RATE_12M, RATE_12M, RATE_18M}, // fallback_rate1
     };
@@ -978,28 +978,19 @@ static int s_bPacketToWirelessUsb(struct vnt_private *pDevice, u8 byPktType,
 			bSoftWEP = true; /* WEP 256 */
 	}
 
-    // Get pkt type
-    if (ntohs(psEthHeader->h_proto) > ETH_DATA_LEN) {
-        if (pDevice->dwDiagRefCount == 0) {
-            cb802_1_H_len = 8;
-        } else {
-            cb802_1_H_len = 2;
-        }
-    } else {
-        cb802_1_H_len = 0;
-    }
+	/* Get pkt type */
+	if (ntohs(psEthHeader->h_proto) > ETH_DATA_LEN)
+		cb802_1_H_len = 8;
+	else
+		cb802_1_H_len = 0;
 
     cbFrameBodySize = uSkbPacketLen - ETH_HLEN + cb802_1_H_len;
 
     //Set packet type
     pTxBufHead->wFIFOCtl |= (u16)(byPktType<<8);
 
-    if (pDevice->dwDiagRefCount != 0) {
-        bNeedACK = false;
-        pTxBufHead->wFIFOCtl = pTxBufHead->wFIFOCtl & (~FIFOCTL_NEEDACK);
-    } else { //if (pDevice->dwDiagRefCount != 0) {
 	if ((pDevice->eOPMode == OP_MODE_ADHOC) ||
-	    (pDevice->eOPMode == OP_MODE_AP)) {
+			(pDevice->eOPMode == OP_MODE_AP)) {
 		if (is_multicast_ether_addr(psEthHeader->h_dest)) {
 			bNeedACK = false;
 			pTxBufHead->wFIFOCtl =
@@ -1008,13 +999,11 @@ static int s_bPacketToWirelessUsb(struct vnt_private *pDevice, u8 byPktType,
 			bNeedACK = true;
 			pTxBufHead->wFIFOCtl |= FIFOCTL_NEEDACK;
 		}
-        }
-        else {
-            // MSDUs in Infra mode always need ACK
-            bNeedACK = true;
-            pTxBufHead->wFIFOCtl |= FIFOCTL_NEEDACK;
-        }
-    } //if (pDevice->dwDiagRefCount != 0) {
+	} else {
+		/* MSDUs in Infra mode always need ACK */
+		bNeedACK = true;
+		pTxBufHead->wFIFOCtl |= FIFOCTL_NEEDACK;
+	}
 
     pTxBufHead->wTimeStamp = DEFAULT_MSDU_LIFETIME_RES_64us;
 
@@ -1183,24 +1172,19 @@ static int s_bPacketToWirelessUsb(struct vnt_private *pDevice, u8 byPktType,
         }
     }
 
-    // 802.1H
-    if (ntohs(psEthHeader->h_proto) > ETH_DATA_LEN) {
-	if (pDevice->dwDiagRefCount == 0) {
+	/* 802.1H */
+	if (ntohs(psEthHeader->h_proto) > ETH_DATA_LEN) {
 		if ((psEthHeader->h_proto == cpu_to_be16(ETH_P_IPX)) ||
-		    (psEthHeader->h_proto == cpu_to_le16(0xF380))) {
+			(psEthHeader->h_proto == cpu_to_le16(0xF380)))
 			memcpy((u8 *) (pbyPayloadHead),
-			       abySNAP_Bridgetunnel, 6);
-            } else {
-                memcpy((u8 *) (pbyPayloadHead), &abySNAP_RFC1042[0], 6);
-            }
-            pbyType = (u8 *) (pbyPayloadHead + 6);
-            memcpy(pbyType, &(psEthHeader->h_proto), sizeof(u16));
-        } else {
-            memcpy((u8 *) (pbyPayloadHead), &(psEthHeader->h_proto), sizeof(u16));
+					abySNAP_Bridgetunnel, 6);
+		else
+			memcpy((u8 *) (pbyPayloadHead), &abySNAP_RFC1042[0], 6);
 
-        }
+		pbyType = (u8 *) (pbyPayloadHead + 6);
 
-    }
+		memcpy(pbyType, &(psEthHeader->h_proto), sizeof(u16));
+	}
 
     if (pPacket != NULL) {
         // Copy the Packet into a tx Buffer
@@ -1659,16 +1643,13 @@ CMD_STATUS csBeacon_xmit(struct vnt_private *pDevice,
 	struct vnt_tx_mgmt *pPacket)
 {
 	struct vnt_beacon_buffer *pTX_Buffer;
+	struct vnt_tx_short_buf_head *short_head;
 	u32 cbFrameSize = pPacket->cbMPDULen + WLAN_FCS_LEN;
 	u32 cbHeaderSize = 0;
-	u16 wTxBufSize = sizeof(STxShortBufHead);
-	PSTxShortBufHead pTxBufHead;
 	struct ieee80211_hdr *pMACHeader;
-	struct vnt_tx_datahead_ab *pTxDataHead;
 	u16 wCurrentRate;
 	u32 cbFrameBodySize;
 	u32 cbReqCount;
-	u8 *pbyTxBufferAddr;
 	struct vnt_usb_send_context *pContext;
 	CMD_STATUS status;
 
@@ -1680,49 +1661,50 @@ CMD_STATUS csBeacon_xmit(struct vnt_private *pDevice,
     }
 
 	pTX_Buffer = (struct vnt_beacon_buffer *)&pContext->Data[0];
-    pbyTxBufferAddr = (u8 *)&(pTX_Buffer->wFIFOCtl);
+	short_head = &pTX_Buffer->short_head;
 
     cbFrameBodySize = pPacket->cbPayloadLen;
 
-    pTxBufHead = (PSTxShortBufHead) pbyTxBufferAddr;
-    wTxBufSize = sizeof(STxShortBufHead);
+	cbHeaderSize = sizeof(struct vnt_tx_short_buf_head);
 
-    if (pDevice->byBBType == BB_TYPE_11A) {
-        wCurrentRate = RATE_6M;
-	pTxDataHead = (struct vnt_tx_datahead_ab *)
-			(pbyTxBufferAddr + wTxBufSize);
-        //Get SignalField,ServiceField,Length
-	BBvCalculateParameter(pDevice, cbFrameSize, wCurrentRate, PK_TYPE_11A,
-							&pTxDataHead->ab);
-        //Get Duration and TimeStampOff
-	pTxDataHead->wDuration = s_uGetDataDuration(pDevice,
-						PK_TYPE_11A, false);
-	pTxDataHead->wTimeStampOff = vnt_time_stamp_off(pDevice, wCurrentRate);
-	cbHeaderSize = wTxBufSize + sizeof(struct vnt_tx_datahead_ab);
-    } else {
-        wCurrentRate = RATE_1M;
-        pTxBufHead->wFIFOCtl |= FIFOCTL_11B;
-	pTxDataHead = (struct vnt_tx_datahead_ab *)
-				(pbyTxBufferAddr + wTxBufSize);
-        //Get SignalField,ServiceField,Length
-	BBvCalculateParameter(pDevice, cbFrameSize, wCurrentRate, PK_TYPE_11B,
-							&pTxDataHead->ab);
-        //Get Duration and TimeStampOff
-	pTxDataHead->wDuration = s_uGetDataDuration(pDevice,
+	if (pDevice->byBBType == BB_TYPE_11A) {
+		wCurrentRate = RATE_6M;
+
+		/* Get SignalField,ServiceField,Length */
+		BBvCalculateParameter(pDevice, cbFrameSize, wCurrentRate,
+			PK_TYPE_11A, &short_head->ab);
+
+		/* Get Duration and TimeStampOff */
+		short_head->duration = s_uGetDataDuration(pDevice,
+							PK_TYPE_11A, false);
+		short_head->time_stamp_off =
+				vnt_time_stamp_off(pDevice, wCurrentRate);
+	} else {
+		wCurrentRate = RATE_1M;
+		short_head->fifo_ctl |= FIFOCTL_11B;
+
+		/* Get SignalField,ServiceField,Length */
+		BBvCalculateParameter(pDevice, cbFrameSize, wCurrentRate,
+					PK_TYPE_11B, &short_head->ab);
+
+		/* Get Duration and TimeStampOff */
+		short_head->duration = s_uGetDataDuration(pDevice,
 						PK_TYPE_11B, false);
-	pTxDataHead->wTimeStampOff = vnt_time_stamp_off(pDevice, wCurrentRate);
-	cbHeaderSize = wTxBufSize + sizeof(struct vnt_tx_datahead_ab);
-    }
+		short_head->time_stamp_off =
+			vnt_time_stamp_off(pDevice, wCurrentRate);
+	}
 
-    //Generate Beacon Header
-    pMACHeader = (struct ieee80211_hdr *)(pbyTxBufferAddr + cbHeaderSize);
-    memcpy(pMACHeader, pPacket->p80211Header, pPacket->cbMPDULen);
 
-    pMACHeader->duration_id = 0;
-    pMACHeader->seq_ctrl = cpu_to_le16(pDevice->wSeqCounter << 4);
-    pDevice->wSeqCounter++ ;
-    if (pDevice->wSeqCounter > 0x0fff)
-        pDevice->wSeqCounter = 0;
+	/* Generate Beacon Header */
+	pMACHeader = &pTX_Buffer->hdr;
+
+	memcpy(pMACHeader, pPacket->p80211Header, pPacket->cbMPDULen);
+
+	pMACHeader->duration_id = 0;
+	pMACHeader->seq_ctrl = cpu_to_le16(pDevice->wSeqCounter << 4);
+	pDevice->wSeqCounter++;
+	if (pDevice->wSeqCounter > 0x0fff)
+		pDevice->wSeqCounter = 0;
 
     cbReqCount = cbHeaderSize + WLAN_HDR_ADDR3_LEN + cbFrameBodySize;
 
