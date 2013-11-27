@@ -2506,12 +2506,8 @@ static int create_out_jack_modes(struct hda_codec *codec, int num_pins,
 
 	for (i = 0; i < num_pins; i++) {
 		hda_nid_t pin = pins[i];
-		if (pin == spec->hp_mic_pin) {
-			int ret = create_hp_mic_jack_mode(codec, pin);
-			if (ret < 0)
-				return ret;
+		if (pin == spec->hp_mic_pin)
 			continue;
-		}
 		if (get_out_jack_num_items(codec, pin) > 1) {
 			struct snd_kcontrol_new *knew;
 			char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
@@ -2764,7 +2760,7 @@ static int hp_mic_jack_mode_put(struct snd_kcontrol *kcontrol,
 			val &= ~(AC_PINCTL_VREFEN | PIN_HP);
 			val |= get_vref_idx(vref_caps, idx) | PIN_IN;
 		} else
-			val = snd_hda_get_default_vref(codec, nid);
+			val = snd_hda_get_default_vref(codec, nid) | PIN_IN;
 	}
 	snd_hda_set_pin_ctl_cache(codec, nid, val);
 	call_hp_automute(codec, NULL);
@@ -2784,9 +2780,6 @@ static int create_hp_mic_jack_mode(struct hda_codec *codec, hda_nid_t pin)
 	struct hda_gen_spec *spec = codec->spec;
 	struct snd_kcontrol_new *knew;
 
-	if (get_out_jack_num_items(codec, pin) <= 1 &&
-	    get_in_jack_num_items(codec, pin) <= 1)
-		return 0; /* no need */
 	knew = snd_hda_gen_add_kctl(spec, "Headphone Mic Jack Mode",
 				    &hp_mic_jack_mode_enum);
 	if (!knew)
@@ -4382,6 +4375,17 @@ int snd_hda_gen_parse_auto_config(struct hda_codec *codec,
 	err = parse_mic_boost(codec);
 	if (err < 0)
 		return err;
+
+	/* create "Headphone Mic Jack Mode" if no input selection is
+	 * available (or user specifies add_jack_modes hint)
+	 */
+	if (spec->hp_mic_pin &&
+	    (spec->auto_mic || spec->input_mux.num_items == 1 ||
+	     spec->add_jack_modes)) {
+		err = create_hp_mic_jack_mode(codec, spec->hp_mic_pin);
+		if (err < 0)
+			return err;
+	}
 
 	if (spec->add_jack_modes) {
 		if (cfg->line_out_type != AUTO_PIN_SPEAKER_OUT) {
