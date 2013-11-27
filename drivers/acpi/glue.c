@@ -150,16 +150,16 @@ struct acpi_device *acpi_find_child_device(struct acpi_device *parent,
 	return ret;
 }
 
-acpi_handle acpi_find_child(acpi_handle handle, u64 addr, bool is_bridge)
+acpi_handle acpi_get_child(acpi_handle handle, u64 addr)
 {
 	struct acpi_device *parent;
 
 	if (!handle || acpi_bus_get_device(handle, &parent))
 		return NULL;
 
-	return acpi_find_child_device(parent, addr, is_bridge);
+	return acpi_find_child_device(parent, addr, false);
 }
-EXPORT_SYMBOL_GPL(acpi_find_child);
+EXPORT_SYMBOL_GPL(acpi_get_child);
 
 static void acpi_physnode_link_name(char *buf, unsigned int node_id)
 {
