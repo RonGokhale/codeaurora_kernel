@@ -32,6 +32,7 @@ ALC269/270/275/276/28x/29x
   lenovo-dock   	Enables docking station I/O for some Lenovos
   dell-headset-multi	Headset jack, which can also be used as mic-in
   dell-headset-dock	Headset jack (without mic-in), and also dock I/O
+  zenbook-boost		Add +6dB amp to output of ASUS Zenbook
 
 ALC66x/67x/892
 ==============

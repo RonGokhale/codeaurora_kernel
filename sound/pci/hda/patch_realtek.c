@@ -3799,6 +3799,7 @@ enum {
 	ALC269_FIXUP_ACER_AC700,
 	ALC269_FIXUP_LIMIT_INT_MIC_BOOST,
 	ALC269VB_FIXUP_ASUS_ZENBOOK,
+	ALC269VB_FIXUP_ASUS_ZENBOOK_BOOST,
 	ALC269_FIXUP_LIMIT_INT_MIC_BOOST_MUTE_LED,
 	ALC269VB_FIXUP_ORDISSIMO_EVE2,
 	ALC283_FIXUP_CHROME_BOOK,
@@ -4082,6 +4083,17 @@ static const struct hda_fixup alc269_fixups[] = {
 		.chained = true,
 		.chain_id = ALC269VB_FIXUP_DMIC,
 	},
+	[ALC269VB_FIXUP_ASUS_ZENBOOK_BOOST] = {
+		.type = HDA_FIXUP_VERBS,
+		.v.verbs = (const struct hda_verb[]) {
+			/* class-D output boost +6dB */
+			{0x20, AC_VERB_SET_COEF_INDEX, 0x12},
+			{0x20, AC_VERB_SET_PROC_COEF, 0x3000},
+			{ }
+		},
+		.chained = true,
+		.chain_id = ALC269VB_FIXUP_ASUS_ZENBOOK,
+	},
 	[ALC269_FIXUP_LIMIT_INT_MIC_BOOST_MUTE_LED] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = alc269_fixup_limit_int_mic_boost,
@@ -4299,6 +4311,7 @@ static const struct hda_model_fixup alc269_fixup_models[] = {
 	{.id = ALC269_FIXUP_HP_GPIO_LED, .name = "hp-gpio-led"},
 	{.id = ALC269_FIXUP_DELL1_MIC_NO_PRESENCE, .name = "dell-headset-multi"},
 	{.id = ALC269_FIXUP_DELL2_MIC_NO_PRESENCE, .name = "dell-headset-dock"},
+	{.id = ALC269VB_FIXUP_ASUS_ZENBOOK_BOOST, .name = "zenbook-boost"},
 	{}
 };
 
