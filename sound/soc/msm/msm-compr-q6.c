@@ -150,14 +150,28 @@ static void compr_event_handler(uint32_t opcode,
 		} else
 			atomic_set(&prtd->pending_buffer, 0);
 
-		if (runtime->status->hw_ptr >= runtime->control->appl_ptr) {
+		if (runtime->status->hw_ptr == runtime->control->appl_ptr) {
 			runtime->render_flag |= SNDRV_RENDER_STOPPED;
 			atomic_set(&prtd->pending_buffer, 1);
 			pr_debug("%s:compr driver underrun hw_ptr = %ld appl_ptr = %ld\n",
 				__func__, runtime->status->hw_ptr,
 				runtime->control->appl_ptr);
 			break;
+		} else if(runtime->status->hw_ptr > runtime->control->appl_ptr ) {
+			/*hw_ptr may become greater than appl ptr, in case appl_ptr crosses
+			the boundary*/
+			/* or in case of corruption, acertain that and if it is because of
+			corruption break*/
+			pr_err("%s:compr driver overflow of appl_ptr = %ld boundary %ld \
+				hw_ptr %ld bufferSize %ld",__func__, runtime->control->appl_ptr,
+				runtime->boundary, runtime->status->hw_ptr, runtime->buffer_size);
+			if (!((runtime->boundary - runtime->status->hw_ptr +
+				runtime->control->appl_ptr) < runtime->buffer_size)){
+				pr_err("%s:Error case as hw_ptr is greater than appl_ptr", __func__);
+				break;
+			}
 		}
+
 		buf = prtd->audio_client->port[IN].buf;
 		pr_debug("%s:writing %d bytes of buffer[%d] to dsp 2\n",
 				__func__, prtd->pcm_count, prtd->out_head);
