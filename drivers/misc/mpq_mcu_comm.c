@@ -126,6 +126,9 @@ static int mpq_mcu_dev_resume(struct device *dev)
 
 void mpq_mcu_dev_power_off(void)
 {
+	if (mcu_data == NULL)
+		return;
+
 	gpio_direction_output(mcu_data->pdata->wakeup_gpio, PIN_LOW);
 	udelay(10);
 	gpio_direction_output(mcu_data->pdata->wakeup_gpio, PIN_HIGH);
