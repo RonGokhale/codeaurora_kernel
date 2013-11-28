@@ -90,25 +90,13 @@ struct sysfs_dirent {
 #define SYSFS_COPY_NAME			(SYSFS_DIR | SYSFS_KOBJ_LINK)
 #define SYSFS_ACTIVE_REF		(SYSFS_KOBJ_ATTR | SYSFS_KOBJ_BIN_ATTR)
 
-/* identify any namespace tag on sysfs_dirents */
-#define SYSFS_NS_TYPE_MASK		0xf00
-#define SYSFS_NS_TYPE_SHIFT		8
-
-#define SYSFS_FLAG_MASK			~(SYSFS_NS_TYPE_MASK|SYSFS_TYPE_MASK)
+#define SYSFS_FLAG_MASK			~SYSFS_TYPE_MASK
+#define SYSFS_FLAG_NS			0x01000
 #define SYSFS_FLAG_REMOVED		0x02000
 
 static inline unsigned int sysfs_type(struct sysfs_dirent *sd)
 {
 	return sd->s_flags & SYSFS_TYPE_MASK;
-}
-
-/*
- * Return any namespace tags on this dirent.
- * enum kobj_ns_type is defined in linux/kobject.h
- */
-static inline enum kobj_ns_type sysfs_ns_type(struct sysfs_dirent *sd)
-{
-	return (sd->s_flags & SYSFS_NS_TYPE_MASK) >> SYSFS_NS_TYPE_SHIFT;
 }
 
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
@@ -155,12 +143,13 @@ struct sysfs_addrm_cxt {
  */
 
 /*
- * Each sb is associated with a set of namespace tags (i.e.
- * the network namespace of the task which mounted this sysfs
- * instance).
+ * Each sb is associated with one namespace tag, currently the network
+ * namespace of the task which mounted this sysfs instance.  If multiple
+ * tags become necessary, make the following an array and compare
+ * sysfs_dirent tag against every entry.
  */
 struct sysfs_super_info {
-	void *ns[KOBJ_NS_TYPES];
+	void *ns;
 };
 #define sysfs_info(SB) ((struct sysfs_super_info *)(SB->s_fs_info))
 extern struct sysfs_dirent sysfs_root;
@@ -184,9 +173,6 @@ int __sysfs_add_one(struct sysfs_addrm_cxt *acxt, struct sysfs_dirent *sd,
 		    struct sysfs_dirent *parent_sd);
 int sysfs_add_one(struct sysfs_addrm_cxt *acxt, struct sysfs_dirent *sd,
 		  struct sysfs_dirent *parent_sd);
-void sysfs_remove(struct sysfs_dirent *sd);
-int sysfs_hash_and_remove(struct sysfs_dirent *dir_sd, const char *name,
-			  const void *ns);
 void sysfs_addrm_finish(struct sysfs_addrm_cxt *acxt);
 
 struct sysfs_dirent *sysfs_find_dirent(struct sysfs_dirent *parent_sd,
@@ -198,9 +184,6 @@ void release_sysfs_dirent(struct sysfs_dirent *sd);
 
 int sysfs_create_subdir(struct kobject *kobj, const char *name,
 			struct sysfs_dirent **p_sd);
-
-int sysfs_rename(struct sysfs_dirent *sd, struct sysfs_dirent *new_parent_sd,
-		 const char *new_name, const void *new_ns);
 
 static inline struct sysfs_dirent *__sysfs_get(struct sysfs_dirent *sd)
 {
@@ -224,7 +207,6 @@ static inline void __sysfs_put(struct sysfs_dirent *sd)
  */
 struct inode *sysfs_get_inode(struct super_block *sb, struct sysfs_dirent *sd);
 void sysfs_evict_inode(struct inode *inode);
-int sysfs_sd_setattr(struct sysfs_dirent *sd, struct iattr *iattr);
 int sysfs_permission(struct inode *inode, int mask);
 int sysfs_setattr(struct dentry *dentry, struct iattr *iattr);
 int sysfs_getattr(struct vfsmount *mnt, struct dentry *dentry,

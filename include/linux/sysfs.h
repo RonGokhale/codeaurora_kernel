@@ -12,6 +12,7 @@
 #ifndef _SYSFS_H_
 #define _SYSFS_H_
 
+#include <linux/kernfs.h>
 #include <linux/compiler.h>
 #include <linux/errno.h>
 #include <linux/list.h>
@@ -175,8 +176,6 @@ struct sysfs_ops {
 	ssize_t	(*store)(struct kobject *, struct attribute *, const char *, size_t);
 };
 
-struct sysfs_dirent;
-
 #ifdef CONFIG_SYSFS
 
 int sysfs_schedule_callback(struct kobject *kobj, void (*func)(void *),
@@ -219,6 +218,8 @@ int sysfs_rename_link_ns(struct kobject *kobj, struct kobject *target,
 
 void sysfs_delete_link(struct kobject *dir, struct kobject *targ,
 			const char *name);
+
+void sysfs_enable_ns(struct sysfs_dirent *sd);
 
 int __must_check sysfs_create_group(struct kobject *kobj,
 				    const struct attribute_group *grp);
@@ -350,6 +351,10 @@ static inline int sysfs_rename_link_ns(struct kobject *k, struct kobject *t,
 
 static inline void sysfs_delete_link(struct kobject *k, struct kobject *t,
 				     const char *name)
+{
+}
+
+static inline void sysfs_enable_ns(struct sysfs_dirent *sd)
 {
 }
 

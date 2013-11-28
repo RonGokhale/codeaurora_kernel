@@ -940,19 +940,16 @@ int sysfs_chmod_file(struct kobject *kobj, const struct attribute *attr,
 	struct iattr newattrs;
 	int rc;
 
-	mutex_lock(&sysfs_mutex);
-
-	rc = -ENOENT;
-	sd = sysfs_find_dirent(kobj->sd, attr->name, NULL);
+	sd = sysfs_get_dirent(kobj->sd, attr->name);
 	if (!sd)
-		goto out;
+		return -ENOENT;
 
 	newattrs.ia_mode = (mode & S_IALLUGO) | (sd->s_mode & ~S_IALLUGO);
 	newattrs.ia_valid = ATTR_MODE;
-	rc = sysfs_sd_setattr(sd, &newattrs);
 
- out:
-	mutex_unlock(&sysfs_mutex);
+	rc = kernfs_setattr(sd, &newattrs);
+
+	sysfs_put(sd);
 	return rc;
 }
 EXPORT_SYMBOL_GPL(sysfs_chmod_file);
@@ -970,7 +967,7 @@ void sysfs_remove_file_ns(struct kobject *kobj, const struct attribute *attr,
 {
 	struct sysfs_dirent *dir_sd = kobj->sd;
 
-	sysfs_hash_and_remove(dir_sd, attr->name, ns);
+	kernfs_remove_by_name_ns(dir_sd, attr->name, ns);
 }
 EXPORT_SYMBOL_GPL(sysfs_remove_file_ns);
 
@@ -998,7 +995,7 @@ void sysfs_remove_file_from_group(struct kobject *kobj,
 	else
 		dir_sd = sysfs_get(kobj->sd);
 	if (dir_sd) {
-		sysfs_hash_and_remove(dir_sd, attr->name, NULL);
+		kernfs_remove_by_name(dir_sd, attr->name);
 		sysfs_put(dir_sd);
 	}
 }
@@ -1026,7 +1023,7 @@ EXPORT_SYMBOL_GPL(sysfs_create_bin_file);
 void sysfs_remove_bin_file(struct kobject *kobj,
 			   const struct bin_attribute *attr)
 {
-	sysfs_hash_and_remove(kobj->sd, attr->attr.name, NULL);
+	kernfs_remove_by_name(kobj->sd, attr->attr.name);
 }
 EXPORT_SYMBOL_GPL(sysfs_remove_bin_file);
 
