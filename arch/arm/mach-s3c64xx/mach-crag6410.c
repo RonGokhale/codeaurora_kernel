@@ -114,6 +114,7 @@ static struct platform_pwm_backlight_data crag6410_backlight_data = {
 	.max_brightness	= 1000,
 	.dft_brightness	= 600,
 	.pwm_period_ns	= 100000,	/* about 1kHz */
+	.enable_gpio	= -1,
 };
 
 static struct platform_device crag6410_backlight_device = {
@@ -731,7 +732,7 @@ static struct s3c2410_platform_i2c i2c1_pdata = {
 static void __init crag6410_map_io(void)
 {
 	s3c64xx_init_io(NULL, 0);
-	s3c24xx_init_clocks(12000000);
+	s3c64xx_set_xtal_freq(12000000);
 	s3c24xx_init_uarts(crag6410_uartcfgs, ARRAY_SIZE(crag6410_uartcfgs));
 	samsung_set_timer_source(SAMSUNG_PWM3, SAMSUNG_PWM4);
 
