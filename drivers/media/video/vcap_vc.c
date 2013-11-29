@@ -48,6 +48,34 @@ void config_buffer(struct vcap_client_data *c_data,
 	}
 }
 
+void vc_sw_reset(struct vcap_dev *dev)
+{
+	unsigned int reg;
+	int timeout;
+
+	writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
+	writel_iowmb(0x0, VCAP_VC_INT_MASK);
+	flush_workqueue(dev->vcap_wq);
+	if (atomic_xchg(&dev->vc_enabled, 0) == 1)
+		disable_irq_nosync(dev->vcirq->start);
+
+	writel_iowmb(0x00000000, VCAP_VC_CTRL);
+	writel_iowmb(0x00000001, VCAP_SW_RESET_REQ);
+	timeout = 10000;
+	while (1) {
+		reg = (readl_relaxed(VCAP_SW_RESET_STATUS) & 0x1);
+		if (!reg)
+			break;
+		timeout--;
+		if (timeout == 0) {
+			/* This should not happen */
+			pr_err("VC is not resetting properly\n");
+			writel_iowmb(0x00000000, VCAP_SW_RESET_REQ);
+			break;
+		}
+	}
+}
+
 static void mov_buf_to_vp(struct work_struct *work)
 {
 	struct vp_work_t *vp_work = container_of(work, struct vp_work_t, work);
@@ -168,7 +196,7 @@ inline void vc_isr_error_checking(struct vcap_dev *dev,
 		v4l2_event_queue(dev->vfd, &v4l2_evt);
 	}
 	if (irq & 0x00000400) {
-		writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
+		vc_sw_reset(dev);
 		v4l2_evt.type = V4L2_EVENT_PRIVATE_START +
 			VCAP_VC_LBUF_OFLOW_ERR_EVENT;
 		v4l2_event_queue(dev->vfd, &v4l2_evt);
@@ -450,34 +478,14 @@ void vc_stop_capture(struct vcap_client_data *c_data)
 {
 	struct vcap_dev *dev = c_data->dev;
 	unsigned int reg;
-	int timeout;
 
 	c_data->vc_action.vs_seq_err = 0;
-	writel_iowmb(0x00000102, VCAP_VC_NPL_CTRL);
-	writel_iowmb(0x0, VCAP_VC_INT_MASK);
-	flush_workqueue(dev->vcap_wq);
-	if (atomic_read(&dev->vc_enabled) == 1)
-		disable_irq_nosync(dev->vcirq->start);
-
-	writel_iowmb(0x00000000, VCAP_VC_CTRL);
-	writel_iowmb(0x00000001, VCAP_SW_RESET_REQ);
-	timeout = 10000;
-	while (1) {
-		reg = (readl_relaxed(VCAP_SW_RESET_STATUS) & 0x1);
-		if (!reg)
-			break;
-		timeout--;
-		if (timeout == 0) {
-			/* This should not happen */
-			pr_err("VC is not resetting properly\n");
-			writel_iowmb(0x00000000, VCAP_SW_RESET_REQ);
-			break;
-		}
-	}
+	vc_sw_reset(dev);
 
 	reg = readl_relaxed(VCAP_VC_NPL_CTRL);
 	reg = readl_relaxed(VCAP_VC_NPL_CTRL);
 	writel_iowmb(0x00000002, VCAP_VC_NPL_CTRL);
+	c_data->vc_action.pause = false;
 }
 
 int config_vc_format(struct vcap_client_data *c_data)
@@ -576,5 +584,39 @@ int detect_vc(struct vcap_dev *dev)
 
 int deinit_vc(void)
 {
+	return 0;
+}
+
+int vc_pause(struct vcap_client_data *c_data)
+{
+	/*
+	 * If vc_enable is 1 when reset is called then irq is
+	 * will be disabled. If vc_enable is kept at 0 then
+	 * any qbuf call might trigger vc to come out of puase
+   */
+	atomic_set(&c_data->dev->vc_enabled, 0);
+	vc_sw_reset(c_data->dev);
+	atomic_set(&c_data->dev->vc_enabled, 1);
+	return 0;
+}
+
+int vc_resume(struct vcap_client_data *c_data)
+{
+	struct vcap_dev *dev = c_data->dev;
+	int rc = 0, i;
+
+	/* reconfigure vc in case case s_fmt was called */
+	config_vc_format(c_data);
+	atomic_set(&dev->dbg_p.vc_drop_count, 0);
+
+	for (i = 0; i < c_data->vc_action.tot_buf; i++)
+		rc = rc << 1 | 0x2;
+	rc |= VC_ERR_MASK;
+	rc |= VC_VSYNC_MASK;
+	writel_relaxed(rc, VCAP_VC_INT_MASK);
+
+	/* Reset in pause disables irq */
+	rc = readl_relaxed(VCAP_VC_CTRL);
+	writel_iowmb(rc | 0x1, VCAP_VC_CTRL);
 	return 0;
 }

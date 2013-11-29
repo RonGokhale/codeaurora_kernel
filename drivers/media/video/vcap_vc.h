@@ -72,5 +72,7 @@ void vc_stop_capture(struct vcap_client_data *c_data);
 int config_vc_format(struct vcap_client_data *c_data);
 int detect_vc(struct vcap_dev *dev);
 int deinit_vc(void);
+int vc_pause(struct vcap_client_data *c_data);
+int vc_resume(struct vcap_client_data *c_data);
 irqreturn_t vc_handler(struct vcap_dev *dev);
 #endif

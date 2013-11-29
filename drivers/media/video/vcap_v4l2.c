@@ -932,27 +932,31 @@ static int vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 	switch (priv_fmt->type) {
 	case VC_TYPE:
 		vc_format = (struct v4l2_format_vc_ext *) &priv_fmt->u.timing;
-		c_data->vc_format = *vc_format;
-		c_data->stride = priv_fmt->stride;
 
-		size = (c_data->vc_format.hactive_end -
-			c_data->vc_format.hactive_start);
-		if (c_data->stride == VC_STRIDE_32)
+		size = (vc_format->hactive_end -
+			vc_format->hactive_start);
+		if (priv_fmt->stride == VC_STRIDE_32)
 			size = VCAP_STRIDE_CALC(size, VCAP_STRIDE_ALIGN_32);
 		else
 			size = VCAP_STRIDE_CALC(size, VCAP_STRIDE_ALIGN_16);
 
 
-		if (c_data->vc_format.color_space)
+		if (vc_format->color_space)
 			size *= 3;
 		else
 			size *= 2;
 
 		priv_fmt->u.timing.bytesperline = size;
-		size *= (c_data->vc_format.vactive_end -
-			c_data->vc_format.vactive_start);
+		size *= (vc_format->vactive_end -
+			vc_format->vactive_start);
 		priv_fmt->u.timing.sizeimage = size;
+		if (c_data->streaming && c_data->vc_action.pause &&
+				c_data->vc_action.size != size)
+			return -EINVAL;
+		c_data->vc_action.size = size;
 		c_data->set_cap = true;
+		c_data->vc_format = *vc_format;
+		c_data->stride = priv_fmt->stride;
 		break;
 	case VP_IN_TYPE:
 		c_data->vp_in_fmt.width = priv_fmt->u.pix.width;
@@ -1742,6 +1746,30 @@ static long vidioc_default(struct file *file, void *fh, bool valid_prio,
 		break;
 	case VCAPIOC_TUNE_G_PARAMS:
 		vp_get_tuning_param(c_data, (struct tuning_param *) arg);
+		break;
+	case VCAPIOC_PAUSE:
+		/* Puase only avilale if client is using vc */
+		if (!c_data->streaming && c_data->set_cap) {
+			pr_err("%s: Cannot pause\n", __func__);
+			return -EPERM;
+		}
+		mutex_lock(&c_data->mutex);
+		vc_pause(c_data);
+		mutex_unlock(&c_data->mutex);
+		c_data->vc_action.pause = true;
+		break;
+	case VCAPIOC_RESUME:
+		if (!c_data->vc_action.pause || !c_data->streaming) {
+			pr_err("%s: Cannot resume\n", __func__);
+			return -EPERM;
+		}
+		mutex_lock(&c_data->mutex);
+		vc_resume(c_data);
+		mutex_unlock(&c_data->mutex);
+		c_data->vc_action.pause = false;
+		break;
+	case VCAPIOC_RESET_S_FMT:
+		dealloc_resources(c_data);
 		break;
 	default:
 		return -EINVAL;
