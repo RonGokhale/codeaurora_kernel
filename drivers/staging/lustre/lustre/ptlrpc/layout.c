@@ -738,7 +738,8 @@ static struct req_format *req_formats[] = {
 	&RQF_LLOG_ORIGIN_HANDLE_NEXT_BLOCK,
 	&RQF_LLOG_ORIGIN_HANDLE_PREV_BLOCK,
 	&RQF_LLOG_ORIGIN_HANDLE_READ_HEADER,
-	&RQF_LLOG_ORIGIN_CONNECT
+	&RQF_LLOG_ORIGIN_CONNECT,
+	&RQF_CONNECT,
 };
 
 struct req_msg_field {
@@ -1504,6 +1505,10 @@ struct req_format RQF_LLOG_ORIGIN_CONNECT =
 	DEFINE_REQ_FMT0("LLOG_ORIGIN_CONNECT", llogd_conn_body_only, empty);
 EXPORT_SYMBOL(RQF_LLOG_ORIGIN_CONNECT);
 
+struct req_format RQF_CONNECT =
+	DEFINE_REQ_FMT0("CONNECT", obd_connect_client, obd_connect_server);
+EXPORT_SYMBOL(RQF_CONNECT);
+
 struct req_format RQF_OST_CONNECT =
 	DEFINE_REQ_FMT0("OST_CONNECT",
 			obd_connect_client, obd_connect_server);
@@ -1808,7 +1813,7 @@ swabber_dumper_helper(struct req_capsule *pill,
 		      const struct req_msg_field *field,
 		      enum req_location loc,
 		      int offset,
-		      void *value, int len, int dump, void (*swabber)( void *))
+		      void *value, int len, int dump, void (*swabber)(void *))
 {
 	void    *p;
 	int     i;
@@ -1883,7 +1888,7 @@ swabber_dumper_helper(struct req_capsule *pill,
 static void *__req_capsule_get(struct req_capsule *pill,
 			       const struct req_msg_field *field,
 			       enum req_location loc,
-			       void (*swabber)( void *),
+			       void (*swabber)(void *),
 			       int dump)
 {
 	const struct req_format *fmt;
