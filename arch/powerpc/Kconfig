@@ -1037,11 +1037,6 @@ config KEYS_COMPAT
 
 source "crypto/Kconfig"
 
-config PPC_CLOCK
-	bool
-	default n
-	select HAVE_CLK
-
 config PPC_LIB_RHEAP
 	bool
 
