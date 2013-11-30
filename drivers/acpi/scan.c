@@ -11,9 +11,6 @@
 #include <linux/kthread.h>
 #include <linux/dmi.h>
 #include <linux/nls.h>
-
-#include <acpi/acpi_drivers.h>
-
 #include "internal.h"
 
 #define _COMPONENT		ACPI_BUS_COMPONENT
