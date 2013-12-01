@@ -2991,8 +2991,6 @@ static struct msm_serial_hs_platform_data msm_uart_dm9_pdata = {
 	.uart_cts_gpio	= 95,
 	.uart_rfr_gpio	= 96,
 };
-#else
-static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
 #endif
 
 

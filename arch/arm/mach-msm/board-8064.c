@@ -2855,8 +2855,6 @@ static struct msm_serial_hs_platform_data mpq8064_gsbi6_uartdm_pdata = {
 	.inject_rx_on_wakeup	= 1,
 	.rx_to_inject		= 0xFD,
 };
-#else
-static struct msm_serial_hs_platform_data msm_uart_dm9_pdata;
 #endif
 
 static struct platform_device *mpq_devices[] __initdata = {
@@ -2887,7 +2885,7 @@ static struct msm_spi_platform_data apq8064_qup_spi_gsbi5_pdata = {
 };
 
 static struct msm_spi_platform_data mpq8064_qup_spi_gsbi6_pdata = {
-	.max_clock_speed = 1100000,
+	.max_clock_speed = 10800000,
 };
 
 static struct ci_bridge_platform_data mpq8064_ci_bridge_pdata = {
@@ -2915,12 +2913,23 @@ static struct spi_board_info spi_board_info[] __initdata = {
 	}
 };
 
-static struct spi_board_info mpq8064_spi_board_info[] __initdata = {
+static struct spi_board_info mpq8064_spi_cdp_board_info[] __initdata = {
 	{
 		.modalias		= "ci_bridge_spi",
-		.max_speed_hz		= 1000000,
+		.max_speed_hz		= 1100000,
 		.bus_num		= 1,
 		.chip_select		= 0,
+		.mode			= SPI_MODE_0,
+		.platform_data		= &mpq8064_ci_bridge_pdata,
+	},
+};
+
+static struct spi_board_info mpq8064_spi_dtv_board_info[] __initdata = {
+	{
+		.modalias		= "ci_bridge_spi",
+		.max_speed_hz		= 1100000,
+		.bus_num		= 1,
+		.chip_select		= 2,
 		.mode			= SPI_MODE_0,
 		.platform_data		= &mpq8064_ci_bridge_pdata,
 	},
@@ -3546,7 +3555,7 @@ struct sx150x_platform_data mpq8064_sx150x_pdata[] = {
 	[SX150X_EXP4] = {
 		.gpio_base	= SX150X_EXP4_GPIO_BASE,
 		.oscio_is_gpo	= false,
-		.io_pullup_ena	= 0x0,
+		.io_pullup_ena	= 0x2,
 		.io_pulldn_ena	= 0x0,
 		.io_open_drain_ena = 0x0,
 		.io_polarity	= 0,
@@ -3917,7 +3926,7 @@ static void __init apq8064_cdp_init(void)
 		msm_rotator_set_split_iommu_domain();
 
 		mpq8064_device_qup_spi_gsbi6.dev.platform_data =
-						&mpq8064_qup_spi_gsbi6_pdata;
+					&mpq8064_qup_spi_gsbi6_pdata;
 
 		platform_add_devices(mpq_devices, ARRAY_SIZE(mpq_devices));
 		if (machine_is_mpq8064_hrd() &&
@@ -3926,8 +3935,13 @@ static void __init apq8064_cdp_init(void)
 					 ARRAY_SIZE(mpq8064_hrd_rev2_devices));
 		}
 		mpq8064_pcie_init();
-		spi_register_board_info(mpq8064_spi_board_info,
-					ARRAY_SIZE(mpq8064_spi_board_info));
+
+		if (machine_is_mpq8064_cdp())
+			spi_register_board_info(mpq8064_spi_cdp_board_info,
+				ARRAY_SIZE(mpq8064_spi_cdp_board_info));
+		else
+			spi_register_board_info(mpq8064_spi_dtv_board_info,
+			   ARRAY_SIZE(mpq8064_spi_dtv_board_info));
 	} else {
 		ethernet_init();
 		msm_rotator_set_split_iommu_domain();
