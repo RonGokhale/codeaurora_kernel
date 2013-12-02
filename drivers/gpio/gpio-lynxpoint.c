@@ -331,8 +331,7 @@ static int lp_gpio_irq_map(struct irq_domain *d, unsigned int irq,
 {
 	struct lp_gpio *lg = d->host_data;
 
-	irq_set_chip_and_handler_name(irq, &lp_irqchip, handle_simple_irq,
-				      "demux");
+	irq_set_chip_and_handler(irq, &lp_irqchip, handle_simple_irq);
 	irq_set_chip_data(irq, lg);
 	irq_set_irq_type(irq, IRQ_TYPE_NONE);
 
@@ -438,6 +437,7 @@ static const struct dev_pm_ops lp_gpio_pm_ops = {
 
 static const struct acpi_device_id lynxpoint_gpio_acpi_match[] = {
 	{ "INT33C7", 0 },
+	{ "INT3437", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, lynxpoint_gpio_acpi_match);
@@ -469,4 +469,15 @@ static int __init lp_gpio_init(void)
 	return platform_driver_register(&lp_gpio_driver);
 }
 
+static void __exit lp_gpio_exit(void)
+{
+	platform_driver_unregister(&lp_gpio_driver);
+}
+
 subsys_initcall(lp_gpio_init);
+module_exit(lp_gpio_exit);
+
+MODULE_AUTHOR("Mathias Nyman (Intel)");
+MODULE_DESCRIPTION("GPIO interface for Intel Lynxpoint");
+MODULE_LICENSE("GPL");
+MODULE_ALIAS("platform:lp_gpio");
