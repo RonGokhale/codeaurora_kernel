@@ -191,6 +191,14 @@ nodes to be present and contain the properties described below.
 			  property identifying a 64-bit zero-initialised
 			  memory location.
 
+	- lpae
+		Usage: Indicates that the CPU can use the LPAE extensions to
+		       address more than 32 bit physical memory.
+		Value type: <empty>
+		Definition:
+			# On ARMv7 systems this boolean property is used
+			  to indicate LPAE feature capability.
+
 Example 1 (dual-cluster big.LITTLE system 32-bit):
 
 	cpus {
