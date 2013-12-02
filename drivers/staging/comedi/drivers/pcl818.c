@@ -753,7 +753,7 @@ static void pcl818_ai_mode13dma_int(int mode, struct comedi_device *dev,
 	} else {
 		devpriv->ai_mode = INT_TYPE_AI3_DMA;
 		outb(0x86 | (dev->irq << 4), dev->iobase + PCL818_CONTROL);	/* Ext trig+IRQ+DMA */
-	};
+	}
 }
 
 /*
@@ -1257,8 +1257,6 @@ static int pcl818_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 					    (", unable to allocate IRQ %u, DISABLING IT",
 					     irq);
 					irq = 0;	/* Can't use IRQ */
-				} else {
-					printk(KERN_DEBUG "irq=%u", irq);
 				}
 			}
 		}
