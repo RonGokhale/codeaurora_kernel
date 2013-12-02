@@ -24,7 +24,22 @@ comment "SH-Mobile System Type"
 config ARCH_EMEV2
 	bool "Emma Mobile EV2"
 
+config ARCH_R7S72100
+	bool "RZ/A1H (R7S72100)"
+
+config ARCH_R8A7791
+	bool "R-Car M2 (R8A77910)"
+	select RENESAS_IRQC
+
 comment "SH-Mobile Board Type"
+
+config MACH_GENMAI
+	bool "Genmai board"
+	depends on ARCH_R7S72100
+
+config MACH_KOELSCH
+	bool "Koelsch board"
+	depends on ARCH_R8A7791
 
 config MACH_KZM9D
 	bool "KZM9D board"
@@ -198,6 +213,17 @@ config MACH_GENMAI
 	depends on ARCH_R7S72100
 	select USE_OF
 
+config MACH_GENMAI_REFERENCE
+	bool "Genmai board - Reference Device Tree Implementation"
+	depends on ARCH_R7S72100
+	select USE_OF
+	---help---
+	   Use reference implementation of Genmai board support
+	   which makes use of device tree at the expense
+	   of not supporting a number of devices.
+
+	   This is intended to aid developers
+
 config MACH_MARZEN
 	bool "MARZEN board"
 	depends on ARCH_R8A7779
@@ -238,6 +264,17 @@ config MACH_KOELSCH
 	bool "Koelsch board"
 	depends on ARCH_R8A7791
 	select USE_OF
+
+config MACH_KOELSCH_REFERENCE
+	bool "Koelsch board - Reference Device Tree Implementation"
+	depends on ARCH_R8A7791
+	select USE_OF
+	---help---
+	   Use reference implementation of Koelsch board support
+	   which makes use of device tree at the expense
+	   of not supporting a number of devices.
+
+	   This is intended to aid developers
 
 config MACH_KZM9G
 	bool "KZM-A9-GT board"
