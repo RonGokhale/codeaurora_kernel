@@ -2575,11 +2575,14 @@ static irqreturn_t smsm_irq_handler(int irq, void *data)
 		uint32_t mux_val;
 		static uint32_t prev_smem_q6_apps_smsm;
 
-		if (smsm_info.intr_mux && cpu_is_qsd8x50()) {
+		if (smsm_info.intr_mux &&
+				(cpu_is_qsd8x50() || cpu_is_fsm9xxx())) {
 			mux_val = __raw_readl(
 					SMSM_INTR_MUX_ADDR(SMEM_Q6_APPS_SMSM));
 			if (mux_val != prev_smem_q6_apps_smsm)
 				prev_smem_q6_apps_smsm = mux_val;
+			else
+				return IRQ_HANDLED;
 		}
 
 		spin_lock_irqsave(&smem_lock, flags);
