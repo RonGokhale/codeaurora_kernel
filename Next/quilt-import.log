@@ -1,0 +1,15 @@
+Importing jdelvare-hwmon based on af91706d5ddecb4a9858cca9e90d463037cfd498
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard af91706d5ddecb4a9858cca9e90d463037cfd498
+HEAD is now at af91706d5dde ima: store address of template_fmt_copy in a pointer before calling strsep
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-01-unregister-hwmon-device-if-interrupt-setup-fails.patch
+Applying: hwmon: (lm90) Unregister hwmon device if interrupt setup fails
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-01-add-it8603e-support.patch
+Applying: hwmon: (it87) Add support for the ITE IT8603E
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-02-correct-chip-name.patch
+Applying: hwmon: (it87) Print proper names for the IT8771E and IT8772E
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + b16f9771248b...ee2ccf62e348 master     -> jdelvare-hwmon/master  (forced update)
