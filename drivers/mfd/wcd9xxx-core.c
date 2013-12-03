@@ -45,6 +45,10 @@ struct wcd9xxx_i2c {
 struct wcd9xxx_i2c wcd9xxx_modules[MAX_WCD9XXX_DEVICE];
 static int wcd9xxx_intf = -1;
 
+static struct delayed_work wcd9xxx_init_work;
+
+static struct semaphore wcd9xxx_sem;
+
 static int wcd9xxx_read(struct wcd9xxx *wcd9xxx, unsigned short reg,
 		       int bytes, void *dest, bool interface_reg)
 {
@@ -297,9 +301,11 @@ static int wcd9xxx_reset(struct wcd9xxx *wcd9xxx)
 		}
 
 		gpio_direction_output(wcd9xxx->reset_gpio, 0);
-		msleep(20);
+		schedule_delayed_work(&wcd9xxx_init_work, HZ/50);
+		down(&wcd9xxx_sem);
 		gpio_direction_output(wcd9xxx->reset_gpio, 1);
-		msleep(20);
+		schedule_delayed_work(&wcd9xxx_init_work, HZ/50);
+		down(&wcd9xxx_sem);
 	}
 	return 0;
 }
@@ -1104,11 +1110,19 @@ static int wcd9xxx_slim_get_laddr(struct slim_device *sb,
 	return ret;
 }
 
+static void wcd9xxx_init_delay_work(struct work_struct *work)
+{
+	up(&wcd9xxx_sem);
+}
+
 static int wcd9xxx_slim_probe(struct slim_device *slim)
 {
 	struct wcd9xxx *wcd9xxx;
 	struct wcd9xxx_pdata *pdata;
 	int ret = 0;
+
+	sema_init(&wcd9xxx_sem, 0);
+	INIT_DELAYED_WORK(&wcd9xxx_init_work,   wcd9xxx_init_delay_work);
 
 	if (slim->dev.of_node) {
 		dev_info(&slim->dev, "Platform data from device tree\n");

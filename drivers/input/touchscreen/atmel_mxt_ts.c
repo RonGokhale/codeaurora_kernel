@@ -367,6 +367,8 @@ struct mxt_data {
 
 static struct dentry *debug_base;
 
+static struct delayed_work ts_init_work;
+
 static bool mxt_object_readable(unsigned int type)
 {
 	switch (type) {
@@ -1869,7 +1871,7 @@ static int mxt_input_open(struct input_dev *dev)
 	struct mxt_data *data = input_get_drvdata(dev);
 	int error;
 
-	if (data->state == APPMODE) {
+        if (data->state == APPMODE) {
 		error = mxt_start(data);
 		if (error < 0) {
 			dev_err(&data->client->dev, "mxt_start failed in input_open\n");
@@ -2526,6 +2528,36 @@ static int mxt_parse_dt(struct device *dev, struct mxt_platform_data *pdata)
 }
 #endif
 
+static struct mxt_data *ts_data;
+
+static void ts_init_delay_work(struct work_struct *work)
+{
+	struct mxt_data *data;
+	struct i2c_client *client;
+	int error;
+	data = ts_data;
+
+	error = mxt_initialize(data);
+	if (error)
+		dev_err(&client->dev, "===ts init error====\n");
+
+	client = data->client;
+	error = request_threaded_irq(client->irq, NULL, mxt_interrupt,
+			data->pdata->irqflags, client->dev.driver->name, data);
+	if (error)
+		dev_err(&client->dev, "Failed to register interrupt\n");
+
+	if (data->state == APPMODE) {
+		error = mxt_make_highchg(data);
+		if (error)
+			dev_err(&client->dev, "Failed to make high CHG\n");
+	}
+
+	error = input_register_device(data->input_dev);
+	if (error)
+		dev_err(&client->dev, "===ts_init_delay_work: input_register_device fai===========\n");
+}
+
 static int __devinit mxt_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -2533,6 +2565,8 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	struct mxt_data *data;
 	struct input_dev *input_dev;
 	int error, i;
+
+	INIT_DELAYED_WORK(&ts_init_work,   ts_init_delay_work);
 
 	if (client->dev.of_node) {
 		pdata = devm_kzalloc(&client->dev,
@@ -2663,28 +2697,9 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		}
 	}
 
-	mxt_reset_delay(data);
-	error = mxt_initialize(data);
-	if (error)
-		goto err_reset_gpio_req;
-	error = request_threaded_irq(client->irq, NULL, mxt_interrupt,
-			pdata->irqflags, client->dev.driver->name, data);
-	if (error) {
-		dev_err(&client->dev, "Failed to register interrupt\n");
-		goto err_free_object;
-	}
+	ts_data = data;
 
-	if (data->state == APPMODE) {
-		error = mxt_make_highchg(data);
-		if (error) {
-			dev_err(&client->dev, "Failed to make high CHG\n");
-			goto err_free_irq;
-		}
-	}
-
-	error = input_register_device(input_dev);
-	if (error)
-		goto err_free_irq;
+	schedule_delayed_work(&ts_init_work, HZ/4);
 
 	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
 	if (error)
@@ -2705,10 +2720,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 err_unregister_device:
 	input_unregister_device(input_dev);
 	input_dev = NULL;
-err_free_irq:
-	free_irq(client->irq, data);
-err_free_object:
-	kfree(data->object_table);
 err_reset_gpio_req:
 	if (gpio_is_valid(pdata->reset_gpio))
 		gpio_free(pdata->reset_gpio);
