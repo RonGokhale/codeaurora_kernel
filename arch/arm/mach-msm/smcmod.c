@@ -344,20 +344,17 @@ static int smcmod_send_cipher_cmd(struct smcmod_cipher_req *reqp)
 	}
 
 	/* Only the scm_req structure will be flushed by scm_call,
-	 * so we must flush the cache for the input ion buffers here.
+	 * so we must flush the cache for the input & output ion
+	 * buffers here.
 	 */
 	msm_ion_do_cache_op(ion_clientp, ion_key_handlep, NULL,
 		scm_req.key_size, ION_IOC_CLEAN_CACHES);
 	msm_ion_do_cache_op(ion_clientp, ion_iv_handlep, NULL,
 		scm_req.init_vector_size, ION_IOC_CLEAN_CACHES);
-
-	/* For decrypt, cipher text is input, otherwise it's plain text. */
-	if (reqp->operation)
-		msm_ion_do_cache_op(ion_clientp, ion_cipher_handlep, NULL,
-			scm_req.cipher_text_size, ION_IOC_CLEAN_CACHES);
-	else
-		msm_ion_do_cache_op(ion_clientp, ion_plain_handlep, NULL,
-			scm_req.plain_text_size, ION_IOC_CLEAN_CACHES);
+	msm_ion_do_cache_op(ion_clientp, ion_cipher_handlep, NULL,
+		scm_req.cipher_text_size, ION_IOC_CLEAN_CACHES);
+	msm_ion_do_cache_op(ion_clientp, ion_plain_handlep, NULL,
+		scm_req.plain_text_size, ION_IOC_CLEAN_CACHES);
 
 	/* call scm function to switch to secure world */
 	reqp->return_val = scm_call(SMCMOD_SVC_CRYPTO,
@@ -471,12 +468,15 @@ static int smcmod_send_msg_digest_cmd(struct smcmod_msg_digest_req *reqp)
 	}
 
 	/* Only the scm_req structure will be flushed by scm_call,
-	 * so we must flush the cache for the input ion buffers here.
+	 * so we must flush the cache for the input & output ion
+	 * buffers here.
 	 */
 	msm_ion_do_cache_op(ion_clientp, ion_key_handlep, NULL,
 		scm_req.key_size, ION_IOC_CLEAN_CACHES);
 	msm_ion_do_cache_op(ion_clientp, ion_input_handlep, NULL,
 		scm_req.input_size, ION_IOC_CLEAN_CACHES);
+	msm_ion_do_cache_op(ion_clientp, ion_output_handlep, NULL,
+		scm_req.output_size, ION_IOC_CLEAN_CACHES);
 
 	/* call scm function to switch to secure world */
 	if (reqp->fixed_block)
