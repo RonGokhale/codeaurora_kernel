@@ -1,28 +1,22 @@
 /*
- * fs/sysfs/inode.c - basic sysfs inode and dentry operations
+ * fs/kernfs/inode.c - kernfs inode implementation
  *
  * Copyright (c) 2001-3 Patrick Mochel
  * Copyright (c) 2007 SUSE Linux Products GmbH
- * Copyright (c) 2007 Tejun Heo <teheo@suse.de>
+ * Copyright (c) 2007, 2013 Tejun Heo <tj@kernel.org>
  *
  * This file is released under the GPLv2.
- *
- * Please see Documentation/filesystems/sysfs.txt for more information.
  */
 
-#undef DEBUG
-
 #include <linux/pagemap.h>
-#include <linux/namei.h>
 #include <linux/backing-dev.h>
 #include <linux/capability.h>
 #include <linux/errno.h>
-#include <linux/sched.h>
 #include <linux/slab.h>
-#include <linux/sysfs.h>
 #include <linux/xattr.h>
 #include <linux/security.h>
-#include "sysfs.h"
+
+#include "kernfs-internal.h"
 
 static const struct address_space_operations sysfs_aops = {
 	.readpage	= simple_readpage,
@@ -43,9 +37,10 @@ static const struct inode_operations sysfs_inode_operations = {
 	.setxattr	= sysfs_setxattr,
 };
 
-int __init sysfs_inode_init(void)
+void __init sysfs_inode_init(void)
 {
-	return bdi_init(&sysfs_backing_dev_info);
+	if (bdi_init(&sysfs_backing_dev_info))
+		panic("failed to init sysfs_backing_dev_info");
 }
 
 static struct sysfs_inode_attrs *sysfs_init_inode_attrs(struct sysfs_dirent *sd)
@@ -67,7 +62,7 @@ static struct sysfs_inode_attrs *sysfs_init_inode_attrs(struct sysfs_dirent *sd)
 	return attrs;
 }
 
-int sysfs_sd_setattr(struct sysfs_dirent *sd, struct iattr *iattr)
+static int __kernfs_setattr(struct sysfs_dirent *sd, const struct iattr *iattr)
 {
 	struct sysfs_inode_attrs *sd_attrs;
 	struct iattr *iattrs;
@@ -102,6 +97,23 @@ int sysfs_sd_setattr(struct sysfs_dirent *sd, struct iattr *iattr)
 	return 0;
 }
 
+/**
+ * kernfs_setattr - set iattr on a node
+ * @sd: target node
+ * @iattr: iattr to set
+ *
+ * Returns 0 on success, -errno on failure.
+ */
+int kernfs_setattr(struct sysfs_dirent *sd, const struct iattr *iattr)
+{
+	int ret;
+
+	mutex_lock(&sysfs_mutex);
+	ret = __kernfs_setattr(sd, iattr);
+	mutex_unlock(&sysfs_mutex);
+	return ret;
+}
+
 int sysfs_setattr(struct dentry *dentry, struct iattr *iattr)
 {
 	struct inode *inode = dentry->d_inode;
@@ -116,7 +128,7 @@ int sysfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	if (error)
 		goto out;
 
-	error = sysfs_sd_setattr(sd, iattr);
+	error = __kernfs_setattr(sd, iattr);
 	if (error)
 		goto out;
 
@@ -237,9 +249,8 @@ int sysfs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 
 static void sysfs_init_inode(struct sysfs_dirent *sd, struct inode *inode)
 {
-	struct bin_attribute *bin_attr;
-
-	inode->i_private = sysfs_get(sd);
+	kernfs_get(sd);
+	inode->i_private = sd;
 	inode->i_mapping->a_ops = &sysfs_aops;
 	inode->i_mapping->backing_dev_info = &sysfs_backing_dev_info;
 	inode->i_op = &sysfs_inode_operations;
@@ -254,13 +265,8 @@ static void sysfs_init_inode(struct sysfs_dirent *sd, struct inode *inode)
 		inode->i_fop = &sysfs_dir_operations;
 		break;
 	case SYSFS_KOBJ_ATTR:
-		inode->i_size = PAGE_SIZE;
-		inode->i_fop = &sysfs_file_operations;
-		break;
-	case SYSFS_KOBJ_BIN_ATTR:
-		bin_attr = sd->s_attr.bin_attr;
-		inode->i_size = bin_attr->size;
-		inode->i_fop = &sysfs_bin_operations;
+		inode->i_size = sd->s_attr.size;
+		inode->i_fop = &kernfs_file_operations;
 		break;
 	case SYSFS_KOBJ_LINK:
 		inode->i_op = &sysfs_symlink_inode_operations;
@@ -311,7 +317,7 @@ void sysfs_evict_inode(struct inode *inode)
 
 	truncate_inode_pages(&inode->i_data, 0);
 	clear_inode(inode);
-	sysfs_put(sd);
+	kernfs_put(sd);
 }
 
 int sysfs_permission(struct inode *inode, int mask)
