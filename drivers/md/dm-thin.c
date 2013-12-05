@@ -164,7 +164,7 @@ struct pool {
 
 	struct pool_features pf;
 	bool low_water_triggered:1;	/* A dm event has been sent */
-	bool no_free_space:1;		/* A -ENOSPC warning has been issued */
+	bool may_requeue_bios:1;	/* Data may be requeued if set */
 
 	struct dm_bio_prison *prison;
 	struct dm_kcopyd_client *copier;
@@ -965,16 +965,36 @@ static int alloc_data_block(struct thin_c *tc, dm_block_t *result)
  * If we have run out of space, queue bios until the device is
  * resumed, presumably after having been reloaded with more space.
  */
-static void retry_on_resume(struct bio *bio)
+static void __retry_on_resume(struct bio *bio)
 {
 	struct dm_thin_endio_hook *h = dm_per_bio_data(bio, sizeof(struct dm_thin_endio_hook));
 	struct thin_c *tc = h->tc;
 	struct pool *pool = tc->pool;
+
+	bio_list_add(&pool->retry_on_resume_list, bio);
+}
+
+static void handle_unserviceable_bio(struct pool *pool, struct bio *bio)
+{
 	unsigned long flags;
 
-	spin_lock_irqsave(&pool->lock, flags);
-	bio_list_add(&pool->retry_on_resume_list, bio);
-	spin_unlock_irqrestore(&pool->lock, flags);
+	WARN_ON(get_pool_mode(pool) != PM_READ_ONLY);
+
+	/*
+	 * When pool is read-only, no cell locking is needed because
+	 * nothing is changing.
+	 */
+	if (pool->may_requeue_bios) {
+		spin_lock_irqsave(&pool->lock, flags);
+		if (pool->may_requeue_bios) {
+			__retry_on_resume(bio);
+			spin_unlock_irqrestore(&pool->lock, flags);
+			return;
+		}
+		spin_unlock_irqrestore(&pool->lock, flags);
+	}
+
+	bio_io_error(bio);
 }
 
 static void retry_bios_on_resume(struct pool *pool, struct dm_bio_prison_cell *cell)
@@ -986,7 +1006,7 @@ static void retry_bios_on_resume(struct pool *pool, struct dm_bio_prison_cell *c
 	cell_release(pool, cell, &bios);
 
 	while ((bio = bio_list_pop(&bios)))
-		retry_on_resume(bio);
+		handle_unserviceable_bio(pool, bio);
 }
 
 static void process_discard(struct thin_c *tc, struct bio *bio)
@@ -1240,7 +1260,7 @@ static void process_bio_read_only(struct thin_c *tc, struct bio *bio)
 	switch (r) {
 	case 0:
 		if (lookup_result.shared && (rw == WRITE) && bio->bi_size)
-			bio_io_error(bio);
+			handle_unserviceable_bio(tc->pool, bio);
 		else {
 			inc_all_io_entry(tc->pool, bio);
 			remap_and_issue(tc, bio, lookup_result.block);
@@ -1249,7 +1269,7 @@ static void process_bio_read_only(struct thin_c *tc, struct bio *bio)
 
 	case -ENODATA:
 		if (rw != READ) {
-			bio_io_error(bio);
+			handle_unserviceable_bio(tc->pool, bio);
 			break;
 		}
 
@@ -1417,12 +1437,12 @@ static void set_pool_mode(struct pool *pool, enum pool_mode mode)
 	}
 }
 
-static void set_no_free_space(struct pool *pool)
+static void set_may_requeue_bios(struct pool *pool)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&pool->lock, flags);
-	pool->no_free_space = true;
+	pool->may_requeue_bios = true;
 	spin_unlock_irqrestore(&pool->lock, flags);
 }
 
@@ -1434,7 +1454,7 @@ static void out_of_data_space(struct pool *pool)
 {
 	DMERR_LIMIT("%s: no free data space available.",
 		    dm_device_name(pool->pool_md));
-	set_no_free_space(pool);
+	set_may_requeue_bios(pool);
 	set_pool_mode(pool, PM_READ_ONLY);
 }
 
@@ -1450,7 +1470,7 @@ static void metadata_operation_failed(struct pool *pool, const char *op, int r)
 	    !free_blocks) {
 		DMERR_LIMIT("%s: no free metadata space available.",
 			    dm_device_name(pool->pool_md));
-		set_no_free_space(pool);
+		set_may_requeue_bios(pool);
 	}
 
 	set_pool_mode(pool, PM_READ_ONLY);
@@ -1560,9 +1580,9 @@ static int thin_bio_map(struct dm_target *ti, struct bio *bio)
 		if (get_pool_mode(tc->pool) == PM_READ_ONLY) {
 			/*
 			 * This block isn't provisioned, and we have no way
-			 * of doing so.  Just error it.
+			 * of doing so.
 			 */
-			bio_io_error(bio);
+			handle_unserviceable_bio(tc->pool, bio);
 			return DM_MAPIO_SUBMITTED;
 		}
 		/* fall through */
@@ -1795,7 +1815,7 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	INIT_LIST_HEAD(&pool->prepared_mappings);
 	INIT_LIST_HEAD(&pool->prepared_discards);
 	pool->low_water_triggered = false;
-	pool->no_free_space = false;
+	pool->may_requeue_bios = false;
 	bio_list_init(&pool->retry_on_resume_list);
 
 	pool->shared_read_ds = dm_deferred_set_create();
@@ -2317,7 +2337,7 @@ static void pool_resume(struct dm_target *ti)
 
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->low_water_triggered = false;
-	pool->no_free_space = false;
+	pool->may_requeue_bios = false;
 	__requeue_bios(pool);
 	spin_unlock_irqrestore(&pool->lock, flags);
 
