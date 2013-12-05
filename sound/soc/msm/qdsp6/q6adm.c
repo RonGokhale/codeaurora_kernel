@@ -1386,6 +1386,13 @@ int adm_multi_ch_copp_open_v2(int port_id, int path, int rate, int channel_mode,
 					channel_mode);
 			return -EINVAL;
 		}
+		if ((channel_mode > 2) &&
+			multi_ch_map.set_channel_map &&
+			path == ADM_PATH_PLAYBACK)
+			memcpy(open.dev_channel_mapping,
+				multi_ch_map.channel_mapping,
+				PCM_FORMAT_MAX_NUM_CHANNEL);
+
 		open.hdr.src_svc = APR_SVC_ADM;
 		open.hdr.src_domain = APR_DOMAIN_APPS;
 		open.hdr.src_port = port_id;
