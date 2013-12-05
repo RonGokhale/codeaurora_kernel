@@ -307,6 +307,15 @@ struct afe_port_pseudo_cfg {
 	u16 reserved;
 } __packed;
 
+#define AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG_V2           0x000100F2
+
+/* Structure for the AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG command. */
+struct afe_port_hdmi_multi_ch_cfg_v2 {
+	uint16_t                  data_type;
+	uint16_t                  channel_allocation;
+	uint16_t                  bit_width;
+} __packed;
+
 #define AFE_PORT_AUDIO_IF_CONFIG 0x000100d3
 #define AFE_PORT_AUDIO_SLIM_SCH_CONFIG 0x000100e4
 #define AFE_PORT_MULTI_CHAN_HDMI_AUDIO_IF_CONFIG	0x000100D9
@@ -317,6 +326,7 @@ union afe_port_config {
 	struct afe_port_mi2s_cfg          mi2s;
 	struct afe_port_hdmi_cfg          hdmi;
 	struct afe_port_hdmi_multi_ch_cfg hdmi_multi_ch;
+	struct afe_port_hdmi_multi_ch_cfg_v2 hdmi_multi_ch_v2;
 	struct afe_port_slimbus_cfg	  slimbus;
 	struct afe_port_slimbus_sch_cfg	  slim_sch;
 	struct afe_port_rtproxy_cfg       rtproxy;
