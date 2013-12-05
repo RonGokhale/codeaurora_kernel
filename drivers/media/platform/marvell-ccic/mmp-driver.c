@@ -460,6 +460,7 @@ static int mmpcam_remove(struct mmp_camera *cam)
 	mmpcam_remove_device(cam);
 	mccic_shutdown(mcam);
 	mmpcam_power_down(mcam);
+	mcam_deinit_clk(mcam);
 	return 0;
 }
 
