@@ -1062,16 +1062,26 @@ int adm_multi_ch_copp_pseudo_open_v3(int port_id, int path,
 		open.hdr.opcode = ADM_CMD_MULTI_CHANNEL_COPP_OPEN_V3;
 		memset(open.dev_channel_mapping, 0, 8);
 
-		if (channel_mode == 1)	{
+		if (channel_mode == 1) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 2) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+		} else if (channel_mode == 3) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 4) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
 			open.dev_channel_mapping[2] = PCM_CHANNEL_LS;
 			open.dev_channel_mapping[3] = PCM_CHANNEL_RS;
+		} else if (channel_mode == 5) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[3] = PCM_CHANNEL_LS;
+			open.dev_channel_mapping[4] = PCM_CHANNEL_RS;
 		} else if (channel_mode == 6) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FL;
@@ -1421,7 +1431,7 @@ int adm_multi_ch_copp_open_v2(int port_id, int path, int rate, int channel_mode,
 		pr_debug("%s: rate=%d topology_id=0x%X\n",
 			__func__, open.rate, open.topology_id);
 
-		atomic_set(&this_adm.copp_stat[index], 0);
+		atomic_set(&this_adm.cmd_open_state[index], 0);
 
 		ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
 		if (ret < 0) {
@@ -1432,7 +1442,7 @@ int adm_multi_ch_copp_open_v2(int port_id, int path, int rate, int channel_mode,
 		}
 		/* Wait for the callback with copp id */
 		ret = wait_event_timeout(this_adm.wait,
-			atomic_read(&this_adm.copp_stat[index]),
+			atomic_read(&this_adm.cmd_open_state[index]),
 			msecs_to_jiffies(TIMEOUT_MS));
 		if (!ret) {
 			pr_err("%s ADM open failed for port %d\n", __func__,
