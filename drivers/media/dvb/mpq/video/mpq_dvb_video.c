@@ -165,6 +165,13 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			return;
 		}
 
+		if(dev_inst->client_ctx->stop_called == true) {
+			DBG("VCD driver STOPPED already\n");
+			return;
+		}
+
+		mutex_lock(&mpq_dvb_video_device->lock);
+
 		DBG("Received Free Buffer : %d\n", free_buf);
 		data_drop = 0;
 
@@ -172,6 +179,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 
 		if (-1 == indx) {
 			DBG("Invalid Index -1\n");
+			mutex_unlock(&mpq_dvb_video_device->lock);
 			return;
 		}
 
@@ -347,6 +355,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 		default:
 			break;
 		}
+		mutex_unlock(&mpq_dvb_video_device->lock);
 	} while (!frame_found);
 
 }
@@ -1618,11 +1627,15 @@ static int mpq_int_vid_dec_pause_resume(struct video_client_ctx *client_ctx,
 		return 0;
 }
 
-static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_start_stop(struct mpq_dvb_video_inst *dev_inst,
 					u32 start)
 {
 	struct vid_dec_msg *vdec_msg = NULL;
 	u32 vcd_status;
+
+	struct video_client_ctx *client_ctx = NULL;
+
+	client_ctx = (struct video_client_ctx *)dev_inst->client_ctx;
 
 	DBG("Inside %s()", __func__);
 	if (!client_ctx) {
@@ -1671,6 +1684,7 @@ static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
 		vcd_status = VCD_ERR_FAIL;
 		if (!client_ctx->stop_called) {
 			client_ctx->stop_called = true;
+			kthread_stop(dev_inst->dmx_src_data->data_task);
 			vcd_status = vcd_stop(client_ctx->vcd_handle);
 		}
 		if (vcd_status) {
@@ -2088,7 +2102,7 @@ static int mpq_dvb_video_term_dmx_src(struct mpq_dvb_video_inst *dev_inst)
 	if (NULL == dmx_data)
 		return 0;
 
-	kthread_stop(dmx_data->data_task);
+	/* kthread_stop(dmx_data->data_task); */
 	mutex_destroy(&dmx_data->msg_queue_lock);
 
 	kfree(dmx_data);
@@ -2529,12 +2543,12 @@ unsigned int mpq_mpeg2_convert_framerate(unsigned int framerate)
 
 static int mpq_dvb_video_play(struct mpq_dvb_video_inst *dev_inst)
 {
-	return mpq_int_vid_dec_start_stop(dev_inst->client_ctx, true);
+	return mpq_int_vid_dec_start_stop(dev_inst, true);
 }
 
-static int mpq_dvb_video_stop(struct video_client_ctx *client_ctx)
+static int mpq_dvb_video_stop(struct mpq_dvb_video_inst *dev_inst)
 {
-	return mpq_int_vid_dec_start_stop(client_ctx, false);
+	return mpq_int_vid_dec_start_stop(dev_inst, false);
 }
 
 static void mpq_dvb_video_get_stream_if(
@@ -2639,7 +2653,7 @@ static int mpq_dvb_video_ioctl(struct file *file,
 	case VIDEO_STOP:
 		DBG("ioctl : VIDEO_STOP\n");
 		dev_inst->framerate = 0;
-		rc = mpq_dvb_video_stop(client_ctx);
+		rc = mpq_dvb_video_stop(dev_inst);
 		break;
 	case VIDEO_FREEZE:
 		DBG("ioctl : VIDEO_FREEZE\n");
