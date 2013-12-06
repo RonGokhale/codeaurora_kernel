@@ -57,6 +57,9 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+#if defined (AUTOPLAT_001)
+#define LVDS_LGE_PANEL_NAME "lvds_lge_wvga"
+#endif /*AUTOPLAT_001*/
 #define LVDS_CHIMEI_PANEL_NAME "lvds_chimei_wxga"
 #define LVDS_FRC_PANEL_NAME "lvds_frc_fhd"
 #define MIPI_VIDEO_TOSHIBA_WSVGA_PANEL_NAME "mipi_video_toshiba_wsvga"
@@ -111,10 +114,21 @@ static int msm_fb_detect_panel(const char *name)
 				PANEL_NAME_MAX_LEN)))
 			return 0;
 	} else if (machine_is_apq8064_cdp()) {
+#if defined (AUTOPLAT_001)
+		if (!strncmp(name, LVDS_CHIMEI_PANEL_NAME,
+			strnlen(LVDS_CHIMEI_PANEL_NAME,
+				PANEL_NAME_MAX_LEN)) ||
+			!strncmp(name, LVDS_LGE_PANEL_NAME,
+				strnlen(LVDS_LGE_PANEL_NAME,
+					PANEL_NAME_MAX_LEN)))
+			return 0;
+#else
 		if (!strncmp(name, LVDS_CHIMEI_PANEL_NAME,
 			strnlen(LVDS_CHIMEI_PANEL_NAME,
 				PANEL_NAME_MAX_LEN)))
 			return 0;
+
+#endif /*AUTOPLAT_001*/
 	} else if (machine_is_mpq8064_dtv()) {
 		if (!strncmp(name, LVDS_FRC_PANEL_NAME,
 			strnlen(LVDS_FRC_PANEL_NAME,
