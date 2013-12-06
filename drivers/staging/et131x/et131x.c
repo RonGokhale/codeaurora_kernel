@@ -1679,7 +1679,7 @@ static int et131x_mdio_reset(struct mii_bus *bus)
 	return 0;
 }
 
-/*	et1310_phy_power_down	-	PHY power control
+/*	et1310_phy_power_switch	-	PHY power control
  *	@adapter: device to control
  *	@down: true for off/false for back on
  *
@@ -1688,7 +1688,7 @@ static int et131x_mdio_reset(struct mii_bus *bus)
  *	Can't you see that this code processed
  *	Phy power, phy power..
  */
-static void et1310_phy_power_down(struct et131x_adapter *adapter, bool down)
+static void et1310_phy_power_switch(struct et131x_adapter *adapter, bool down)
 {
 	u16 data;
 
@@ -1938,7 +1938,7 @@ static void et131x_adapter_setup(struct et131x_adapter *adapter)
 
 	et1310_config_macstat_regs(adapter);
 
-	et1310_phy_power_down(adapter, 0);
+	et1310_phy_power_switch(adapter, 0);
 	et131x_xcvr_init(adapter);
 }
 
@@ -2450,7 +2450,6 @@ static int et131x_init_recv(struct et131x_adapter *adapter)
 {
 	struct rfd *rfd;
 	u32 rfdct;
-	u32 numrfd = 0;
 	struct rx_ring *rx_ring;
 
 	/* Setup some convenience pointers */
@@ -2467,9 +2466,8 @@ static int et131x_init_recv(struct et131x_adapter *adapter)
 		/* Add this RFD to the recv_list */
 		list_add_tail(&rfd->list_node, &rx_ring->recv_list);
 
-		/* Increment both the available RFD's, and the total RFD's. */
+		/* Increment the available RFD's */
 		rx_ring->num_ready_recv++;
-		numrfd++;
 	}
 
 	return 0;
@@ -4930,7 +4928,7 @@ err_disable:
 	goto out;
 }
 
-static DEFINE_PCI_DEVICE_TABLE(et131x_pci_table) = {
+static const struct pci_device_id et131x_pci_table[] = {
 	{ PCI_VDEVICE(ATT, ET131X_PCI_DEVICE_ID_GIG), 0UL},
 	{ PCI_VDEVICE(ATT, ET131X_PCI_DEVICE_ID_FAST), 0UL},
 	{0,}
