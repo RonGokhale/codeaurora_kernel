@@ -185,7 +185,7 @@ static u64 get_coherent_dma_mask(struct device *dev)
 		 */
 		if (sizeof(mask) != sizeof(dma_addr_t) &&
 		    mask > (dma_addr_t)~0 &&
-		    dma_to_pfn(dev, ~0) > max_dma_pfn) {
+		    dma_to_pfn(dev, ~0) < max_dma_pfn) {
 			dev_warn(dev, "Coherent DMA mask %#llx is larger than dma_addr_t allows\n",
 				 mask);
 			dev_warn(dev, "Driver did not use or check the return value from dma_set_coherent_mask()?\n");
@@ -1041,7 +1041,7 @@ int dma_supported(struct device *dev, u64 mask)
 	 */
 	if (sizeof(mask) != sizeof(dma_addr_t) &&
 	    mask > (dma_addr_t)~0 &&
-	    dma_to_pfn(dev, ~0) > arm_dma_pfn_limit)
+	    dma_to_pfn(dev, ~0) < min(max_pfn, arm_dma_pfn_limit))
 		return 0;
 
 	/*
