@@ -2098,11 +2098,17 @@ static int mpq_dvb_video_term_dmx_src(struct mpq_dvb_video_inst *dev_inst)
 {
 
 	struct mpq_dmx_src_data *dmx_data = dev_inst->dmx_src_data;
-
+	struct video_client_ctx *client_ctx = NULL;
 	if (NULL == dmx_data)
 		return 0;
 
-	/* kthread_stop(dmx_data->data_task); */
+	client_ctx = (struct video_client_ctx *)dev_inst->client_ctx;
+
+	if (!client_ctx->stop_called) {
+		mutex_lock(&mpq_dvb_video_device->lock);
+		kthread_stop(dev_inst->dmx_src_data->data_task);
+		mutex_unlock(&mpq_dvb_video_device->lock);
+	}
 	mutex_destroy(&dmx_data->msg_queue_lock);
 
 	kfree(dmx_data);
@@ -2119,8 +2125,10 @@ static int mpq_dvb_video_release(struct inode *inode, struct file *file)
 
 	vidc_cleanup_addr_table(dev_inst->client_ctx, BUFFER_TYPE_OUTPUT);
 	vidc_cleanup_addr_table(dev_inst->client_ctx, BUFFER_TYPE_INPUT);
+
 	if (dev_inst->source == VIDEO_SOURCE_DEMUX)
 		mpq_dvb_video_term_dmx_src(dev_inst);
+
 	mpq_int_vid_dec_close_client(dev_inst->client_ctx);
 	memset((void *)dev_inst, 0, sizeof(struct mpq_dvb_video_inst));
 	vidc_release_firmware();
