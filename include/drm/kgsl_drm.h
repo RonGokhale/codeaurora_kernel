@@ -244,7 +244,7 @@ struct drm_kgsl_gem_cache_ops {
 
 #ifdef __KERNEL__
 extern void mdss_mdp_clk_ctrl(int enable, int isr);
-extern void mdp3_clk_enable(int enable);
+extern void mdp3_clk_enable(int enable, int dsi_clk);
 #endif /* __KERNEL__ */
 
 #endif
