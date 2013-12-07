@@ -52,7 +52,11 @@
 
 /* Address of GSBI blocks */
 #define MSM_GSBI1_PHYS		0x12440000
+#if !defined (AUTOPLAT_001)
 #define MSM_GSBI2_PHYS		0x13440000
+#else
+#define MSM_GSBI2_PHYS		0x12480000
+#endif /* AUTOPLAT_001 */
 #define MSM_GSBI3_PHYS		0x16200000
 #define MSM_GSBI4_PHYS		0x16300000
 #define MSM_GSBI5_PHYS		0x1A200000
