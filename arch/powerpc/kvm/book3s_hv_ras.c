@@ -12,7 +12,6 @@
 #include <linux/kvm_host.h>
 #include <linux/kernel.h>
 #include <asm/opal.h>
-#include <asm/mce.h>
 
 /* SRR1 bits for machine check on POWER7 */
 #define SRR1_MC_LDSTERR		(1ul << (63-42))
@@ -68,7 +67,9 @@ static void reload_slb(struct kvm_vcpu *vcpu)
 static long kvmppc_realmode_mc_power7(struct kvm_vcpu *vcpu)
 {
 	unsigned long srr1 = vcpu->arch.shregs.msr;
-	struct machine_check_event mce_evt;
+#ifdef CONFIG_PPC_POWERNV
+	struct opal_machine_check_event *opal_evt;
+#endif
 	long handled = 1;
 
 	if (srr1 & SRR1_MC_LDSTERR) {
@@ -108,31 +109,22 @@ static long kvmppc_realmode_mc_power7(struct kvm_vcpu *vcpu)
 		handled = 0;
 	}
 
+#ifdef CONFIG_PPC_POWERNV
 	/*
-	 * See if we have already handled the condition in the linux host.
-	 * We assume that if the condition is recovered then linux host
+	 * See if OPAL has already handled the condition.
+	 * We assume that if the condition is recovered then OPAL
 	 * will have generated an error log event that we will pick
 	 * up and log later.
-	 * Don't release mce event now. In case if condition is not
-	 * recovered we do guest exit and go back to linux host machine
-	 * check handler. Hence we need make sure that current mce event
-	 * is available for linux host to consume.
 	 */
-	if (!get_mce_event(&mce_evt, MCE_EVENT_DONTRELEASE))
-		goto out;
-
-	if (mce_evt.version == MCE_V1 &&
-	    (mce_evt.severity == MCE_SEV_NO_ERROR ||
-	     mce_evt.disposition == MCE_DISPOSITION_RECOVERED))
+	opal_evt = local_paca->opal_mc_evt;
+	if (opal_evt->version == OpalMCE_V1 &&
+	    (opal_evt->severity == OpalMCE_SEV_NO_ERROR ||
+	     opal_evt->disposition == OpalMCE_DISPOSITION_RECOVERED))
 		handled = 1;
 
-out:
-	/*
-	 * If we have handled the error, then release the mce event because
-	 * we will be delivering machine check to guest.
-	 */
 	if (handled)
-		release_mce_event();
+		opal_evt->in_use = 0;
+#endif
 
 	return handled;
 }
