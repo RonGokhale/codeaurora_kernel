@@ -3334,8 +3334,8 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 	unsigned long *start, unsigned long *len, struct file **srcp_file,
 	int *p_need, struct ion_handle **srcp_ihdl)
 {
-	struct file *file;
-	int put_needed, ret = 0, fb_num;
+	struct file *file = NULL;
+	int put_needed = 0, ret = 0, fb_num;
 #ifdef CONFIG_ANDROID_PMEM
 	unsigned long vstart;
 #endif
@@ -3346,7 +3346,21 @@ static int get_img(struct msmfb_data *img, struct fb_info *info,
 		return kgsl_gem_obj_addr(img->memory_id, (int) img->priv,
 					 start, len);
 	}
+#if defined(AUTOPLAT_001)
+	if (img->flags & MDP_MEMORY_ID_TYPE_FB_SUB) {
+		pipe->flags |= MDP_MEMORY_ID_TYPE_FB_SUB;
+			fb_num = 0;
+			if (get_fb_phys_info(start, len, fb_num,
+				DISPLAY_SUBSYSTEM_ID)) {
+				ret = -1;
+			} else {
+				*srcp_file = file;
+				*p_need = put_needed;
+			}
 
+		return ret;
+	}
+#endif /* AUTOPLAT_001 */
 	if (img->flags & MDP_MEMORY_ID_TYPE_FB) {
 		file = fget_light(img->memory_id, &put_needed);
 		if (file == NULL)
@@ -4049,11 +4063,12 @@ int mdp4_v4l2_overlay_set(struct fb_info *info, struct mdp_overlay *req,
 	struct mdp4_overlay_pipe *pipe;
 	int err;
 	struct msm_fb_data_type *mfb = info->par;
-
+#if !defined(AUTOPLAT_001)
 	req->z_order = 0;
 	req->id = MSMFB_NEW_REQUEST;
 	req->is_fg = false;
 	req->alpha = 0xff;
+#endif /* AUTOPLAT_001 */
 	err = mdp4_overlay_req2pipe(req, MDP4_MIXER0, &pipe, mfb);
 	if (err < 0) {
 		pr_err("%s:Could not allocate MDP overlay pipe\n", __func__);
@@ -4077,14 +4092,19 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 	unsigned long srcp0_addr, unsigned long srcp1_addr,
 	unsigned long srcp2_addr)
 {
+#if !defined(AUTOPLAT_001)
 	struct msm_fb_data_type *mfd = info->par;
+#endif /* AUTOPLAT_001 */
 	int err;
-
+#if !defined(AUTOPLAT_001)
 	if (mutex_lock_interruptible(&mfd->dma->ov_mutex))
 		return -EINTR;
-
+#endif /* AUTOPLAT_001 */
 	switch (pipe->src_format) {
 	case MDP_Y_CR_CB_H2V2:
+#if defined(AUTOPLAT_001)
+	case MDP_Y_CB_CR_H2V2:
+#endif /* AUTOPLAT_001 */
 		/* YUV420 */
 		pipe->srcp0_addr = srcp0_addr;
 		pipe->srcp0_ystride = pipe->src_width;
@@ -4100,12 +4120,21 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 		 * The chroma planes are half the size of the luma
 		 * planes
 		 */
+#if !defined(AUTOPLAT_001)
 		pipe->srcp1_addr = srcp2_addr ? srcp2_addr :
 		pipe->srcp2_addr +
 			(pipe->src_width * pipe->src_height / 4);
+#else
+		pipe->srcp1_addr = srcp2_addr ? srcp2_addr :
+		pipe->srcp2_addr + (pipe->src_width * pipe->src_height) / 4 ;
+		pipe->srcp1_ystride = pipe->src_width/2;
+#endif /* AUTOPLAT_001 */
 		pipe->srcp1_ystride = pipe->src_width/2;
 		break;
 	case MDP_Y_CRCB_H2V2:
+#if !defined(AUTOPLAT_001)
+	case MDP_Y_CBCR_H2V2:
+#endif /* AUTOPLAT_001 */
 		/* NV12 */
 		pipe->srcp0_addr = srcp0_addr;
 		pipe->srcp0_ystride = pipe->src_width;
@@ -4114,6 +4143,13 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 			(pipe->src_width * pipe->src_height);
 		pipe->srcp1_ystride = pipe->src_width;
 		break;
+#if !defined(AUTOPLAT_001)
+	case MDP_YCRYCB_H2V1:
+		/* interleave */
+		pipe->srcp0_addr = srcp0_addr;
+		pipe->srcp0_ystride = pipe->src_width ;
+		break;
+#endif /* AUTOPLAT_001 */
 	default:
 		pr_err("%s: format (%u) is not supported\n", __func__,
 				pipe->src_format);
@@ -4157,7 +4193,9 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 #endif
 
 done:
+#if !defined(AUTOPLAT_001)
 	mutex_unlock(&mfd->dma->ov_mutex);
+#endif /* AUTOPLAT_001 */
 	return err;
 }
 int mdp4_overlay_reset()
