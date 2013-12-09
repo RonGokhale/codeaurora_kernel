@@ -137,6 +137,9 @@ static int dmaengine_pcm_set_runtime_hwparams(struct snd_pcm_substream *substrea
 	hw.buffer_bytes_max = SIZE_MAX;
 	hw.fifo_size = dma_data->fifo_size;
 
+	if (pcm->flags & SND_DMAENGINE_PCM_FLAG_NO_RESIDUE)
+		hw.info |= SNDRV_PCM_INFO_BATCH;
+
 	ret = dma_get_slave_caps(chan, &dma_caps);
 	if (ret == 0) {
 		if (dma_caps.cmd_pause)
@@ -285,24 +288,43 @@ static const char * const dmaengine_pcm_dma_channel_names[] = {
 };
 
 static void dmaengine_pcm_request_chan_of(struct dmaengine_pcm *pcm,
-	struct device *dev)
+	struct device *dev, const struct snd_dmaengine_pcm_config *config)
 {
 	unsigned int i;
+	const char *name;
 
 	if ((pcm->flags & (SND_DMAENGINE_PCM_FLAG_NO_DT |
 			   SND_DMAENGINE_PCM_FLAG_CUSTOM_CHANNEL_NAME)) ||
 	    !dev->of_node)
 		return;
 
-	if (pcm->flags & SND_DMAENGINE_PCM_FLAG_HALF_DUPLEX) {
-		pcm->chan[0] = dma_request_slave_channel(dev, "rx-tx");
-		pcm->chan[1] = pcm->chan[0];
-	} else {
-		for (i = SNDRV_PCM_STREAM_PLAYBACK; i <= SNDRV_PCM_STREAM_CAPTURE; i++) {
-			pcm->chan[i] = dma_request_slave_channel(dev,
-					dmaengine_pcm_dma_channel_names[i]);
-		}
+	if (config->dma_dev) {
+		/*
+		 * If this warning is seen, it probably means that your Linux
+		 * device structure does not match your HW device structure.
+		 * It would be best to refactor the Linux device structure to
+		 * correctly match the HW structure.
+		 */
+		dev_warn(dev, "DMA channels sourced from device %s",
+			 dev_name(config->dma_dev));
+		dev = config->dma_dev;
 	}
+
+	for (i = SNDRV_PCM_STREAM_PLAYBACK; i <= SNDRV_PCM_STREAM_CAPTURE;
+	     i++) {
+		if (pcm->flags & SND_DMAENGINE_PCM_FLAG_HALF_DUPLEX)
+			name = "rx-tx";
+		else
+			name = dmaengine_pcm_dma_channel_names[i];
+		if (config->chan_names[i])
+			name = config->chan_names[i];
+		pcm->chan[i] = dma_request_slave_channel(dev, name);
+		if (pcm->flags & SND_DMAENGINE_PCM_FLAG_HALF_DUPLEX)
+			break;
+	}
+
+	if (pcm->flags & SND_DMAENGINE_PCM_FLAG_HALF_DUPLEX)
+		pcm->chan[1] = pcm->chan[0];
 }
 
 static void dmaengine_pcm_release_chan(struct dmaengine_pcm *pcm)
@@ -338,7 +360,7 @@ int snd_dmaengine_pcm_register(struct device *dev,
 	pcm->config = config;
 	pcm->flags = flags;
 
-	dmaengine_pcm_request_chan_of(pcm, dev);
+	dmaengine_pcm_request_chan_of(pcm, dev, config);
 
 	if (flags & SND_DMAENGINE_PCM_FLAG_NO_RESIDUE)
 		ret = snd_soc_add_platform(dev, &pcm->platform,
