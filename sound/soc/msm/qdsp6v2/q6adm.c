@@ -37,6 +37,9 @@
 
 #define ULL_SUPPORTED_SAMPLE_RATE 48000
 #define ULL_MAX_SUPPORTED_CHANNEL 2
+
+#define CMD_GET_HDR_SZ 16
+
 enum {
 	ADM_RX_AUDPROC_CAL,
 	ADM_TX_AUDPROC_CAL,
@@ -82,8 +85,6 @@ static struct adm_multi_ch_map multi_ch_map = { false,
 
 static int adm_get_parameters[ADM_GET_PARAMETER_LENGTH];
 
-#define CMD_GET_HDR_SZ 16
-
 struct generic_get_data_ {
 	int valid;
 	int size_in_ints;
@@ -91,7 +92,7 @@ struct generic_get_data_ {
 };
 static struct generic_get_data_ *generic_get_data;
 
-int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
+int adm_dts_eagle_set(int port_id, int param_id, void *data, int size)
 {
 	struct adm_cmd_set_pp_params_v5	adm_p;
 	int ret = 0, index = afe_get_port_index(port_id), *update_params_value;
@@ -150,20 +151,20 @@ int dts_eagle_open_post(int port_id, int param_id, void *data, int size)
 		goto fail_cmd;
 	}
 	/* Wait for the callback with copp id */
-	ret = wait_event_timeout(this_adm.wait[index], 1,
+	ret = wait_event_timeout(this_adm.wait[index],
+			atomic_read(&this_adm.copp_stat[index]),
 			msecs_to_jiffies(TIMEOUT_MS));
 	if (!ret) {
 		pr_err("DTS_EAGLE_ADM - %s: set params timed out port = %d\n",
 			__func__, port_id);
 		ret = -EINVAL;
-		goto fail_cmd;
 	}
 
 fail_cmd:
 	return ret;
 }
 
-int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
+int adm_dts_eagle_get(int port_id, int param_id, void *data, int size)
 {
 	struct adm_cmd_get_pp_params_v5	*adm_params = NULL;
 	int sz, rc = 0, index = afe_get_port_index(port_id), orig_size = size;
@@ -216,7 +217,7 @@ int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
 		pr_err("DTS_EAGLE_ADM - %s: Failed to allocate %i bytes for get\n",
 				__func__, size);
 		rc = -ENOMEM;
-		goto fail_cmd_2;
+		goto fail_cmd;
 	}
 
 	atomic_set(&this_adm.copp_stat[index], 0);
@@ -225,7 +226,7 @@ int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
 		pr_err("DTS_EAGLE_ADM - %s: Failed to get EAGLE Params on port %d\n",
 			__func__, port_id);
 		rc = -EINVAL;
-		goto fail_cmd_2;
+		goto fail_cmd;
 	}
 	/* Wait for the callback with copp id */
 	rc = wait_event_timeout(this_adm.wait[index],
@@ -235,7 +236,7 @@ int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
 		pr_err("DTS_EAGLE_ADM - %s: EAGLE get params timed out port = %d\n",
 			__func__, port_id);
 		rc = -EINVAL;
-		goto fail_cmd_2;
+		goto fail_cmd;
 	}
 	if (generic_get_data->valid) {
 		rc = 0;
@@ -245,7 +246,7 @@ int dts_eagle_open_get(int port_id, int param_id, void *data, int size)
 		pr_err("DTS_EAGLE_ADM - %s: EAGLE get params problem getting data - check callback error value",
 				__func__);
 	}
-fail_cmd_2:
+fail_cmd:
 	kfree(adm_params);
 	kfree(generic_get_data);
 	generic_get_data = NULL;
@@ -1278,7 +1279,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 						 &this_adm.outband_memmap.size,
 						 1);
 */
-		dts_ion_memmap(&this_adm.outband_memmap);
+		msm_dts_ion_memmap(&this_adm.outband_memmap);
 		res = adm_memory_map_regions(port_id,
 					     &this_adm.outband_memmap.paddr, 0,
 					     &this_adm.outband_memmap.size, 1);
@@ -1547,7 +1548,7 @@ int adm_matrix_map(int session_id, int path, int num_copps,
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	if (!perf_mode &&(ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX != topology)) {
+	if (!perf_mode && (ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX != topology)) {
 		for (i = 0; i < num_copps; i++)
 			send_adm_cal(port_id[i], path);
 

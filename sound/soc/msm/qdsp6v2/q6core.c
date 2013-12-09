@@ -151,7 +151,7 @@ void ocm_core_open(void)
 		pr_err("%s: Unable to register CORE\n", __func__);
 }
 
-int core_set_dts_eagle(int size, char *data)
+int core_dts_eagle_set(int size, char *data)
 {
 	struct adsp_dts_eagle *payload = NULL;
 	int rc = 0, size_aligned4byte;
@@ -196,7 +196,7 @@ int core_set_dts_eagle(int size, char *data)
 	return rc;
 }
 
-int core_get_dts_eagle(int id, int size, char *data)
+int core_dts_eagle_get(int id, int size, char *data)
 {
 	struct apr_hdr ah;
 	int rc = 0;

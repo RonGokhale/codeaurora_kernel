@@ -163,5 +163,5 @@ uint32_t get_adm_rx_topology(void);
 
 uint32_t get_adm_tx_topology(void);
 
-int get_is_backend_active(int port_id);
+int msm_pcm_routing_is_backend_active(int port_id);
 #endif /*_MSM_PCM_H*/

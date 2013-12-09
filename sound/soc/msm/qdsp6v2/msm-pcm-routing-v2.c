@@ -268,7 +268,7 @@ static int fe_dai_map[MSM_FRONTEND_DAI_MM_SIZE][2] = {
  * Performance mode is only valid when session is valid.
  */
 static bool fe_dai_perf_mode[MSM_FRONTEND_DAI_MM_SIZE][2];
-int get_is_backend_active(int port_id)
+int msm_pcm_routing_is_backend_active(int port_id)
 {
 	int i;
 	for (i = 0; i < MSM_BACKEND_DAI_MAX; i++) {

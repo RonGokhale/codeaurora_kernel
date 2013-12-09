@@ -103,8 +103,8 @@ struct adsp_dts_eagle {
 	uint32_t size;
 	char data[];
 };
-int core_set_dts_eagle(int size, char *data);
-int core_get_dts_eagle(int id, int size, char *data);
+int core_dts_eagle_set(int size, char *data);
+int core_dts_eagle_get(int id, int size, char *data);
 
 #define ADSP_CMD_SET_DOLBY_MANUFACTURER_ID 0x00012918
 

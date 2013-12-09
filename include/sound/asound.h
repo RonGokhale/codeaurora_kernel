@@ -95,10 +95,10 @@ enum {
 	SNDRV_HWDEP_IFACE_SB_RC,	/* SB Extigy/Audigy2NX remote control */
 	SNDRV_HWDEP_IFACE_HDA,		/* HD-audio */
 	SNDRV_HWDEP_IFACE_USB_STREAM,	/* direct access to usb stream */
-	SNDRV_HWDEP_IFACE_QC_AUDIO,    /* DTS EAGLE */
+	SNDRV_HWDEP_IFACE_QC_AUDIO_BE_CTRL, /* Backend Audio Control */
 
 	/* Don't forget to change the following: */
-	SNDRV_HWDEP_IFACE_LAST = SNDRV_HWDEP_IFACE_QC_AUDIO
+	SNDRV_HWDEP_IFACE_LAST = SNDRV_HWDEP_IFACE_QC_AUDIO_BE_CTRL
 };
 
 struct snd_hwdep_info {

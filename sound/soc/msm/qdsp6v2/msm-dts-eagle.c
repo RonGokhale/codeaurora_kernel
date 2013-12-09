@@ -15,7 +15,6 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mutex.h>
-#include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/msm_ion.h>
 #include <linux/mm.h>
@@ -210,6 +209,7 @@ static int volume_cmds_alloc1(int size)
 	}
 	if (vol_cmds_d)
 		return 0;
+	volume_cmds_free();
 	return -ENOMEM;
 }
 
@@ -330,7 +330,7 @@ static void reg_ion_mem(void)
 				 &paddr, &pa_len, &vaddr);
 }
 
-void dts_ion_memmap(struct param_outband *po)
+void msm_dts_ion_memmap(struct param_outband *po)
 {
 	po->size = ION_MEM_SIZE;
 	po->kvaddr = (uint32_t)vaddr;
@@ -342,7 +342,7 @@ static void unreg_ion_mem(void)
 	msm_audio_ion_free(ion_client, ion_handle);
 }
 
-int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
+int msm_dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 {
 	struct dts_eagle_param_desc depd;
 	int tgt, offset, ret = 0;
@@ -367,10 +367,10 @@ int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 			if (!buf_m) {
 				pr_err("DTS_EAGLE_DRIVER_PRE: out of memory\n");
 				return -ENOMEM;
-			} else if (dts_eagle_open_get_pre(ac, depd.id,
-							  depd.size, buf) < 0) {
+			} else if (q6asm_dts_eagle_get(ac, depd.id,
+							depd.size, buf) < 0) {
 				pr_info("DTS_EAGLE_DRIVER_PRE: asm failed, trying core\n");
-				if (core_get_dts_eagle(depd.id, depd.size,
+				if (core_dts_eagle_get(depd.id, depd.size,
 						       buf) < 0) {
 					pr_err("DTS_EAGLE_DRIVER_PRE: get from qdsp failed (topology not eagle or closed)\n");
 					ret = -EFAULT;
@@ -410,12 +410,15 @@ DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT:
 			pr_err("DTS_EAGLE_DRIVER_PRE: error copying param to cache\n");
 			return -EFAULT;
 		}
-		if (dts_eagle_open_pre(ac, depd.id, depd.size,
-					   (void *)&_depc[offset])) {
-			pr_err("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre failed with id = 0x%X, size = %d, offset = %d\n",
+		pr_debug("DTS_EAGLE_DRIVER_PRE: param info: param = 0x%X, size = %i, offset = %i, device = %i, cache block %i, global offset = %i, first bytes as integer = %i.\n",
+			  depd.id, depd.size, depd.offset, depd.device,
+			  tgt, offset, *(int *)&_depc[offset]);
+		if (q6asm_dts_eagle_set(ac, depd.id, depd.size,
+					(void *)&_depc[offset])) {
+			pr_err("DTS_EAGLE_DRIVER_PRE: q6asm_dts_eagle_set failed with id = 0x%X, size = %d, offset = %d\n",
 				depd.id, depd.size, depd.offset);
 		} else {
-			pr_debug("DTS_EAGLE_DRIVER_PRE: dts_eagle_open_pre succeeded with id = 0x%X, size = %d, offset = %d\n",
+			pr_debug("DTS_EAGLE_DRIVER_PRE: q6asm_dts_eagle_set succeeded with id = 0x%X, size = %d, offset = %d\n",
 				 depd.id, depd.size, depd.offset);
 		}
 	}
@@ -460,7 +463,7 @@ int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain)
 			return -EINVAL;
 		}
 		memcpy((void *)&_depc[val], &vol_cmds[i][4], vol_cmds[i][1]);
-		if (dts_eagle_open_pre(ac, vol_cmds[i][0],
+		if (q6asm_dts_eagle_set(ac, vol_cmds[i][0],
 			vol_cmds[i][1], (void *)&_depc[val])) {
 			pr_err("DTS_EAGLE_DRIVER_VOLUME: loop %i - volume set failed with id 0x%X, size %i, offset %i, cmd_desc %i, scale %i, min %i, max %i, data(...) %i\n",
 				i, vol_cmds[i][0], vol_cmds[i][1],
@@ -493,7 +496,7 @@ static int msm_pcm_routing_hwdep_release(struct snd_hwdep *hw,
 
 static int _is_port_open_and_eagle(int port_id)
 {
-	if (get_is_backend_active(port_id)/* &&
+	if (msm_pcm_routing_is_backend_active(port_id)/* &&
 	    !get_is_backend_perf_mode(port_id)*/) {
 		return 1;
 	}
@@ -564,7 +567,8 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
 		}
 		if (depd.offset == -1) {
 			int port_id = _get_pid_from_dev(depd.device);
-			pr_info("DTS_EAGLE_DRIVER_POST: get from qdsp requested\n");
+			pr_info("DTS_EAGLE_DRIVER_POST: get from qdsp requested (port id 0x%X)\n",
+				port_id);
 			if (depd.size > MAX_INBAND_PAYLOAD_SIZE) {
 				pr_err("DTS_EAGLE_DRIVER_POST: param size for inband get too big (size is %d, max inband size is %d)\n",
 				depd.size, MAX_INBAND_PAYLOAD_SIZE);
@@ -574,20 +578,16 @@ static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
 			if (!buf_m) {
 				pr_err("DTS_EAGLE_DRIVER_POST: out of memory\n");
 				return -ENOMEM;
-			} else if (_is_port_open_and_eagle(port_id) &&
-					   (dts_eagle_open_get(port_id, depd.id,
-							buf, depd.size) < 0)) {
-				pr_info("DTS_EAGLE_DRIVER_POST: adm failed, trying core\n");
-				if (core_get_dts_eagle(depd.id, depd.size,
+			} else if (adm_dts_eagle_get(port_id, depd.id,
+						     buf, depd.size) < 0) {
+				pr_info("DTS_EAGLE_DRIVER_POST: get from qdsp via adm with port id 0x%X failed, trying core\n",
+					port_id);
+				if (core_dts_eagle_get(depd.id, depd.size,
 							buf) < 0) {
-					pr_err("DTS_EAGLE_DRIVER_POST: get from qdsp failed (topology not eagle or closed)\n");
+					pr_err("DTS_EAGLE_DRIVER_POST: get from qdsp failed\n");
 					ret = -EFAULT;
 					goto DTS_EAGLE_IOCTL_GET_PARAM_EXIT;
 				}
-			} else {
-				pr_err("DTS_EAGLE_DRIVER_POST: port id not active or not Eagle. Get from dsp failed\n");
-				ret = -EINVAL;
-				goto DTS_EAGLE_IOCTL_GET_PARAM_EXIT;
 			}
 		} else {
 			int cb = _get_cb_for_dev(depd.device);
@@ -642,21 +642,22 @@ DTS_EAGLE_IOCTL_GET_PARAM_EXIT:
 			  tgt, offset, *(int *)&_depc[offset]);
 		if (!just_set_cache) {
 			int port_id = _get_pid_from_dev(depd.device);
-			pr_debug("DTS_EAGLE_DRIVER_POST: checking for active Eagle port id for device %i\n",
-				depd.device);
+			pr_debug("DTS_EAGLE_DRIVER_POST: checking for active Eagle for device %i (port id 0x%X)\n",
+				depd.device, port_id);
 			if (_is_port_open_and_eagle(port_id)) {
-				if (dts_eagle_open_post(port_id, depd.id,
-				     (void *)&_depc[offset], depd.size) < 0) {
-					pr_err("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post failed with id = 0x%X, size = %i, offset = %i, device = %i, global offset = %i\n",
+				if (adm_dts_eagle_set(port_id, depd.id,
+				    (void *)&_depc[offset], depd.size) < 0) {
+					pr_err("DTS_EAGLE_DRIVER_POST: adm_dts_eagle_set failed with id = 0x%X, size = %i, offset = %i, device = %i, global offset = %i\n",
 						depd.id, depd.size, depd.offset,
 						depd.device, offset);
 				} else {
-					pr_debug("DTS_EAGLE_DRIVER_POST: dts_eagle_open_post succeeded with id = 0x%X, size = %i, offset = %i, device = %i, global offset = %i\n",
+					pr_debug("DTS_EAGLE_DRIVER_POST: adm_dts_eagle_set succeeded with id = 0x%X, size = %i, offset = %i, device = %i, global offset = %i\n",
 						depd.id, depd.size, depd.offset,
 						depd.device, offset);
 				}
 			} else {
-				pr_debug("DTS_EAGLE_DRIVER_POST: port id not active or not Eagle\n");
+				pr_debug("DTS_EAGLE_DRIVER_POST: port id 0x%X not active or not Eagle\n",
+					 port_id);
 			}
 		}
 		break;
@@ -827,12 +828,12 @@ DTS_EAGLE_IOCTL_GET_PARAM_EXIT:
 				target);
 			return -EINVAL;
 		}
-		if (core_set_dts_eagle(((int *)sec_blob[target])[0],
+		if (core_dts_eagle_set(((int *)sec_blob[target])[0],
 				(char *)&((int *)sec_blob[target])[1]) < 0) {
-			pr_err("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle failed with id = %i\n",
+			pr_err("DTS_EAGLE_DRIVER_POST: core_dts_eagle_set failed with id = %i\n",
 				target);
 		} else {
-			pr_debug("DTS_EAGLE_DRIVER_POST: core_set_dts_eagle succeeded with id = %i\n",
+			pr_debug("DTS_EAGLE_DRIVER_POST: core_dts_eagle_set succeeded with id = %i\n",
 				 target);
 		}
 		break;
@@ -938,11 +939,11 @@ int msm_dts_eagle_send_cache_pre(struct audio_client *ac)
 	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to port, with cache index = %d device mask 0x%X, param = 0x%X, offset = %d, and size = %d\n",
 		  cidx, _c_bl[cidx][CBD_DEV_MASK], cmd, offset, size);
 
-	if (dts_eagle_open_pre(ac, cmd, size, (void *)&_depc[offset])) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, dts_eagle_open_pre failed with id = %d and size = %d\n",
+	if (q6asm_dts_eagle_set(ac, cmd, size, (void *)&_depc[offset])) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set failed with id = %d and size = %d\n",
 			__func__, cmd, size);
 	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, dts_eagle_open_pre succeeded with id = %d and size = %d\n",
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set succeeded with id = %d and size = %d\n",
 			 __func__, cmd, size);
 	}
 	return 0;
@@ -956,19 +957,19 @@ int msm_dts_eagle_send_cache_post(int port_id)
 	if (mask & _device_primary) {
 		cidx = _get_cb_for_dev(_device_primary);
 		if (cidx < 0) {
-			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for primary device %i found.\n",
-				__func__, _device_primary);
+			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for primary device %i found. Port id was 0x%X.\n",
+				__func__, _device_primary, port_id);
 			return -EINVAL;
 		}
 	} else if (mask & _device_all) {
 		cidx = _get_cb_for_dev(_device_all);
 		if (cidx < 0) {
-			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for combo device %i found.\n",
-				__func__, _device_primary);
+			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for combo device %i found. Port id was 0x%X.\n",
+				__func__, _device_primary, port_id);
 			return -EINVAL;
 		}
 	} else {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, port id %i not for primary or combo device %i.\n",
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, port id 0x%X not for primary or combo device %i.\n",
 			__func__, port_id, _device_primary);
 		return -EINVAL;
 	}
@@ -978,7 +979,7 @@ int msm_dts_eagle_send_cache_post(int port_id)
 
 	if (_depc_size == 0 || !_depc || offset < 0 || size <= 0 || cmd == 0 ||
 		(offset + size) > _depc_size) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, primary device %i cache index %i port_id %i general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, primary device %i cache index %i port_id 0x%X general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
 			__func__, _device_primary, cidx, port_id,
 			_depc_size, _depc, offset, size, cmd);
 		return -EINVAL;
@@ -988,15 +989,15 @@ int msm_dts_eagle_send_cache_post(int port_id)
 		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
 		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
 		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]));
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask 0x%X, port_id = %d, param = 0x%X, offset = %d, and size = %d\n",
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask 0x%X, port_id = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
 		  cidx, _c_bl[cidx][CBD_DEV_MASK], port_id, cmd, offset, size);
 
-	if (dts_eagle_open_post(port_id, cmd,
-				(void *)&_depc[offset], size) < 0) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, dts_eagle_open_post failed with id = 0x%X and size = %d\n",
+	if (adm_dts_eagle_set(port_id, cmd,
+			      (void *)&_depc[offset], size) < 0) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set failed with id = 0x%X and size = %d\n",
 			__func__, cmd, size);
 	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, dts_eagle_open_post succeeded with id = 0x%X and size = %d\n",
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set succeeded with id = 0x%X and size = %d\n",
 			 __func__, cmd, size);
 	}
 	return 0;
@@ -1021,7 +1022,7 @@ int msm_dts_eagle_pcm_new(struct snd_soc_pcm_runtime *runtime,
 		return rc;
 	}
 
-	hwdep->iface = SNDRV_HWDEP_IFACE_QC_AUDIO;
+	hwdep->iface = SNDRV_HWDEP_IFACE_QC_AUDIO_BE_CTRL;
 	hwdep->private_data = &msm_bedais[dai_link->be_id];
 	hwdep->private_free = msm_pcm_routing_hwdep_free;
 	hwdep->ops.open = msm_pcm_routing_hwdep_open;

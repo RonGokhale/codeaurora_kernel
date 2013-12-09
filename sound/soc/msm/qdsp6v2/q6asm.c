@@ -87,6 +87,7 @@ static struct generic_get_data_ *generic_get_data;
 #ifdef CONFIG_DEBUG_FS
 #define OUT_BUFFER_SIZE 56
 #define IN_BUFFER_SIZE 24
+#define CMD_GET_HDR_SZ 16
 
 static struct timeval out_cold_tv;
 static struct timeval out_warm_tv;
@@ -111,8 +112,6 @@ struct asm_dts_eagle_param {
 	struct asm_stream_cmd_set_pp_params_v2 param;
 	struct asm_stream_param_data_v2 data;
 } __packed;
-
-#define CMD_GET_HDR_SZ 16
 
 struct asm_dts_eagle_param_get {
 	struct apr_hdr	hdr;
@@ -3237,11 +3236,21 @@ fail_cmd:
 	return rc;
 }
 
-int dts_eagle_open_pre(struct audio_client *ac, int param_id, int size,
+int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, int size,
 						void *data)
 {
 	int sz = sizeof(struct asm_dts_eagle_param) + size, rc = 0;
 	struct asm_dts_eagle_param *ad = kzalloc(sz, GFP_KERNEL);
+	if (!ad) {
+		pr_err("DTS_EAGLE_ASM: error allocating mem of size %i", sz);
+		return -ENOMEM;
+	}
+
+	if (!ac || ac->apr == NULL || size <= 0 || !data) {
+		pr_err("DTS_EAGLE_ASM: APR handle NULL, invalid size %i or pointer %p.\n",
+			size, data);
+		return -EINVAL;
+	}
 
 	q6asm_add_hdr_async(ac, &ad->hdr, sz, 1);
 	ad->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
@@ -3280,10 +3289,10 @@ fail_cmd:
 	return rc;
 }
 
-int dts_eagle_open_get_pre(struct audio_client *ac, int param_id, int size,
+int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
 							void *data)
 {
-	struct asm_dts_eagle_param_get *a;
+	struct asm_dts_eagle_param_get *ad;
 	int rc = 0, sz;
 
 	if (!ac || ac->apr == NULL || size <= 0 || !data) {
@@ -3292,33 +3301,33 @@ int dts_eagle_open_get_pre(struct audio_client *ac, int param_id, int size,
 		return -EINVAL;
 	}
 	sz = sizeof(struct asm_dts_eagle_param_get) + CMD_GET_HDR_SZ + size;
-	a = kzalloc(sz, GFP_KERNEL);
-	if (!a) {
+	ad = kzalloc(sz, GFP_KERNEL);
+	if (!ad) {
 		pr_err("DTS_EAGLE_ASM: error allocating memory of size %i", sz);
 		return -ENOMEM;
 	}
-	q6asm_add_hdr(ac, &a->hdr, sz, TRUE);
-	a->hdr.opcode = ASM_STREAM_CMD_GET_PP_PARAMS_V2;
-	a->param.data_payload_addr_lsw = 0;
-	a->param.data_payload_addr_msw = 0;
-	a->param.mem_map_handle = 0;
-	a->param.module_id = AUDPROC_MODULE_ID_DTS_HPX_PREMIX;
-	a->param.param_id = param_id;
-	a->param.param_max_size = size + CMD_GET_HDR_SZ;
-	a->param.reserved = 0;
+	q6asm_add_hdr(ac, &ad->hdr, sz, TRUE);
+	ad->hdr.opcode = ASM_STREAM_CMD_GET_PP_PARAMS_V2;
+	ad->param.data_payload_addr_lsw = 0;
+	ad->param.data_payload_addr_msw = 0;
+	ad->param.mem_map_handle = 0;
+	ad->param.module_id = AUDPROC_MODULE_ID_DTS_HPX_PREMIX;
+	ad->param.param_id = param_id;
+	ad->param.param_max_size = size + CMD_GET_HDR_SZ;
+	ad->param.reserved = 0;
 	atomic_set(&ac->time_flag, 1);
 
 	generic_get_data = kzalloc(size + sizeof(struct generic_get_data_),
-								GFP_KERNEL);
+				   GFP_KERNEL);
 	if (!generic_get_data) {
 		pr_err("DTS_EAGLE_ASM: error allocating mem of size %i", size);
 		rc = -ENOMEM;
-		goto fail_cmd_2;
+		goto fail_cmd;
 	}
-	rc = apr_send_pkt(ac->apr, (uint32_t *)a);
+	rc = apr_send_pkt(ac->apr, (uint32_t *)ad);
 	if (rc < 0) {
-		pr_err("DTS_EAGLE_ASM: Commmand 0x%x failed\n", a->hdr.opcode);
-		goto fail_cmd_2;
+		pr_err("DTS_EAGLE_ASM: Commmand 0x%x failed\n", ad->hdr.opcode);
+		goto fail_cmd;
 	}
 	rc = wait_event_timeout(ac->time_wait,
 			(atomic_read(&ac->time_flag) == 0), 5*HZ);
@@ -3326,7 +3335,7 @@ int dts_eagle_open_get_pre(struct audio_client *ac, int param_id, int size,
 		pr_err("DTS_EAGLE_ASM: %s: timeout in getting session time from DSP\n",
 			__func__);
 		rc = -EINVAL;
-		goto fail_cmd_2;
+		goto fail_cmd;
 	}
 
 	if (generic_get_data->valid) {
@@ -3338,8 +3347,8 @@ int dts_eagle_open_get_pre(struct audio_client *ac, int param_id, int size,
 				__func__);
 	}
 
-fail_cmd_2:
-	kfree(a);
+fail_cmd:
+	kfree(ad);
 	kfree(generic_get_data);
 	generic_get_data = NULL;
 	return rc;

@@ -1110,7 +1110,7 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		prtd->cmd_interrupt = 0;
 		return rc;
 	case SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM:
-		return dts_eagle_ioctl_pre(prtd->audio_client, arg);
+		return msm_dts_eagle_ioctl_pre(prtd->audio_client, arg);
 	default:
 		break;
 	}

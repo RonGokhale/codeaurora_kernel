@@ -36,9 +36,9 @@ void msm_dts_eagle_pcm_free(struct snd_pcm *pcm);
 
 int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain);
 
-int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg);
+int msm_dts_eagle_ioctl_pre(struct audio_client *ac, void *arg);
 
-void dts_ion_memmap(struct param_outband *po);
+void msm_dts_ion_memmap(struct param_outband *po);
 #else
 static inline int msm_dts_eagle_send_cache_post(int port_id)
 {
@@ -68,13 +68,13 @@ static inline int msm_dts_eagle_set_volume(struct audio_client *ac,
 	return 0;
 }
 
-static inline int dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
+static inline int msm_dts_eagle_ioctl_pre(struct audio_client *ac, void *arg)
 {
 	pr_debug("%s\n", __func__);
 	return -EFAULT;
 }
 
-static inline void dts_ion_memmap(struct param_outband *po)
+static inline void msm_dts_ion_memmap(struct param_outband *po)
 {
 	pr_debug("%s\n", __func__);
 }
