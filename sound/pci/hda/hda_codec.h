@@ -673,6 +673,7 @@ struct hda_bus {
 
 	/* codec linked list */
 	struct list_head codec_list;
+	unsigned int num_codecs;
 	/* link caddr -> codec */
 	struct hda_codec *caddr_tbl[HDA_MAX_CODEC_ADDRESS + 1];
 
@@ -834,6 +835,7 @@ struct hda_codec {
 	/* detected preset */
 	const struct hda_codec_preset *preset;
 	struct module *owner;
+	int (*parser)(struct hda_codec *codec);
 	const char *vendor_name;	/* codec vendor name */
 	const char *chip_name;		/* codec chip name */
 	const char *modelname;	/* model name for preset */
@@ -907,7 +909,7 @@ struct hda_codec {
 #ifdef CONFIG_PM
 	unsigned int power_on :1;	/* current (global) power-state */
 	unsigned int d3_stop_clk:1;	/* support D3 operation without BCLK */
-	unsigned int pm_down_notified:1; /* PM notified to controller */
+	unsigned int pm_up_notified:1;	/* PM notified to controller */
 	unsigned int in_pm:1;		/* suspend/resume being performed */
 	int power_transition;	/* power-state in transition */
 	int power_count;	/* current (global) power refcount */
@@ -935,6 +937,8 @@ struct hda_codec {
 	/* jack detection */
 	struct snd_array jacks;
 #endif
+
+	int depop_delay; /* depop delay in ms, -1 for default delay time */
 
 	/* fix-up list */
 	int fixup_id;
