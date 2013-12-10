@@ -83,6 +83,9 @@ void i915_update_dri1_breadcrumb(struct drm_device *dev)
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv;
 
+	if (drm_core_check_feature(dev, DRIVER_MODESET))
+		return;
+
 	if (dev->primary->master) {
 		master_priv = dev->primary->master->driver_priv;
 		if (master_priv->sarea_priv)
