@@ -61,6 +61,7 @@
 #define I40E_BASE_VSI_SEID    512
 #define I40E_BASE_VEB_SEID    288
 #define I40E_MAX_VEB          16
+#define I40E_MAX_NPAR_QPS     32
 
 #define I40E_MAX_NUM_DESCRIPTORS      4096
 #define I40E_MAX_REGISTER     0x0038FFFF
@@ -81,11 +82,14 @@
 #define I40E_DEFAULT_MSG_ENABLE       4
 
 #define I40E_NVM_VERSION_LO_SHIFT  0
-#define I40E_NVM_VERSION_LO_MASK   (0xf << I40E_NVM_VERSION_LO_SHIFT)
-#define I40E_NVM_VERSION_MID_SHIFT 4
-#define I40E_NVM_VERSION_MID_MASK  (0xff << I40E_NVM_VERSION_MID_SHIFT)
-#define I40E_NVM_VERSION_HI_SHIFT  12
-#define I40E_NVM_VERSION_HI_MASK   (0xf << I40E_NVM_VERSION_HI_SHIFT)
+#define I40E_NVM_VERSION_LO_MASK   (0xff << I40E_NVM_VERSION_LO_SHIFT)
+#define I40E_NVM_VERSION_HI_SHIFT  8
+#define I40E_NVM_VERSION_HI_MASK   (0xff << I40E_NVM_VERSION_HI_SHIFT)
+
+/* The values in here are decimal coded as hex as is the case in the NVM map*/
+#define I40E_CURRENT_NVM_VERSION_HI 0x2
+#define I40E_CURRENT_NVM_VERSION_LO 0x1
+
 
 /* magic for getting defines into strings */
 #define STRINGIFY(foo)  #foo
@@ -127,6 +131,7 @@ enum i40e_state_t {
 	__I40E_PF_RESET_REQUESTED,
 	__I40E_CORE_RESET_REQUESTED,
 	__I40E_GLOBAL_RESET_REQUESTED,
+	__I40E_EMP_RESET_REQUESTED,
 	__I40E_FILTER_OVERFLOW_PROMISC,
 };
 
@@ -247,6 +252,7 @@ struct i40e_pf {
 	u16 globr_count; /* Global reset count */
 	u16 empr_count; /* EMP reset count */
 	u16 pfr_count; /* PF reset count */
+	u16 sw_int_count; /* SW interrupt count */
 
 	struct mutex switch_mutex;
 	u16 lan_vsi;       /* our default LAN VSI */
@@ -269,6 +275,8 @@ struct i40e_pf {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *i40e_dbg_pf;
 #endif /* CONFIG_DEBUG_FS */
+
+	u16 instance; /* A unique number per i40e_pf instance in the system */
 
 	/* sr-iov config info */
 	struct i40e_vf *vf;
@@ -441,13 +449,11 @@ static inline char *i40e_fw_version_str(struct i40e_hw *hw)
 	static char buf[32];
 
 	snprintf(buf, sizeof(buf),
-		 "f%d.%d a%d.%d n%02d.%02d.%02d e%08x",
+		 "f%d.%d a%d.%d n%02x.%02x e%08x",
 		 hw->aq.fw_maj_ver, hw->aq.fw_min_ver,
 		 hw->aq.api_maj_ver, hw->aq.api_min_ver,
 		 (hw->nvm.version & I40E_NVM_VERSION_HI_MASK)
 						>> I40E_NVM_VERSION_HI_SHIFT,
-		 (hw->nvm.version & I40E_NVM_VERSION_MID_MASK)
-						>> I40E_NVM_VERSION_MID_SHIFT,
 		 (hw->nvm.version & I40E_NVM_VERSION_LO_MASK)
 						>> I40E_NVM_VERSION_LO_SHIFT,
 		 hw->nvm.eetrack);
