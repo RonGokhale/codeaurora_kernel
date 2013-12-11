@@ -1,0 +1,47 @@
+Contents of arm-soc branches contained in for-next
+
+
+next/cleanup
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-for-v3.14
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-soc-3.14
+	at91/sama5-ccf
+		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+
+next/soc
+	patches
+		ARM: ep93xx: remove deprecated IRQF_DISABLED
+		ARM: ep93xx: use soc bus
+	soc/sched_clock
+		local branch: rebased onto tip/timers-core-for-linus for dependencies
+	patch
+		ARM: at91: sama5d3: add support for sama5d36 chip
+
+next/dt
+	ux500/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/ux500-devicetree-v3.14-1
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14
+	sti/dt
+		http://git.stlinux.com/devel/kernel/linux-sti.git tags/DT-for-v3.14-part-1
+	mvebu/dt-2
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14-2		
+	patch
+		ARM: at91: sama5d3/dt: add sama5d36ek dts files (based on next/cleanup for dependencies)
+	at91/dt
+		git://github.com/at91linux/linux-at91.git tags/at91-dt
+
+next/boards
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-defconfig-for-v3.14
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-defconfig-3.14
+	patch
+		ARM: multi_v7_defconfig: Fix STi support
+
+next/drivers
+	mvebu/drivers
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-drivers-3.14
+	samsung/s3c64xx-dmaengine
+		git://git.kernel.org/pub/scm/linux/kernel/git/broonie/misc.git tags/s3c64xx-dmaengine
