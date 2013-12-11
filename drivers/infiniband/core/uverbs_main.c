@@ -686,7 +686,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 
 		INIT_UDATA(&ucore,
 			   (hdr.in_words) ? buf : 0,
-			   (unsigned long)ex_hdr.response,
+			   (hdr.out_words) ? (unsigned long) ex_hdr.response : 0,
 			   hdr.in_words * 8,
 			   hdr.out_words * 8);
 
