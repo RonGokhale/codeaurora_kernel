@@ -28,6 +28,7 @@
 #include <linux/ctype.h>
 #include <linux/string.h>
 #include <linux/bitops.h>
+#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/jack.h>
 #include "hda_codec.h"
@@ -3032,6 +3033,8 @@ static int parse_capture_source(struct hda_codec *codec, hda_nid_t pin,
 			spec->imux_pins[imux->num_items] = pin;
 			snd_hda_add_imux_item(imux, label, cfg_idx, NULL);
 			imux_added = true;
+			if (spec->dyn_adc_switch)
+				spec->dyn_adc_idx[imux_idx] = c;
 		}
 	}
 
@@ -3129,7 +3132,9 @@ static int create_input_ctls(struct hda_codec *codec)
 		}
 	}
 
-	if (mixer && spec->add_stereo_mix_input) {
+	/* add stereo mix when explicitly enabled via hint */
+	if (mixer && spec->add_stereo_mix_input &&
+	    snd_hda_get_bool_hint(codec, "add_stereo_mix_input") > 0) {
 		err = parse_capture_source(codec, mixer, CFG_IDX_MIX, num_adcs,
 					   "Stereo Mix", 0);
 		if (err < 0)
@@ -4353,7 +4358,8 @@ int snd_hda_gen_parse_auto_config(struct hda_codec *codec,
 			spec->no_analog = 1;
 			goto dig_only;
 		}
-		return 0; /* can't find valid BIOS pin config */
+		if (!cfg->num_inputs && !cfg->dig_in_pin)
+			return 0; /* can't find valid BIOS pin config */
 	}
 
 	if (!spec->no_primary_hp &&
@@ -4420,6 +4426,19 @@ int snd_hda_gen_parse_auto_config(struct hda_codec *codec,
 	err = check_auto_mic_availability(codec);
 	if (err < 0)
 		return err;
+
+	/* add stereo mix if available and not enabled yet */
+	if (!spec->auto_mic && spec->mixer_nid &&
+	    spec->add_stereo_mix_input &&
+	    spec->input_mux.num_items > 1 &&
+	    snd_hda_get_bool_hint(codec, "add_stereo_mix_input") < 0) {
+		err = parse_capture_source(codec, spec->mixer_nid,
+					   CFG_IDX_MIX, spec->num_all_adcs,
+					   "Stereo Mix", 0);
+		if (err < 0)
+			return err;
+	}
+
 
 	err = create_capture_mixers(codec);
 	if (err < 0)
@@ -5162,6 +5181,23 @@ static void init_multi_io(struct hda_codec *codec)
 	}
 }
 
+static void init_aamix_paths(struct hda_codec *codec)
+{
+	struct hda_gen_spec *spec = codec->spec;
+
+	if (!spec->have_aamix_ctl)
+		return;
+	update_aamix_paths(codec, spec->aamix_mode, spec->out_paths[0],
+			   spec->aamix_out_paths[0],
+			   spec->autocfg.line_out_type);
+	update_aamix_paths(codec, spec->aamix_mode, spec->hp_paths[0],
+			   spec->aamix_out_paths[1],
+			   AUTO_PIN_HP_OUT);
+	update_aamix_paths(codec, spec->aamix_mode, spec->speaker_paths[0],
+			   spec->aamix_out_paths[2],
+			   AUTO_PIN_SPEAKER_OUT);
+}
+
 /* set up input pins and loopback paths */
 static void init_analog_input(struct hda_codec *codec)
 {
@@ -5264,6 +5300,7 @@ int snd_hda_gen_init(struct hda_codec *codec)
 	init_multi_out(codec);
 	init_extra_out(codec);
 	init_multi_io(codec);
+	init_aamix_paths(codec);
 	init_analog_input(codec);
 	init_input_src(codec);
 	init_digital(codec);
@@ -5352,3 +5389,6 @@ error:
 	return err;
 }
 EXPORT_SYMBOL_HDA(snd_hda_parse_generic_codec);
+
+MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Generic HD-audio codec parser");
