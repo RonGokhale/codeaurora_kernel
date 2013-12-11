@@ -74,7 +74,8 @@ enum dmx_success {
 	DMX_FRAME_ERROR, /* Frame alignment error */
 	DMX_FIFO_ERROR, /* Receiver FIFO overrun */
 	DMX_MISSED_ERROR, /* Receiver missed packet */
-	DMX_OK_DECODER_BUF /* Received OK, new ES data in decoder buffer */
+	DMX_OK_DECODER_BUF, /* Received OK, new ES data in decoder buffer */
+	DMX_OK_IDX /* Received OK, new index event */
 } ;
 
 
@@ -126,11 +127,14 @@ struct dmx_data_ready {
 			u32 cont_err_counter;
 			u32 ts_packets_num;
 			u32 ts_dropped_bytes;
+			u64 stc;
 		} buf;
 
 		struct {
 			u64 id;
 		} marker;
+
+		struct dmx_index_event_info idx_event;
 	};
 };
 
@@ -222,8 +226,10 @@ struct dmx_ts_feed {
 		    struct timespec timeout);
 	int (*start_filtering) (struct dmx_ts_feed* feed);
 	int (*stop_filtering) (struct dmx_ts_feed* feed);
-	int (*set_indexing_params) (struct dmx_ts_feed *feed,
-				struct dmx_indexing_video_params *params);
+	int (*set_video_codec) (struct dmx_ts_feed *feed,
+				enum dmx_video_codec video_codec);
+	int (*set_idx_params) (struct dmx_ts_feed *feed,
+				struct dmx_indexing_params *idx_params);
 	int (*get_decoder_buff_status)(
 			struct dmx_ts_feed *feed,
 			struct dmx_buffer_status *dmx_buffer_status);
@@ -238,8 +244,14 @@ struct dmx_ts_feed {
 				enum dmx_tsp_format_t tsp_format);
 	int (*set_secure_mode)(struct dmx_ts_feed *feed,
 				struct dmx_secure_mode *sec_mode);
+	int (*set_cipher_ops)(struct dmx_ts_feed *feed,
+				struct dmx_cipher_operations *cipher_ops);
 	int (*oob_command) (struct dmx_ts_feed *feed,
 			struct dmx_oob_command *cmd);
+	int (*ts_insertion_init)(struct dmx_ts_feed *feed);
+	int (*ts_insertion_terminate)(struct dmx_ts_feed *feed);
+	int (*ts_insertion_insert_buffer)(struct dmx_ts_feed *feed,
+			char *data, size_t size);
 };
 
 /*--------------------------------------------------------------------------*/
@@ -288,6 +300,8 @@ struct dmx_section_feed {
 			u32 bytes_num);
 	int (*set_secure_mode)(struct dmx_section_feed *feed,
 				struct dmx_secure_mode *sec_mode);
+	int (*set_cipher_ops)(struct dmx_section_feed *feed,
+				struct dmx_cipher_operations *cipher_ops);
 	int (*oob_command) (struct dmx_section_feed *feed,
 				struct dmx_oob_command *cmd);
 };
@@ -374,6 +388,7 @@ struct dmx_demux {
 	struct dmx_frontend* frontend;    /* Front-end connected to the demux */
 	void* priv;                  /* Pointer to private data of the API client */
 	struct data_buffer dvr_input; /* DVR input buffer */
+	int dvr_input_protected;
 	struct dentry *debugfs_demux_dir; /* debugfs dir */
 
 	int (*open) (struct dmx_demux* demux);
@@ -423,6 +438,8 @@ struct dmx_demux {
 
 	int (*unmap_buffer) (struct dmx_demux *demux,
 			void *priv_handle);
+
+	int (*get_tsp_size) (struct dmx_demux *demux);
 };
 
 #endif /* #ifndef __DEMUX_H */
