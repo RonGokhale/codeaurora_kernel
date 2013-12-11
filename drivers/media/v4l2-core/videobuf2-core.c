@@ -145,6 +145,25 @@ static void __vb2_buf_dmabuf_put(struct vb2_buffer *vb)
 }
 
 /**
+ * __setup_lengths() - setup initial lengths for every plane in
+ * every buffer on the queue
+ */
+static void __setup_lengths(struct vb2_queue *q, unsigned int n)
+{
+	unsigned int buffer, plane;
+	struct vb2_buffer *vb;
+
+	for (buffer = q->num_buffers; buffer < q->num_buffers + n; ++buffer) {
+		vb = q->bufs[buffer];
+		if (!vb)
+			continue;
+
+		for (plane = 0; plane < vb->num_planes; ++plane)
+			vb->v4l2_planes[plane].length = q->plane_sizes[plane];
+	}
+}
+
+/**
  * __setup_offsets() - setup unique offsets ("cookies") for every plane in
  * every buffer on the queue
  */
@@ -169,7 +188,6 @@ static void __setup_offsets(struct vb2_queue *q, unsigned int n)
 			continue;
 
 		for (plane = 0; plane < vb->num_planes; ++plane) {
-			vb->v4l2_planes[plane].length = q->plane_sizes[plane];
 			vb->v4l2_planes[plane].m.mem_offset = off;
 
 			dprintk(3, "Buffer %d, plane %d offset 0x%08lx\n",
@@ -241,6 +259,7 @@ static int __vb2_queue_alloc(struct vb2_queue *q, enum v4l2_memory memory,
 		q->bufs[q->num_buffers + buffer] = vb;
 	}
 
+	__setup_lengths(q, buffer);
 	if (memory == V4L2_MEMORY_MMAP)
 		__setup_offsets(q, buffer);
 
@@ -1116,6 +1135,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 
 		if (planes[plane].length < planes[plane].data_offset +
 		    q->plane_sizes[plane]) {
+			dprintk(1, "qbuf: invalid dmabuf length for plane %d\n",
+				plane);
 			ret = -EINVAL;
 			goto err;
 		}
@@ -1697,8 +1718,8 @@ int vb2_streamon(struct vb2_queue *q, enum v4l2_buf_type type)
 	}
 
 	if (q->streaming) {
-		dprintk(1, "streamon: already streaming\n");
-		return -EBUSY;
+		dprintk(3, "streamon successful: already streaming\n");
+		return 0;
 	}
 
 	/*
@@ -1754,8 +1775,8 @@ int vb2_streamoff(struct vb2_queue *q, enum v4l2_buf_type type)
 	}
 
 	if (!q->streaming) {
-		dprintk(1, "streamoff: not streaming\n");
-		return -EINVAL;
+		dprintk(3, "streamoff successful: not streaming\n");
+		return 0;
 	}
 
 	/*
@@ -1824,8 +1845,8 @@ int vb2_expbuf(struct vb2_queue *q, struct v4l2_exportbuffer *eb)
 		return -EINVAL;
 	}
 
-	if (eb->flags & ~O_CLOEXEC) {
-		dprintk(1, "Queue does support only O_CLOEXEC flag\n");
+	if (eb->flags & ~(O_CLOEXEC | O_ACCMODE)) {
+		dprintk(1, "Queue does support only O_CLOEXEC and access mode flags\n");
 		return -EINVAL;
 	}
 
@@ -1848,14 +1869,14 @@ int vb2_expbuf(struct vb2_queue *q, struct v4l2_exportbuffer *eb)
 
 	vb_plane = &vb->planes[eb->plane];
 
-	dbuf = call_memop(q, get_dmabuf, vb_plane->mem_priv);
+	dbuf = call_memop(q, get_dmabuf, vb_plane->mem_priv, eb->flags & O_ACCMODE);
 	if (IS_ERR_OR_NULL(dbuf)) {
 		dprintk(1, "Failed to export buffer %d, plane %d\n",
 			eb->index, eb->plane);
 		return -EINVAL;
 	}
 
-	ret = dma_buf_fd(dbuf, eb->flags);
+	ret = dma_buf_fd(dbuf, eb->flags & ~O_ACCMODE);
 	if (ret < 0) {
 		dprintk(3, "buffer %d, plane %d failed to export (%d)\n",
 			eb->index, eb->plane, ret);
@@ -2630,15 +2651,28 @@ int vb2_fop_mmap(struct file *file, struct vm_area_struct *vma)
 }
 EXPORT_SYMBOL_GPL(vb2_fop_mmap);
 
-int vb2_fop_release(struct file *file)
+int _vb2_fop_release(struct file *file, struct mutex *lock)
 {
 	struct video_device *vdev = video_devdata(file);
 
 	if (file->private_data == vdev->queue->owner) {
+		if (lock)
+			mutex_lock(lock);
 		vb2_queue_release(vdev->queue);
 		vdev->queue->owner = NULL;
+		if (lock)
+			mutex_unlock(lock);
 	}
 	return v4l2_fh_release(file);
+}
+EXPORT_SYMBOL_GPL(_vb2_fop_release);
+
+int vb2_fop_release(struct file *file)
+{
+	struct video_device *vdev = video_devdata(file);
+	struct mutex *lock = vdev->queue->lock ? vdev->queue->lock : vdev->lock;
+
+	return _vb2_fop_release(file, lock);
 }
 EXPORT_SYMBOL_GPL(vb2_fop_release);
 
