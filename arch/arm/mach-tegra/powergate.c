@@ -25,6 +25,7 @@
 #include <linux/export.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/reset.h>
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/clk/tegra.h>
@@ -108,6 +109,7 @@ int tegra_powergate_power_off(int id)
 
 	return tegra_powergate_set(id, false);
 }
+EXPORT_SYMBOL(tegra_powergate_power_off);
 
 int tegra_powergate_is_powered(int id)
 {
@@ -131,9 +133,9 @@ int tegra_powergate_remove_clamping(int id)
 	 * Tegra 2 has a bug where PCIE and VDE clamping masks are
 	 * swapped relatively to the partition ids
 	 */
-	if (id ==  TEGRA_POWERGATE_VDEC)
+	if (id == TEGRA_POWERGATE_VDEC)
 		mask = (1 << TEGRA_POWERGATE_PCIE);
-	else if	(id == TEGRA_POWERGATE_PCIE)
+	else if (id == TEGRA_POWERGATE_PCIE)
 		mask = (1 << TEGRA_POWERGATE_VDEC);
 	else
 		mask = (1 << id);
@@ -142,13 +144,15 @@ int tegra_powergate_remove_clamping(int id)
 
 	return 0;
 }
+EXPORT_SYMBOL(tegra_powergate_remove_clamping);
 
 /* Must be called with clk disabled, and returns with clk enabled */
-int tegra_powergate_sequence_power_up(int id, struct clk *clk)
+int tegra_powergate_sequence_power_up(int id, struct clk *clk,
+					struct reset_control *rst)
 {
 	int ret;
 
-	tegra_periph_reset_assert(clk);
+	reset_control_assert(rst);
 
 	ret = tegra_powergate_power_on(id);
 	if (ret)
@@ -165,7 +169,7 @@ int tegra_powergate_sequence_power_up(int id, struct clk *clk)
 		goto err_clamp;
 
 	udelay(10);
-	tegra_periph_reset_deassert(clk);
+	reset_control_deassert(rst);
 
 	return 0;
 
@@ -243,7 +247,7 @@ static const char * const powergate_name_t30[] = {
 };
 
 static const char * const powergate_name_t114[] = {
-	[TEGRA_POWERGATE_CPU]	= "cpu0",
+	[TEGRA_POWERGATE_CPU]	= "crail",
 	[TEGRA_POWERGATE_3D]	= "3d",
 	[TEGRA_POWERGATE_VENC]	= "venc",
 	[TEGRA_POWERGATE_VDEC]	= "vdec",
