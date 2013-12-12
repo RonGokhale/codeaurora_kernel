@@ -109,6 +109,7 @@ int tegra_powergate_power_off(int id)
 
 	return tegra_powergate_set(id, false);
 }
+EXPORT_SYMBOL(tegra_powergate_power_off);
 
 int tegra_powergate_is_powered(int id)
 {
@@ -132,9 +133,9 @@ int tegra_powergate_remove_clamping(int id)
 	 * Tegra 2 has a bug where PCIE and VDE clamping masks are
 	 * swapped relatively to the partition ids
 	 */
-	if (id ==  TEGRA_POWERGATE_VDEC)
+	if (id == TEGRA_POWERGATE_VDEC)
 		mask = (1 << TEGRA_POWERGATE_PCIE);
-	else if	(id == TEGRA_POWERGATE_PCIE)
+	else if (id == TEGRA_POWERGATE_PCIE)
 		mask = (1 << TEGRA_POWERGATE_VDEC);
 	else
 		mask = (1 << id);
@@ -143,6 +144,7 @@ int tegra_powergate_remove_clamping(int id)
 
 	return 0;
 }
+EXPORT_SYMBOL(tegra_powergate_remove_clamping);
 
 /* Must be called with clk disabled, and returns with clk enabled */
 int tegra_powergate_sequence_power_up(int id, struct clk *clk,
@@ -245,7 +247,7 @@ static const char * const powergate_name_t30[] = {
 };
 
 static const char * const powergate_name_t114[] = {
-	[TEGRA_POWERGATE_CPU]	= "cpu0",
+	[TEGRA_POWERGATE_CPU]	= "crail",
 	[TEGRA_POWERGATE_3D]	= "3d",
 	[TEGRA_POWERGATE_VENC]	= "venc",
 	[TEGRA_POWERGATE_VDEC]	= "vdec",
