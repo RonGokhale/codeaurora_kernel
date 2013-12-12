@@ -204,7 +204,7 @@ static void mdp4_dtv_pipe_clean(struct vsync_update *vp)
 static void mdp4_dtv_blt_ov_update(struct mdp4_overlay_pipe *pipe);
 static void mdp4_dtv_wait4dmae(int cndx);
 
-int mdp4_dtv_pipe_commit(int cndx, int wait)
+int mdp4_dtv_pipe_commit(int cndx, int wait, u32 *release_busy)
 {
 
 	int  i, undx;
@@ -252,7 +252,7 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 			}
 		}
 	}
-	mdp4_mixer_stage_commit(mixer);
+	mdp4_mixer_stage_commit_no_flush(mixer);
 
 	 /* start timing generator & mmu if they are not started yet */
 	mdp4_overlay_dtv_start();
@@ -283,7 +283,8 @@ int mdp4_dtv_pipe_commit(int cndx, int wait)
 			pipe->pipe_used = 0; /* clear */
 		}
 	}
-
+	mdp4_overlay_frc_update(vctrl->mfd, release_busy);
+	mdp4_mixer_flush(mixer);
 	pipe = vctrl->base_pipe;
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 	if (pipe->ov_blt_addr) {
@@ -1231,7 +1232,7 @@ void mdp4_dtv_overlay(struct msm_fb_data_type *mfd)
 	}
 
 	mdp4_overlay_mdp_perf_upd(mfd, 1);
-	mdp4_dtv_pipe_commit(0, 1);
+	mdp4_dtv_pipe_commit(0, 1, NULL);
 	mdp4_overlay_mdp_perf_upd(mfd, 0);
 	mutex_unlock(&mfd->dma->ov_mutex);
 }
