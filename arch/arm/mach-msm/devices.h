@@ -92,6 +92,9 @@ extern struct platform_device apq8064_device_uart_gsbi4;
 extern struct platform_device apq8064_device_uartdm_gsbi4;
 extern struct platform_device apq8064_device_uart_gsbi7;
 extern struct platform_device apq8064_device_qup_i2c_gsbi1;
+#if defined (AUTOPLAT_001)
+extern struct platform_device apq8064_device_qup_i2c_gsbi2;
+#endif /* AUTOPLAT_001 */
 extern struct platform_device apq8064_device_qup_i2c_gsbi3;
 extern struct platform_device apq8064_device_qup_i2c_gsbi4;
 extern struct platform_device apq8064_device_qup_spi_gsbi5;
@@ -282,6 +285,11 @@ extern struct platform_device apq_cpudai_fm_tx;
 extern struct platform_device apq_cpudai_auxpcm_rx;
 extern struct platform_device apq_cpudai_auxpcm_tx;
 extern struct platform_device apq_cpu_fe;
+#if defined (AUTOPLAT_001)
+extern struct platform_device apq_cpudai_mi2s;
+extern struct platform_device apq_cpudai_sec_i2s;
+extern struct platform_device apq_cpudai_pri_mic;
+#endif /* AUTOPLAT_001 */
 extern struct platform_device apq_stub_codec;
 extern struct platform_device apq_voice;
 extern struct platform_device apq_voip;
@@ -295,6 +303,9 @@ extern struct platform_device apq_cpudai_afe_01_tx;
 extern struct platform_device apq_cpudai_afe_02_rx;
 extern struct platform_device apq_cpudai_afe_02_tx;
 extern struct platform_device apq_pcm_afe;
+#if defined (AUTOPLAT_001)
+extern struct platform_device apq_pcm_lpa;
+#endif /* AUTOPLAT_001 */
 extern struct platform_device apq_cpudai_stub;
 extern struct platform_device apq_cpudai_slimbus_1_rx;
 extern struct platform_device apq_cpudai_slimbus_1_tx;

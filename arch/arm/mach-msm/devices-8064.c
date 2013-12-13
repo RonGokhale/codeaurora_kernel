@@ -309,12 +309,56 @@ static struct resource resources_qup_i2c_gsbi1[] = {
 	},
 };
 
+#if defined (AUTOPLAT_001)
+static struct resource resources_qup_i2c_gsbi2[] = {
+	{
+		.name	= "gsbi_qup_i2c_addr",
+		.start	= MSM_GSBI2_PHYS,
+		.end	= MSM_GSBI2_PHYS + 4 - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_phys_addr",
+		.start	= MSM_GSBI2_QUP_PHYS,
+		.end	= MSM_GSBI2_QUP_PHYS + MSM_QUP_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "qup_err_intr",
+		.start	= APQ8064_GSBI2_QUP_IRQ,
+		.end	= APQ8064_GSBI2_QUP_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+	{
+		.name	= "i2c_clk",
+		.start	= 25,
+		.end	= 25,
+		.flags	= IORESOURCE_IO,
+	},
+	{
+		.name	= "i2c_sda",
+		.start	= 24,
+		.end	= 24,
+		.flags	= IORESOURCE_IO,
+	},
+};
+#endif /* AUTOPLAT_001 */
+
 struct platform_device apq8064_device_qup_i2c_gsbi1 = {
 	.name		= "qup_i2c",
 	.id		= 0,
 	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi1),
 	.resource	= resources_qup_i2c_gsbi1,
 };
+
+#if defined(AUTOPLAT_001)
+struct platform_device apq8064_device_qup_i2c_gsbi2 = {
+	.name		= "qup_i2c",
+	.id		= 2,
+	.num_resources	= ARRAY_SIZE(resources_qup_i2c_gsbi2),
+	.resource	= resources_qup_i2c_gsbi2,
+};
+#endif /* AUTOPLAT_001 */
 
 struct platform_device apq8064_device_qup_i2c_gsbi3 = {
 	.name		= "qup_i2c",
@@ -877,6 +921,23 @@ struct platform_device mpq_cpudai_mi2s_tx = {
 	},
 };
 
+#if defined (AUTOPLAT_001)
+struct platform_device apq_cpudai_mi2s = {
+	.name	= "apq8064_cpudai_lpa",
+	.id	= 0,
+};
+
+struct platform_device apq_cpudai_sec_i2s = {
+	.name	= "apq8064_cpudai_lpa",
+	.id	= 3,
+};
+
+struct platform_device apq_cpudai_pri_mic = {
+	.name	= "apq8064_cpudai_lpa",
+	.id	= 5,
+};
+#endif /* AUTOPLAT_001 */
+
 struct platform_device apq_cpu_fe = {
 	.name	= "msm-dai-fe",
 	.id	= -1,
@@ -946,6 +1007,13 @@ struct platform_device apq_pcm_afe = {
 	.name	= "msm-pcm-afe",
 	.id	= -1,
 };
+
+#if defined(AUTOPLAT_001)
+struct platform_device apq_pcm_lpa = {
+	.name	= "apq8064_pcm_lpa",
+	.id	= -1,
+};
+#endif /* AUTOPLAT_001 */
 
 struct platform_device apq_cpudai_stub = {
 	.name = "msm-dai-stub",
