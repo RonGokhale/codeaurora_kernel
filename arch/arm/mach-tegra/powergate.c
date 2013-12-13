@@ -41,6 +41,8 @@
 
 #define PWRGATE_STATUS		0x38
 
+#define GPU_RG_CNTRL		0x2d4
+
 static int tegra_num_powerdomains;
 static int tegra_num_cpu_domains;
 static const u8 *tegra_cpu_domains;
@@ -53,6 +55,13 @@ static const u8 tegra30_cpu_domains[] = {
 };
 
 static const u8 tegra114_cpu_domains[] = {
+	TEGRA_POWERGATE_CPU0,
+	TEGRA_POWERGATE_CPU1,
+	TEGRA_POWERGATE_CPU2,
+	TEGRA_POWERGATE_CPU3,
+};
+
+static const u8 tegra124_cpu_domains[] = {
 	TEGRA_POWERGATE_CPU0,
 	TEGRA_POWERGATE_CPU1,
 	TEGRA_POWERGATE_CPU2,
@@ -109,6 +118,7 @@ int tegra_powergate_power_off(int id)
 
 	return tegra_powergate_set(id, false);
 }
+EXPORT_SYMBOL(tegra_powergate_power_off);
 
 int tegra_powergate_is_powered(int id)
 {
@@ -129,12 +139,23 @@ int tegra_powergate_remove_clamping(int id)
 		return -EINVAL;
 
 	/*
+	 * The Tegra124 GPU has a separate register (with different semantics)
+	 * to remove clamps.
+	 */
+	if (tegra_chip_id == TEGRA124) {
+		if (id == TEGRA_POWERGATE_3D) {
+			pmc_write(0, GPU_RG_CNTRL);
+			return 0;
+		}
+	}
+
+	/*
 	 * Tegra 2 has a bug where PCIE and VDE clamping masks are
 	 * swapped relatively to the partition ids
 	 */
-	if (id ==  TEGRA_POWERGATE_VDEC)
+	if (id == TEGRA_POWERGATE_VDEC)
 		mask = (1 << TEGRA_POWERGATE_PCIE);
-	else if	(id == TEGRA_POWERGATE_PCIE)
+	else if (id == TEGRA_POWERGATE_PCIE)
 		mask = (1 << TEGRA_POWERGATE_VDEC);
 	else
 		mask = (1 << id);
@@ -143,6 +164,7 @@ int tegra_powergate_remove_clamping(int id)
 
 	return 0;
 }
+EXPORT_SYMBOL(tegra_powergate_remove_clamping);
 
 /* Must be called with clk disabled, and returns with clk enabled */
 int tegra_powergate_sequence_power_up(int id, struct clk *clk,
@@ -204,6 +226,11 @@ int __init tegra_powergate_init(void)
 		tegra_num_cpu_domains = 4;
 		tegra_cpu_domains = tegra114_cpu_domains;
 		break;
+	case TEGRA124:
+		tegra_num_powerdomains = 25;
+		tegra_num_cpu_domains = 4;
+		tegra_cpu_domains = tegra124_cpu_domains;
+		break;
 	default:
 		/* Unknown Tegra variant. Disable powergating */
 		tegra_num_powerdomains = 0;
@@ -245,7 +272,7 @@ static const char * const powergate_name_t30[] = {
 };
 
 static const char * const powergate_name_t114[] = {
-	[TEGRA_POWERGATE_CPU]	= "cpu0",
+	[TEGRA_POWERGATE_CPU]	= "crail",
 	[TEGRA_POWERGATE_3D]	= "3d",
 	[TEGRA_POWERGATE_VENC]	= "venc",
 	[TEGRA_POWERGATE_VDEC]	= "vdec",
@@ -263,6 +290,33 @@ static const char * const powergate_name_t114[] = {
 	[TEGRA_POWERGATE_XUSBA]	= "xusba",
 	[TEGRA_POWERGATE_XUSBB]	= "xusbb",
 	[TEGRA_POWERGATE_XUSBC]	= "xusbc",
+};
+
+static const char * const powergate_name_t124[] = {
+	[TEGRA_POWERGATE_CPU]	= "crail",
+	[TEGRA_POWERGATE_3D]	= "3d",
+	[TEGRA_POWERGATE_VENC]	= "venc",
+	[TEGRA_POWERGATE_PCIE]	= "pcie",
+	[TEGRA_POWERGATE_VDEC]	= "vdec",
+	[TEGRA_POWERGATE_L2]	= "l2",
+	[TEGRA_POWERGATE_MPE]	= "mpe",
+	[TEGRA_POWERGATE_HEG]	= "heg",
+	[TEGRA_POWERGATE_SATA]	= "sata",
+	[TEGRA_POWERGATE_CPU1]	= "cpu1",
+	[TEGRA_POWERGATE_CPU2]	= "cpu2",
+	[TEGRA_POWERGATE_CPU3]	= "cpu3",
+	[TEGRA_POWERGATE_CELP]	= "celp",
+	[TEGRA_POWERGATE_CPU0]	= "cpu0",
+	[TEGRA_POWERGATE_C0NC]	= "c0nc",
+	[TEGRA_POWERGATE_C1NC]	= "c1nc",
+	[TEGRA_POWERGATE_SOR]	= "sor",
+	[TEGRA_POWERGATE_DIS]	= "dis",
+	[TEGRA_POWERGATE_DISB]	= "disb",
+	[TEGRA_POWERGATE_XUSBA]	= "xusba",
+	[TEGRA_POWERGATE_XUSBB]	= "xusbb",
+	[TEGRA_POWERGATE_XUSBC]	= "xusbc",
+	[TEGRA_POWERGATE_VIC]	= "vic",
+	[TEGRA_POWERGATE_IRAM]	= "iram",
 };
 
 static int powergate_show(struct seq_file *s, void *data)
@@ -308,6 +362,9 @@ int __init tegra_powergate_debugfs_init(void)
 		break;
 	case TEGRA114:
 		powergate_name = powergate_name_t114;
+		break;
+	case TEGRA124:
+		powergate_name = powergate_name_t124;
 		break;
 	}
 
