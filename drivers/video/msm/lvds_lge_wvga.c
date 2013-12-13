@@ -142,11 +142,20 @@ static int __init lvds_lge_wvga_init(void)
 	 * this panel is operated by de,
 	 * vsycn and hsync are ignored
 	 */
+#if !defined(AUTOPLAT_001)
 	pinfo->lcdc.h_back_porch = 25;
 	pinfo->lcdc.h_front_porch = 20;
+#endif /* AUTOPLAT_001 */
+	pinfo->lcdc.h_back_porch = 35;
+	pinfo->lcdc.h_front_porch = 10;
 	pinfo->lcdc.h_pulse_width = 128;
+#if !defined(AUTOPLAT_001)
 	pinfo->lcdc.v_back_porch = 10;
 	pinfo->lcdc.v_front_porch = 4;
+#else
+	pinfo->lcdc.v_back_porch = 5;
+	pinfo->lcdc.v_front_porch = 10;
+#endif /* AUTOPLAT_001 */
 	pinfo->lcdc.v_pulse_width = 2;
 	pinfo->lcdc.underflow_clr = 0xff;
 	pinfo->lcdc.hsync_skew = 0;
