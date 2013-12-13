@@ -32,7 +32,12 @@
 #include <linux/memory.h>
 #include <linux/memblock.h>
 #include <linux/msm_thermal.h>
+
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT540E
+#include <linux/i2c/atmel_touch.h>
+#else
 #include <linux/i2c/atmel_mxt_ts.h>
+#endif
 #include <linux/cyttsp-qc.h>
 #include <linux/i2c/isa1200.h>
 #include <linux/gpio_keys.h>
@@ -912,8 +917,13 @@ static struct msm_usb_host_platform_data msm_ehci_host_pdata4;
 
 static void __init apq8064_ehci_host_init(void)
 {
+#if !defined (AUTOPLAT_001)
 	if (machine_is_apq8064_liquid() || machine_is_mpq8064_cdp() ||
 		machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+#else
+    if (machine_is_apq8064_cdp() || machine_is_apq8064_liquid() || machine_is_mpq8064_cdp() ||
+		machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv()) {
+#endif /* AUTOPLAT_001 */
 		if (machine_is_apq8064_liquid())
 			msm_ehci_host_pdata3.dock_connect_irq =
 					PM8921_MPP_IRQ(PM8921_IRQ_BASE, 9);
@@ -1278,6 +1288,10 @@ static struct i2c_board_info isa1200_board_info[] __initdata = {
 		.platform_data = &isa1200_1_pdata,
 	},
 };
+
+#if !defined(AUTOPLAT_001)
+
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT
 /* configuration data for mxt1386e using V2.1 firmware */
 static const u8 mxt1386e_config_data_v2_1[] = {
 	/* T6 Object */
@@ -1378,13 +1392,77 @@ static struct mxt_platform_data mxt_platform_data = {
 	.reset_gpio		= MXT_TS_RESET_GPIO,
 	.irq_gpio		= MXT_TS_GPIO_IRQ,
 };
+#endif /*CONFIG_TOUCHSCREEN_ATMEL_MXT */
+#endif /* AUTOPLAT_001 */
+
+#if defined (AUTOPLAT_001)
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT540E
+
+#define MXT540E_TS_GPIO_IRQ		86
+#define MXT540E_TS_RESET_GPIO		PM8921_GPIO_PM_TO_SYS(36)
+
+/* Atmel mxt toucscreen platform setup*/
+static int mxt540e_init_platform_hw(struct i2c_client *client)
+{
+	int error;
+
+	error = gpio_request(MXT540E_TS_RESET_GPIO, "mxt_reset_gpio");
+	if (error) {
+		pr_err("unable to request gpio [%d] for MXT540E reset\n",
+				MXT540E_TS_RESET_GPIO);
+		return error;
+	}
+
+	error = gpio_direction_output(MXT540E_TS_RESET_GPIO, 1);
+	if (error) {
+		pr_err("unable to set direction for gpio [%d]\n",
+				MXT540E_TS_RESET_GPIO);
+		return error;
+	}
+
+	msleep(150);
+
+	error = gpio_request(MXT540E_TS_GPIO_IRQ, "mxt_irq_gpio");
+	if (error) {
+		pr_err("unable to request gpio [%d] for MXT540E\n",
+				MXT540E_TS_GPIO_IRQ);
+		return error;
+	}
+	error = gpio_direction_input(MXT540E_TS_GPIO_IRQ);
+	if (error) {
+		pr_err("unable to set direction for gpio [%d]\n",
+				MXT540E_TS_GPIO_IRQ);
+		return error;
+	}
+
+	return error;
+}
+
+static struct autoplat001_mxt_platform_data mxt540e_platform_data = {
+	.irqflags		= IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+	.init_platform_hw	= mxt540e_init_platform_hw,
+};
+#endif /*CONFIG_TOUCHSCREEN_ATMEL_MXT540E */
+#endif /* AUTOPLAT_001 */
 
 static struct i2c_board_info mxt_device_info[] __initdata = {
+#if defined (AUTOPLAT_001)
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT540E
+	{
+		I2C_BOARD_INFO("atmel_mxt_ts", 0x4c),
+		.platform_data = &mxt540e_platform_data,
+		.irq = MSM_GPIO_TO_INT(MXT540E_TS_GPIO_IRQ),
+	},
+#endif /* CONFIG_TOUCHSCREE_ATMEL_MXT540E */
+#else
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT
 	{
 		I2C_BOARD_INFO("atmel_mxt_ts", 0x5b),
 		.platform_data = &mxt_platform_data,
 		.irq = MSM_GPIO_TO_INT(MXT_TS_GPIO_IRQ),
 	},
+#endif /* CONFIG_TOUCHSCREEN_ATMEL_MXT */
+#endif /* AUTOPLAT_001 */
 };
 #define CYTTSP_TS_GPIO_IRQ		6
 #define CYTTSP_TS_GPIO_SLEEP		33
@@ -2458,6 +2536,11 @@ static struct platform_device *common_devices[] __initdata = {
 	&apq_cpudai_fm_rx,
 	&apq_cpudai_fm_tx,
 	&apq_cpu_fe,
+#if defined (AUTOPLAT_001)
+	&apq_cpudai_mi2s,
+	&apq_cpudai_sec_i2s,
+	&apq_cpudai_pri_mic,
+#endif /* AUTOPLAT_001 */
 	&apq_stub_codec,
 	&apq_voice,
 	&apq_voip,
@@ -2471,6 +2554,9 @@ static struct platform_device *common_devices[] __initdata = {
 	&apq_cpudai_afe_02_rx,
 	&apq_cpudai_afe_02_tx,
 	&apq_pcm_afe,
+#if defined (AUTOPLAT_001)
+	&apq_pcm_lpa,
+#endif /* AUTOPLAT_001 */
 	&apq_cpudai_auxpcm_rx,
 	&apq_cpudai_auxpcm_tx,
 	&apq_cpudai_stub,
@@ -2687,10 +2773,24 @@ static struct slim_boardinfo apq8064_slim_devices[] = {
 	/* add more slimbus slaves as needed */
 };
 
+#if !defined (AUTOPLAT_001)
 static struct msm_i2c_platform_data apq8064_i2c_qup_gsbi1_pdata = {
 	.clk_freq = 100000,
 	.src_clk_rate = 24000000,
 };
+#else
+static struct msm_i2c_platform_data apq8064_i2c_qup_gsbi1_pdata = {
+	.clk_freq = 50000,
+	.src_clk_rate = 24000000,
+};
+#endif /* AUTOPLAT_001 */
+
+#if defined (AUTOPLAT_001)
+static struct msm_i2c_platform_data apq8064_i2c_qup_gsbi2_pdata = {
+	.clk_freq = 100000,
+	.src_clk_rate = 24000000,
+};
+#endif /* AUTOPLAT_001 */
 
 static struct msm_i2c_platform_data apq8064_i2c_qup_gsbi3_pdata = {
 	.clk_freq = 384000,
@@ -2726,6 +2826,11 @@ static void __init apq8064_i2c_init(void)
 	apq8064_device_qup_i2c_gsbi1.dev.platform_data =
 					&apq8064_i2c_qup_gsbi1_pdata;
 
+#if defined (AUTOPLAT_001)
+	apq8064_device_qup_i2c_gsbi2.dev.platform_data =
+					&apq8064_i2c_qup_gsbi2_pdata;
+#endif /* AUTOPLAT_001 */
+
 	/* Add GSBI4 I2C pdata for non-fusion3 SGLTE2 */
 	if (socinfo_get_platform_subtype() !=
 				PLATFORM_SUBTYPE_SGLTE2) {
@@ -2757,6 +2862,8 @@ static int ethernet_init(void)
 }
 #endif
 
+
+#if !defined (AUTOPLAT_001)  /* Not necessary for Autoplatform001 */
 #define GPIO_KEY_HOME			PM8921_GPIO_PM_TO_SYS(27)
 #define GPIO_KEY_VOLUME_UP		PM8921_GPIO_PM_TO_SYS(35)
 #define GPIO_KEY_VOLUME_DOWN_PM8921	PM8921_GPIO_PM_TO_SYS(38)
@@ -2765,8 +2872,16 @@ static int ethernet_init(void)
 #define GPIO_KEY_CAM_SNAP		PM8921_GPIO_PM_TO_SYS(4)
 #define GPIO_KEY_ROTATION_PM8921	PM8921_GPIO_PM_TO_SYS(42)
 #define GPIO_KEY_ROTATION_PM8917	PM8921_GPIO_PM_TO_SYS(8)
+#endif /* AUTOPLAT_001 */
+
+#if defined (AUTOPLAT_001)
+#define GPIO_KEY_HOME			30
+#define GPIO_KEY_MENU			33
+#define GPIO_KEY_BACK			56
+#endif /* AUTOPLAT_001 */
 
 static struct gpio_keys_button cdp_keys_pm8921[] = {
+#if !defined (AUTOPLAT_001)
 	{
 		.code           = KEY_HOME,
 		.gpio           = GPIO_KEY_HOME,
@@ -2802,8 +2917,38 @@ static struct gpio_keys_button cdp_keys_pm8921[] = {
 		.type		= EV_SW,
 		.debounce_interval = 15,
 	},
+#else
+	{
+		.code           = KEY_HOME,
+		.gpio           = GPIO_KEY_HOME,
+		.desc           = "home_key",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code           = KEY_BACK,
+		.gpio           = GPIO_KEY_BACK,
+		.desc           = "back_key",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+	{
+		.code           = KEY_MENU,
+		.gpio           = GPIO_KEY_MENU,
+		.desc           = "menu_key",
+		.active_low     = 1,
+		.type		= EV_KEY,
+		.wakeup		= 1,
+		.debounce_interval = 15,
+	},
+#endif /* AUTOPLAT_001 */
 };
 
+#if !defined (AUTOPLAT_001)
 static struct gpio_keys_button cdp_keys_pm8917[] = {
 	{
 		.code           = KEY_HOME,
@@ -2841,6 +2986,7 @@ static struct gpio_keys_button cdp_keys_pm8917[] = {
 		.debounce_interval = 15,
 	},
 };
+#endif /* AUTOPLAT_001 */
 
 static struct gpio_keys_platform_data cdp_keys_data = {
 	.buttons        = cdp_keys_pm8921,
@@ -2855,6 +3001,7 @@ static struct platform_device cdp_kp_pdev = {
 	},
 };
 
+#if !defined (AUTOPLAT_001)
 static struct gpio_keys_button mtp_keys[] = {
 	{
 		.code           = KEY_CAMERA_FOCUS,
@@ -2991,6 +3138,7 @@ static struct platform_device mpq_keypad_device = {
 		.platform_data  = &mpq_keypad_data,
 	},
 };
+#endif /* AUTOPLAT_001 */
 
 /* Sensors DSPS platform data */
 #define DSPS_PIL_GENERIC_NAME		"dsps"
@@ -3136,7 +3284,11 @@ static void __init register_i2c_devices(void)
 #ifdef CONFIG_MSM_CAMERA
 	struct i2c_registry apq8064_camera_i2c_devices = {
 		I2C_SURF | I2C_FFA | I2C_LIQUID | I2C_RUMI,
+#if !defined (AUTOPLAT_001)
 		APQ_8064_GSBI4_QUP_I2C_BUS_ID,
+#else
+		APQ_8064_GSBI2_QUP_I2C_BUS_ID,
+#endif /* AUTOPLAT_001 */
 		apq8064_camera_board_info.board_info,
 		apq8064_camera_board_info.num_i2c_board_info,
 	};
@@ -3189,12 +3341,14 @@ static void enable_avc_i2c_bus(void)
 		gpio_set_value_cansleep(avc_i2c_en_mpp, 1);
 }
 
+#if !defined (AUTOPLAT_001)
 /* Modify platform data values to match requirements for PM8917. */
 static void __init apq8064_pm8917_pdata_fixup(void)
 {
 	cdp_keys_data.buttons = cdp_keys_pm8917;
 	cdp_keys_data.nbuttons = ARRAY_SIZE(cdp_keys_pm8917);
 }
+#endif /* AUTOPLAT_001 */
 
 #ifdef CONFIG_SERIAL_MSM_HS
 static struct msm_serial_hs_platform_data apq8064_uartdm_gsbi4_pdata = {
@@ -3229,8 +3383,10 @@ static void __init apq8064_common_init(void)
 {
 	u32 platform_version = socinfo_get_platform_version();
 
+#if !defined (AUTOPLAT_001)
 	if (socinfo_get_pmic_model() == PMIC_MODEL_PM8917)
 		apq8064_pm8917_pdata_fixup();
+#endif /* AUTOPLAT_001 */
 	platform_device_register(&msm_gpio_device);
 	if (cpu_is_apq8064ab())
 		apq8064ab_update_krait_spm();
@@ -3402,6 +3558,7 @@ static void __init apq8064_cdp_init(void)
 	if (machine_is_apq8064_cdp() || machine_is_apq8064_liquid())
 		platform_device_register(&cdp_kp_pdev);
 
+#if !defined (AUTOPLAT_001)
 	if (machine_is_apq8064_mtp())
 		platform_device_register(&mtp_kp_pdev);
 
@@ -3409,6 +3566,7 @@ static void __init apq8064_cdp_init(void)
 		platform_device_register(&mpq_gpio_keys_pdev);
 		platform_device_register(&mpq_keypad_device);
 	}
+#endif /* AUTOPLAT_001 */
 }
 
 MACHINE_START(APQ8064_CDP, "QCT APQ8064 CDP")
