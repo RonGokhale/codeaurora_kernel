@@ -12,6 +12,9 @@
 
 
 #include <linux/dma-mapping.h>
+#if defined(AUTOPLAT_001)
+#include <linux/module.h>
+#endif /* AUTOPLAT_001 */
 #include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -195,8 +198,12 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+#if !defined(AUTOPLAT_001)
 	struct snd_soc_dai_link *machine = rtd->dai;
 	struct snd_soc_dai *cpu_dai = machine->cpu_dai;
+#else
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+#endif /* AUTOPLAT_001 */
 	struct msm_audio *prtd = NULL;
 	int ret = 0;
 
@@ -225,6 +232,9 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 	}
 	prtd->dma_ch = cpu_dai->id;
 	prtd->enabled = 0;
+#if defined(AUTOPLAT_001)
+	prtd->period_index = 0;
+#endif /* AUTOPLAT_001 */
 	runtime->dma_bytes = msm_pcm_hardware.buffer_bytes_max;
 	runtime->private_data = prtd;
 err:
@@ -321,23 +331,40 @@ static void msm_pcm_free_buffers(struct snd_pcm *pcm)
 }
 static u64 msm_pcm_dmamask = DMA_BIT_MASK(32);
 
+#if !defined(AUTOPLAT_001)
 static int msm_pcm_new(struct snd_card *card, struct snd_soc_dai *dai,
 			struct snd_pcm *pcm)
+#else
+static int msm_pcm_new(struct snd_soc_pcm_runtime *rtd)
+#endif /* AUTOPLAT_001 */
 {
 	int ret = 0;
+#if defined(AUTOPLAT_001)
+	struct snd_card *card = rtd->card->snd_card;
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_soc_dai *dai = rtd->cpu_dai;
+#endif /* AUTOPLAT_001 */
 
 	if (!card->dev->dma_mask)
 		card->dev->dma_mask = &msm_pcm_dmamask;
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
+#if !defined(AUTOPLAT_001)
 	if (dai->playback.channels_min) {
+#else
+	if (dai->driver->playback.channels_min) {
+#endif /* AUTOPLAT_001 */
 		ret = pcm_preallocate_buffer(pcm,
 			SNDRV_PCM_STREAM_PLAYBACK);
 		if (ret)
 			return ret;
 	}
+#if !defined(AUTOPLAT_001)
 	if (dai->capture.channels_min) {
+#else
+	if (dai->driver->capture.channels_min) {
+#endif /* AUTOPLAT_001 */
 		ret = pcm_preallocate_buffer(pcm,
 			SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
@@ -346,6 +373,49 @@ static int msm_pcm_new(struct snd_card *card, struct snd_soc_dai *dai,
 	return ret;
 }
 
+#if defined(AUTOPLAT_001)
+static const struct snd_soc_dapm_widget msm_auto_widgets[] =
+{
+	//SND_SOC_DAPM_AIF_IN("MM_DL1", "MultiMedia1 Playback", 0, 0, 0, 0),
+	//SND_SOC_DAPM_AIF_OUT("Audio Rx", "Audio Rx", 0, 0, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("Audio Rx", "Audio Rx output", 0, 0, 0, 0),
+	/* Virtual */
+	SND_SOC_DAPM_OUTPUT("MI2S_OUT"),
+	SND_SOC_DAPM_INPUT("MI2S_IN"),
+};
+
+static const struct snd_soc_dapm_route msm_auto_routes[] =
+{
+	//{"Audio Rx", NULL, "MM_DL1"},
+	{"MI2S_OUT", NULL, "Audio Rx"},
+};
+
+static int msm_pcm_probe(struct snd_soc_platform *platform)
+{
+	snd_soc_dapm_new_controls(&platform->dapm, msm_auto_widgets,
+					ARRAY_SIZE(msm_auto_widgets));
+	snd_soc_dapm_add_routes(&platform->dapm, msm_auto_routes,
+					ARRAY_SIZE(msm_auto_routes));
+
+	snd_soc_dapm_new_widgets(&platform->dapm);
+	return 0;
+}
+
+static unsigned int msm_pcm_read(struct snd_soc_platform *platform, unsigned int reg)
+{
+        dev_dbg(platform->dev, "reg %x\n", reg);
+	return 0;
+}
+
+static int msm_pcm_write(struct snd_soc_platform *platform,
+				unsigned int reg, unsigned int val)
+{
+        dev_dbg(platform->dev, "reg %x val %x\n", reg, val);
+	return 0;
+}
+#endif /* AUTOPLAT_001 */
+
+#if !defined(AUTOPLAT_001)
 struct snd_soc_platform msm8660_soc_platform = {
 	.name		= "msm8660-pcm-audio",
 	.pcm_ops	= &msm_pcm_ops,
@@ -354,14 +424,56 @@ struct snd_soc_platform msm8660_soc_platform = {
 };
 EXPORT_SYMBOL_GPL(msm8660_soc_platform);
 
+#else
+struct snd_soc_platform_driver apq8064_soc_platform = {
+	.ops	= &msm_pcm_ops,
+	.pcm_new	= msm_pcm_new,
+	.pcm_free	= msm_pcm_free_buffers,
+	.probe		= msm_pcm_probe,
+	.read		= msm_pcm_read,
+	.write		= msm_pcm_write,
+};
+
+static __devinit int msm_pcm_dev_probe(struct platform_device *pdev)
+{
+        dev_dbg(&pdev->dev, "%s: dev name %s\n", __func__,
+		                dev_name(&pdev->dev));
+	return snd_soc_register_platform(&pdev->dev, &apq8064_soc_platform);
+}
+
+static __devexit int msm_pcm_dev_remove(struct platform_device *pdev)
+{
+	snd_soc_unregister_platform(&pdev->dev);
+	return 0;
+}
+
+static struct platform_driver msm_pcm_driver = {
+	.probe	= msm_pcm_dev_probe,
+	.remove	= msm_pcm_dev_remove,
+	.driver	= {
+		.name = "apq8064_pcm_lpa",
+		.owner = THIS_MODULE,
+	}
+};
+#endif /* AUTOPLAT_001 */
+
 static int __init msm_soc_platform_init(void)
 {
+#if !defined(AUTOPLAT_001)
 	return snd_soc_register_platform(&msm8660_soc_platform);
+#else
+	return platform_driver_register(&msm_pcm_driver);
+#endif /* AUTOPLAT_001 */
 }
 static void __exit msm_soc_platform_exit(void)
 {
+#if !defined(AUTOPLAT_001)
 	snd_soc_unregister_platform(&msm8660_soc_platform);
+#else
+	return platform_driver_unregister(&msm_pcm_driver);
+#endif /* AUTOPLAT_001 */
 }
+
 module_init(msm_soc_platform_init);
 module_exit(msm_soc_platform_exit);
 
