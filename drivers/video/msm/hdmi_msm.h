@@ -62,6 +62,9 @@ struct hdmi_msm_state_type {
 	struct completion ddc_sw_done;
 
 	bool hdcp_enable;
+#if defined(AUTOPLAT_001)
+	bool is_splash_enabled;
+#endif /* AUTOPLAT_001 */
 	boolean hdcp_activating;
 	boolean reauth ;
 	struct work_struct hdcp_reauth_work, hdcp_work;
