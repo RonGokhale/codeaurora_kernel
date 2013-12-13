@@ -7509,10 +7509,7 @@ static void msm_axi_process_irq(struct v4l2_subdev *sd, void *arg)
 			+ VFE_WM_OFFSET))) {
 			CDBG("VFE32_OUTPUT_MODE_TERTIARY2\n");
 			/* vfe32_process_output_path_irq_rdi1(axi_ctrl); */
-			/* TODO: Enable below one once camera preview
-			test files are added.
 			vfe32_process_output_path_irq_rdi1_only(axi_ctrl);
-			*/
 		}
 	}
 #endif /* AUTOPLAT_001_REV_CAM */
