@@ -1,0 +1,21 @@
+Importing jdelvare-hwmon based on 9538e10086bd1301fe915683b1ba0a1de66d7483
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 9538e10086bd1301fe915683b1ba0a1de66d7483
+HEAD is now at 9538e10086bd Merge git://www.linux-watchdog.org/linux-watchdog
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-01-unregister-hwmon-device-if-interrupt-setup-fails.patch
+Applying: hwmon: (lm90) Unregister hwmon device if interrupt setup fails
+$ git am ../quilt/jdelvare-hwmon/hwmon-w83l786ng-01-fix-pwmX_enable.patch
+Applying: hwmon: (w83l786ng) Fix fan speed control mode setting and reporting
+$ git am ../quilt/jdelvare-hwmon/hwmon-w83l786ng-02-fix-pwmX.patch
+Applying: hwmon: (w83l768ng) Fix fan speed control range
+$ git am ../quilt/jdelvare-hwmon/hwmon-prevent-some-divide-by-zeros-in-fan_to_reg.patch
+Applying: hwmon: Prevent some divide by zeros in FAN_TO_REG()
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-01-add-it8603e-support.patch
+Applying: hwmon: (it87) Add support for the ITE IT8603E
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-02-correct-chip-name.patch
+Applying: hwmon: (it87) Print proper names for the IT8771E and IT8772E
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 3c59362a1094...ee3aed5269c3 master     -> jdelvare-hwmon/master  (forced update)
