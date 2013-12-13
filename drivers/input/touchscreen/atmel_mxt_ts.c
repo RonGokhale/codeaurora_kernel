@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Samsung Electronics Co.Ltd
  * Author: Joonyoung Shim <jy0922.shim@samsung.com>
- * Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -856,6 +856,54 @@ static void mxt_input_report(struct mxt_data *data, int single_id)
 
 	input_sync(input_dev);
 }
+#if defined(AUTOPLAT_001)
+#define PANEL_MAX_X	1366
+#define PANEL_MAX_Y	768
+#define PANEL_MIN_XY	0
+
+#define CENTER_POINT1_X	650
+#define CENTER_POINT1_Y	710
+
+#define CENTER_POINT2_X	150
+#define CENTER_POINT2_Y	110
+
+#define OFFSET_X	250
+#define OFFSET_Y	100
+
+int first_point = 1;
+int range_area = 0;
+int first_area = 0;
+
+static void touch_evaluate_point(int p_x, int p_y, bool p_state)
+{
+	int xy_range_valid;
+
+	xy_range_valid = (p_x > PANEL_MIN_XY) && (p_x < PANEL_MAX_X) &&
+		(p_y > PANEL_MIN_XY) && (p_y < PANEL_MAX_Y);
+
+	if (xy_range_valid && p_state) {
+		if ((OFFSET_X - abs(p_x - CENTER_POINT1_X)) > 0 &&
+				(OFFSET_Y - abs(p_y - CENTER_POINT1_Y)) > 0) {
+				range_area = 1;
+		} else if ((OFFSET_X - abs(p_x - CENTER_POINT2_X)) > 0 &&
+				(OFFSET_Y - abs(p_y - CENTER_POINT2_Y)) > 0) {
+				range_area = 2;
+		} else {
+			range_area = 0;
+		}
+		if (first_point && range_area)
+			first_area = range_area;
+		first_point = 0;
+	}
+
+	if (range_area && !p_state && range_area == first_area) {
+		range_area = 0;
+		first_point = 1;
+	} else if (!p_state) {
+		first_point = 1;
+	}
+}
+#endif /* AUTOPLAT_001 */
 
 static void mxt_input_touchevent(struct mxt_data *data,
 				      struct mxt_message *message, int id)
@@ -875,6 +923,10 @@ static void mxt_input_touchevent(struct mxt_data *data,
 
 			finger[id].status = MXT_RELEASE;
 			mxt_input_report(data, id);
+#if defined(AUTOPLAT_001)
+			if (id == 0)
+				touch_evaluate_point(x, y, 0);
+#endif /* AUTOPLAT_001 */
 		}
 		return;
 	}
@@ -896,6 +948,10 @@ static void mxt_input_touchevent(struct mxt_data *data,
 	dev_dbg(dev, "[%d] %s x: %d, y: %d, area: %d\n", id,
 		status & MXT_MOVE ? "moved" : "pressed",
 		x, y, area);
+#if defined(AUTOPLAT_001)
+	if (id == 0)
+		touch_evaluate_point(x, y, 1);
+#endif /* AUTOPLAT_001 */
 
 	finger[id].status = status & MXT_MOVE ?
 				MXT_MOVE : MXT_PRESS;
