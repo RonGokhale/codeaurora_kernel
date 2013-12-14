@@ -82,6 +82,9 @@
 #include <mach/restart.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_serial_hs.h>
+#if defined(AUTOPLAT_001_REV_CAM) && defined(CONFIG_SWITCH_REVERSE)
+#include <linux/reverse.h>
+#endif /* AUTOPLAT_001_REV_CAM && CONFIG_SWITCH_REVERSE */
 
 #include "msm_watchdog.h"
 #include "board-8064.h"
@@ -3379,6 +3382,30 @@ static void __init apq8064ab_update_retention_spm(void)
 	}
 }
 
+#if defined(AUTOPLAT_001_REV_CAM) && defined(CONFIG_SWITCH_REVERSE)
+
+#define GPIO_KEY_REVERSE		34
+
+static struct reverse_switch_platform_data autoplat001_reverse_data = {
+	.name = "reverse",
+	.gpio = GPIO_KEY_REVERSE,
+	.key_code = KEY_REVERSE,
+	.name_on = NULL,
+	.name_off = NULL,
+	.state_on = NULL,
+	.state_off = NULL,
+	.debounce_time = 200,
+};
+
+static struct platform_device autoplat001_reverse_pdev = {
+	.name           = "switch-reverse",
+	.id             = -1,
+	.dev            = {
+		.platform_data  = &autoplat001_reverse_data,
+	},
+};
+#endif /* AUTOPLAT_001_REV_CAM && CONFIG_SWITCH_REVERSE */
+
 static void __init apq8064_common_init(void)
 {
 	u32 platform_version = socinfo_get_platform_version();
@@ -3557,6 +3584,10 @@ static void __init apq8064_cdp_init(void)
 
 	if (machine_is_apq8064_cdp() || machine_is_apq8064_liquid())
 		platform_device_register(&cdp_kp_pdev);
+
+#if defined(AUTOPLAT_001_REV_CAM) && defined(CONFIG_SWITCH_REVERSE)
+	platform_device_register(&autoplat001_reverse_pdev);
+#endif /* AUTOPLAT_001_REV_CAM && CONFIG_SWITCH_REVERSE */
 
 #if !defined (AUTOPLAT_001)
 	if (machine_is_apq8064_mtp())

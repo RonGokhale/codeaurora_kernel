@@ -290,6 +290,9 @@ struct input_keymap_entry {
 #define KEY_KP6			77
 #define KEY_KPPLUS		78
 #define KEY_KP1			79
+#if defined(AUTOPLAT_001_REV_CAM) && defined(CONFIG_SWITCH_REVERSE)
+#define KEY_REVERSE		KEY_KP1
+#endif /* AUTOPLAT_001_REV_CAM && CONFIG_SWITCH_REVERSE */
 #define KEY_KP2			80
 #define KEY_KP3			81
 #define KEY_KP0			82
