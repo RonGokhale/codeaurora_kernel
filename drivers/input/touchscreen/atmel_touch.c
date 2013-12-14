@@ -723,14 +723,18 @@ static void mxt_input_report(struct mxt_data *data, int single_id)
 #define OFFSET_X	67	
 #define OFFSET_Y	38
 
-enum PicStatus{
+#if defined(AUTOPLAT_001_REV_CAM)
+enum PicStatus {
 	PIC_SHOWING,
 	SPLASH_LOGO_SHOWING,
 	ALL_CLEAR,
 };
 
+extern void show_reverse_pic(int  flags);
 
-int pic_status=0;
+extern enum PicStatus pic_status;
+/* enum PicStatus *do_show_pic = &pic_status; */
+#endif /* AUTOPLAT_001_REV_CAM */
 
 int show_a = 1;
 int show_b = 1;
@@ -739,6 +743,7 @@ int tmp;
 int first_point = 1;
 int range_area = 0;
 int first_area = 0;
+#if defined(AUTOPLAT_001)
 static void touch_evaluate_point(int p_x, int p_y, bool p_state)
 {
 	int xy_range_valid;
@@ -764,8 +769,21 @@ static void touch_evaluate_point(int p_x, int p_y, bool p_state)
 	if (range_area && !p_state && range_area == first_area) {	/* touch valid area */
 			if (range_area == 0x01  && show_a) {
 				show_a = 0;
+#if defined(AUTOPLAT_001_REV_CAM)
+				if (show_b)
+					show_reverse_pic(0x02);
+				else
+					show_reverse_pic(0x03);
+#endif /* AUTOPLAT_001_REV_CAM */
+
 			} else if (range_area == 0x02 && show_b) {
 				show_b = 0;
+#if defined(AUTOPLAT_001_REV_CAM)
+				if (show_a)
+					show_reverse_pic(0x01);
+				else
+					show_reverse_pic(0x03);
+#endif /* AUTOPLAT_001_REV_CAM */
 			}
 		first_area = 0;
 		first_point = 1;
@@ -774,11 +792,14 @@ static void touch_evaluate_point(int p_x, int p_y, bool p_state)
 	if (!p_state) {
 		first_area = 0;
 		first_point = 1;
+#if defined(AUTOPLAT_001_REV_CAM)
 		if (pic_status == ALL_CLEAR) {
 			show_a = show_b = 1;
 		}
+#endif /* AUTOPLAT_001_REV_CAM */
 	}
 }
+#endif /* AUTOPLAT_001 */
 
 
 static void mxt_input_touchevent(struct mxt_data *data,
@@ -812,8 +833,10 @@ static void mxt_input_touchevent(struct mxt_data *data,
 
 			finger[id].status = MXT_RELEASE;
 			mxt_input_report(data, id);
+#if defined(AUTOPLAT_001_REV_CAM)
 			if (id == 0 && (pic_status == PIC_SHOWING))
 				touch_evaluate_point(x, y, 0); /* touch release */
+#endif /* AUTOPLAT_001_REV_CAM */
 		}
 		return;
 	}
@@ -835,8 +858,10 @@ static void mxt_input_touchevent(struct mxt_data *data,
 	dev_dbg(dev, "[%d] %s x: %d, y: %d, area: %d\n", id,
 		status & MXT_MOVE ? "moved" : "pressed",
 		x, y, area);
+#if defined(AUTOPLAT_001_REV_CAM)
 	if (id == 0 && (pic_status == PIC_SHOWING))
 		touch_evaluate_point(x, y, 1); /*touch press */
+#endif /* AUTOPLAT_001_REV_CAM */
 	finger[id].status = status & MXT_MOVE ?
 				MXT_MOVE : MXT_PRESS;
 	finger[id].x = x;
