@@ -544,7 +544,11 @@ static void *ion_buffer_kmap_get(struct ion_buffer *buffer)
 	return vaddr;
 }
 
+#if defined(AUTOPLAT_001_REV_CAM)
+void *ion_handle_kmap_get(struct ion_handle *handle)
+#else
 static void *ion_handle_kmap_get(struct ion_handle *handle)
+#endif /* AUTOPLAT_001_REV_CAM */
 {
 	struct ion_buffer *buffer = handle->buffer;
 	void *vaddr;
