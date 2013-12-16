@@ -87,6 +87,13 @@ struct pm8xxx_mpp_init {
 			PM_GPIO_STRENGTH_##_strength, \
 			PM_GPIO_FUNC_NORMAL, 0, 0)
 
+#if defined(AUTOPLAT_001)
+#define PM8921_GPIO_OUTPUT_HIGH(_gpio, _val, _strength) \
+	PM8921_GPIO_INIT(_gpio, PM_GPIO_DIR_OUT, PM_GPIO_OUT_BUF_CMOS, _val, \
+			PM_GPIO_PULL_NO, PM_GPIO_VIN_L17, \
+			PM_GPIO_STRENGTH_##_strength, \
+			PM_GPIO_FUNC_NORMAL, 0, 0)
+#endif /* AUTOPLAT_001 */
 #define PM8921_GPIO_OUTPUT_BUFCONF(_gpio, _val, _strength, _bufconf) \
 	PM8921_GPIO_INIT(_gpio, PM_GPIO_DIR_OUT,\
 			PM_GPIO_OUT_BUF_##_bufconf, _val, \
@@ -112,6 +119,7 @@ struct pm8xxx_mpp_init {
 			PM_GPIO_STRENGTH_HIGH, \
 			PM_GPIO_FUNC_NORMAL, 0, 0)
 
+#if !defined(AUTOPLAT_001)
 /* Initial PM8921 GPIO configurations */
 static struct pm8xxx_gpio_init pm8921_gpios[] __initdata = {
 	PM8921_GPIO_OUTPUT(14, 1, HIGH),	/* HDMI Mux Selector */
@@ -129,6 +137,23 @@ static struct pm8xxx_gpio_init pm8921_gpios[] __initdata = {
 	PM8921_GPIO_OUTPUT(13, 0, HIGH),               /* PCIE_CLK_PWR_EN */
 	PM8921_GPIO_INPUT(12, PM_GPIO_PULL_UP_30),     /* PCIE_WAKE_N */
 };
+#else
+/* Initial PM8921 GPIO configurations */
+static struct pm8xxx_gpio_init pm8921_gpios[] __initdata = {
+	PM8921_GPIO_OUTPUT(14, 1, HIGH),	/* HDMI Mux Selector */
+	PM8921_GPIO_OUTPUT_FUNC(26, 1, PM_GPIO_FUNC_NORMAL), /*apple authIC reset pin */
+	PM8921_GPIO_OUTPUT_VIN(30, 1, PM_GPIO_VIN_VPH), /* SMB349 susp line */
+	PM8921_GPIO_OUTPUT_FUNC(44, 0, PM_GPIO_FUNC_2),
+	PM8921_GPIO_OUTPUT(33, 0, HIGH),
+	PM8921_GPIO_OUTPUT(20, 0, HIGH),
+	PM8921_GPIO_INPUT(35, PM_GPIO_PULL_UP_30),	/*SD_PWR_EN for Autoplatform001*/
+	PM8921_GPIO_INPUT(38, PM_GPIO_PULL_UP_30),
+	/* TABLA CODEC RESET */
+	PM8921_GPIO_OUTPUT(34, 0, MED),
+	PM8921_GPIO_OUTPUT(13, 0, HIGH),               /* PCIE_CLK_PWR_EN */
+	PM8921_GPIO_INPUT(12, PM_GPIO_PULL_UP_30),     /* PCIE_WAKE_N */
+};
+#endif /* AUTOPLAT_001 */
 
 static struct pm8xxx_gpio_init pm8921_mtp_kp_gpios[] __initdata = {
 	PM8921_GPIO_INPUT(3, PM_GPIO_PULL_UP_30),
@@ -169,9 +194,20 @@ static struct pm8xxx_gpio_init pm8917_cdp_kp_gpios[] __initdata = {
 	PM8921_GPIO_INPUT(17, PM_GPIO_PULL_UP_1P5),	/* SD_WP */
 };
 
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT
 static struct pm8xxx_gpio_init pm8921_8917_cdp_ts_gpios[] __initdata = {
 	PM8921_GPIO_OUTPUT(23, 0, HIGH),	/* touchscreen power FET */
 };
+#endif /* CONFIG_TOUCHSCREEN_ATMEL_MXT */
+
+#if defined(AUTOPLAT_001)
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT540E
+static struct pm8xxx_gpio_init pm8921_autoplat001_ts_gpios[] __initdata = {
+	/*HW need this voltage*/
+	PM8921_GPIO_OUTPUT_HIGH(36, 0, HIGH),	/* touchscreen reset */
+};
+#endif /* CONFIG_TOUCHSCREEN_ATMEL_MXT540E */
+#endif /* AUTOPLAT_001 */
 
 static struct pm8xxx_gpio_init pm8921_mpq_gpios[] __initdata = {
 	PM8921_GPIO_INIT(27, PM_GPIO_DIR_IN, PM_GPIO_OUT_BUF_CMOS, 0,
@@ -181,7 +217,9 @@ static struct pm8xxx_gpio_init pm8921_mpq_gpios[] __initdata = {
 
 /* Initial PM8XXX MPP configurations */
 static struct pm8xxx_mpp_init pm8xxx_mpps[] __initdata = {
+#if !defined(AUTOPLAT_001)
 	PM8921_MPP_INIT(3, D_OUTPUT, PM8921_MPP_DIG_LEVEL_VPH, DOUT_CTRL_LOW),
+#endif /* AUTOPLAT_001 */
 	/* External 5V regulator enable; shared by HDMI and USB_OTG switches. */
 	PM8921_MPP_INIT(7, D_OUTPUT, PM8921_MPP_DIG_LEVEL_VPH, DOUT_CTRL_LOW),
 	PM8921_MPP_INIT(8, D_OUTPUT, PM8921_MPP_DIG_LEVEL_S4, DOUT_CTRL_LOW),
@@ -224,10 +262,17 @@ void __init apq8064_pm8xxx_gpio_mpp_init(void)
 		else
 			apq8064_configure_gpios(pm8917_cdp_kp_gpios,
 					ARRAY_SIZE(pm8917_cdp_kp_gpios));
-
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT
 		apq8064_configure_gpios(pm8921_8917_cdp_ts_gpios,
 				ARRAY_SIZE(pm8921_8917_cdp_ts_gpios));
+#endif
 	}
+#if defined (AUTOPLAT_001)
+#ifdef CONFIG_TOUCHSCREEN_ATMEL_MXT540E
+	apq8064_configure_gpios(pm8921_autoplat001_ts_gpios,
+			ARRAY_SIZE(pm8921_autoplat001_ts_gpios));
+#endif
+#endif /* AUTOPLAT_001 */
 
 	if (machine_is_apq8064_mtp()) {
 		apq8064_configure_gpios(pm8921_mtp_kp_gpios,
