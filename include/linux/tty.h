@@ -39,9 +39,13 @@ struct tty_buffer {
 	int size;
 	int commit;
 	int read;
+	int flags;
 	/* Data points here */
 	unsigned long data[0];
 };
+
+/* Values for .flags field of tty_buffer */
+#define TTYB_NORMAL	1	/* buffer has no flags buffer */
 
 static inline unsigned char *char_buf_ptr(struct tty_buffer *b, int ofs)
 {
@@ -60,7 +64,8 @@ struct tty_bufhead {
 	atomic_t	   priority;
 	struct tty_buffer sentinel;
 	struct llist_head free;		/* Free queue head */
-	atomic_t	   memory_used; /* In-use buffers excluding free list */
+	atomic_t	   mem_used;    /* In-use buffers excluding free list */
+	int		   mem_limit;
 	struct tty_buffer *tail;	/* Active buffer */
 };
 /*
