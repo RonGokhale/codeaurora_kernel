@@ -200,6 +200,27 @@
 #define HFR_MODE_OFF 1
 #define VFE_FRAME_SKIP_PERIOD_MASK 0x0000001F /*bits 0 -4*/
 
+#if defined(AUTOPLAT_001_REV_CAM)
+/* Move from msm_vfe32.c */
+#define VFE32_AXI_OFFSET 0x0050
+#define vfe32_get_ch_ping_addr(base, chn) \
+	(msm_camera_io_r((base) + 0x0050 + 0x18 * (chn)))
+#define vfe32_get_ch_pong_addr(base, chn) \
+	(msm_camera_io_r((base) + 0x0050 + 0x18 * (chn) + 4))
+#define vfe32_get_ch_addr(ping_pong, base, chn) \
+	((((ping_pong) & (1 << (chn))) == 0) ? \
+	(vfe32_get_ch_pong_addr((base), chn)) : \
+	(vfe32_get_ch_ping_addr((base), chn)))
+#define vfe32_put_ch_ping_addr(base, chn, addr) \
+	(msm_camera_io_w((addr), (base) + 0x0050 + 0x18 * (chn)))
+#define vfe32_put_ch_pong_addr(base, chn, addr) \
+	(msm_camera_io_w((addr), (base) + 0x0050 + 0x18 * (chn) + 4))
+#define vfe32_put_ch_addr(ping_pong, base, chn, addr) \
+	(((ping_pong) & (1 << (chn))) == 0 ?   \
+	vfe32_put_ch_pong_addr((base), (chn), (addr)) : \
+	vfe32_put_ch_ping_addr((base), (chn), (addr)))
+#endif /* AUTOPLAT_001_REV_CAM */
+
 enum VFE32_DMI_RAM_SEL {
 	NO_MEM_SELECTED          = 0,
 	BLACK_LUT_RAM_BANK0      = 0x1,
@@ -1084,6 +1105,9 @@ struct vfe_cmd_stats_ack {
 };
 
 #define VFE_STATS_BUFFER_COUNT            3
+#if defined(AUTOPLAT_001_REV_CAM)
+extern void vfe32_process_output_path_irq_rdi1_only(struct axi_ctrl_t *axi_ctrl);
+#endif /* AUTOPLAT_001_REV_CAM */
 
 struct vfe_cmd_stats_buf {
 	uint32_t statsBuf[VFE_STATS_BUFFER_COUNT];
