@@ -2247,6 +2247,8 @@ static int falcon_probe_nic(struct efx_nic *efx)
 	struct falcon_board *board;
 	int rc;
 
+	efx->primary = efx; /* only one usable function per controller */
+
 	/* Allocate storage for hardware specific data */
 	nic_data = kzalloc(sizeof(*nic_data), GFP_KERNEL);
 	if (!nic_data)
@@ -2593,6 +2595,14 @@ void falcon_start_nic_stats(struct efx_nic *efx)
 	spin_unlock_bh(&efx->stats_lock);
 }
 
+/* We don't acutally pull stats on falcon. Wait 10ms so that
+ * they arrive when we call this just after start_stats
+ */
+void falcon_pull_nic_stats(struct efx_nic *efx)
+{
+	msleep(10);
+}
+
 void falcon_stop_nic_stats(struct efx_nic *efx)
 {
 	struct falcon_nic_data *nic_data = efx->nic_data;
@@ -2672,6 +2682,7 @@ const struct efx_nic_type falcon_a1_nic_type = {
 	.describe_stats = falcon_describe_nic_stats,
 	.update_stats = falcon_update_nic_stats,
 	.start_stats = falcon_start_nic_stats,
+	.pull_stats = falcon_pull_nic_stats,
 	.stop_stats = falcon_stop_nic_stats,
 	.set_id_led = falcon_set_id_led,
 	.push_irq_moderation = falcon_push_irq_moderation,
@@ -2765,6 +2776,7 @@ const struct efx_nic_type falcon_b0_nic_type = {
 	.describe_stats = falcon_describe_nic_stats,
 	.update_stats = falcon_update_nic_stats,
 	.start_stats = falcon_start_nic_stats,
+	.pull_stats = falcon_pull_nic_stats,
 	.stop_stats = falcon_stop_nic_stats,
 	.set_id_led = falcon_set_id_led,
 	.push_irq_moderation = falcon_push_irq_moderation,
