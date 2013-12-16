@@ -8,6 +8,12 @@ NAME = Saber-toothed Squirrel
 AUTOPLAT_001 := false
 #AUTOPLAT_001 := true
 
+# Enabling Automotive Platform specific features
+ifeq ($(AUTOPLAT_001), true)
+# Reverse Camera
+AUTOPLAT_001_REV_CAM := true
+endif # AUTOPLAT_001
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
@@ -580,7 +586,10 @@ endif
 
 ifeq ($(AUTOPLAT_001), true)
 KBUILD_CFLAGS += -DAUTOPLAT_001
-endif
+ifeq ($(AUTOPLAT_001_REV_CAM), true)
+KBUILD_CFLAGS += -DAUTOPLAT_001_REV_CAM
+endif # AUTOPLAT_001_REV_CAM
+endif # AUTOPLAT_001
 
 # Force gcc to behave correct even for buggy distributions
 ifndef CONFIG_CC_STACKPROTECTOR
