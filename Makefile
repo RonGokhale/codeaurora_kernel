@@ -4,6 +4,10 @@ SUBLEVEL = 0
 EXTRAVERSION =
 NAME = Saber-toothed Squirrel
 
+# Flag to disable/enable Autoplatform001 build
+AUTOPLAT_001 := false
+#AUTOPLAT_001 := true
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
@@ -572,6 +576,10 @@ include $(srctree)/arch/$(SRCARCH)/Makefile
 
 ifneq ($(CONFIG_FRAME_WARN),0)
 KBUILD_CFLAGS += $(call cc-option,-Wframe-larger-than=${CONFIG_FRAME_WARN})
+endif
+
+ifeq ($(AUTOPLAT_001), true)
+KBUILD_CFLAGS += -DAUTOPLAT_001
 endif
 
 # Force gcc to behave correct even for buggy distributions
