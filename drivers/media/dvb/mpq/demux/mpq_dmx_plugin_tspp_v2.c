@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -73,7 +73,8 @@ static int mpq_tspp_dmx_get_caps(struct dmx_demux *demux,
 	}
 
 	caps->caps = DMX_CAP_PULL_MODE | DMX_CAP_VIDEO_INDEXING |
-		DMX_CAP_VIDEO_DECODER_DATA;
+		DMX_CAP_VIDEO_DECODER_DATA | DMX_CAP_TS_INSERTION |
+		DMX_CAP_SECURED_INPUT_PLAYBACK;
 	caps->num_decoders = MPQ_ADAPTER_MAX_NUM_OF_INTERFACES;
 	caps->num_demux_devices = CONFIG_DVB_MPQ_NUM_DMX_DEVICES;
 	caps->num_pid_filters = TSPP_MAX_PID_FILTER_NUM;
@@ -85,6 +86,10 @@ static int mpq_tspp_dmx_get_caps(struct dmx_demux *demux,
 	caps->max_bitrate = 320;
 	caps->demod_input_max_bitrate = 96;
 	caps->memory_input_max_bitrate = 80;
+	caps->num_cipher_ops = DMX_MAX_CIPHER_OPERATIONS_COUNT;
+
+	/* TSIF reports 7 bytes STC at unit of 27MHz */
+	caps->max_stc = 0x00FFFFFFFFFFFFFF;
 
 	return 0;
 }
@@ -128,6 +133,7 @@ static int mpq_tspp_dmx_init(
 	mpq_demux->demux.reuse_decoder_buffer = NULL;
 	mpq_demux->demux.set_secure_mode = NULL;
 	mpq_demux->demux.oob_command = NULL;
+	mpq_demux->demux.convert_ts = NULL;
 
 	/* Initialize dvb_demux object */
 	result = dvb_dmx_init(&mpq_demux->demux);
@@ -142,7 +148,8 @@ static int mpq_tspp_dmx_init(
 	mpq_demux->dmxdev.capabilities =
 		DMXDEV_CAP_DUPLEX |
 		DMXDEV_CAP_PULL_MODE |
-		DMXDEV_CAP_INDEXING;
+		DMXDEV_CAP_INDEXING |
+		DMXDEV_CAP_TS_INSERTION;
 
 	mpq_demux->dmxdev.demux->set_source = mpq_dmx_set_source;
 	mpq_demux->dmxdev.demux->get_caps = mpq_tspp_dmx_get_caps;

@@ -108,7 +108,6 @@ typedef struct dmx_filter
 #define DMX_CHECK_CRC		0x01
 #define DMX_ONESHOT		0x02
 #define DMX_IMMEDIATE_START	0x04
-#define DMX_ENABLE_INDEXING	0x08
 #define DMX_KERNEL_CLIENT	0x8000
 
 struct dmx_sct_filter_params
@@ -120,25 +119,41 @@ struct dmx_sct_filter_params
 };
 
 
-/* Indexing: supported video standards */
-enum dmx_indexing_video_standard {
-	DMX_INDEXING_MPEG2,
-	DMX_INDEXING_H264,
-	DMX_INDEXING_VC1
+enum dmx_video_codec {
+	DMX_VIDEO_CODEC_MPEG2,
+	DMX_VIDEO_CODEC_H264,
+	DMX_VIDEO_CODEC_VC1
 };
 
-/* Indexing: Supported video profiles */
-enum dmx_indexing_video_profile {
-	DMX_INDEXING_MPEG2_ANY,
-	DMX_INDEXING_H264_ANY,
-	DMX_INDEXING_VC1_ANY
-};
-
-/* Indexing: video configuration parameters */
-struct dmx_indexing_video_params {
-	enum dmx_indexing_video_standard standard;
-	enum dmx_indexing_video_profile profile;
-};
+/* Index entries types */
+#define DMX_IDX_RAI                         0x00000001
+#define DMX_IDX_PUSI                        0x00000002
+#define DMX_IDX_MPEG_SEQ_HEADER             0x00000004
+#define DMX_IDX_MPEG_GOP                    0x00000008
+#define DMX_IDX_MPEG_FIRST_SEQ_FRAME_START  0x00000010
+#define DMX_IDX_MPEG_FIRST_SEQ_FRAME_END    0x00000020
+#define DMX_IDX_MPEG_I_FRAME_START          0x00000040
+#define DMX_IDX_MPEG_I_FRAME_END            0x00000080
+#define DMX_IDX_MPEG_P_FRAME_START          0x00000100
+#define DMX_IDX_MPEG_P_FRAME_END            0x00000200
+#define DMX_IDX_MPEG_B_FRAME_START          0x00000400
+#define DMX_IDX_MPEG_B_FRAME_END            0x00000800
+#define DMX_IDX_H264_SPS                    0x00001000
+#define DMX_IDX_H264_PPS                    0x00002000
+#define DMX_IDX_H264_FIRST_SPS_FRAME_START  0x00004000
+#define DMX_IDX_H264_FIRST_SPS_FRAME_END    0x00008000
+#define DMX_IDX_H264_IDR_START              0x00010000
+#define DMX_IDX_H264_IDR_END                0x00020000
+#define DMX_IDX_H264_NON_IDR_START          0x00040000
+#define DMX_IDX_H264_NON_IDR_END            0x00080000
+#define DMX_IDX_VC1_SEQ_HEADER              0x00100000
+#define DMX_IDX_VC1_ENTRY_POINT             0x00200000
+#define DMX_IDX_VC1_FIRST_SEQ_FRAME_START   0x00400000
+#define DMX_IDX_VC1_FIRST_SEQ_FRAME_END     0x00800000
+#define DMX_IDX_VC1_FRAME_START             0x01000000
+#define DMX_IDX_VC1_FRAME_END               0x02000000
+#define DMX_IDX_H264_ACCESS_UNIT_DEL        0x04000000
+#define DMX_IDX_H264_SEI                    0x08000000
 
 struct dmx_pes_filter_params
 {
@@ -153,14 +168,14 @@ struct dmx_pes_filter_params
 	 * DMX_EVENT_NEW_REC_CHUNK will be triggered.
 	 * When new recorded data is received with size
 	 * equal or larger than this value a new event
-	 * will be triggered. This is relevent when
+	 * will be triggered. This is relevant when
 	 * output is DMX_OUT_TS_TAP or DMX_OUT_TSDEMUX_TAP,
 	 * size must be at least DMX_REC_BUFF_CHUNK_MIN_SIZE
 	 * and smaller than buffer size.
 	 */
 	__u32          rec_chunk_size;
 
-	struct dmx_indexing_video_params video_params;
+	enum dmx_video_codec video_codec;
 };
 
 struct dmx_buffer_status {
@@ -189,28 +204,42 @@ struct dmx_buffer_status {
 /* Events associated with each demux filter */
 enum dmx_event {
 	/* New PES packet is ready to be consumed */
-	DMX_EVENT_NEW_PES,
+	DMX_EVENT_NEW_PES = 0x00000001,
 
 	/* New section is ready to be consumed */
-	DMX_EVENT_NEW_SECTION,
+	DMX_EVENT_NEW_SECTION = 0x00000002,
 
 	/* New recording chunk is ready to be consumed */
-	DMX_EVENT_NEW_REC_CHUNK,
+	DMX_EVENT_NEW_REC_CHUNK = 0x00000004,
 
 	/* New PCR value is ready */
-	DMX_EVENT_NEW_PCR,
+	DMX_EVENT_NEW_PCR = 0x00000008,
 
 	/* Overflow */
-	DMX_EVENT_BUFFER_OVERFLOW,
+	DMX_EVENT_BUFFER_OVERFLOW = 0x00000010,
 
 	/* Section was dropped due to CRC error */
-	DMX_EVENT_SECTION_CRC_ERROR,
+	DMX_EVENT_SECTION_CRC_ERROR = 0x00000020,
 
 	/* End-of-stream, no more data from this filter */
-	DMX_EVENT_EOS,
+	DMX_EVENT_EOS = 0x00000040,
 
 	/* New Elementary Stream data is ready */
-	DMX_EVENT_NEW_ES_DATA
+	DMX_EVENT_NEW_ES_DATA = 0x00000080,
+
+	/* Data markers */
+	DMX_EVENT_MARKER = 0x00000100,
+
+	/* New indexing entry is ready */
+	DMX_EVENT_NEW_INDEX_ENTRY = 0x00000200,
+
+	/*
+	 * Section filter timer expired. This is notified
+	 * when timeout is configured to section filter
+	 * (dmx_sct_filter_params) and no sections were
+	 * received for the given time.
+	 */
+	DMX_EVENT_SECTION_TIMEOUT = 0x00000400
 };
 
 enum dmx_oob_cmd {
@@ -349,6 +378,9 @@ struct dmx_es_data_event_info {
 	/* DTS value associated with the buffer */
 	__u64 dts;
 
+	/* STC value associated with the buffer in 27MHz */
+	__u64 stc;
+
 	/*
 	 * Number of TS packets with Transport Error Indicator (TEI) set
 	 * in the TS packet header since last reported event
@@ -374,6 +406,34 @@ struct dmx_marker_event_info {
 	__u64 id;
 };
 
+/* Indexing information associated with DMX_EVENT_NEW_INDEX_ENTRY event */
+struct dmx_index_event_info {
+	/* Index entry type, one of of DMX_IDX_* */
+	__u64 type;
+
+	/*
+	 * The PID the index entry belongs to.
+	 * In case of recording filter, multiple PIDs may exist in the same
+	 * filter through DMX_ADD_PID ioctl and each can be indexed seperatly.
+	 */
+	__u16 pid;
+
+	/*
+	 * The TS packet number in the recorded data at which
+	 * the indexing event is found.
+	 */
+	__u64 match_tsp_num;
+
+	/*
+	 * The TS packet number in the recorded data preceeding
+	 * match_tsp_num and has PUSI set.
+	 */
+	__u64 last_pusi_tsp_num;
+
+	/* STC associated with match_tsp_num, in 27MHz */
+	__u64 stc;
+};
+
 /*
  * Filter's event returned through DMX_GET_EVENT.
  * poll with POLLPRI would block until events are available.
@@ -387,6 +447,8 @@ struct dmx_filter_event {
 		struct dmx_rec_chunk_event_info recording_chunk;
 		struct dmx_pcr_event_info pcr;
 		struct dmx_es_data_event_info es_data;
+		struct dmx_marker_event_info marker;
+		struct dmx_index_event_info index;
 	} params;
 };
 
@@ -447,6 +509,12 @@ typedef struct dmx_caps {
 /* Indicates whether demux support sending data directly to subtitle decoder */
 #define DMX_CAP_SUBTITLE_DECODER_DATA	0x10
 
+/* Indicates whether TS insertion is supported */
+#define DMX_CAP_TS_INSERTION	0x20
+
+/* Indicates whether playback from secured input is supported */
+#define DMX_CAP_SECURED_INPUT_PLAYBACK	0x40
+
 	/* Number of decoders demux can output data to */
 	int num_decoders;
 
@@ -485,6 +553,12 @@ typedef struct dmx_caps {
 
 	/* Max bitrate from single memory input. Mbit/sec */
 	int memory_input_max_bitrate;
+
+	/* Max number of supported cipher operations per PID */
+	int num_cipher_ops;
+
+	/* Max possible value of STC reported by demux, in 27MHz */
+	__u64 max_stc;
 
 	struct dmx_buffer_requirement section;
 
@@ -573,8 +647,16 @@ enum dmx_buffer_mode {
 struct dmx_buffer {
 	unsigned int size;
 	int handle;
-};
 
+	/*
+	 * The following indication is relevant only when setting
+	 * DVR input buffer. It indicates whether the input buffer
+	 * being set is secured one or not. Secured (locked) buffers
+	 * are required for playback from secured input. In such case
+	 * write() syscall is not allowed.
+	 */
+	int is_protected;
+};
 
 struct dmx_decoder_buffers {
 	/*
@@ -598,16 +680,126 @@ struct dmx_decoder_buffers {
 
 struct dmx_secure_mode {
 	/*
-	 * Specifies whether secure mode should be set or not for the filter's
-	 * pid. Note that DMX_OUT_TSDEMUX_TAP filters can have more than 1 pid
+	 * Specifies whether the filter is secure or not.
+	 * Filter should be set as secured if the filter's data *may* include
+	 * encrypted data that would require decryption configured through
+	 * DMX_SET_CIPHER ioctl. The setting may be done while
+	 * filter is in idle state only.
 	 */
 	int is_secured;
+};
 
-	/* PID to associate with key ladder id */
+struct dmx_cipher_operation {
+	/* Indication whether the operation is encryption or decryption */
+	int encrypt;
+
+	/* The ID of the key used for decryption or encryption */
+	__u32 key_ladder_id;
+};
+
+#define DMX_MAX_CIPHER_OPERATIONS_COUNT	5
+struct dmx_cipher_operations {
+	/*
+	 * The PID to perform the cipher operations on.
+	 * In case of recording filter, multiple PIDs may exist in the same
+	 * filter through DMX_ADD_PID ioctl, each may have different
+	 * cipher operations.
+	 */
 	__u16 pid;
 
-	/* key ladder information to associate with the specified pid */
-	__u32 key_ladder_id;
+	/* Total number of operations */
+	__u8 operations_count;
+
+	/*
+	 * Cipher operation to perform on the given PID.
+	 * The operations are performed in the order they are given.
+	 */
+	struct dmx_cipher_operation operations[DMX_MAX_CIPHER_OPERATIONS_COUNT];
+};
+
+struct dmx_events_mask {
+	/*
+	 * Bitmask of events to be disabled (dmx_event).
+	 * Disabled events will not be notified to the user.
+	 * By default all events are enabled except for
+	 * DMX_EVENT_NEW_ES_DATA.
+	 * Overflow event can't be disabled.
+	 */
+	__u32 disable_mask;
+
+	/*
+	 * Bitmask of events that will not wake-up the user
+	 * when user calls poll with POLLPRI flag.
+	 * Events that are used as wake-up source should not be
+	 * disabled in disable_mask or they would not be used
+	 * as a wake-up source.
+	 * By default all enabled events are set as wake-up events.
+	 * Overflow event can't be disabled as a wake-up source.
+	 */
+	__u32 no_wakeup_mask;
+
+	/*
+	 * Number of ready wake-up events which will trigger
+	 * a wake-up when user calls poll with POLLPRI flag.
+	 * Default is set to 1.
+	 */
+	__u32 wakeup_threshold;
+};
+
+struct dmx_indexing_params {
+	/*
+	 * PID to index. In case of recording filter, multiple PIDs
+	 * may exist in the same filter through DMX_ADD_PID ioctl.
+	 * It is assumed that the PID was already added using DMX_ADD_PID
+	 * or an error will be reported.
+	 */
+	__u16 pid;
+
+	/* enable or disable indexing, default is disabled */
+	int enable;
+
+	/* combination of DMX_IDX_* bits */
+	__u64 types;
+};
+
+struct dmx_set_ts_insertion {
+	/*
+	 * Unique identifier managed by the caller.
+	 * This identifier can be used later to remove the
+	 * insertion using DMX_ABORT_TS_INSERTION ioctl.
+	 */
+	__u32 identifier;
+
+	/*
+	 * Repetition time in msec, minimum allowed value is 25msec.
+	 * 0 repetition time means one-shot insertion is done.
+	 * Insertion done based on wall-clock.
+	 */
+	__u32 repetition_time;
+
+	/*
+	 * TS packets buffer to be inserted.
+	 * The buffer is inserted as-is to the recording buffer
+	 * without any modification.
+	 * It is advised to set discontinuity flag in the very
+	 * first TS packet in the buffer.
+	 */
+	const __u8 *ts_packets;
+
+	/*
+	 * Size in bytes of the TS packets buffer to be inserted.
+	 * Should be in multiples of 188 or 192 bytes
+	 * depending on recording filter output format.
+	 */
+	size_t size;
+};
+
+struct dmx_abort_ts_insertion {
+	/*
+	 * Identifier of the insertion buffer previously set
+	 * using DMX_SET_TS_INSERTION.
+	 */
+	__u32 identifier;
 };
 
 #define DMX_START                _IO('o', 41)
@@ -634,6 +826,13 @@ struct dmx_secure_mode {
 #define DMX_SET_DECODER_BUFFER	 _IOW('o', 63, struct dmx_decoder_buffers)
 #define DMX_REUSE_DECODER_BUFFER _IO('o', 64)
 #define DMX_SET_SECURE_MODE	_IOW('o', 65, struct dmx_secure_mode)
-#define DMX_PUSH_OOB_COMMAND	_IOW('o', 65, struct dmx_oob_command)
+#define DMX_SET_EVENTS_MASK	_IOW('o', 66, struct dmx_events_mask)
+#define DMX_GET_EVENTS_MASK	_IOR('o', 67, struct dmx_events_mask)
+#define DMX_PUSH_OOB_COMMAND	_IOW('o', 68, struct dmx_oob_command)
+#define DMX_SET_INDEXING_PARAMS _IOW('o', 69, struct dmx_indexing_params)
+#define DMX_SET_TS_INSERTION _IOW('o', 70, struct dmx_set_ts_insertion)
+#define DMX_ABORT_TS_INSERTION _IOW('o', 71, struct dmx_abort_ts_insertion)
+#define DMX_SET_CIPHER _IOW('o', 73, struct dmx_cipher_operations)
+
 
 #endif /*_DVBDMX_H_*/

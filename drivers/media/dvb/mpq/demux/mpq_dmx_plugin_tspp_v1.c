@@ -54,16 +54,14 @@
 #define TSPP_RAW_TTS_SIZE		192
 #define TSPP_RAW_SIZE			188
 
-#define MAX_BAM_DESCRIPTOR_SIZE	(32 * 1024 - 1)
-
-#define MAX_BAM_DESCRIPTOR_COUNT	(8 * 1024 - 2)
+#define MAX_BAM_DESCRIPTOR_SIZE	(32*1024 - 1)
 
 #define TSPP_BUFFER_SIZE		(500 * 1024) /* 500KB */
 
 #define TSPP_DESCRIPTOR_SIZE	(TSPP_RAW_TTS_SIZE)
 
 #define TSPP_BUFFER_COUNT(buffer_size)	\
-	((buffer_size) / TSPP_DESCRIPTOR_SIZE)
+	((buffer_size) / TSPP_RAW_TTS_SIZE)
 
 /* When TSPP notifies demux that new packets are received.
  * Using max descriptor size (170 packets).
@@ -1623,9 +1621,13 @@ static int mpq_tspp_dmx_get_caps(struct dmx_demux *demux,
 	caps->section_filter_length = DMX_FILTER_SIZE;
 	caps->num_demod_inputs = TSIF_COUNT;
 	caps->num_memory_inputs = CONFIG_DVB_MPQ_NUM_DMX_DEVICES;
-	caps->max_bitrate = 144;
-	caps->demod_input_max_bitrate = 72;
-	caps->memory_input_max_bitrate = 72;
+	caps->max_bitrate = 192;
+	caps->demod_input_max_bitrate = 96;
+	caps->memory_input_max_bitrate = 96;
+	caps->num_cipher_ops = 1;
+
+	/* TSIF reports 3 bytes STC at unit of 27MHz/256 */
+	caps->max_stc = (u64)0xFFFFFF * 256;
 
 	/* Buffer requirements */
 	caps->section.flags =
@@ -1744,9 +1746,9 @@ static int mpq_tspp_dmx_init(
 		mpq_dmx_decoder_fullness_abort;
 	mpq_demux->demux.decoder_buffer_status = mpq_dmx_decoder_buffer_status;
 	mpq_demux->demux.reuse_decoder_buffer = mpq_dmx_reuse_decoder_buffer;
-	mpq_demux->demux.set_secure_mode = mpq_dmx_set_secure_mode;
-
+	mpq_demux->demux.set_cipher_op = mpq_dmx_set_cipher_ops;
 	mpq_demux->demux.oob_command = mpq_dmx_oob_command;
+	mpq_demux->demux.convert_ts = mpq_dmx_convert_tts;
 
 	/* Initialize dvb_demux object */
 	result = dvb_dmx_init(&mpq_demux->demux);
@@ -1761,7 +1763,8 @@ static int mpq_tspp_dmx_init(
 	mpq_demux->dmxdev.capabilities =
 		DMXDEV_CAP_DUPLEX |
 		DMXDEV_CAP_PULL_MODE |
-		DMXDEV_CAP_INDEXING;
+		DMXDEV_CAP_INDEXING |
+		DMXDEV_CAP_TS_INSERTION;
 
 	mpq_demux->dmxdev.demux->set_source = mpq_dmx_set_source;
 	mpq_demux->dmxdev.demux->get_stc = mpq_tspp_dmx_get_stc;
@@ -1799,11 +1802,6 @@ static int __init mpq_dmx_tspp_plugin_init(void)
 	for (i = 0; i < TSIF_COUNT; i++) {
 		mpq_dmx_tspp_info.tsif[i].buffer_count =
 				TSPP_BUFFER_COUNT(tspp_out_buffer_size);
-
-		if (mpq_dmx_tspp_info.tsif[i].buffer_count >
-			MAX_BAM_DESCRIPTOR_COUNT)
-			mpq_dmx_tspp_info.tsif[i].buffer_count =
-				MAX_BAM_DESCRIPTOR_COUNT;
 
 		mpq_dmx_tspp_info.tsif[i].aggregate_ids =
 			vzalloc(mpq_dmx_tspp_info.tsif[i].buffer_count *
