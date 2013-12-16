@@ -474,7 +474,7 @@ static inline cpumask_t *mm_cpumask(struct mm_struct *mm)
  * The barriers below prevent the compiler from re-ordering the instructions
  * around the memory barriers that are already present in the code.
  */
-static inline bool tlb_flush_pending(struct mm_struct *mm)
+static inline bool mm_tlb_flush_pending(struct mm_struct *mm)
 {
 	barrier();
 	return mm->tlb_flush_pending;
@@ -491,7 +491,7 @@ static inline void clear_tlb_flush_pending(struct mm_struct *mm)
 	mm->tlb_flush_pending = false;
 }
 #else
-static inline bool tlb_flush_pending(struct mm_struct *mm)
+static inline bool mm_tlb_flush_pending(struct mm_struct *mm)
 {
 	return false;
 }
