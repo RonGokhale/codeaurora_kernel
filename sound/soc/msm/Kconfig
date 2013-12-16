@@ -72,10 +72,25 @@ config SND_SOC_MSM_HOSTLESS_PCM
 	tristate
 
 config SND_SOC_LPASS_PCM
-	tristate
+	bool "enable LPASS PCM"
+	help
+	enable LPASS PCM platform driver
+
 
 config SND_SOC_MSM8660_LPAIF
-	tristate
+	bool "enable LPASS DMA and I2S"
+	help
+	enable LPASS DAM and I2S cpu dai driver
+
+config SND_SOC_LPASS_AUTO
+	bool "enable LPASS machine"
+	help
+	enable LPASS machine driver on APQ8064
+
+config SND_SOC_LPASS_PLAY
+       bool "enable LPASS play"
+       help
+       enable audio play kernel thread via LPASS I2S
 
 config SND_VOIP_PCM
 	tristate

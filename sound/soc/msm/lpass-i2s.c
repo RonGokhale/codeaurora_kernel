@@ -23,6 +23,12 @@
 #include <sound/soc.h>
 #include <sound/dai.h>
 
+#if defined(AUTOPLAT_001)
+#define MSM_MI2S_RX		0
+#define SECONDARY_I2S_RX	3
+#define PRIMARY_I2S_TX		5
+#endif /* AUTOPLAT_001 */
+
 static int msm_cpu_dai_startup(struct snd_pcm_substream *substream,
 				struct snd_soc_dai *dai)
 {
@@ -77,7 +83,7 @@ static struct snd_soc_dai_ops msm_cpu_dai_ops = {
 
 };
 
-
+#if !defined(AUTOPLAT_001)
 #define MSM_DAI_SPEAKER_BUILDER(link_id)			\
 {								\
 	.name = "msm-speaker-dai-"#link_id,			\
@@ -92,8 +98,41 @@ static struct snd_soc_dai_ops msm_cpu_dai_ops = {
 	},							\
 	.ops = &msm_cpu_dai_ops,				\
 }
+#else
+#define MSM_DAI_SPEAKER_BUILDER(link_id)			\
+{								\
+	.name = "msm-speaker-dai-"#link_id,			\
+	.id = (link_id),					\
+	.playback = {						\
+		.stream_name = "auto-playback-"#link_id,			\
+		.rates = SNDRV_PCM_RATE_8000_96000,		\
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+		.channels_min = 1,				\
+		.channels_max = 2,				\
+		.rate_max =	96000,				\
+		.rate_min =	8000,				\
+	},							\
+	.ops = &msm_cpu_dai_ops,				\
+}
 
+#define MSM_DAI_SEC_SPEAKER_BUILDER(link_id)			\
+{								\
+	.name = "msm-sec-speaker-dai-"#link_id,			\
+	.id = (link_id),					\
+	.playback = {						\
+		.stream_name = "auto-sec-playback-"#link_id,			\
+		.rates = SNDRV_PCM_RATE_8000_96000,		\
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+		.channels_min = 1,				\
+		.channels_max = 2,				\
+		.rate_max =	96000,				\
+		.rate_min =	8000,				\
+	},							\
+	.ops = &msm_cpu_dai_ops,				\
+}
+#endif /* AUTOPLAT_001 */
 
+#if !defined(AUTOPLAT_001)
 #define MSM_DAI_MIC_BUILDER(link_id)				\
 {								\
 	.name = "msm-mic-dai-"#link_id,				\
@@ -108,8 +147,25 @@ static struct snd_soc_dai_ops msm_cpu_dai_ops = {
 	},							\
 	.ops = &msm_cpu_dai_ops,				\
 }
+#else
+#define MSM_DAI_MIC_BUILDER(link_id)				\
+{								\
+	.name = "msm-mic-dai-"#link_id,				\
+	.id = (link_id),					\
+	.capture = {						\
+		.stream_name = "auto-capture-"#link_id,				\
+		.rates = SNDRV_PCM_RATE_8000_96000,		\
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+		.rate_min =	8000,				\
+		.rate_max =	96000,				\
+		.channels_min = 1,				\
+		.channels_max = 2,				\
+	},							\
+	.ops = &msm_cpu_dai_ops,				\
+}
+#endif /* AUTOPLAT_001 */
 
-
+#if !defined(AUTOPLAT_001)
 struct snd_soc_dai msm_cpu_dai[] = {
 	MSM_DAI_SPEAKER_BUILDER(0),
 	MSM_DAI_SPEAKER_BUILDER(1),
@@ -121,16 +177,71 @@ struct snd_soc_dai msm_cpu_dai[] = {
 	MSM_DAI_MIC_BUILDER(7),
 };
 EXPORT_SYMBOL_GPL(msm_cpu_dai);
+#endif /* AUTOPLAT_001 */
+
+#if defined(AUTOPLAT_001)
+static struct snd_soc_dai_driver msm_cpu_mi2s_dai =
+	MSM_DAI_SPEAKER_BUILDER(0);
+static struct snd_soc_dai_driver msm_cpu_sec_i2s_dai =
+	MSM_DAI_SEC_SPEAKER_BUILDER(3);
+static struct snd_soc_dai_driver msm_cpu_pri_mic_dai =
+	MSM_DAI_MIC_BUILDER(5);
+
+static __devinit int msm_cpu_dai_dev_probe(struct platform_device *pdev)
+{
+	int rc = 0;
+        dev_dbg(&pdev->dev, "%s: dev name %s\n", __func__,
+		                dev_name(&pdev->dev));
+	switch(pdev->id){
+	case MSM_MI2S_RX:
+		snd_soc_register_dai(&pdev->dev, &msm_cpu_mi2s_dai);
+		break;
+	case SECONDARY_I2S_RX:
+		snd_soc_register_dai(&pdev->dev, &msm_cpu_sec_i2s_dai);
+		break;
+	case PRIMARY_I2S_TX:
+		snd_soc_register_dai(&pdev->dev, &msm_cpu_pri_mic_dai);
+		break;
+	default:
+		rc = -ENODEV;
+		break;
+	}
+	return rc;
+}
+
+static __devexit int msm_cpu_dai_dev_remove(struct platform_device *pdev)
+{
+	snd_soc_unregister_dai(&pdev->dev);
+	return 0;
+}
+
+static struct platform_driver msm_cpu_dai_driver = {
+		.probe	= msm_cpu_dai_dev_probe,
+		.remove	= msm_cpu_dai_dev_remove,
+		.driver	= {
+			.name = "apq8064_cpudai_lpa",
+			.owner = THIS_MODULE,
+		}
+};
+#endif /* AUTOPLAT_001 */
 
 static int __init msm_cpu_dai_init(void)
 {
+#if !defined(AUTOPLAT_001)
 	return snd_soc_register_dais(msm_cpu_dai, ARRAY_SIZE(msm_cpu_dai));
+#else
+	return platform_driver_register(&msm_cpu_dai_driver);
+#endif /* AUTOPLAT_001 */
 }
 module_init(msm_cpu_dai_init);
 
 static void __exit msm_cpu_dai_exit(void)
 {
+#if !defined(AUTOPLAT_001)
 	snd_soc_unregister_dais(msm_cpu_dai, ARRAY_SIZE(msm_cpu_dai));
+#else
+
+#endif /* AUTOPLAT_001 */
 }
 module_exit(msm_cpu_dai_exit);
 
