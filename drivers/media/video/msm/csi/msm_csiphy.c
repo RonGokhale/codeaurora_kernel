@@ -26,6 +26,10 @@
 #define V4L2_IDENT_CSIPHY                        50003
 #define CSIPHY_VERSION_V3                        0x10
 
+#if defined(AUTOPLAT_001_REV_CAM)
+struct csiphy_device *lsh_csiphy_dev;
+#endif /* AUTOPLAT_001_REV_CAM */
+
 int msm_csiphy_lane_config(struct csiphy_device *csiphy_dev,
 	struct msm_camera_csiphy_params *csiphy_params)
 {
@@ -154,7 +158,11 @@ static struct msm_cam_clk_info csiphy_8974_clk_info[] = {
 	{"csiphy_timer_clk", -1},
 };
 
+#if defined(AUTOPLAT_001_REV_CAM)
+int msm_csiphy_init(struct csiphy_device *csiphy_dev)
+#else
 static int msm_csiphy_init(struct csiphy_device *csiphy_dev)
+#endif /* AUTOPLAT_001_REV_CAM */
 {
 	int rc = 0;
 	if (csiphy_dev == NULL) {
@@ -214,7 +222,11 @@ static int msm_csiphy_init(struct csiphy_device *csiphy_dev)
 	return 0;
 }
 
+#if defined(AUTOPLAT_001_REV_CAM)
+int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
+#else
 static int msm_csiphy_release(struct csiphy_device *csiphy_dev, void *arg)
+#endif /* AUTOPLAT_001_REV_CAM */
 {
 	int i = 0;
 	struct msm_camera_csi_lane_params *csi_lane_params;
@@ -426,6 +438,10 @@ static int __devinit csiphy_probe(struct platform_device *pdev)
 	new_csiphy_dev->subdev.entity.revision =
 		new_csiphy_dev->subdev.devnode->num;
 	new_csiphy_dev->csiphy_state = CSIPHY_POWER_DOWN;
+#if defined(AUTOPLAT_001_REV_CAM)
+	lsh_csiphy_dev = new_csiphy_dev;
+	printk("Camera_test: csiphy finished \n");
+#endif /* AUTOPLAT_001_REV_CAM */
 	return 0;
 
 csiphy_no_resource:
