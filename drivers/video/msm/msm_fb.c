@@ -69,6 +69,14 @@ unsigned long backlight_duration = (HZ/20);
 static struct platform_device *pdev_list[MSM_FB_MAX_DEV_LIST];
 static int pdev_list_cnt;
 
+#if defined(AUTOPLAT_001_REV_CAM)
+/* Add for camera preview kernel thread */
+struct msm_fb_data_type *cam_preview_mfd;
+struct fb_info *cam_preview_fbi;
+
+static int v4l2_camera_enable;
+#endif /* AUTOPLAT_REV_REV_CAM */
+
 int vsync_mode = 1;
 
 #define MAX_BLIT_REQ 256
@@ -482,6 +490,13 @@ static int msm_fb_probe(struct platform_device *pdev)
 		}
 	}
 
+#if defined(AUTOPLAT_001_REV_CAM)
+	if (mfd->index == 0) {
+		cam_preview_mfd = mfd;
+		cam_preview_fbi = (mfd->fbi);
+	}
+	pr_err("CAMERA_TEST:%s: msm fb probe finished\n", __func__);
+#endif /* AUTOPLAT_001_REV_CAM */
 
 	return 0;
 }
@@ -1023,6 +1038,76 @@ static int msm_fb_blank_sub(int blank_mode, struct fb_info *info,
 	return ret;
 }
 
+#if defined(AUTOPLAT_001_REV_CAM)
+int msm_fb_blank_sub_for_camera_preview(int blank_mode, struct fb_info *info,
+			    boolean op_enable)
+{
+	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+	struct msm_fb_panel_data *pdata = NULL;
+	int ret = 0;
+/*	__u32 temp = 600;*/
+
+	pr_err("CAMERA_TEST: %s: enter!\n", __func__);
+	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	if ((!pdata) || (!pdata->on) || (!pdata->off)) {
+		printk(KERN_ERR "msm_fb_blank_sub: no panel operation detected!\n");
+		return -ENODEV;
+	}
+
+	switch (blank_mode) {
+	case FB_BLANK_UNBLANK:
+		if (!mfd->panel_power_on) {
+			ret = pdata->on(mfd->pdev);
+			if (ret == 0) {
+				down(&mfd->sem);
+				mfd->panel_power_on = TRUE;
+				up(&mfd->sem);
+				mfd->panel_driver_on = mfd->op_enable;
+			}
+		}
+		break;
+	case FB_BLANK_VSYNC_SUSPEND:
+	case FB_BLANK_HSYNC_SUSPEND:
+	case FB_BLANK_NORMAL:
+	case FB_BLANK_POWERDOWN:
+	default:
+		if (mfd->panel_power_on) {
+			int curr_pwr_state;
+
+			mfd->op_enable = FALSE;
+			curr_pwr_state = mfd->panel_power_on;
+			down(&mfd->sem);
+			mfd->panel_power_on = FALSE;
+			if (mfd->fbi->node == 0)
+				bl_updated = 0;
+			up(&mfd->sem);
+			cancel_delayed_work_sync(&mfd->backlight_worker);
+
+			if (mfd->msmfb_no_update_notify_timer.function)
+				del_timer(&mfd->msmfb_no_update_notify_timer);
+			complete(&mfd->msmfb_no_update_notify);
+
+			/* clean fb to prevent displaying old fb */
+			if (info->screen_base)
+				memset((void *)info->screen_base, 0,
+				       info->fix.smem_len);
+
+			ret = pdata->off(mfd->pdev);
+			if (ret)
+				mfd->panel_power_on = curr_pwr_state;
+
+			msm_fb_release_timeline(mfd);
+			mfd->op_enable = TRUE;
+		}
+		break;
+	}
+
+	pr_err("CAMERA_TEST: %s: finished !\n", __func__);
+
+	return ret;
+}
+#endif /* AUTOPLAT_REV_REV_CAM */
+
 int calc_fb_offset(struct msm_fb_data_type *mfd, struct fb_info *fbi, int bpp)
 {
 	struct msm_panel_info *panel_info = &mfd->panel_info;
@@ -1138,6 +1223,12 @@ static int msm_fb_blank(int blank_mode, struct fb_info *info)
 		else
 			mfd->suspend.panel_power_on = FALSE;
 	}
+
+#if defined(AUTOPLAT_001_REV_CAM)
+	if (v4l2_camera_enable == 1)
+		return 0;
+#endif /* AUTOPLAT_001_REV_CAM */
+
 	return msm_fb_blank_sub(blank_mode, info, mfd->op_enable);
 }
 
@@ -1800,7 +1891,11 @@ static int msm_fb_open(struct fb_info *info, int user)
 		if (mfd->is_panel_ready && !mfd->is_panel_ready())
 			unblank = false;
 
-		if (unblank && (mfd->panel_info.type != DTV_PANEL)) {
+		if (unblank && (mfd->panel_info.type != DTV_PANEL)
+#if defined(AUTOPLAT_001_REV_CAM)
+			&& !v4l2_camera_enable
+#endif /* AUTOPLAT_001_REV_CAM */
+			) {
 			if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, TRUE)) {
 				pr_err("msm_fb_open: can't turn on display\n");
 				return -EINVAL;
@@ -1831,7 +1926,11 @@ static int msm_fb_release(struct fb_info *info, int user)
 	mfd->ref_cnt--;
 
 	if (!mfd->ref_cnt) {
-		if (mfd->op_enable) {
+		if (mfd->op_enable
+#if defined(AUTOPLAT_001_REV_CAM)
+			&& !v4l2_camera_enable
+#endif /* AUTOPLAT_001_REV_CAM */
+			) {
 			if (info->node == 0) {
 				down(&mfd->sem);
 				bl_level = mfd->bl_level;
@@ -3258,6 +3357,11 @@ static int msmfb_overlay_unset(struct fb_info *info, unsigned long *argp)
 			__func__);
 		return ret;
 	}
+#if defined(AUTOPLAT_001_REV_CAM)
+	/* TODO: keep pipe 2 and 3 when camera in */
+	if (v4l2_camera_enable && (ndx == 3 || ndx == 2))
+		return 0;
+#endif /* AUTOPLAT_001_REV_CAM */
 
 	return mdp4_overlay_unset(info, ndx);
 }
@@ -4403,14 +4507,18 @@ int msm_fb_v4l2_enable(struct mdp_overlay *req, bool enable, void **par)
 #ifdef CONFIG_FB_MSM_MDP40
 	struct mdp4_overlay_pipe *pipe;
 	if (enable) {
-
 		err = mdp4_v4l2_overlay_set(fbi_list[0], req, &pipe);
-
 		*(struct mdp4_overlay_pipe **)par = pipe;
-
+#if defined(AUTOPLAT_001_REV_CAM)
+		cam_preview_mfd->cont_splash_done = 1;
+		v4l2_camera_enable = 1;
+#endif /* AUTOPLAT_001_REV_CAM */
 	} else {
 		pipe = *(struct mdp4_overlay_pipe **)par;
 		mdp4_v4l2_overlay_clear(pipe);
+#if defined(AUTOPLAT_001_REV_CAM)
+		v4l2_camera_enable = 0;
+#endif /* AUTOPLAT_001_REV_CAM */
 	}
 #else
 #ifdef CONFIG_FB_MSM_MDP30
