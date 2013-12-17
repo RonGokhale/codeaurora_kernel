@@ -36,6 +36,14 @@ config IMX074
 	depends on MSM_CAMERA
 	---help---
 	SONY 13.5 MP Bayer Sensor
+config CAMERA_TEST_THREAD
+	bool "Camera test thread"
+	depends on MSM_CAMERA
+	---help---
+	Camera preview thread to read data coming from ADV7481 sensor that
+	captures reverse camera view.
+	This thread is started on trigger of reverse gear.
+	Applicable only for Auto Platform 001.
 config OV5640
 	bool "Sensor OV5640 (YUV 5M)"
 	depends on MSM_CAMERA && !MSM_CAMERA_V4L2
