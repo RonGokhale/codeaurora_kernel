@@ -1,4 +1,5 @@
 /*
+ * Copyright 2013 Boundary Devices, Inc.
  * Copyright 2011 Freescale Semiconductor, Inc.
  * Copyright 2011 Linaro Ltd.
  *
@@ -50,9 +51,9 @@
 	};
 
 	sound {
-		compatible = "fsl,imx6q-sabrelite-sgtl5000",
+		compatible = "fsl,imx6q-nitrogen6x-sgtl5000",
 			     "fsl,imx-audio-sgtl5000";
-		model = "imx6q-sabrelite-sgtl5000";
+		model = "imx6q-nitrogen6x-sgtl5000";
 		ssi-controller = <&ssi1>;
 		audio-codec = <&codec>;
 		audio-routing =
@@ -60,7 +61,7 @@
 			"Mic Jack", "Mic Bias",
 			"Headphone Jack", "HP_OUT";
 		mux-int-port = <1>;
-		mux-ext-port = <4>;
+		mux-ext-port = <3>;
 	};
 
 	backlight_lcd {
@@ -106,7 +107,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_enet>;
 	phy-mode = "rgmii";
-	phy-reset-gpios = <&gpio3 23 0>;
+	phy-reset-gpios = <&gpio1 27 0>;
 	txen-skew-ps = <0>;
 	txc-skew-ps = <3000>;
 	rxdv-skew-ps = <0>;
@@ -141,7 +142,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog>;
 
-	imx6q-sabrelite {
+	imx6q-nitrogen6x {
 		pinctrl_hog: hoggrp {
 			fsl,pins = <
 				/* SGTL5000 sys_mclk */
@@ -150,7 +151,7 @@
 		};
 
 		pinctrl_audmux: audmuxgrp {
-			fsl,pins = <MX6QDL_AUDMUX_PINGRP1>;
+			fsl,pins = <MX6QDL_AUDMUX_PINGRP2>;
 		};
 
 		pinctrl_ecspi1: ecspi1grp {
@@ -178,7 +179,7 @@
 				MX6QDL_PAD_RGMII_RD3__RGMII_RD3		0x1b0b0
 				MX6QDL_PAD_RGMII_RX_CTL__RGMII_RX_CTL	0x1b0b0
 				/* Phy reset */
-				MX6QDL_PAD_EIM_D23__GPIO3_IO23		0x000b0
+				MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x000b0
 			>;
 		};
 
@@ -225,7 +226,6 @@
 			fsl,pins = <
 				MX6QDL_USDHC3_PINGRP_D4
 				MX6QDL_PAD_SD3_DAT5__GPIO7_IO00 0x1b0b0	/* CD */
-				MX6QDL_PAD_SD3_DAT4__GPIO7_IO01 0x1f0b0	/* WP */
 			>;
 		};
 
@@ -318,7 +318,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc3>;
 	cd-gpios = <&gpio7 0 0>;
-	wp-gpios = <&gpio7 1 0>;
 	vmmc-supply = <&reg_3p3v>;
 	status = "okay";
 };
