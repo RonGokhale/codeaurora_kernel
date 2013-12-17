@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010,2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,12 +27,20 @@
 
 #define DVB_MPQ_NUM_VIDEO_DEVICES CONFIG_DVB_MPQ_NUM_VIDEO_DEVICES
 
+#define MPEG2_PES_STARTCODE_BYTE1 0x00
+#define MPEG2_PES_STARTCODE_BYTE2 0x00
+#define MPEG2_PES_STARTCODE_BYTE3 0x01
+#define MPEG2_SEQHDR_STARTCODE 0xB3
+
+
 /*
  * Input Buffer Requirements for Video Decoder.
  */
 #define DVB_VID_NUM_IN_BUFFERS (2)
 #define DVB_VID_IN_BUFFER_SIZE (2*1024*1024)
 #define DVB_VID_IN_BUFFER_ALGN (8*1024)
+
+#define MPQ_ENABLE_DBGFS
 
 struct vid_dec_msg {
 	struct list_head list;
@@ -70,6 +78,11 @@ struct mpq_dvb_video_inst {
 	video_stream_source_t source;
 	struct mpq_dmx_src_data *dmx_src_data;
 	struct video_client_ctx *client_ctx;
+	enum video_decoded_pictures_t picture_type;
+	int frame_count;
+	int idr_rcvd;
+	int non_idr_rcvd;
+	u32 framerate;
 };
 
 struct mpq_dvb_video_dev {
@@ -88,6 +101,9 @@ struct mpq_dvb_video_dev {
 	struct video_client_ctx vdec_clients[DVB_MPQ_NUM_VIDEO_DEVICES];
 	u32 num_clients;
 	void(*timer_handler)(void *);
+#ifdef MPQ_ENABLE_DBGFS
+	struct dentry *root;
+#endif
 };
 
 #endif /* MPQ_DVB_VIDEO_INTERNAL_H */

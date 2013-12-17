@@ -90,6 +90,12 @@ typedef enum {
 	VIDEO_FREEZED  /* Video is freezed */
 } video_play_state_t;
 
+enum video_decoded_pictures_t {
+	VIDEO_DECODED_PICTURES_ALL, /* Decode ALL type of pictures  */
+	VIDEO_DECODED_PICTURES_IP,  /* Decode only I and P pictures */
+	VIDEO_DECODED_PICTURES_I    /* Decode only I pictures          */
+};
+
 
 /* Decoder commands */
 #define VIDEO_CMD_PLAY        (0)
@@ -114,6 +120,9 @@ typedef enum {
 #define VIDEO_CMD_CLEAR_INPUT_BUFFER  (18)
 #define VIDEO_CMD_CLEAR_OUTPUT_BUFFER (19)
 #define VIDEO_CMD_SET_BUFFER_COUNT    (20)
+#define VIDEO_CMD_SET_DECODE_MODE     (21)
+#define VIDEO_CMD_SET_BUFFER_SIZE      (22)
+#define VIDEO_CMD_SET_USER_AND_EXTRA_DATA (23)
 
 /* Flags for VIDEO_CMD_FREEZE */
 #define VIDEO_CMD_FREEZE_TO_BLACK	(1 << 0)
@@ -167,6 +176,7 @@ struct video_data_buffer {
 	void *client_data;
 	void *ip_buffer_tag;
 	__u64 pts;
+	__u32 flags;
 	enum scan_format interlaced_format;
 };
 
@@ -209,6 +219,7 @@ struct video_command {
 		union {
 			enum video_codec_t codec; /* Video Codec Type */
 			enum video_out_format_t format; /* YUV Format */
+			enum video_decoded_pictures_t picture_type; /* Decode Picture Type */
 			struct video_pic_res frame_res; /* Frame Resolution */
 			/* Buffer Requirements for Video Decoder */
 			struct video_buffer_req buf_req;
@@ -247,6 +258,7 @@ struct video_event {
 #define VIDEO_EVENT_INPUT_FLUSH_DONE    (12)
 #define VIDEO_EVENT_INPUT_FLUSHED       (13)
 #define VIDEO_EVENT_OUTPUT_FLUSHED      (14)
+#define VIDEO_EVENT_STREAM_TIMEOUT_ERROR (15)
 
 
 	unsigned int    status;
