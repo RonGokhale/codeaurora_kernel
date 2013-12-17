@@ -222,7 +222,6 @@ typedef struct tagSTxPktInfo {
     u8    abyDestAddr[ETH_ALEN];
 } STxPktInfo, *PSTxPktInfo;
 
-#define MAX_RATE            12
 //
 // statistic counter
 //
@@ -359,9 +358,6 @@ void STAvUpdateRDStatCounter(PSStatCounter pStatistic,
 			     u8 byRSR, u8 byNewRSR, u8 byRxSts,
 			     u8 byRxRate, u8 * pbyBuffer,
 			     unsigned int cbFrameLength);
-
-void STAvUpdateTDStatCounter(PSStatCounter pStatistic, u8 byPktNum,
-			     u8 byRate, u8 byTSR);
 
 void
 STAvUpdate802_11Counter(
