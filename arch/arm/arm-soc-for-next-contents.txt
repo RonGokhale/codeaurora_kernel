@@ -25,6 +25,9 @@ next/soc
 		local branch: rebased onto tip/timers-core-for-linus for dependencies
 	patch
 		ARM: at91: sama5d3: add support for sama5d36 chip
+	hi3xxx/soc
+		local branch: fixed several checkpatch errors; originally from:
+		git://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux.git tags/hisilicon-basic
 
 next/dt
 	ux500/dt
