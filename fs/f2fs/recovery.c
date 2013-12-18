@@ -143,9 +143,9 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 	while (1) {
 		struct fsync_inode_entry *entry;
 
-		err = f2fs_readpage(sbi, page, blkaddr, READ_SYNC);
+		err = f2fs_submit_page_bio(sbi, page, blkaddr, READ_SYNC);
 		if (err)
-			goto out;
+			return err;
 
 		lock_page(page);
 
@@ -191,9 +191,10 @@ next:
 		/* check next segment */
 		blkaddr = next_blkaddr_of_node(page);
 	}
+
 	unlock_page(page);
-out:
 	__free_pages(page, 0);
+
 	return err;
 }
 
@@ -377,7 +378,7 @@ static int recover_data(struct f2fs_sb_info *sbi,
 	blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
 	/* read node page */
-	page = alloc_page(GFP_NOFS | __GFP_ZERO);
+	page = alloc_page(GFP_F2FS_ZERO);
 	if (!page)
 		return -ENOMEM;
 
@@ -386,9 +387,9 @@ static int recover_data(struct f2fs_sb_info *sbi,
 	while (1) {
 		struct fsync_inode_entry *entry;
 
-		err = f2fs_readpage(sbi, page, blkaddr, READ_SYNC);
+		err = f2fs_submit_page_bio(sbi, page, blkaddr, READ_SYNC);
 		if (err)
-			goto out;
+			return err;
 
 		lock_page(page);
 
@@ -412,8 +413,8 @@ next:
 		/* check next segment */
 		blkaddr = next_blkaddr_of_node(page);
 	}
+
 	unlock_page(page);
-out:
 	__free_pages(page, 0);
 
 	if (!err)
@@ -429,7 +430,7 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 
 	fsync_entry_slab = f2fs_kmem_cache_create("f2fs_fsync_inode_entry",
 			sizeof(struct fsync_inode_entry), NULL);
-	if (unlikely(!fsync_entry_slab))
+	if (!fsync_entry_slab)
 		return -ENOMEM;
 
 	INIT_LIST_HEAD(&inode_list);
