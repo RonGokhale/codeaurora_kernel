@@ -3841,6 +3841,12 @@ T:	git git://linuxtv.org/media_tree.git
 S:	Maintained
 F:	drivers/media/usb/gspca/
 
+GUID PARTITION TABLE (GPT)
+M:	Davidlohr Bueso <davidlohr@hp.com>
+L:	linux-efi@vger.kernel.org
+S:	Maintained
+F:	block/partitions/efi.*
+
 STK1160 USB VIDEO CAPTURE DRIVER
 M:	Ezequiel Garcia <elezegarcia@gmail.com>
 L:	linux-media@vger.kernel.org
@@ -3948,6 +3954,12 @@ L:	linux-fsdevel@vger.kernel.org
 S:	Orphan
 F:	Documentation/filesystems/hfs.txt
 F:	fs/hfs/
+
+HFSPLUS FILESYSTEM
+L:	linux-fsdevel@vger.kernel.org
+S:	Orphan
+F:	Documentation/filesystems/hfsplus.txt
+F:	fs/hfsplus/
 
 HGA FRAMEBUFFER DRIVER
 M:	Ferenc Bakonyi <fero@drama.obuda.kando.hu>
