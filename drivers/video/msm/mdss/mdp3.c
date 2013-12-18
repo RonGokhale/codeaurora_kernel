@@ -235,7 +235,8 @@ void mdp3_irq_enable(int type)
 
 	// Preserve VSYNC interrupt enablement by KGSL DRM VBLANK.
 	mask = MDP3_REG_READ(MDP3_REG_INTR_ENABLE) &
-				MDP3_INTR_LCDC_START_OF_FRAME_BIT;
+				(MDP3_INTR_LCDC_START_OF_FRAME_BIT | // VID panel
+				MDP3_INTR_SYNC_PRIMARY_LINE_BIT); // CMD panel
 
 	mdp3_res->irq_mask |= BIT(type);
 	MDP3_REG_WRITE(MDP3_REG_INTR_ENABLE, mdp3_res->irq_mask | mask);
@@ -262,7 +263,8 @@ void mdp3_irq_disable_nosync(int type)
 
 	// Preserve VSYNC interrupt enablement by KGSL DRM VBLANK.
 	mask = MDP3_REG_READ(MDP3_REG_INTR_ENABLE) &
-				MDP3_INTR_LCDC_START_OF_FRAME_BIT;
+				(MDP3_INTR_LCDC_START_OF_FRAME_BIT | // VID panel
+				MDP3_INTR_SYNC_PRIMARY_LINE_BIT); // CMD panel
 
 	mdp3_res->irq_ref_count[type] -= 1;
 	if (mdp3_res->irq_ref_count[type] == 0) {

@@ -80,6 +80,7 @@
 #define MDP3_REG_INTR_ENABLE		0x0020
 #define MDP3_REG_INTR_STATUS		0x0024
 #define MDP3_REG_INTR_CLEAR		0x0028
+#define MDP3_REG_SYNC_PRIMARY_LINE		BIT(8)
 #define MDP3_REG_VSYNC_IRQ		BIT(15)
 
 struct drm_kgsl_private {
@@ -1382,7 +1383,7 @@ kgsl_drm_irq_handler(DRM_IRQ_ARGS)
 	if (isr == 0)
 		goto irq_done;
 
-	if (isr & MDP3_REG_VSYNC_IRQ) {
+	if (isr & (MDP3_REG_VSYNC_IRQ | MDP3_REG_SYNC_PRIMARY_LINE)) {
 		DRM_DEBUG("%s:DSI0\n", __func__);
 		drm_handle_vblank(dev, DRM_KGSL_CRTC_PRIMARY);
 	}
@@ -1439,8 +1440,8 @@ kgsl_drm_irq_postinstall(struct drm_device *dev)
 
 	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
 
-	mask |= MDP3_REG_VSYNC_IRQ;
-	writel_relaxed(MDP3_REG_VSYNC_IRQ,
+	mask |= (MDP3_REG_VSYNC_IRQ | MDP3_REG_SYNC_PRIMARY_LINE);
+	writel_relaxed((MDP3_REG_VSYNC_IRQ | MDP3_REG_SYNC_PRIMARY_LINE),
 		dev_priv->regs + MDP3_REG_INTR_CLEAR);
 	writel_relaxed(mask,
 		dev_priv->regs + MDP3_REG_INTR_ENABLE);
@@ -1466,7 +1467,7 @@ kgsl_drm_irq_uninstall(struct drm_device *dev)
 
 	DRM_DEBUG("%s:regs[0x%x]\n", __func__, (int)dev_priv->regs);
 
-	mask &= ~MDP3_REG_VSYNC_IRQ;
+	mask &= ~(MDP3_REG_VSYNC_IRQ | MDP3_REG_SYNC_PRIMARY_LINE);
 	writel_relaxed(mask, dev_priv->regs + MDP3_REG_INTR_ENABLE);
 
 	dev->irq_enabled = 0;
