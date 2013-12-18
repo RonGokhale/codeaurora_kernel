@@ -211,6 +211,10 @@ static int i40e_get_settings(struct net_device *netdev,
 		ecmd->supported |= SUPPORTED_TP;
 		ecmd->advertising |= ADVERTISED_TP;
 		ecmd->port = PORT_TP;
+	} else if (hw->phy.media_type == I40E_MEDIA_TYPE_DA) {
+		ecmd->supported |= SUPPORTED_FIBRE;
+		ecmd->advertising |= ADVERTISED_FIBRE;
+		ecmd->port = PORT_DA;
 	} else {
 		ecmd->supported |= SUPPORTED_FIBRE;
 		ecmd->advertising |= ADVERTISED_FIBRE;
@@ -418,15 +422,19 @@ static int i40e_set_ringparam(struct net_device *netdev,
 	if ((ring->rx_mini_pending) || (ring->rx_jumbo_pending))
 		return -EINVAL;
 
-	new_tx_count = clamp_t(u32, ring->tx_pending,
-			       I40E_MIN_NUM_DESCRIPTORS,
-			       I40E_MAX_NUM_DESCRIPTORS);
-	new_tx_count = ALIGN(new_tx_count, I40E_REQ_DESCRIPTOR_MULTIPLE);
+	if (ring->tx_pending > I40E_MAX_NUM_DESCRIPTORS ||
+	    ring->tx_pending < I40E_MIN_NUM_DESCRIPTORS ||
+	    ring->rx_pending > I40E_MAX_NUM_DESCRIPTORS ||
+	    ring->rx_pending < I40E_MIN_NUM_DESCRIPTORS) {
+		netdev_info(netdev,
+			    "Descriptors requested (Tx: %d / Rx: %d) out of range [%d-%d]\n",
+			    ring->tx_pending, ring->rx_pending,
+			    I40E_MIN_NUM_DESCRIPTORS, I40E_MAX_NUM_DESCRIPTORS);
+		return -EINVAL;
+	}
 
-	new_rx_count = clamp_t(u32, ring->rx_pending,
-			       I40E_MIN_NUM_DESCRIPTORS,
-			       I40E_MAX_NUM_DESCRIPTORS);
-	new_rx_count = ALIGN(new_rx_count, I40E_REQ_DESCRIPTOR_MULTIPLE);
+	new_tx_count = ALIGN(ring->tx_pending, I40E_REQ_DESCRIPTOR_MULTIPLE);
+	new_rx_count = ALIGN(ring->rx_pending, I40E_REQ_DESCRIPTOR_MULTIPLE);
 
 	/* if nothing to do return success */
 	if ((new_tx_count == vsi->tx_rings[0]->count) &&
@@ -702,8 +710,12 @@ static int i40e_get_ts_info(struct net_device *dev,
 	return ethtool_op_get_ts_info(dev, info);
 }
 
-static int i40e_link_test(struct i40e_pf *pf, u64 *data)
+static int i40e_link_test(struct net_device *netdev, u64 *data)
 {
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
+
+	netif_info(pf, hw, netdev, "link test\n");
 	if (i40e_get_link_status(&pf->hw))
 		*data = 0;
 	else
@@ -712,36 +724,52 @@ static int i40e_link_test(struct i40e_pf *pf, u64 *data)
 	return *data;
 }
 
-static int i40e_reg_test(struct i40e_pf *pf, u64 *data)
+static int i40e_reg_test(struct net_device *netdev, u64 *data)
 {
-	i40e_status ret;
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
 
-	ret = i40e_diag_reg_test(&pf->hw);
-	*data = ret;
+	netif_info(pf, hw, netdev, "register test\n");
+	*data = i40e_diag_reg_test(&pf->hw);
 
-	return ret;
+	i40e_do_reset(pf, (1 << __I40E_PF_RESET_REQUESTED));
+	return *data;
 }
 
-static int i40e_eeprom_test(struct i40e_pf *pf, u64 *data)
+static int i40e_eeprom_test(struct net_device *netdev, u64 *data)
 {
-	i40e_status ret;
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
 
-	ret = i40e_diag_eeprom_test(&pf->hw);
-	*data = ret;
-
-	return ret;
-}
-
-static int i40e_intr_test(struct i40e_pf *pf, u64 *data)
-{
-	*data = -ENOSYS;
+	netif_info(pf, hw, netdev, "eeprom test\n");
+	*data = i40e_diag_eeprom_test(&pf->hw);
 
 	return *data;
 }
 
-static int i40e_loopback_test(struct i40e_pf *pf, u64 *data)
+static int i40e_intr_test(struct net_device *netdev, u64 *data)
 {
-	*data = -ENOSYS;
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
+	u16 swc_old = pf->sw_int_count;
+
+	netif_info(pf, hw, netdev, "interrupt test\n");
+	wr32(&pf->hw, I40E_PFINT_DYN_CTL0,
+	     (I40E_PFINT_DYN_CTL0_INTENA_MASK |
+	      I40E_PFINT_DYN_CTL0_SWINT_TRIG_MASK));
+	usleep_range(1000, 2000);
+	*data = (swc_old == pf->sw_int_count);
+
+	return *data;
+}
+
+static int i40e_loopback_test(struct net_device *netdev, u64 *data)
+{
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
+
+	netif_info(pf, hw, netdev, "loopback test not implemented\n");
+	*data = 0;
 
 	return *data;
 }
@@ -755,39 +783,31 @@ static void i40e_diag_test(struct net_device *netdev,
 	set_bit(__I40E_TESTING, &pf->state);
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
 		/* Offline tests */
-
-		netdev_info(netdev, "offline testing starting\n");
+		netif_info(pf, drv, netdev, "offline testing starting\n");
 
 		/* Link test performed before hardware reset
 		 * so autoneg doesn't interfere with test result
 		 */
-		netdev_info(netdev, "link test starting\n");
-		if (i40e_link_test(pf, &data[I40E_ETH_TEST_LINK]))
+		if (i40e_link_test(netdev, &data[I40E_ETH_TEST_LINK]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		netdev_info(netdev, "register test starting\n");
-		if (i40e_reg_test(pf, &data[I40E_ETH_TEST_REG]))
+		if (i40e_reg_test(netdev, &data[I40E_ETH_TEST_REG]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		i40e_do_reset(pf, (1 << __I40E_PF_RESET_REQUESTED));
-		netdev_info(netdev, "eeprom test starting\n");
-		if (i40e_eeprom_test(pf, &data[I40E_ETH_TEST_EEPROM]))
+		if (i40e_eeprom_test(netdev, &data[I40E_ETH_TEST_EEPROM]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		i40e_do_reset(pf, (1 << __I40E_PF_RESET_REQUESTED));
-		netdev_info(netdev, "interrupt test starting\n");
-		if (i40e_intr_test(pf, &data[I40E_ETH_TEST_INTR]))
+		if (i40e_intr_test(netdev, &data[I40E_ETH_TEST_INTR]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
-		i40e_do_reset(pf, (1 << __I40E_PF_RESET_REQUESTED));
-		netdev_info(netdev, "loopback test starting\n");
-		if (i40e_loopback_test(pf, &data[I40E_ETH_TEST_LOOPBACK]))
+		if (i40e_loopback_test(netdev, &data[I40E_ETH_TEST_LOOPBACK]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 	} else {
-		netdev_info(netdev, "online test starting\n");
 		/* Online tests */
-		if (i40e_link_test(pf, &data[I40E_ETH_TEST_LINK]))
+		netif_info(pf, drv, netdev, "online testing starting\n");
+
+		if (i40e_link_test(netdev, &data[I40E_ETH_TEST_LINK]))
 			eth_test->flags |= ETH_TEST_FL_FAILED;
 
 		/* Offline only tests, not run in online; pass by default */
@@ -795,9 +815,10 @@ static void i40e_diag_test(struct net_device *netdev,
 		data[I40E_ETH_TEST_EEPROM] = 0;
 		data[I40E_ETH_TEST_INTR] = 0;
 		data[I40E_ETH_TEST_LOOPBACK] = 0;
-
-		clear_bit(__I40E_TESTING, &pf->state);
 	}
+	clear_bit(__I40E_TESTING, &pf->state);
+
+	netif_info(pf, drv, netdev, "testing finished\n");
 }
 
 static void i40e_get_wol(struct net_device *netdev,
