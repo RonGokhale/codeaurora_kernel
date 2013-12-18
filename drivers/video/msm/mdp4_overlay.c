@@ -4129,10 +4129,9 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 		pipe->srcp2_addr + (pipe->src_width * pipe->src_height) / 4 ;
 		pipe->srcp1_ystride = pipe->src_width/2;
 #endif /* AUTOPLAT_001 */
-		pipe->srcp1_ystride = pipe->src_width/2;
 		break;
 	case MDP_Y_CRCB_H2V2:
-#if !defined(AUTOPLAT_001)
+#if defined(AUTOPLAT_001)
 	case MDP_Y_CBCR_H2V2:
 #endif /* AUTOPLAT_001 */
 		/* NV12 */
@@ -4143,7 +4142,7 @@ int mdp4_v4l2_overlay_play(struct fb_info *info, struct mdp4_overlay_pipe *pipe,
 			(pipe->src_width * pipe->src_height);
 		pipe->srcp1_ystride = pipe->src_width;
 		break;
-#if !defined(AUTOPLAT_001)
+#if defined(AUTOPLAT_001)
 	case MDP_YCRYCB_H2V1:
 		/* interleave */
 		pipe->srcp0_addr = srcp0_addr;
