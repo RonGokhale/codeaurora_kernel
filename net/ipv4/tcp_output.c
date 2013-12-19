@@ -363,15 +363,17 @@ static inline void TCP_ECN_send(struct sock *sk, struct sk_buff *skb,
  */
 static void tcp_init_nondata_skb(struct sk_buff *skb, u32 seq, u8 flags)
 {
+	struct skb_shared_info *shinfo = skb_shinfo(skb);
+
 	skb->ip_summed = CHECKSUM_PARTIAL;
 	skb->csum = 0;
 
 	TCP_SKB_CB(skb)->tcp_flags = flags;
 	TCP_SKB_CB(skb)->sacked = 0;
 
-	skb_shinfo(skb)->gso_segs = 1;
-	skb_shinfo(skb)->gso_size = 0;
-	skb_shinfo(skb)->gso_type = 0;
+	shinfo->gso_segs = 1;
+	shinfo->gso_size = 0;
+	shinfo->gso_type = 0;
 
 	TCP_SKB_CB(skb)->seq = seq;
 	if (flags & (TCPHDR_SYN | TCPHDR_FIN))
@@ -406,7 +408,7 @@ struct tcp_out_options {
  * Beware: Something in the Internet is very sensitive to the ordering of
  * TCP options, we learned this through the hard way, so be careful here.
  * Luckily we can at least blame others for their non-compliance but from
- * inter-operatibility perspective it seems that we're somewhat stuck with
+ * inter-operability perspective it seems that we're somewhat stuck with
  * the ordering which we have been using if we want to keep working with
  * those broken things (not that it currently hurts anybody as there isn't
  * particular reason why the ordering would need to be changed).
@@ -679,7 +681,7 @@ static unsigned int tcp_established_options(struct sock *sk, struct sk_buff *skb
  *
  * Its important tcp_wfree() can be replaced by sock_wfree() in the event skb
  * needs to be reallocated in a driver.
- * The invariant being skb->truesize substracted from sk->sk_wmem_alloc
+ * The invariant being skb->truesize subtracted from sk->sk_wmem_alloc
  *
  * Since transmit from skb destructor is forbidden, we use a tasklet
  * to process all sockets that eventually need to send more skbs.
@@ -699,9 +701,9 @@ static void tcp_tsq_handler(struct sock *sk)
 		tcp_write_xmit(sk, tcp_current_mss(sk), 0, 0, GFP_ATOMIC);
 }
 /*
- * One tasklest per cpu tries to send more skbs.
+ * One tasklet per cpu tries to send more skbs.
  * We run in tasklet context but need to disable irqs when
- * transfering tsq->head because tcp_wfree() might
+ * transferring tsq->head because tcp_wfree() might
  * interrupt us (non NAPI drivers)
  */
 static void tcp_tasklet_func(unsigned long data)
@@ -795,7 +797,7 @@ void __init tcp_tasklet_init(void)
 
 /*
  * Write buffer destructor automatically called from kfree_skb.
- * We cant xmit new skbs from this context, as we might already
+ * We can't xmit new skbs from this context, as we might already
  * hold qdisc lock.
  */
 void tcp_wfree(struct sk_buff *skb)
@@ -986,6 +988,8 @@ static void tcp_queue_skb(struct sock *sk, struct sk_buff *skb)
 static void tcp_set_skb_tso_segs(const struct sock *sk, struct sk_buff *skb,
 				 unsigned int mss_now)
 {
+	struct skb_shared_info *shinfo = skb_shinfo(skb);
+
 	/* Make sure we own this skb before messing gso_size/gso_segs */
 	WARN_ON_ONCE(skb_cloned(skb));
 
@@ -993,13 +997,13 @@ static void tcp_set_skb_tso_segs(const struct sock *sk, struct sk_buff *skb,
 		/* Avoid the costly divide in the normal
 		 * non-TSO case.
 		 */
-		skb_shinfo(skb)->gso_segs = 1;
-		skb_shinfo(skb)->gso_size = 0;
-		skb_shinfo(skb)->gso_type = 0;
+		shinfo->gso_segs = 1;
+		shinfo->gso_size = 0;
+		shinfo->gso_type = 0;
 	} else {
-		skb_shinfo(skb)->gso_segs = DIV_ROUND_UP(skb->len, mss_now);
-		skb_shinfo(skb)->gso_size = mss_now;
-		skb_shinfo(skb)->gso_type = sk->sk_gso_type;
+		shinfo->gso_segs = DIV_ROUND_UP(skb->len, mss_now);
+		shinfo->gso_size = mss_now;
+		shinfo->gso_type = sk->sk_gso_type;
 	}
 }
 
@@ -1146,6 +1150,7 @@ int tcp_fragment(struct sock *sk, struct sk_buff *skb, u32 len,
  */
 static void __pskb_trim_head(struct sk_buff *skb, int len)
 {
+	struct skb_shared_info *shinfo;
 	int i, k, eat;
 
 	eat = min_t(int, len, skb_headlen(skb));
@@ -1157,23 +1162,24 @@ static void __pskb_trim_head(struct sk_buff *skb, int len)
 	}
 	eat = len;
 	k = 0;
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
-		int size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
+	shinfo = skb_shinfo(skb);
+	for (i = 0; i < shinfo->nr_frags; i++) {
+		int size = skb_frag_size(&shinfo->frags[i]);
 
 		if (size <= eat) {
 			skb_frag_unref(skb, i);
 			eat -= size;
 		} else {
-			skb_shinfo(skb)->frags[k] = skb_shinfo(skb)->frags[i];
+			shinfo->frags[k] = shinfo->frags[i];
 			if (eat) {
-				skb_shinfo(skb)->frags[k].page_offset += eat;
-				skb_frag_size_sub(&skb_shinfo(skb)->frags[k], eat);
+				shinfo->frags[k].page_offset += eat;
+				skb_frag_size_sub(&shinfo->frags[k], eat);
 				eat = 0;
 			}
 			k++;
 		}
 	}
-	skb_shinfo(skb)->nr_frags = k;
+	shinfo->nr_frags = k;
 
 	skb_reset_tail_pointer(skb);
 	skb->data_len -= len;
