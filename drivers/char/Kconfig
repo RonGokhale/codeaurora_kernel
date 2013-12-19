@@ -4,6 +4,10 @@
 
 menu "Character devices"
 
+config SHOW_PIC
+	tristate "show boot pic"
+	default m
+
 source "drivers/tty/Kconfig"
 
 config DEVMEM
