@@ -267,7 +267,7 @@ check_t10_vend_desc:
 	port = lun->lun_sep;
 	if (port) {
 		struct t10_alua_lu_gp *lu_gp;
-		u32 padding, scsi_name_len;
+		u32 padding, scsi_name_len, scsi_target_len;
 		u16 lu_gp_id = 0;
 		u16 tg_pt_gp_id = 0;
 		u16 tpgt;
@@ -365,16 +365,6 @@ check_lu_gp:
 		 * section 7.5.1 Table 362
 		 */
 check_scsi_name:
-		scsi_name_len = strlen(tpg->se_tpg_tfo->tpg_get_wwn(tpg));
-		/* UTF-8 ",t,0x<16-bit TPGT>" + NULL Terminator */
-		scsi_name_len += 10;
-		/* Check for 4-byte padding */
-		padding = ((-scsi_name_len) & 3);
-		if (padding != 0)
-			scsi_name_len += padding;
-		/* Header size + Designation descriptor */
-		scsi_name_len += 4;
-
 		buf[off] =
 			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
 		buf[off++] |= 0x3; /* CODE SET == UTF-8 */
@@ -402,13 +392,57 @@ check_scsi_name:
 		 * shall be no larger than 256 and shall be a multiple
 		 * of four.
 		 */
+		padding = ((-scsi_name_len) & 3);
 		if (padding)
 			scsi_name_len += padding;
+		if (scsi_name_len > 256)
+			scsi_name_len = 256;
 
 		buf[off-1] = scsi_name_len;
 		off += scsi_name_len;
 		/* Header size + Designation descriptor */
 		len += (scsi_name_len + 4);
+
+		/*
+		 * Target device designator
+		 */
+		buf[off] =
+			(tpg->se_tpg_tfo->get_fabric_proto_ident(tpg) << 4);
+		buf[off++] |= 0x3; /* CODE SET == UTF-8 */
+		buf[off] = 0x80; /* Set PIV=1 */
+		/* Set ASSOCIATION == target device: 10b */
+		buf[off] |= 0x20;
+		/* DESIGNATOR TYPE == SCSI name string */
+		buf[off++] |= 0x8;
+		off += 2; /* Skip over Reserved and length */
+		/*
+		 * SCSI name string identifer containing, $FABRIC_MOD
+		 * dependent information.  For LIO-Target and iSCSI
+		 * Target Port, this means "<iSCSI name>" in
+		 * UTF-8 encoding.
+		 */
+		scsi_target_len = sprintf(&buf[off], "%s",
+					  tpg->se_tpg_tfo->tpg_get_wwn(tpg));
+		scsi_target_len += 1 /* Include  NULL terminator */;
+		/*
+		 * The null-terminated, null-padded (see 4.4.2) SCSI
+		 * NAME STRING field contains a UTF-8 format string.
+		 * The number of bytes in the SCSI NAME STRING field
+		 * (i.e., the value in the DESIGNATOR LENGTH field)
+		 * shall be no larger than 256 and shall be a multiple
+		 * of four.
+		 */
+		padding = ((-scsi_target_len) & 3);
+		if (padding)
+			scsi_target_len += padding;
+		if (scsi_name_len > 256)
+			scsi_name_len = 256;
+
+		buf[off-1] = scsi_target_len;
+		off += scsi_target_len;
+
+		/* Header size + Designation descriptor */
+		len += (scsi_target_len + 4);
 	}
 	buf[2] = ((len >> 8) & 0xff);
 	buf[3] = (len & 0xff); /* Page Length for VPD 0x83 */
@@ -442,6 +476,11 @@ spc_emulate_evpd_86(struct se_cmd *cmd, unsigned char *buf)
 	/* If WriteCache emulation is enabled, set V_SUP */
 	if (spc_check_dev_wce(dev))
 		buf[6] = 0x01;
+	/* If an LBA map is present set R_SUP */
+	spin_lock(&cmd->se_dev->t10_alua.lba_map_lock);
+	if (!list_empty(&dev->t10_alua.lba_map_list))
+		buf[8] = 0x10;
+	spin_unlock(&cmd->se_dev->t10_alua.lba_map_lock);
 	return 0;
 }
 
@@ -600,6 +639,20 @@ spc_emulate_evpd_b2(struct se_cmd *cmd, unsigned char *buf)
 	return 0;
 }
 
+/* Referrals VPD page */
+static sense_reason_t
+spc_emulate_evpd_b3(struct se_cmd *cmd, unsigned char *buf)
+{
+	struct se_device *dev = cmd->se_dev;
+
+	buf[0] = dev->transport->get_device_type(dev);
+	buf[3] = 0x0c;
+	put_unaligned_be32(dev->t10_alua.lba_map_segment_size, &buf[8]);
+	put_unaligned_be32(dev->t10_alua.lba_map_segment_size, &buf[12]);
+
+	return 0;
+}
+
 static sense_reason_t
 spc_emulate_evpd_00(struct se_cmd *cmd, unsigned char *buf);
 
@@ -614,6 +667,7 @@ static struct {
 	{ .page = 0xb0, .emulate = spc_emulate_evpd_b0 },
 	{ .page = 0xb1, .emulate = spc_emulate_evpd_b1 },
 	{ .page = 0xb2, .emulate = spc_emulate_evpd_b2 },
+	{ .page = 0xb3, .emulate = spc_emulate_evpd_b3 },
 };
 
 /* supported vital product data pages */
