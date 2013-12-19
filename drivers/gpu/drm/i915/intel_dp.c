@@ -1056,9 +1056,26 @@ static void ironlake_wait_panel_off(struct intel_dp *intel_dp)
 static void ironlake_wait_panel_power_cycle(struct intel_dp *intel_dp)
 {
 	DRM_DEBUG_KMS("Wait for panel power cycle\n");
+
+	/* When we disable the VDD override bit last we have to do the manual
+	 * wait. */
+	wait_remaining_ms_from_jiffies(intel_dp->last_power_cycle,
+				       intel_dp->panel_power_cycle_delay);
+
 	ironlake_wait_panel_status(intel_dp, IDLE_CYCLE_MASK, IDLE_CYCLE_VALUE);
 }
 
+static void ironlake_wait_backlight_on(struct intel_dp *intel_dp)
+{
+	wait_remaining_ms_from_jiffies(intel_dp->last_power_on,
+				       intel_dp->backlight_on_delay);
+}
+
+static void ironlake_edp_wait_backlight_off(struct intel_dp *intel_dp)
+{
+	wait_remaining_ms_from_jiffies(intel_dp->last_backlight_off,
+				       intel_dp->backlight_off_delay);
+}
 
 /* Read the current pp_control value, unlocking the register if it
  * is locked
@@ -1146,7 +1163,7 @@ static void ironlake_panel_vdd_off_sync(struct intel_dp *intel_dp)
 		I915_READ(pp_stat_reg), I915_READ(pp_ctrl_reg));
 
 		if ((pp & POWER_TARGET_ON) == 0)
-			msleep(intel_dp->panel_power_cycle_delay);
+			intel_dp->last_power_cycle = jiffies;
 
 		intel_runtime_pm_put(dev_priv);
 	}
@@ -1221,6 +1238,7 @@ void ironlake_edp_panel_on(struct intel_dp *intel_dp)
 	POSTING_READ(pp_ctrl_reg);
 
 	ironlake_wait_panel_on(intel_dp);
+	intel_dp->last_power_on = jiffies;
 
 	if (IS_GEN5(dev)) {
 		pp |= PANEL_POWER_RESET; /* restore panel reset bit */
@@ -1241,6 +1259,8 @@ void ironlake_edp_panel_off(struct intel_dp *intel_dp)
 
 	DRM_DEBUG_KMS("Turn eDP power off\n");
 
+	ironlake_edp_wait_backlight_off(intel_dp);
+
 	pp = ironlake_get_pp_control(intel_dp);
 	/* We need to switch off panel power _and_ force vdd, for otherwise some
 	 * panels get very unhappy and cease to work. */
@@ -1251,6 +1271,7 @@ void ironlake_edp_panel_off(struct intel_dp *intel_dp)
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
 
+	intel_dp->last_power_cycle = jiffies;
 	ironlake_wait_panel_off(intel_dp);
 }
 
@@ -1272,7 +1293,7 @@ void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 	 * link.  So delay a bit to make sure the image is solid before
 	 * allowing it to appear.
 	 */
-	msleep(intel_dp->backlight_on_delay);
+	ironlake_wait_backlight_on(intel_dp);
 	pp = ironlake_get_pp_control(intel_dp);
 	pp |= EDP_BLC_ENABLE;
 
@@ -1304,7 +1325,7 @@ void ironlake_edp_backlight_off(struct intel_dp *intel_dp)
 
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
-	msleep(intel_dp->backlight_off_delay);
+	intel_dp->last_backlight_off = jiffies;
 }
 
 static void ironlake_edp_pll_on(struct intel_dp *intel_dp)
