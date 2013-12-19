@@ -668,9 +668,17 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		if ((hdr.in_words + ex_hdr.provider_in_words) * 8 != count)
 			return -EINVAL;
 
+		if (ex_hdr.cmd_hdr_reserved)
+			return -EINVAL;
+
 		if (ex_hdr.response) {
 			if (!hdr.out_words && !ex_hdr.provider_out_words)
 				return -EINVAL;
+
+			if (!access_ok(VERIFY_WRITE,
+				       (const void __user *) (unsigned long) ex_hdr.response,
+				       (hdr.out_words + ex_hdr.provider_out_words) * 8))
+				return -EFAULT;
 		} else {
 			if (hdr.out_words || ex_hdr.provider_out_words)
 				return -EINVAL;
@@ -678,7 +686,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 
 		INIT_UDATA(&ucore,
 			   (hdr.in_words) ? buf : 0,
-			   (unsigned long)ex_hdr.response,
+			   (hdr.out_words) ? (unsigned long) ex_hdr.response : 0,
 			   hdr.in_words * 8,
 			   hdr.out_words * 8);
 
