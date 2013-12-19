@@ -470,7 +470,6 @@ static int ath9k_init_queues(struct ath_softc *sc)
 
 	sc->beacon.beaconq = ath9k_hw_beaconq_setup(sc->sc_ah);
 	sc->beacon.cabq = ath_txq_setup(sc, ATH9K_TX_QUEUE_CAB, 0);
-
 	ath_cabq_update(sc);
 
 	sc->tx.uapsdq = ath_txq_setup(sc, ATH9K_TX_QUEUE_UAPSD, 0);
@@ -554,7 +553,7 @@ static void ath9k_init_misc(struct ath_softc *sc)
 	sc->spec_config.fft_period = 0xF;
 }
 
-static void ath9k_init_platform(struct ath_softc *sc)
+static void ath9k_init_pcoem_platform(struct ath_softc *sc)
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath9k_hw_capabilities *pCap = &ah->caps;
@@ -664,6 +663,27 @@ static void ath9k_eeprom_release(struct ath_softc *sc)
 	release_firmware(sc->sc_ah->eeprom_blob);
 }
 
+static int ath9k_init_soc_platform(struct ath_softc *sc)
+{
+	struct ath9k_platform_data *pdata = sc->dev->platform_data;
+	struct ath_hw *ah = sc->sc_ah;
+	int ret = 0;
+
+	if (!pdata)
+		return 0;
+
+	if (pdata->eeprom_name) {
+		ret = ath9k_eeprom_request(sc, pdata->eeprom_name);
+		if (ret)
+			return ret;
+	}
+
+	if (pdata->tx_gain_buffalo)
+		ah->config.tx_gain_buffalo = true;
+
+	return ret;
+}
+
 static int ath9k_init_softc(u16 devid, struct ath_softc *sc,
 			    const struct ath_bus_ops *bus_ops)
 {
@@ -684,7 +704,6 @@ static int ath9k_init_softc(u16 devid, struct ath_softc *sc,
 	ah->reg_ops.read = ath9k_ioread32;
 	ah->reg_ops.write = ath9k_iowrite32;
 	ah->reg_ops.rmw = ath9k_reg_rmw;
-	atomic_set(&ah->intr_ref_cnt, -1);
 	sc->sc_ah = ah;
 	pCap = &ah->caps;
 
@@ -717,7 +736,11 @@ static int ath9k_init_softc(u16 devid, struct ath_softc *sc,
 	/*
 	 * Platform quirks.
 	 */
-	ath9k_init_platform(sc);
+	ath9k_init_pcoem_platform(sc);
+
+	ret = ath9k_init_soc_platform(sc);
+	if (ret)
+		return ret;
 
 	/*
 	 * Enable WLAN/BT RX Antenna diversity only when:
@@ -731,7 +754,6 @@ static int ath9k_init_softc(u16 devid, struct ath_softc *sc,
 		common->bt_ant_diversity = 1;
 
 	spin_lock_init(&common->cc_lock);
-
 	spin_lock_init(&sc->sc_serial_rw);
 	spin_lock_init(&sc->sc_pm_lock);
 	mutex_init(&sc->mutex);
@@ -752,12 +774,6 @@ static int ath9k_init_softc(u16 devid, struct ath_softc *sc,
 	 */
 	ath_read_cachesize(common, &csz);
 	common->cachelsz = csz << 2; /* convert to bytes */
-
-	if (pdata && pdata->eeprom_name) {
-		ret = ath9k_eeprom_request(sc, pdata->eeprom_name);
-		if (ret)
-			return ret;
-	}
 
 	/* Initializes the hardware for all supported chipsets */
 	ret = ath9k_hw_init(ah);
@@ -856,6 +872,9 @@ static const struct ieee80211_iface_limit if_limits[] = {
 
 static const struct ieee80211_iface_limit if_dfs_limits[] = {
 	{ .max = 1,	.types = BIT(NL80211_IFTYPE_AP) |
+#ifdef CONFIG_MAC80211_MESH
+				 BIT(NL80211_IFTYPE_MESH_POINT) |
+#endif
 				 BIT(NL80211_IFTYPE_ADHOC) },
 };
 
@@ -878,7 +897,7 @@ static const struct ieee80211_iface_combination if_comb[] = {
 	}
 };
 
-void ath9k_set_hw_capab(struct ath_softc *sc, struct ieee80211_hw *hw)
+static void ath9k_set_hw_capab(struct ath_softc *sc, struct ieee80211_hw *hw)
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
