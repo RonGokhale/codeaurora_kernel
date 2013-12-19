@@ -676,15 +676,12 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 				return -EINVAL;
 		}
 
-		INIT_UDATA(&ucore,
-			   (hdr.in_words) ? buf : 0,
-			   (unsigned long)ex_hdr.response,
-			   hdr.in_words * 8,
-			   hdr.out_words * 8);
+		INIT_UDATA(&ucore, buf, (unsigned long)ex_hdr.response,
+			   hdr.in_words * 8, hdr.out_words * 8);
 
 		INIT_UDATA(&uhw,
-			   (ex_hdr.provider_in_words) ? buf + ucore.inlen : 0,
-			   (ex_hdr.provider_out_words) ? (unsigned long)ex_hdr.response + ucore.outlen : 0,
+			   buf + ucore.inlen,
+			   (unsigned long) ex_hdr.response + ucore.outlen,
 			   ex_hdr.provider_in_words * 8,
 			   ex_hdr.provider_out_words * 8);
 
