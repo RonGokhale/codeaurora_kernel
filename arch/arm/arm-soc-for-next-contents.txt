@@ -48,6 +48,8 @@ next/dt
 		ARM: pxa: add PWM nodes to pxa27x.dtsi
 	nomadik/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-dt-v3.14
+	mvebu/dt-3
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14-3
 
 next/boards
 	renesas/defconfig
