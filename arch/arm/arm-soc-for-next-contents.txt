@@ -28,6 +28,8 @@ next/soc
 	hi3xxx/soc
 		local branch: fixed several checkpatch errors; originally from:
 		git://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux.git tags/hisilicon-basic
+	berlin/soc
+		https://github.com/shesselba/linux-berlin.git tags/berlin-3.14
 
 next/dt
 	ux500/dt
