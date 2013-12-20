@@ -1896,6 +1896,9 @@ int q6asm_open_write_v2(struct audio_client *ac, uint32_t format,
 		open.format = AMR_WB_PLUS;
 		pr_debug("q6asm_open_write FORMAT_AMR_WB_PLUS");
 		break;
+	case FORMAT_MP2:
+		open.format = MP2;
+		break;
 	default:
 		pr_err("%s: Invalid format[%d]\n", __func__, format);
 		goto fail_cmd;
