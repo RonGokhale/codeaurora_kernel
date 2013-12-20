@@ -1314,7 +1314,7 @@ int native_cpu_disable(void)
 {
 	int ret;
 
-	ret = check_vectors();
+	ret = check_irq_vectors_for_cpu_disable();
 	if (ret)
 		return ret;
 

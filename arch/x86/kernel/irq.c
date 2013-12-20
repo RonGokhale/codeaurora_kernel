@@ -266,7 +266,7 @@ EXPORT_SYMBOL_GPL(vector_used_by_percpu_irq);
  * This cpu is going to be removed and its vectors migrated to the remaining
  * online cpus.  Check to see if there are enough vectors in the remaining cpus.
  */
-int check_vectors(void)
+int check_irq_vectors_for_cpu_disable(void)
 {
 	int irq, cpu;
 	unsigned int vector, this_count, count;
