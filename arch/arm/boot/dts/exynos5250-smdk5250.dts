@@ -37,7 +37,7 @@
 		};
 	};
 
-	vdd:fixed-regulator@0 {
+	vdd: fixed-regulator@0 {
 		compatible = "regulator-fixed";
 		regulator-name = "vdd-supply";
 		regulator-min-microvolt = <1800000>;
@@ -45,7 +45,7 @@
 		regulator-always-on;
 	};
 
-	dbvdd:fixed-regulator@1 {
+	dbvdd: fixed-regulator@1 {
 		compatible = "regulator-fixed";
 		regulator-name = "dbvdd-supply";
 		regulator-min-microvolt = <3300000>;
@@ -53,7 +53,7 @@
 		regulator-always-on;
 	};
 
-	spkvdd:fixed-regulator@2 {
+	spkvdd: fixed-regulator@2 {
 		compatible = "regulator-fixed";
 		regulator-name = "spkvdd-supply";
 		regulator-min-microvolt = <5000000>;
@@ -76,6 +76,9 @@
 
 			gpio-controller;
 			#gpio-cells = <2>;
+
+			clocks = <&codec_mclk>;
+			clock-names = "MCLK1";
 
 			AVDD2-supply = <&vdd>;
 			CPVDD-supply = <&vdd>;
@@ -270,6 +273,12 @@
 		xxti {
 			compatible = "samsung,clock-xxti";
 			clock-frequency = <24000000>;
+		};
+
+		codec_mclk: codec-mclk {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <16934000>;
 		};
 	};
 };
