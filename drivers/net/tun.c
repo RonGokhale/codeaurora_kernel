@@ -110,7 +110,7 @@ struct tap_filter {
 	unsigned char	addr[FLT_EXACT_COUNT][ETH_ALEN];
 };
 
-/* DEFAULT_MAX_NUM_RSS_QUEUES were choosed to let the rx/tx queues allocated for
+/* DEFAULT_MAX_NUM_RSS_QUEUES were chosen to let the rx/tx queues allocated for
  * the netdevice to be fit in one page. So we can make sure the success of
  * memory allocation. TODO: increase the limit. */
 #define MAX_TAP_QUEUES DEFAULT_MAX_NUM_RSS_QUEUES
@@ -119,7 +119,7 @@ struct tap_filter {
 #define TUN_FLOW_EXPIRE (3 * HZ)
 
 /* A tun_file connects an open character device to a tuntap netdevice. It
- * also contains all socket related strctures (except sock_fprog and tap_filter)
+ * also contains all socket related structures (except sock_fprog and tap_filter)
  * to serve as one transmit queue for tuntap device. The sock_fprog and
  * tap_filter were kept in tun_struct since they were used for filtering for the
  * netdevice not for a specific queue (at least I didn't see the requirement for
@@ -342,7 +342,7 @@ unlock:
 }
 
 /* We try to identify a flow through its rxhash first. The reason that
- * we do not check rxq no. is becuase some cards(e.g 82599), chooses
+ * we do not check rxq no. is because some cards(e.g 82599), chooses
  * the rxq based on the txq where the last packet of the flow comes. As
  * the userspace application move between processors, we may get a
  * different rxq no. here. If we could not get rxhash, then we would
@@ -358,7 +358,7 @@ static u16 tun_select_queue(struct net_device *dev, struct sk_buff *skb)
 	rcu_read_lock();
 	numqueues = ACCESS_ONCE(tun->numqueues);
 
-	txq = skb_get_rxhash(skb);
+	txq = skb_get_hash(skb);
 	if (txq) {
 		e = tun_flow_find(&tun->flows[tun_hashfn(txq)], txq);
 		if (e)
@@ -531,7 +531,7 @@ static int tun_attach(struct tun_struct *tun, struct file *file, bool skip_filte
 
 	err = 0;
 
-	/* Re-attach the filter to presist device */
+	/* Re-attach the filter to persist device */
 	if (!skip_filter && (tun->filter_attached == true)) {
 		err = sk_attach_filter(&tun->fprog, tfile->socket.sk);
 		if (!err)
@@ -819,9 +819,9 @@ static void tun_poll_controller(struct net_device *dev)
 	 * Tun only receives frames when:
 	 * 1) the char device endpoint gets data from user space
 	 * 2) the tun socket gets a sendmsg call from user space
-	 * Since both of those are syncronous operations, we are guaranteed
+	 * Since both of those are synchronous operations, we are guaranteed
 	 * never to have pending data when we poll for it
-	 * so theres nothing to do here but return.
+	 * so there is nothing to do here but return.
 	 * We need this though so netpoll recognizes us as an interface that
 	 * supports polling, which enables bridge devices in virt setups to
 	 * still use netconsole
@@ -1146,7 +1146,7 @@ static ssize_t tun_get_user(struct tun_struct *tun, struct tun_file *tfile,
 	skb_reset_network_header(skb);
 	skb_probe_transport_header(skb, 0);
 
-	rxhash = skb_get_rxhash(skb);
+	rxhash = skb_get_hash(skb);
 	netif_rx_ni(skb);
 
 	tun->dev->stats.rx_packets++;
@@ -1291,8 +1291,7 @@ done:
 }
 
 static ssize_t tun_do_read(struct tun_struct *tun, struct tun_file *tfile,
-			   struct kiocb *iocb, const struct iovec *iv,
-			   ssize_t len, int noblock)
+			   const struct iovec *iv, ssize_t len, int noblock)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	struct sk_buff *skb;
@@ -1355,7 +1354,7 @@ static ssize_t tun_chr_aio_read(struct kiocb *iocb, const struct iovec *iv,
 		goto out;
 	}
 
-	ret = tun_do_read(tun, tfile, iocb, iv, len,
+	ret = tun_do_read(tun, tfile, iv, len,
 			  file->f_flags & O_NONBLOCK);
 	ret = min_t(ssize_t, ret, len);
 	if (ret > 0)
@@ -1456,7 +1455,7 @@ static int tun_recvmsg(struct kiocb *iocb, struct socket *sock,
 					 SOL_PACKET, TUN_TX_TIMESTAMP);
 		goto out;
 	}
-	ret = tun_do_read(tun, tfile, iocb, m->msg_iov, total_len,
+	ret = tun_do_read(tun, tfile, m->msg_iov, total_len,
 			  flags & MSG_DONTWAIT);
 	if (ret > total_len) {
 		m->msg_flags |= MSG_TRUNC;

@@ -286,13 +286,6 @@ static struct ctl_table ipv4_table[] = {
 		.extra2		= &ip_ttl_max,
 	},
 	{
-		.procname	= "ip_no_pmtu_disc",
-		.data		= &ipv4_config.no_pmtu_disc,
-		.maxlen		= sizeof(int),
-		.mode		= 0644,
-		.proc_handler	= proc_dointvec
-	},
-	{
 		.procname	= "ip_nonlocal_bind",
 		.data		= &sysctl_ip_nonlocal_bind,
 		.maxlen		= sizeof(int),
@@ -733,6 +726,15 @@ static struct ctl_table ipv4_table[] = {
 		.extra2		= &gso_max_segs,
 	},
 	{
+		.procname	= "tcp_autocorking",
+		.data		= &sysctl_tcp_autocorking,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
+	{
 		.procname	= "udp_mem",
 		.data		= &sysctl_udp_mem,
 		.maxlen		= sizeof(sysctl_udp_mem),
@@ -821,6 +823,13 @@ static struct ctl_table ipv4_net_table[] = {
 		.data		= &init_net.ipv4.sysctl_local_ports.range,
 		.mode		= 0644,
 		.proc_handler	= ipv4_local_port_range,
+	},
+	{
+		.procname	= "ip_no_pmtu_disc",
+		.data		= &init_net.ipv4.sysctl_ip_no_pmtu_disc,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
 	},
 	{ }
 };

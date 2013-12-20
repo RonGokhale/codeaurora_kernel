@@ -282,6 +282,7 @@ extern int sysctl_tcp_limit_output_bytes;
 extern int sysctl_tcp_challenge_ack_limit;
 extern unsigned int sysctl_tcp_notsent_lowat;
 extern int sysctl_tcp_min_tso_segs;
+extern int sysctl_tcp_autocorking;
 
 extern atomic_long_t tcp_memory_allocated;
 extern struct percpu_counter tcp_sockets_allocated;
@@ -976,13 +977,6 @@ static inline u32 tcp_wnd_end(const struct tcp_sock *tp)
 	return tp->snd_una + tp->snd_wnd;
 }
 bool tcp_is_cwnd_limited(const struct sock *sk, u32 in_flight);
-
-static inline void tcp_minshall_update(struct tcp_sock *tp, unsigned int mss,
-				       const struct sk_buff *skb)
-{
-	if (skb->len < mss)
-		tp->snd_sml = TCP_SKB_CB(skb)->end_seq;
-}
 
 static inline void tcp_check_probe_timer(struct sock *sk)
 {

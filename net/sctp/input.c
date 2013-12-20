@@ -23,9 +23,8 @@
  * See the GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with GNU CC; see the file COPYING.  If not, write to
- * the Free Software Foundation, 59 Temple Place - Suite 330,
- * Boston, MA 02111-1307, USA.
+ * along with GNU CC; see the file COPYING.  If not, see
+ * <http://www.gnu.org/licenses/>.
  *
  * Please send any bug reports or fixes you make to the
  * email address(es):
@@ -390,6 +389,9 @@ void sctp_icmp_frag_needed(struct sock *sk, struct sctp_association *asoc,
 	if (!t || (t->pathmtu <= pmtu))
 		return;
 
+	if (!ip6_sk_accept_pmtu(sk))
+		return;
+
 	if (sock_owned_by_user(sk)) {
 		asoc->pmtu_pending = 1;
 		t->pmtu_pending = 1;
@@ -537,8 +539,7 @@ struct sock *sctp_err_lookup(struct net *net, int family, struct sk_buff *skb,
 	return sk;
 
 out:
-	if (asoc)
-		sctp_association_put(asoc);
+	sctp_association_put(asoc);
 	return NULL;
 }
 
@@ -546,8 +547,7 @@ out:
 void sctp_err_finish(struct sock *sk, struct sctp_association *asoc)
 {
 	sctp_bh_unlock_sock(sk);
-	if (asoc)
-		sctp_association_put(asoc);
+	sctp_association_put(asoc);
 }
 
 /*

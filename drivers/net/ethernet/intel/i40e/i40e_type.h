@@ -49,6 +49,10 @@
 #define I40E_VF_DEVICE_ID		0x154C
 #define I40E_VF_HV_DEVICE_ID		0x1571
 
+#define i40e_is_40G_device(d)		((d) == I40E_QSFP_A_DEVICE_ID  || \
+					 (d) == I40E_QSFP_B_DEVICE_ID  || \
+					 (d) == I40E_QSFP_C_DEVICE_ID)
+
 #define I40E_FW_API_VERSION_MAJOR  0x0001
 #define I40E_FW_API_VERSION_MINOR  0x0000
 
@@ -134,6 +138,7 @@ enum i40e_media_type {
 	I40E_MEDIA_TYPE_BASET,
 	I40E_MEDIA_TYPE_BACKPLANE,
 	I40E_MEDIA_TYPE_CX4,
+	I40E_MEDIA_TYPE_DA,
 	I40E_MEDIA_TYPE_VIRTUAL
 };
 
@@ -171,6 +176,7 @@ struct i40e_link_status {
 	u8 link_info;
 	u8 an_info;
 	u8 ext_info;
+	u8 loopback;
 	/* is Link Status Event notification to SW enabled */
 	bool lse_enable;
 };
@@ -500,7 +506,8 @@ enum i40e_rx_desc_status_bits {
 	I40E_RX_DESC_STATUS_L2TAG1P_SHIFT	= 2,
 	I40E_RX_DESC_STATUS_L3L4P_SHIFT		= 3,
 	I40E_RX_DESC_STATUS_CRCP_SHIFT		= 4,
-	I40E_RX_DESC_STATUS_TSYNINDX_SHIFT	= 5, /* 3 BITS */
+	I40E_RX_DESC_STATUS_TSYNINDX_SHIFT	= 5, /* 2 BITS */
+	I40E_RX_DESC_STATUS_TSYNVALID_SHIFT	= 7,
 	I40E_RX_DESC_STATUS_PIF_SHIFT		= 8,
 	I40E_RX_DESC_STATUS_UMBCAST_SHIFT	= 9, /* 2 BITS */
 	I40E_RX_DESC_STATUS_FLM_SHIFT		= 11,
@@ -509,8 +516,12 @@ enum i40e_rx_desc_status_bits {
 };
 
 #define I40E_RXD_QW1_STATUS_TSYNINDX_SHIFT   I40E_RX_DESC_STATUS_TSYNINDX_SHIFT
-#define I40E_RXD_QW1_STATUS_TSYNINDX_MASK	(0x7UL << \
+#define I40E_RXD_QW1_STATUS_TSYNINDX_MASK	(0x3UL << \
 					     I40E_RXD_QW1_STATUS_TSYNINDX_SHIFT)
+
+#define I40E_RXD_QW1_STATUS_TSYNVALID_SHIFT  I40E_RX_DESC_STATUS_TSYNVALID_SHIFT
+#define I40E_RXD_QW1_STATUS_TSYNVALID_MASK	(0x1UL << \
+					     I40E_RXD_QW1_STATUS_TSYNVALID_SHIFT)
 
 enum i40e_rx_desc_fltstat_values {
 	I40E_RX_DESC_FLTSTAT_NO_DATA	= 0,
@@ -852,10 +863,7 @@ struct i40e_filter_program_desc {
 
 /* Packet Classifier Types for filters */
 enum i40e_filter_pctype {
-	/* Note: Value 0-25 are reserved for future use */
-	I40E_FILTER_PCTYPE_IPV4_TEREDO_UDP		= 26,
-	I40E_FILTER_PCTYPE_IPV6_TEREDO_UDP		= 27,
-	I40E_FILTER_PCTYPE_NONF_IPV4_1588_UDP		= 28,
+	/* Note: Values 0-28 are reserved for future use */
 	I40E_FILTER_PCTYPE_NONF_UNICAST_IPV4_UDP	= 29,
 	I40E_FILTER_PCTYPE_NONF_MULTICAST_IPV4_UDP	= 30,
 	I40E_FILTER_PCTYPE_NONF_IPV4_UDP		= 31,
@@ -864,8 +872,7 @@ enum i40e_filter_pctype {
 	I40E_FILTER_PCTYPE_NONF_IPV4_SCTP		= 34,
 	I40E_FILTER_PCTYPE_NONF_IPV4_OTHER		= 35,
 	I40E_FILTER_PCTYPE_FRAG_IPV4			= 36,
-	/* Note: Value 37 is reserved for future use */
-	I40E_FILTER_PCTYPE_NONF_IPV6_1588_UDP		= 38,
+	/* Note: Values 37-38 are reserved for future use */
 	I40E_FILTER_PCTYPE_NONF_UNICAST_IPV6_UDP	= 39,
 	I40E_FILTER_PCTYPE_NONF_MULTICAST_IPV6_UDP	= 40,
 	I40E_FILTER_PCTYPE_NONF_IPV6_UDP		= 41,
@@ -877,7 +884,8 @@ enum i40e_filter_pctype {
 	/* Note: Value 47 is reserved for future use */
 	I40E_FILTER_PCTYPE_FCOE_OX			= 48,
 	I40E_FILTER_PCTYPE_FCOE_RX			= 49,
-	/* Note: Value 50-62 are reserved for future use */
+	I40E_FILTER_PCTYPE_FCOE_OTHER			= 50,
+	/* Note: Values 51-62 are reserved for future use */
 	I40E_FILTER_PCTYPE_L2_PAYLOAD			= 63,
 };
 
