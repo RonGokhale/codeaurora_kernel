@@ -2086,13 +2086,13 @@ static void s3c_hsotg_irq_enumdone(struct s3c_hsotg *hsotg)
 	case DSTS_EnumSpd_FS48:
 		hsotg->gadget.speed = USB_SPEED_FULL;
 		ep0_mps = EP0_MPS_LIMIT;
-		ep_mps = 64;
+		ep_mps = 1023;
 		break;
 
 	case DSTS_EnumSpd_HS:
 		hsotg->gadget.speed = USB_SPEED_HIGH;
 		ep0_mps = EP0_MPS_LIMIT;
-		ep_mps = 512;
+		ep_mps = 1024;
 		break;
 
 	case DSTS_EnumSpd_LS:
@@ -2156,6 +2156,9 @@ static void kill_all_requests(struct s3c_hsotg *hsotg,
 		s3c_hsotg_complete_request(hsotg, ep, req,
 					   result);
 	}
+	if(hsotg->dedicated_fifos)
+		if ((readl(hsotg->regs + DTXFSTS(ep->index)) & 0xffff) * 4 < 3072)
+			s3c_hsotg_txfifo_flush(hsotg, ep->index);
 }
 
 #define call_gadget(_hs, _entry) \
@@ -3152,7 +3155,7 @@ static void s3c_hsotg_initep(struct s3c_hsotg *hsotg,
 
 	hs_ep->parent = hsotg;
 	hs_ep->ep.name = hs_ep->name;
-	hs_ep->ep.maxpacket = epnum ? 1024 : EP0_MPS_LIMIT;
+	usb_ep_set_maxpacket_limit(&hs_ep->ep, epnum ? 1024 : EP0_MPS_LIMIT);
 	hs_ep->ep.ops = &s3c_hsotg_ep_ops;
 
 	/*
