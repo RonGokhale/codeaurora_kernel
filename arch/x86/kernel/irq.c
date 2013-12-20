@@ -262,6 +262,50 @@ __visible void smp_trace_x86_platform_ipi(struct pt_regs *regs)
 EXPORT_SYMBOL_GPL(vector_used_by_percpu_irq);
 
 #ifdef CONFIG_HOTPLUG_CPU
+/*
+ * This cpu is going to be removed and its vectors migrated to the remaining
+ * online cpus.  Check to see if there are enough vectors in the remaining cpus.
+ */
+int check_vectors(void)
+{
+	int irq, cpu;
+	unsigned int vector, this_count, count;
+	struct irq_desc *desc;
+	struct irq_data *data;
+	struct cpumask *affinity;
+
+	this_count = 0;
+	for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS; vector++) {
+		irq = __this_cpu_read(vector_irq[vector]);
+		if (irq >= 0) {
+			desc = irq_to_desc(irq);
+			data = irq_desc_get_irq_data(desc);
+			affinity = data->affinity;
+			if (irq_has_action(irq) || !irqd_is_per_cpu(data) ||
+			    !cpumask_subset(affinity, cpu_online_mask))
+				this_count++;
+		}
+	}
+
+	count = 0;
+	for_each_online_cpu(cpu) {
+		if (cpu == smp_processor_id())
+			continue;
+		for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS;
+		     vector++) {
+			if (per_cpu(vector_irq, cpu)[vector] < 0)
+				count++;
+		}
+	}
+
+	if (count < this_count) {
+		pr_warn("CPU %d disable failed: CPU has %u vectors assigned and there are only %u available.\n",
+			smp_processor_id(), this_count, count);
+		return -ERANGE;
+	}
+	return 0;
+}
+
 /* A cpu has been removed from cpu_online_mask.  Reset irq affinities. */
 void fixup_irqs(void)
 {

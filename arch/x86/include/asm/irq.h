@@ -25,6 +25,7 @@ extern void irq_ctx_init(int cpu);
 
 #ifdef CONFIG_HOTPLUG_CPU
 #include <linux/cpumask.h>
+extern int check_vectors(void);
 extern void fixup_irqs(void);
 extern void irq_force_complete_move(int);
 #endif
