@@ -11,8 +11,8 @@
  * option) any later version.
  */
 
-#ifndef __LINUX_ATMEL_MXT_TS_H
-#define __LINUX_ATMEL_MXT_TS_H
+#ifndef __LINUX_ATMEL_TOUCH_H
+#define __LINUX_ATMEL_TOUCH_H
 
 #include <linux/types.h>
 
@@ -25,15 +25,8 @@
 #define MXT_ROTATED_90		0x5
 #define MXT_ROTATED_180		0x6
 #define MXT_DIAGONAL_COUNTER	0x7
-
-/* MXT_TOUCH_KEYARRAY_T15 */
-#define MXT_KEYARRAY_MAX_KEYS	32
-
-/* Bootoader IDs */
-#define MXT_BOOTLOADER_ID_224		0x0A
-#define MXT_BOOTLOADER_ID_224E		0x06
-#define MXT_BOOTLOADER_ID_1386		0x01
 #define MXT_BOOTLOADER_ID_1386E		0x10
+
 
 /* Config data for a given maXTouch controller with a specific firmware */
 struct mxt_config_info {
@@ -48,35 +41,15 @@ struct mxt_config_info {
 	const char *fw_name;
 };
 
+
 /* The platform data for the Atmel maXTouch touchscreen driver */
-struct mxt_platform_data {
-	const struct mxt_config_info *config_array;
-	size_t config_array_size;
 
-	/* touch panel's minimum and maximum coordinates */
-	u32 panel_minx;
-	u32 panel_maxx;
-	u32 panel_miny;
-	u32 panel_maxy;
-
-	/* display's minimum and maximum coordinates */
-	u32 disp_minx;
-	u32 disp_maxx;
-	u32 disp_miny;
-	u32 disp_maxy;
-
+struct autoplat001_mxt_platform_data {
+	int (*init_platform_hw)(struct i2c_client *client);
 	unsigned long irqflags;
-	bool	i2c_pull_up;
-	bool	digital_pwr_regulator;
-	int reset_gpio;
-	u32 reset_gpio_flags;
-	int irq_gpio;
-	u32 irq_gpio_flags;
-	int *key_codes;
-
-	u8(*read_chg) (void);
-	int (*init_hw) (bool);
-	int (*power_on) (bool);
+	u8 (*read_chg) (void);
+	char	*config_file;
 };
 
-#endif /* __LINUX_ATMEL_MXT_TS_H */
+#endif /* __LINUX_ATMEL_TOUCH_H */
+
