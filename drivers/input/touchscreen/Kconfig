@@ -67,6 +67,18 @@ config TOUCHSCREEN_ATMEL_MAXTOUCH
          To compile this driver as a module, choose M here: the
          module will be called maXTouch.
 
+config TOUCHSCREEN_ATMEL_MXT540E
+        tristate "Atmel MXT I2C Touchscreen for MXT540E"
+        depends on I2C
+        help
+          Say Y here if you have Atmel mXT series I2C touchscreen,
+          such as ATMXT540E, connected to your system.
+
+          If unsure, say N.
+
+          To compile this driver as a module, choose M here: the
+          module will be called atmel_touch.
+
 config TOUCHSCREEN_AD7879
 	tristate "Analog Devices AD7879-1/AD7889-1 touchscreen interface"
 	help
