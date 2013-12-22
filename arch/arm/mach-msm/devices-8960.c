@@ -2534,6 +2534,11 @@ struct platform_device msm_pcm_afe = {
 	.id	= -1,
 };
 
+struct platform_device msm_pcm_loopback = {
+        .name   = "msm-pcm-loopback",
+        .id     = -1,
+};
+
 struct platform_device msm_fm_loopback = {
 	.name	= "msm-pcm-loopback",
 	.id	= -1,
