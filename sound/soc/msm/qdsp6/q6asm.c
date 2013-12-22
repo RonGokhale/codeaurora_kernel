@@ -1708,7 +1708,7 @@ fail_cmd:
 	return -EINVAL;
 }
 
-int q6asm_open_loopack(struct audio_client *ac)
+int q6asm_open_loopback(struct audio_client *ac)
 {
 	int rc = 0x00;
 	struct asm_stream_cmd_open_loopback open;

@@ -68,6 +68,25 @@ static const struct snd_pcm_hardware dummy_pcm_hardware = {
 	.periods_max            = 128,
 };
 
+static void msm_pcm_route_event_handler(enum msm_pcm_routing_event event,
+					void *priv_data)
+{
+	struct msm_pcm_loopback *prtd = priv_data;
+
+	BUG_ON(!prtd);
+
+	pr_debug("%s: event %x\n", __func__, event);
+
+	switch (event) {
+	case MSM_PCM_RT_EVT_BUF_RECFG:
+		q6asm_cmd(prtd->audio_client, CMD_PAUSE);
+		q6asm_cmd(prtd->audio_client, CMD_FLUSH);
+		q6asm_run(prtd->audio_client, 0, 0, 0);
+	default:
+		break;
+	}
+}
+
 static void msm_pcm_loopback_event_handler(uint32_t opcode, uint32_t token,
 					   uint32_t *payload, void *priv)
 {
@@ -111,6 +130,7 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = snd_pcm_substream_chip(substream);
 	struct msm_pcm_loopback *pcm;
 	int ret = 0;
+	struct msm_pcm_routing_evt event;
 
 	pcm = dev_get_drvdata(rtd->platform->dev);
 	mutex_lock(&pcm->lock);
@@ -152,12 +172,15 @@ static int msm_pcm_open(struct snd_pcm_substream *substream)
 			mutex_unlock(&pcm->lock);
 			return -ENOMEM;
 		}
+		event.event_func = msm_pcm_route_event_handler;
+		event.priv_data = (void *) pcm;
 		msm_pcm_routing_reg_phy_stream(soc_pcm_tx->dai_link->be_id,
 			pcm->audio_client->perf_mode,
 			pcm->session_id, pcm->capture_substream->stream);
-		msm_pcm_routing_reg_phy_stream(soc_pcm_rx->dai_link->be_id,
+		msm_pcm_routing_reg_phy_stream_v2(soc_pcm_rx->dai_link->be_id,
 			pcm->audio_client->perf_mode,
-			pcm->session_id, pcm->playback_substream->stream);
+			pcm->session_id, pcm->playback_substream->stream,
+			event);
 		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 			pcm->playback_substream = substream;
 			ret = pcm_loopback_set_volume(pcm, pcm->volume);
@@ -300,6 +323,7 @@ static struct snd_pcm_ops msm_pcm_ops = {
 	.trigger        = msm_pcm_trigger,
 };
 
+#if 0
 static int msm_pcm_volume_ctl_put(struct snd_kcontrol *kcontrol,
 				  struct snd_ctl_elem_value *ucontrol)
 {
@@ -332,6 +356,7 @@ static int msm_pcm_add_controls(struct snd_soc_pcm_runtime *rtd)
 	kctl->tlv.p = loopback_rx_vol_gain;
 	return 0;
 }
+#endif 
 
 static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
@@ -341,9 +366,11 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
+#if 0
 	ret = msm_pcm_add_controls(rtd);
 	if (ret)
 		dev_err(rtd->dev, "%s, kctl add failed\n", __func__);
+#endif
 	return ret;
 }
 

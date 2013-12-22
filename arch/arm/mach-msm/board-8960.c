@@ -2902,6 +2902,7 @@ static struct platform_device *cdp_devices[] __initdata = {
 	&msm_cpudai_incall_record_rx,
 	&msm_cpudai_incall_record_tx,
 	&msm_pcm_hostless,
+	&msm_pcm_loopback,
 	&msm_bus_apps_fabric,
 	&msm_bus_sys_fabric,
 	&msm_bus_mm_fabric,
