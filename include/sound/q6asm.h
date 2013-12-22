@@ -200,6 +200,7 @@ int q6asm_open_read_write(struct audio_client *ac,
 			uint32_t wr_format);
 
 int q6asm_open_loopack(struct audio_client *ac);
+		//	uint16_t bits_per_sample);
 
 int q6asm_write(struct audio_client *ac, uint32_t len, uint32_t msw_ts,
 				uint32_t lsw_ts, uint32_t flags);
@@ -341,4 +342,5 @@ int q6asm_get_apr_service_id(int session_id);
 */
 int q6asm_media_format_block(struct audio_client *ac, uint32_t format);
 
+int q6asm_open_loopback(struct audio_client *ac);
 #endif /* __Q6_ASM_H__ */
