@@ -19,9 +19,13 @@
 
 #define INIT_MEMBLOCK_REGIONS	128
 
+/* Definition of memblock flags. */
+#define MEMBLOCK_HOTPLUG	0x1	/* hotpluggable region */
+
 struct memblock_region {
 	phys_addr_t base;
 	phys_addr_t size;
+	unsigned long flags;
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
 	int nid;
 #endif
@@ -43,6 +47,10 @@ struct memblock {
 
 extern struct memblock memblock;
 extern int memblock_debug;
+#ifdef CONFIG_MOVABLE_NODE
+/* If movable_node boot option specified */
+extern bool movable_node_enabled;
+#endif /* CONFIG_MOVABLE_NODE */
 
 #define memblock_dbg(fmt, ...) \
 	if (memblock_debug) printk(KERN_INFO pr_fmt(fmt), ##__VA_ARGS__)
@@ -59,6 +67,28 @@ int memblock_remove(phys_addr_t base, phys_addr_t size);
 int memblock_free(phys_addr_t base, phys_addr_t size);
 int memblock_reserve(phys_addr_t base, phys_addr_t size);
 void memblock_trim_memory(phys_addr_t align);
+int memblock_mark_hotplug(phys_addr_t base, phys_addr_t size);
+int memblock_clear_hotplug(phys_addr_t base, phys_addr_t size);
+#ifdef CONFIG_MOVABLE_NODE
+static inline bool memblock_is_hotpluggable(struct memblock_region *m)
+{
+	return m->flags & MEMBLOCK_HOTPLUG;
+}
+
+static inline bool movable_node_is_enabled(void)
+{
+	return movable_node_enabled;
+}
+#else
+static inline bool memblock_is_hotpluggable(struct memblock_region *m)
+{
+	return false;
+}
+static inline bool movable_node_is_enabled(void)
+{
+	return false;
+}
+#endif
 
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
 int memblock_search_pfn_nid(unsigned long pfn, unsigned long *start_pfn,
@@ -121,8 +151,21 @@ void __next_free_mem_range_rev(u64 *idx, int nid, phys_addr_t *out_start,
 	     i != (u64)ULLONG_MAX;					\
 	     __next_free_mem_range_rev(&i, nid, p_start, p_end, p_nid))
 
+static inline void memblock_set_region_flags(struct memblock_region *r,
+					     unsigned long flags)
+{
+	r->flags |= flags;
+}
+
+static inline void memblock_clear_region_flags(struct memblock_region *r,
+					       unsigned long flags)
+{
+	r->flags &= ~flags;
+}
+
 #ifdef CONFIG_HAVE_MEMBLOCK_NODE_MAP
-int memblock_set_node(phys_addr_t base, phys_addr_t size, int nid);
+int memblock_set_node(phys_addr_t base, phys_addr_t size,
+		      struct memblock_type *type, int nid);
 
 static inline void memblock_set_region_node(struct memblock_region *r, int nid)
 {
