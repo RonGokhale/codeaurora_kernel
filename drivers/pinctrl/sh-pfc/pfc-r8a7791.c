@@ -1674,7 +1674,7 @@ static const u16 pinmux_data[] = {
 	PINMUX_IPSR_MODSEL_DATA(IP16_11_10, CAN1_RX_B, SEL_CAN1_1),
 };
 
-static struct sh_pfc_pin pinmux_pins[] = {
+static const struct sh_pfc_pin pinmux_pins[] = {
 	PINMUX_GPIO_GP_ALL(),
 };
 
@@ -2858,20 +2858,29 @@ static const char * const mmc_groups[] = {
 
 static const char * const msiof0_groups[] = {
 	"msiof0_clk",
-	"msiof0_ctrl",
-	"msiof0_data",
+	"msiof0_sync",
+	"msiof0_ss1",
+	"msiof0_ss2",
+	"msiof0_rx",
+	"msiof0_tx",
 };
 
 static const char * const msiof1_groups[] = {
 	"msiof1_clk",
-	"msiof1_ctrl",
-	"msiof1_data",
+	"msiof1_sync",
+	"msiof1_ss1",
+	"msiof1_ss2",
+	"msiof1_rx",
+	"msiof1_tx",
 };
 
 static const char * const msiof2_groups[] = {
 	"msiof2_clk",
-	"msiof2_ctrl",
-	"msiof2_data",
+	"msiof2_sync",
+	"msiof2_ss1",
+	"msiof2_ss2",
+	"msiof2_rx",
+	"msiof2_tx",
 };
 
 static const char * const scif0_groups[] = {
@@ -3047,7 +3056,7 @@ static const struct sh_pfc_function pinmux_functions[] = {
 	SH_PFC_FUNCTION(usb1),
 };
 
-static struct pinmux_cfg_reg pinmux_config_regs[] = {
+static const struct pinmux_cfg_reg pinmux_config_regs[] = {
 	{ PINMUX_CFG_REG("GPSR0", 0xE6060004, 32, 1) {
 		GP_0_31_FN, FN_IP1_22_20,
 		GP_0_30_FN, FN_IP1_19_17,
