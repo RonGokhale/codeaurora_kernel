@@ -40,40 +40,37 @@ static struct bio *__bio_alloc(struct block_device *bdev, int npages)
 
 static void f2fs_read_end_io(struct bio *bio, int err)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;
+	struct bio_vec *bvec;
+	int i;
 
-	do {
+	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
 
-		if (--bvec >= bio->bi_io_vec)
-			prefetchw(&bvec->bv_page->flags);
-
-		if (unlikely(!uptodate)) {
+		if (unlikely(err)) {
 			ClearPageUptodate(page);
 			SetPageError(page);
 		} else {
 			SetPageUptodate(page);
 		}
 		unlock_page(page);
-	} while (bvec >= bio->bi_io_vec);
+	}
 
 	bio_put(bio);
 }
 
 static void f2fs_write_end_io(struct bio *bio, int err)
 {
-	const int uptodate = test_bit(BIO_UPTODATE, &bio->bi_flags);
-	struct bio_vec *bvec = bio->bi_io_vec + bio->bi_vcnt - 1;
-	struct f2fs_sb_info *sbi = F2FS_SB(bvec->bv_page->mapping->host->i_sb);
+	struct bio_vec *bvec;
+	struct f2fs_sb_info *sbi = NULL;
+	int i;
 
-	do {
+	bio_for_each_segment_all(bvec, bio, i) {
 		struct page *page = bvec->bv_page;
 
-		if (--bvec >= bio->bi_io_vec)
-			prefetchw(&bvec->bv_page->flags);
+		if (!sbi)
+			sbi = F2FS_SB(bvec->bv_page->mapping->host->i_sb);
 
-		if (unlikely(!uptodate)) {
+		if (unlikely(err)) {
 			SetPageError(page);
 			set_bit(AS_EIO, &page->mapping->flags);
 			set_ckpt_flags(sbi->ckpt, CP_ERROR_FLAG);
@@ -81,7 +78,7 @@ static void f2fs_write_end_io(struct bio *bio, int err)
 		}
 		end_page_writeback(page);
 		dec_page_count(sbi, F2FS_WRITEBACK);
-	} while (bvec >= bio->bi_io_vec);
+	}
 
 	if (bio->bi_private)
 		complete(bio->bi_private);
@@ -161,7 +158,7 @@ int f2fs_submit_page_bio(struct f2fs_sb_info *sbi, struct page *page,
 	bio = __bio_alloc(bdev, 1);
 
 	/* Initialize the bio */
-	bio->bi_sector = SECTOR_FROM_BLOCK(sbi, blk_addr);
+	bio->bi_iter.bi_sector = SECTOR_FROM_BLOCK(sbi, blk_addr);
 	bio->bi_end_io = is_read_io(rw) ? f2fs_read_end_io : f2fs_write_end_io;
 
 	if (bio_add_page(bio, page, PAGE_CACHE_SIZE, 0) < PAGE_CACHE_SIZE) {
@@ -198,7 +195,7 @@ alloc_new:
 	if (io->bio == NULL) {
 		bio_blocks = MAX_BIO_BLOCKS(max_hw_blocks(sbi));
 		io->bio = __bio_alloc(bdev, bio_blocks);
-		io->bio->bi_sector = SECTOR_FROM_BLOCK(sbi, blk_addr);
+		io->bio->bi_iter.bi_sector = SECTOR_FROM_BLOCK(sbi, blk_addr);
 		io->bio->bi_end_io = is_read_io(fio->rw) ? f2fs_read_end_io :
 							f2fs_write_end_io;
 		io->fio = *fio;
