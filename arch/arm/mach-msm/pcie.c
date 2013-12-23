@@ -509,10 +509,10 @@ static void msm_pcie_release_resources(void)
 
 static void msm_pcie_adjust_tlp_size(struct msm_pcie_dev_t *dev)
 {
-	usleep_range(1000, 1000);
+	msleep(1);
 	writel_relaxed(4, dev->pcie20 +
 				 PCIE20_PLR_AXI_MSTR_RESP_COMP_CTRL0);
-	usleep_range(1000, 1000);
+	msleep(1);
 	writel_relaxed(1, dev->pcie20 +
 				 PCIE20_PLR_AXI_MSTR_RESP_COMP_CTRL1);
 };
@@ -616,7 +616,7 @@ int msm_pcie_enable(u32 options)
 
 	PCIE_DBG("check if link is up\n");
 
-	usleep_range(1000, 1000);
+	msleep(1);
 
 	val =  readl_relaxed(msm_pcie_dev.elbi + PCIE20_ELBI_SYS_STTS);
 
