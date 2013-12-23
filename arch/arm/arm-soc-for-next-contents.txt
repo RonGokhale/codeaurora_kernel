@@ -81,6 +81,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt
 	at91/dt-2
 		git://github.com/at91linux/linux-at91.git tags/at91-dt2
+	patch
+		ARM: dts: Fix status property of mmc nodes for snow board
 
 next/boards
 	renesas/defconfig
