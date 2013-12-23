@@ -61,6 +61,7 @@
 #define I40E_BASE_VSI_SEID    512
 #define I40E_BASE_VEB_SEID    288
 #define I40E_MAX_VEB          16
+#define I40E_MAX_NPAR_QPS     32
 
 #define I40E_MAX_NUM_DESCRIPTORS      4096
 #define I40E_MAX_REGISTER     0x0038FFFF
@@ -81,11 +82,14 @@
 #define I40E_DEFAULT_MSG_ENABLE       4
 
 #define I40E_NVM_VERSION_LO_SHIFT  0
-#define I40E_NVM_VERSION_LO_MASK   (0xf << I40E_NVM_VERSION_LO_SHIFT)
-#define I40E_NVM_VERSION_MID_SHIFT 4
-#define I40E_NVM_VERSION_MID_MASK  (0xff << I40E_NVM_VERSION_MID_SHIFT)
-#define I40E_NVM_VERSION_HI_SHIFT  12
-#define I40E_NVM_VERSION_HI_MASK   (0xf << I40E_NVM_VERSION_HI_SHIFT)
+#define I40E_NVM_VERSION_LO_MASK   (0xff << I40E_NVM_VERSION_LO_SHIFT)
+#define I40E_NVM_VERSION_HI_SHIFT  8
+#define I40E_NVM_VERSION_HI_MASK   (0xff << I40E_NVM_VERSION_HI_SHIFT)
+
+/* The values in here are decimal coded as hex as is the case in the NVM map*/
+#define I40E_CURRENT_NVM_VERSION_HI 0x2
+#define I40E_CURRENT_NVM_VERSION_LO 0x1
+
 
 /* magic for getting defines into strings */
 #define STRINGIFY(foo)  #foo
@@ -127,7 +131,9 @@ enum i40e_state_t {
 	__I40E_PF_RESET_REQUESTED,
 	__I40E_CORE_RESET_REQUESTED,
 	__I40E_GLOBAL_RESET_REQUESTED,
+	__I40E_EMP_RESET_REQUESTED,
 	__I40E_FILTER_OVERFLOW_PROMISC,
+	__I40E_SUSPENDED,
 };
 
 enum i40e_interrupt_policy {
@@ -194,6 +200,7 @@ struct i40e_pf {
 	u16 num_tc_qps;            /* num queue pairs per TC */
 	u16 num_lan_qps;           /* num lan queues this pf has set up */
 	u16 num_lan_msix;          /* num queue vectors for the base pf vsi */
+	int queues_left;           /* queues left unclaimed */
 	u16 rss_size;              /* num queues in the RSS array */
 	u16 rss_size_max;          /* HW defined max RSS queues */
 	u16 fdir_pf_filter_count;  /* num of guaranteed filters for this PF */
@@ -247,6 +254,7 @@ struct i40e_pf {
 	u16 globr_count; /* Global reset count */
 	u16 empr_count; /* EMP reset count */
 	u16 pfr_count; /* PF reset count */
+	u16 sw_int_count; /* SW interrupt count */
 
 	struct mutex switch_mutex;
 	u16 lan_vsi;       /* our default LAN VSI */
@@ -269,6 +277,8 @@ struct i40e_pf {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *i40e_dbg_pf;
 #endif /* CONFIG_DEBUG_FS */
+
+	u16 instance; /* A unique number per i40e_pf instance in the system */
 
 	/* sr-iov config info */
 	struct i40e_vf *vf;
@@ -441,13 +451,11 @@ static inline char *i40e_fw_version_str(struct i40e_hw *hw)
 	static char buf[32];
 
 	snprintf(buf, sizeof(buf),
-		 "f%d.%d a%d.%d n%02d.%02d.%02d e%08x",
+		 "f%d.%d a%d.%d n%02x.%02x e%08x",
 		 hw->aq.fw_maj_ver, hw->aq.fw_min_ver,
 		 hw->aq.api_maj_ver, hw->aq.api_min_ver,
 		 (hw->nvm.version & I40E_NVM_VERSION_HI_MASK)
 						>> I40E_NVM_VERSION_HI_SHIFT,
-		 (hw->nvm.version & I40E_NVM_VERSION_MID_MASK)
-						>> I40E_NVM_VERSION_MID_SHIFT,
 		 (hw->nvm.version & I40E_NVM_VERSION_LO_MASK)
 						>> I40E_NVM_VERSION_LO_SHIFT,
 		 hw->nvm.eetrack);
@@ -495,6 +503,7 @@ int i40e_up(struct i40e_vsi *vsi);
 void i40e_down(struct i40e_vsi *vsi);
 extern const char i40e_driver_name[];
 extern const char i40e_driver_version_str[];
+void i40e_do_reset_safe(struct i40e_pf *pf, u32 reset_flags);
 void i40e_do_reset(struct i40e_pf *pf, u32 reset_flags);
 void i40e_update_stats(struct i40e_vsi *vsi);
 void i40e_update_eth_stats(struct i40e_vsi *vsi);
@@ -524,6 +533,7 @@ struct i40e_vsi *i40e_vsi_setup(struct i40e_pf *pf, u8 type,
 int i40e_vsi_release(struct i40e_vsi *vsi);
 struct i40e_vsi *i40e_vsi_lookup(struct i40e_pf *pf, enum i40e_vsi_type type,
 				 struct i40e_vsi *start_vsi);
+int i40e_reconfig_rss_queues(struct i40e_pf *pf, int queue_count);
 struct i40e_veb *i40e_veb_setup(struct i40e_pf *pf, u16 flags, u16 uplink_seid,
 				u16 downlink_seid, u8 enabled_tc);
 void i40e_veb_release(struct i40e_veb *veb);

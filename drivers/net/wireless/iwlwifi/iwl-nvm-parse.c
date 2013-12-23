@@ -223,10 +223,10 @@ static int iwl_init_channel_map(struct device *dev, const struct iwl_cfg *cfg,
 			channel->flags |= IEEE80211_CHAN_NO_160MHZ;
 
 		if (!(ch_flags & NVM_CHANNEL_IBSS))
-			channel->flags |= IEEE80211_CHAN_NO_IBSS;
+			channel->flags |= IEEE80211_CHAN_NO_IR;
 
 		if (!(ch_flags & NVM_CHANNEL_ACTIVE))
-			channel->flags |= IEEE80211_CHAN_PASSIVE_SCAN;
+			channel->flags |= IEEE80211_CHAN_NO_IR;
 
 		if (ch_flags & NVM_CHANNEL_RADAR)
 			channel->flags |= IEEE80211_CHAN_RADAR;
@@ -283,7 +283,8 @@ static void iwl_init_vht_hw_capab(const struct iwl_cfg *cfg,
 			    IEEE80211_VHT_MCS_NOT_SUPPORTED << 12 |
 			    IEEE80211_VHT_MCS_NOT_SUPPORTED << 14);
 
-	if (data->valid_rx_ant == 1 || cfg->rx_with_siso_diversity) {
+	if (num_of_ant(data->valid_rx_ant) == 1 ||
+	    cfg->rx_with_siso_diversity) {
 		vht_cap->cap |= IEEE80211_VHT_CAP_RX_ANTENNA_PATTERN |
 				IEEE80211_VHT_CAP_TX_ANTENNA_PATTERN;
 		/* this works because NOT_SUPPORTED == 3 */

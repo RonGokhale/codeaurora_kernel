@@ -70,7 +70,7 @@ static inline bool i40e_vc_isvalid_vector_id(struct i40e_vf *vf, u8 vector_id)
 {
 	struct i40e_pf *pf = vf->pf;
 
-	return vector_id < pf->hw.func_caps.num_msix_vectors_vf;
+	return vector_id <= pf->hw.func_caps.num_msix_vectors_vf;
 }
 
 /***********************vf resource mgmt routines*****************/
@@ -521,6 +521,7 @@ static int i40e_alloc_vsi_res(struct i40e_vf *vf, enum i40e_vsi_type type)
 		f = i40e_add_filter(vsi, vf->default_lan_addr.addr,
 				    0, true, false);
 	}
+
 	if (!f) {
 		dev_err(&pf->pdev->dev, "Unable to add ucast filter\n");
 		ret = -ENOMEM;
@@ -620,13 +621,13 @@ int i40e_reset_vf(struct i40e_vf *vf, bool flr)
 		if (ret)
 			dev_info(&pf->pdev->dev,
 				 "Queue control check failed on Tx queue %d of VSI %d VF %d\n",
-				 vf->lan_vsi_index, j, vf->vf_id);
+				 j, vf->lan_vsi_index, vf->vf_id);
 		ret = i40e_ctrl_vsi_rx_queue(vf, vf->lan_vsi_index, j,
 					     I40E_QUEUE_CTRL_FASTDISABLECHECK);
 		if (ret)
 			dev_info(&pf->pdev->dev,
 				 "Queue control check failed on Rx queue %d of VSI %d VF %d\n",
-				 vf->lan_vsi_index, j, vf->vf_id);
+				 j, vf->lan_vsi_index, vf->vf_id);
 	}
 
 	/* clear the irq settings */
@@ -763,6 +764,7 @@ static void i40e_free_vf_res(struct i40e_vf *vf)
 		vf->lan_vsi_index = 0;
 		vf->lan_vsi_id = 0;
 	}
+
 	/* reset some of the state varibles keeping
 	 * track of the resources
 	 */
@@ -1603,7 +1605,7 @@ static int i40e_vc_add_mac_addr_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 		struct i40e_mac_filter *f;
 
 		f = i40e_find_mac(vsi, al->list[i].addr, true, false);
-		if (f) {
+		if (!f) {
 			if (i40e_is_vsi_in_vlan(vsi))
 				f = i40e_put_mac_in_vlan(vsi, al->list[i].addr,
 							 true, false);
@@ -1774,30 +1776,6 @@ static int i40e_vc_remove_vlan_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
 error_param:
 	/* send the response to the vf */
 	return i40e_vc_send_resp_to_vf(vf, I40E_VIRTCHNL_OP_DEL_VLAN, aq_ret);
-}
-
-/**
- * i40e_vc_fcoe_msg
- * @vf: pointer to the vf info
- * @msg: pointer to the msg buffer
- * @msglen: msg length
- *
- * called from the vf for the fcoe msgs
- **/
-static int i40e_vc_fcoe_msg(struct i40e_vf *vf, u8 *msg, u16 msglen)
-{
-	i40e_status aq_ret = 0;
-
-	if (!test_bit(I40E_VF_STAT_ACTIVE, &vf->vf_states) ||
-	    !test_bit(I40E_VF_STAT_FCOEENA, &vf->vf_states)) {
-		aq_ret = I40E_ERR_PARAM;
-		goto error_param;
-	}
-	aq_ret = I40E_ERR_NOT_IMPLEMENTED;
-
-error_param:
-	/* send the response to the vf */
-	return i40e_vc_send_resp_to_vf(vf, I40E_VIRTCHNL_OP_FCOE, aq_ret);
 }
 
 /**
@@ -1972,9 +1950,6 @@ int i40e_vc_process_vf_msg(struct i40e_pf *pf, u16 vf_id, u32 v_opcode,
 		break;
 	case I40E_VIRTCHNL_OP_GET_STATS:
 		ret = i40e_vc_get_stats_msg(vf, msg, msglen);
-		break;
-	case I40E_VIRTCHNL_OP_FCOE:
-		ret = i40e_vc_fcoe_msg(vf, msg, msglen);
 		break;
 	case I40E_VIRTCHNL_OP_UNKNOWN:
 	default:
