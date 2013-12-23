@@ -145,9 +145,11 @@ void __init time_init(void)
 	ccount_freq = CONFIG_XTENSA_CPU_CLOCK*1000000UL;
 #endif
 	clocksource_register_hz(&ccount_clocksource, ccount_freq);
+
 	local_timer_setup(0);
 	setup_irq(this_cpu_ptr(&ccount_timer)->evt.irq, &timer_irqaction);
 	sched_clock_register(ccount_sched_clock_read, 32, ccount_freq);
+	clocksource_of_init();
 }
 
 /*
