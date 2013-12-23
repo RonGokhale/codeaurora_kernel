@@ -1,0 +1,117 @@
+Contents of arm-soc branches contained in for-next
+
+next/fixes-non-critical
+	samsung/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-fixes
+
+next/cleanup
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-cleanup-for-v3.14
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-soc-3.14
+	at91/sama5-ccf
+		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+	patches
+		ARM: at91: remove redundant dependency
+		ARM: clean up cache handling in platform code
+		ARM: pxa: Remove unused variables
+		ARM: pxa: remove IRQF_DISABLED
+		ARM: mmp: build sram driver alone
+	patch
+		ARM: at91: remove AT91_PROGRAMMABLE_CLOCKS configuration option
+	zynq/cleanup
+		git://git.xilinx.com/linux-xlnx.git tags/zynq-cleanup-for-3.14
+	samsung/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-cleanup
+
+next/soc
+	patches
+		ARM: ep93xx: remove deprecated IRQF_DISABLED
+		ARM: ep93xx: use soc bus
+	soc/sched_clock
+		local branch: rebased onto tip/timers-core-for-linus for dependencies
+	patch
+		ARM: at91: sama5d3: add support for sama5d36 chip
+	berlin/soc
+		https://github.com/shesselba/linux-berlin.git tags/berlin-3.14
+	efm32/soc
+		git://git.pengutronix.de/git/ukl/linux.git tags/efm32
+	keystone/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git for_3.14/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-soc-for-v3.14
+	patch
+		ARM: moxart: add MOXA ART SoC platform files
+		MAINTAINERS: take maintainership for Energy Micro efm32 SoCs
+	samsung/dev
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dev
+
+next/dt
+	ux500/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/ux500-devicetree-v3.14-1
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14
+	sti/dt
+		http://git.stlinux.com/devel/kernel/linux-sti.git tags/DT-for-v3.14-part-1
+	mvebu/dt-2
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14-2		
+	patch
+		ARM: at91: sama5d3/dt: add sama5d36ek dts files (based on next/cleanup for dependencies)
+	at91/dt
+		git://github.com/at91linux/linux-at91.git tags/at91-dt
+	integrator/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator.git tags/integrator-v3.14-1
+	patches
+		ARM: pxa: add PWM nodes to pxa27x.dtsi
+	nomadik/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik.git tags/nomadik-dt-v3.14
+	mvebu/dt-3
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14-3
+	mvebu/dt-4
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.14-4
+	keystone/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git tags/keystone-dts
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-dt-for-v3.14
+	zynq/dt
+		git://git.xilinx.com/linux-xlnx.git tags/zynq-dt-for-3.14
+	patch
+		ARM: moxart: add MOXA ART SoC device tree files
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt
+	at91/dt-2
+		git://github.com/at91linux/linux-at91.git tags/at91-dt2
+	patch
+		ARM: dts: Fix status property of mmc nodes for snow board
+
+next/boards
+	renesas/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-defconfig-for-v3.14
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-defconfig-3.14
+	patch
+		ARM: multi_v7_defconfig: Fix STi support
+	omap/board-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.14/board-removal-safe
+	samsung/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-defconfig
+	mvebu/defconfig-2
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-defconfig-3.14-2
+
+next/drivers
+	mvebu/drivers
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-drivers-3.14
+	samsung/s3c64xx-dmaengine
+		git://git.kernel.org/pub/scm/linux/kernel/git/broonie/misc.git tags/s3c64xx-dmaengine
+	renesas/drivers-usb
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas.git tags/renesas-usb-r8a66597-hcd-for-v3.14
+	at91/drivers
+		git://github.com/at91linux/linux-at91.git tags/at91-drivers
+		Contains at91/dt
+	samsung/irq
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-irq
+
+
+Patches only in for-next, not in any topic branch due to conflicts:
+
+ARM: multi_v7: copy most options from tegra_defconfig
