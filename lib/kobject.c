@@ -18,6 +18,7 @@
 #include <linux/export.h>
 #include <linux/stat.h>
 #include <linux/slab.h>
+#include <linux/random.h>
 
 /**
  * kobject_namespace - return @kobj's namespace tag
@@ -65,13 +66,17 @@ static int populate_dir(struct kobject *kobj)
 
 static int create_dir(struct kobject *kobj)
 {
+	const struct kobj_ns_type_operations *ops;
 	int error;
 
 	error = sysfs_create_dir_ns(kobj, kobject_namespace(kobj));
-	if (!error) {
-		error = populate_dir(kobj);
-		if (error)
-			sysfs_remove_dir(kobj);
+	if (error)
+		return error;
+
+	error = populate_dir(kobj);
+	if (error) {
+		sysfs_remove_dir(kobj);
+		return error;
 	}
 
 	/*
@@ -80,7 +85,20 @@ static int create_dir(struct kobject *kobj)
 	 */
 	sysfs_get(kobj->sd);
 
-	return error;
+	/*
+	 * If @kobj has ns_ops, its children need to be filtered based on
+	 * their namespace tags.  Enable namespace support on @kobj->sd.
+	 */
+	ops = kobj_child_ns_ops(kobj);
+	if (ops) {
+		BUG_ON(ops->type <= KOBJ_NS_TYPE_NONE);
+		BUG_ON(ops->type >= KOBJ_NS_TYPES);
+		BUG_ON(!kobj_ns_type_registered(ops->type));
+
+		kernfs_enable_ns(kobj->sd);
+	}
+
+	return 0;
 }
 
 static int get_kobj_path_length(struct kobject *kobj)
@@ -247,8 +265,10 @@ int kobject_set_name_vargs(struct kobject *kobj, const char *fmt,
 		return 0;
 
 	kobj->name = kvasprintf(GFP_KERNEL, fmt, vargs);
-	if (!kobj->name)
+	if (!kobj->name) {
+		kobj->name = old_name;
 		return -ENOMEM;
+	}
 
 	/* ewww... some of these buggers have '/' in the name ... */
 	while ((s = strchr(kobj->name, '/')))
@@ -536,7 +556,7 @@ out:
  */
 void kobject_del(struct kobject *kobj)
 {
-	struct sysfs_dirent *sd;
+	struct kernfs_node *sd;
 
 	if (!kobj)
 		return;
@@ -625,10 +645,12 @@ static void kobject_release(struct kref *kref)
 {
 	struct kobject *kobj = container_of(kref, struct kobject, kref);
 #ifdef CONFIG_DEBUG_KOBJECT_RELEASE
-	pr_info("kobject: '%s' (%p): %s, parent %p (delayed)\n",
-		 kobject_name(kobj), kobj, __func__, kobj->parent);
+	unsigned long delay = HZ + HZ * (get_random_int() & 0x3);
+	pr_info("kobject: '%s' (%p): %s, parent %p (delayed %ld)\n",
+		 kobject_name(kobj), kobj, __func__, kobj->parent, delay);
 	INIT_DELAYED_WORK(&kobj->release, kobject_delayed_cleanup);
-	schedule_delayed_work(&kobj->release, HZ);
+
+	schedule_delayed_work(&kobj->release, delay);
 #else
 	kobject_cleanup(kobj);
 #endif
@@ -835,6 +857,7 @@ void kset_unregister(struct kset *k)
 {
 	if (!k)
 		return;
+	kobject_del(&k->kobj);
 	kobject_put(&k->kobj);
 }
 
