@@ -35,7 +35,7 @@
 #include "msm-pcm-q6.h"
 #include "msm-pcm-routing.h"
 
-#define MAX_PCM_SESSIONS	4
+#define MAX_PCM_SESSIONS	7
 #define INVALID_SESSION		-1
 static struct audio_locks the_locks;
 static struct mutex volume_lock;
@@ -51,6 +51,9 @@ struct snd_msm_volume {
 	unsigned volume;
 };
 static struct snd_msm_volume multi_ch_pcm_audio[MAX_PCM_SESSIONS] = {
+				{INVALID_SESSION, NULL, 0x0},
+				{INVALID_SESSION, NULL, 0x0},
+				{INVALID_SESSION, NULL, 0x0},
 				{INVALID_SESSION, NULL, 0x0},
 				{INVALID_SESSION, NULL, 0x0},
 				{INVALID_SESSION, NULL, 0x0},
