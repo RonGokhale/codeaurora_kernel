@@ -3699,6 +3699,8 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 		if (ctrl->panel_mode & MDP4_PANEL_MDDI) {
 			if (mfd->panel_power_on)
 				mdp4_mddi_overlay_restore();
+		} else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
+			mdp4_overlay_lcdc_unset(mfd, pipe);
 		}
 	} else {	/* mixer1, DTV, ATV */
 		if (ctrl->panel_mode & MDP4_PANEL_DTV) {
@@ -3710,8 +3712,6 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 				pp->solid_fill = 1;
 			}
 			mdp4_overlay_dtv_unset(mfd, pipe);
-		} else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
-			mdp4_overlay_lcdc_unset(mfd, pipe);
 		}
 	}
 
@@ -4225,14 +4225,13 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 		} else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
 			/* cndx = 0 */
 			mdp4_lcdc_pipe_queue(0, pipe);
-		}
+			mdp4_lcdc_set_avparams(pipe, img->memory_id);
+                }
 	} else if (pipe->mixer_num == MDP4_MIXER1) {
 		if (ctrl->panel_mode & MDP4_PANEL_DTV) {
 			mdp4_dtv_pipe_queue(0, pipe);/* cndx = 0 */
 			mdp4_dtv_set_avparams(pipe, img->memory_id);
-		} else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
-			mdp4_lcdc_set_avparams(pipe, img->memory_id);
-                }
+		}
 	} else if (pipe->mixer_num == MDP4_MIXER2) {
 		ctrl->mixer2_played++;
 		if (ctrl->panel_mode & MDP4_PANEL_WRITEBACK)
