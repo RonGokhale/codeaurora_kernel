@@ -2932,7 +2932,9 @@ static int mdp_probe(struct platform_device *pdev)
 	}
 
 	if (mdp_pdata) {
-                mfd->cont_splash_done = 1;
+		mfd->cont_splash_done = 1;
+		mfd->edid_fail_status = 0;
+		mfd->vfmt_lk = 0;
 		if (mdp_pdata->cont_splash_enabled &&
 			((mfd->panel_info.pdest == DISPLAY_1) ||
 			((hdmi_prim_display) &&
@@ -2950,6 +2952,11 @@ static int mdp_probe(struct platform_device *pdev)
 			if (hdmi_prim_display) {
 				size_base = ((uint32_t)(0x50000));
 				addr_base = ((uint32_t)(0x50000 + 0x10));
+				mfd->edid_fail_status =
+					(inpdw(MDP_BASE + 0x003c) & 0x0F);
+				mfd->vfmt_lk =
+					(inpdw(MDP_BASE + 0x003c) >> 4);
+				MDP_OUTP(MDP_BASE + 0x003c, 0);
 			} else {
 				size_base = ((uint32_t)(0x90000 + 0x4));
 				addr_base = ((uint32_t)(0x90000 + 0x8));
