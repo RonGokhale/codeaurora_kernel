@@ -74,7 +74,6 @@ extern uint32 mdp_intr_mask;
 #define MDPOP_BLUR		BIT(12) /* enable blur */
 #define MDPOP_FG_PM_ALPHA       BIT(13)
 #define MDP_ALLOC(x)  kmalloc(x, GFP_KERNEL)
-
 #define PR_MEM_OFF		'0'
 #define PR_MEM_ON		'1'
 #define PR_MEM_KMSG		'2'
@@ -90,6 +89,13 @@ extern uint32 mdp_intr_mask;
 			(mdp_dbg_is_pr_mem_en() == PR_MEM_KMSG_NO_FRC)) \
 			pr_err(_fmt, ##_args); \
 	} while (0)
+
+struct splash_pages {
+	struct page **pages;
+	int nrpages;
+	unsigned long size;
+};
+
 
 struct mdp_buf_type {
 	struct ion_handle *ihdl;

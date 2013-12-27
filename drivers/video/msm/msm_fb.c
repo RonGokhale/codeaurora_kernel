@@ -1928,6 +1928,14 @@ static int msm_fb_pan_display_ex(struct fb_info *info,
 	u32 wait_for_finish = disp_commit->wait_for_finish;
 	int ret = 0;
 
+	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
+		mdp_set_dma_pan_info(info, NULL, TRUE);
+		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
+			pr_err("%s: can't turn on display!\n", __func__);
+			return -EINVAL;
+		}
+	}
+
 	if (disp_commit->flags &
 		MDP_DISPLAY_COMMIT_OVERLAY) {
 		if (!mfd->panel_power_on) /* suspended */
@@ -1952,6 +1960,7 @@ static int msm_fb_pan_display_ex(struct fb_info *info,
 		if (var->yoffset > (info->var.yres_virtual - info->var.yres))
 			return -EINVAL;
 	}
+
 	msm_fb_pan_idle(mfd);
 
 	mutex_lock(&mfd->sync_mutex);
@@ -1981,6 +1990,10 @@ static int msm_fb_pan_display_ex(struct fb_info *info,
 	mutex_unlock(&mfd->sync_mutex);
 	if (wait_for_finish)
 		msm_fb_pan_idle(mfd);
+
+	if (info->node == 0 && (mfd->cont_splash_done)) /* primary */
+		mdp_free_splash_buffer(mfd);
+
 	return ret;
 }
 
@@ -2026,7 +2039,6 @@ static int msm_fb_pan_display_sub(struct fb_var_screeninfo *var,
 		       __func__, info->node);
 		return -EPERM;
 	}
-
 	if (info->node != 0 || mfd->cont_splash_done)	/* primary */
 		if ((!mfd->op_enable) || (!mfd->panel_power_on))
 			return -EPERM;
@@ -2089,15 +2101,6 @@ static int msm_fb_pan_display_sub(struct fb_var_screeninfo *var,
 
 	down(&msm_fb_pan_sem);
 	msm_fb_wait_for_fence(mfd);
-	if (info->node == 0 && !(mfd->cont_splash_done)) { /* primary */
-		mdp_set_dma_pan_info(info, NULL, TRUE);
-		if (msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable)) {
-			pr_err("%s: can't turn on display!\n", __func__);
-			up(&msm_fb_pan_sem);
-			msm_fb_release_timeline(mfd);
-			return -EINVAL;
-		}
-	}
 
 	mdp_set_dma_pan_info(info, dirtyPtr,
 			     (var->activate & FB_ACTIVATE_VBL));
@@ -2113,9 +2116,6 @@ static int msm_fb_pan_display_sub(struct fb_var_screeninfo *var,
 	if (!bl_updated)
 		schedule_delayed_work(&mfd->backlight_worker,
 					backlight_duration);
-
-	if (info->node == 0 && (mfd->cont_splash_done)) /* primary */
-		mdp_free_splash_buffer(mfd);
 
 	++mfd->panel_info.frame_count;
 	return 0;
@@ -2340,13 +2340,18 @@ static int msm_fb_set_par(struct fb_info *info)
 	mfd->fbi->fix.line_length = msm_fb_line_length(mfd->index, var->xres,
 						       var->bits_per_pixel/8);
 
-	if ((mfd->panel_info.type == DTV_PANEL) && !mfd->panel_power_on) {
-		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
-	} else if (blank) {
-		msm_fb_blank_sub(FB_BLANK_POWERDOWN, info, mfd->op_enable);
-		msm_fb_blank_sub(FB_BLANK_UNBLANK, info, mfd->op_enable);
+	if (mfd->cont_splash_done) {
+		if ((mfd->panel_info.type == DTV_PANEL) &&
+				!mfd->panel_power_on) {
+			msm_fb_blank_sub(FB_BLANK_UNBLANK, info,
+				mfd->op_enable);
+		} else if (blank) {
+			msm_fb_blank_sub(FB_BLANK_POWERDOWN, info,
+				mfd->op_enable);
+			msm_fb_blank_sub(FB_BLANK_UNBLANK, info,
+				mfd->op_enable);
+		}
 	}
-
 	return 0;
 }
 
