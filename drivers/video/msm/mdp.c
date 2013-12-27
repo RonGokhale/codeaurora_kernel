@@ -25,6 +25,9 @@
 #include <linux/hrtimer.h>
 #include <linux/clk.h>
 #include <mach/hardware.h>
+#include <mach/iommu_domains.h>
+#include <mach/iommu.h>
+#include <linux/iommu.h>
 #include <linux/io.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
@@ -2406,7 +2409,7 @@ unsigned is_mdp4_hw_reset(void)
 {
 	return 0;
 }
-void mdp4_hw_init(void)
+void mdp4_hw_init(int cont_splash_done)
 {
 	/* empty */
 }
@@ -2442,7 +2445,8 @@ static int mdp_on(struct platform_device *pdev)
 		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
 		mdp_clk_ctrl(1);
 		mdp_bus_scale_restore_request();
-		mdp4_hw_init();
+
+		mdp4_hw_init(mfd->cont_splash_done);
 
 		/* Initialize HistLUT to last LUT */
 		for (i = 0; i < MDP_HIST_LUT_SIZE; i++) {
@@ -2861,9 +2865,9 @@ static int mdp_probe(struct platform_device *pdev)
 		/* initializing mdp hw */
 #ifdef CONFIG_FB_MSM_MDP40
 		if (!(mdp_pdata->cont_splash_enabled))
-			mdp4_hw_init();
+			mdp4_hw_init(1);
 #else
-		mdp_hw_init();
+		mdp_hw_init(1);
 #endif
 
 #ifdef CONFIG_FB_MSM_OVERLAY
@@ -2936,6 +2940,8 @@ static int mdp_probe(struct platform_device *pdev)
 			uint32 bpp = 3;
 			uint32 size_base = 0;
 			uint32 addr_base = 0;
+			struct iommu_domain *domain;
+			int ret;
 			/*read panel wxh and calculate splash screen
 			  size*/
 			mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
@@ -2959,10 +2965,15 @@ static int mdp_probe(struct platform_device *pdev)
 
 			mdp_pdata->splash_screen_addr =
 				inpdw(MDP_BASE + addr_base);
+
+                        mdp_pdata->splash_screen_size =
+				PFN_ALIGN(
+				mdp_pdata->splash_screen_size);
+
                         if (mdp_pdata->splash_screen_size &&
                                      mdp_pdata->splash_screen_addr) {
 			mfd->copy_splash_buf = dma_alloc_coherent(NULL,
-					mdp_pdata->splash_screen_size,
+                                        mdp_pdata->splash_screen_size,
 					(dma_addr_t *) &(mfd->copy_splash_phys),
 					GFP_KERNEL);
 
@@ -3007,12 +3018,18 @@ static int mdp_probe(struct platform_device *pdev)
 				pr_err("VMAP FAILED for SPLASH\n");
 				kfree(page_data.pages);
 				return -ENOMEM;
-			}
-			memcpy(mfd->copy_splash_buf, splash_virt_addr,
+                                }
+                        memcpy(mfd->copy_splash_buf, splash_virt_addr,
 			mdp_pdata->splash_screen_size);
 			vunmap(splash_virt_addr);
 			kfree(page_data.pages);
-
+                        domain =
+				msm_get_iommu_domain(DISPLAY_READ_DOMAIN);
+				ret = iommu_map(domain,
+					(unsigned int)mfd->copy_splash_phys,
+					(phys_addr_t)mfd->copy_splash_phys,
+					(int)mdp_pdata->splash_screen_size,
+					IOMMU_READ);
 			MDP_OUTP(MDP_BASE + addr_base,
 					mfd->copy_splash_phys);
 
@@ -3420,13 +3437,23 @@ void mdp_footswitch_ctrl(boolean on)
 
 void mdp_free_splash_buffer(struct msm_fb_data_type *mfd)
 {
-	if (mfd->copy_splash_buf) {
+	struct iommu_domain *domain;
+	int ret = 0;
+	static int commit_cnt = 5;
+
+	if ((mfd->copy_splash_buf) && !commit_cnt) {
+		domain = msm_get_iommu_domain(DISPLAY_READ_DOMAIN);
+		ret = iommu_unmap(domain, (unsigned int)mfd->copy_splash_phys,
+				(size_t)mdp_pdata->splash_screen_size);
+
 		dma_free_coherent(NULL,	mdp_pdata->splash_screen_size,
 			mfd->copy_splash_buf,
 			(dma_addr_t) mfd->copy_splash_phys);
 
 		mfd->copy_splash_buf = NULL;
-	}
+		commit_cnt = 0;
+	} else if (commit_cnt > 0)
+		commit_cnt--;
 }
 
 #ifdef CONFIG_PM
