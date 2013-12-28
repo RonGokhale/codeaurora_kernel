@@ -154,6 +154,7 @@ static void compr_event_handler(uint32_t opcode,
 			break;
 		} else
 			atomic_set(&prtd->pending_buffer, 0);
+
 		if (runtime->status->hw_ptr >= runtime->control->appl_ptr) {
 			atomic_set(&prtd->pending_buffer, 1);
 			runtime->render_flag |= SNDRV_RENDER_STOPPED;
@@ -430,6 +431,7 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 	prtd->channel_mode = runtime->channels;
 	prtd->out_head = 0;
 	atomic_set(&prtd->out_count, runtime->periods);
+        prtd->delay = 0;
 
 	if (prtd->enabled)
 		return 0;
@@ -741,6 +743,7 @@ static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct compr_audio *compr = runtime->private_data;
 	struct msm_audio *prtd = &compr->prtd;
+	uint64_t mask = 0xFFFFFFFF;
 
 	pr_debug("%s\n", __func__);
 	switch (cmd) {
@@ -749,8 +752,17 @@ static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 		/* intentional fall-through */
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		pr_debug("%s: Trigger start\n", __func__);
-		q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
+		if(substream->stream == SNDRV_PCM_STREAM_PLAYBACK ){
+			pr_debug("%s: Trigger start with delay %llu\n",
+					__func__, prtd->delay);
+			q6asm_run_nowait(prtd->audio_client, 0,
+					prtd->delay & (mask << 32),
+					prtd->delay & mask);
+		}
+                else {
+			pr_debug("%s: Trigger start\n", __func__);
+			q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
+		}
 		if (prtd->enc_audio_client)
 			q6asm_run_nowait(prtd->enc_audio_client, 0, 0, 0);
 		atomic_set(&prtd->start, 1);
@@ -1304,6 +1316,12 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 				return -EFAULT;
 		return 0;
 	}
+	case SNDRV_COMPRESS_SET_START_DELAY: {
+		prtd->delay = *((uint64_t *) arg);
+		pr_debug("resume delay %llu\n", prtd->delay);
+		return 0;
+	}
+
 	case SNDRV_COMPRESS_GET_CAPS:
 		pr_debug("SNDRV_COMPRESS_GET_CAPS\n");
 		if (copy_to_user((void *) arg, &compr->info.compr_cap,
