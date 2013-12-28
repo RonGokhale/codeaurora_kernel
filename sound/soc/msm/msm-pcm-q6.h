@@ -88,6 +88,7 @@ struct msm_audio {
 	char channel_map[8];
 	bool transcode_dts;
 	uint64_t delay;
+	int run_mode;
 };
 
 struct output_meta_data_st {
