@@ -743,7 +743,7 @@ static int msm_compr_restart(struct snd_pcm_substream *substream)
 	int time_stamp_flag = 0;
 	int buffer_length = 0;
 
-	pr_err("msm_compr_restart\n");
+	pr_debug("msm_compr_restart\n");
 	if (runtime->render_flag & SNDRV_RENDER_STOPPED) {
 		buf = prtd->audio_client->port[IN].buf;
 		pr_debug("%s:writing %d bytes of buffer[%d] to dsp 2\n",
