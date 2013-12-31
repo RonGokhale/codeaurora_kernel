@@ -152,7 +152,7 @@ static void __msm_power_off(int lower_pshold)
 
 static void msm_power_off(void)
 {
-	mpq_mcu_dev_power_off();
+	//mpq_mcu_dev_power_off();
 
 	/* MSM initiated power off, lower ps_hold */
 	__msm_power_off(1);
@@ -264,7 +264,7 @@ void msm_restart(char mode, const char *cmd)
 	printk(KERN_NOTICE "Going down for restart now\n");
 
 	pm8xxx_reset_pwr_off(1);
-	mpq_mcu_dev_power_off();
+	//mpq_mcu_dev_power_off();
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {

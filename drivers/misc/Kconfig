@@ -692,12 +692,12 @@ config BU52031NVX_POUCHDETECT
 	help
 	  depends on BU52031NVX
 
-config MPQ_MCU_COMM_MODULE
-	tristate "Support for External MCU based Power Control on MPQ"
-	default y
-	help
-	  Enables support for MCU based power control for Qualcomm
-	  MPQ Chipsets.
+#config MPQ_MCU_COMM_MODULE
+#	tristate "Support for External MCU based Power Control on MPQ"
+#	default y
+#	help
+#	  Enables support for MCU based power control for Qualcomm
+#	  MPQ Chipsets.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
