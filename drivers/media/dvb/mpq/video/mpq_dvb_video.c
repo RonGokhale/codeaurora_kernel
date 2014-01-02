@@ -10,7 +10,8 @@
  * GNU General Public License for more details.
  *
  */
-
+#include <linux/delay.h>
+#include <linux/unistd.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/firmware.h>
@@ -31,6 +32,7 @@
 #include <linux/android_pmem.h>
 #include <linux/clk.h>
 #include <linux/timer.h>
+#include <linux/debugfs.h>
 #include <mach/msm_subsystem_map.h>
 #include <media/msm/vidc_type.h>
 #include <media/msm/vcd_api.h>
@@ -46,6 +48,11 @@
 static unsigned int vidc_mmu_subsystem[] = {
 	MSM_SUBSYSTEM_VIDEO};
 
+#define FRAME_DROP_THRESHOLD 1
+#define CC_ERROR_THRESHOLD 10
+#define TEI_ERROR_THRESHOLD 10
+
+
 static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 				"dvb-vid-0",
 				"dvb-vid-1",
@@ -54,13 +61,41 @@ static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 };
 
 static enum scan_format map_scan_type(enum vdec_interlaced_format type);
-static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 				struct video_data_buffer *input_frame);
 static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 				  struct video_buffer_req *vdec_buf_req);
 
 static struct mpq_dvb_video_dev *mpq_dvb_video_device;
 
+static unsigned int mpq_get_time_ms(void);
+
+static u32 input_feed_waittime, input_buffer_waittime, enable_error_recovery;
+
+#ifdef MPQ_ENABLE_DBGFS
+
+static struct dentry *mpq_debugfs_root;
+
+static struct dentry *mpq_get_debugfs_root(void)
+{
+	if (mpq_debugfs_root == NULL)
+		mpq_debugfs_root = debugfs_create_dir("mpq_video", NULL);
+	return mpq_debugfs_root;
+}
+
+static void mpq_mpeg2_getframerate(struct mpq_dvb_video_inst *dev_inst,
+	unsigned long streambuff_rawdata_addr);
+static unsigned int mpq_mpeg2_convert_framerate(unsigned int framerate);
+
+void mpq_debugfs_file_create(struct dentry *root, const char *name,
+				u32 *var)
+{
+	struct dentry *mpq_debugfs_file =
+		debugfs_create_u32(name, S_IRUGO | S_IWUSR, root, var);
+	if (!mpq_debugfs_file)
+		ERR("%s(): Error creating/opening file %s\n", __func__, name);
+}
+#endif
 static int mpq_get_dev_frm_client(struct video_client_ctx *client_ctx,
 				struct mpq_dvb_video_inst **dev_inst)
 {
@@ -101,31 +136,54 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 	ssize_t bytes_read = 0;
 	size_t pktlen = 0;
 	int frame_found = true;
+	int ts_packets_num = 0;
+	int ts_packets_drop_num = 0;
+	int data_drop = 0;
+	int drop_ratio = 0;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
 	unsigned long input_vaddr;
 	int pmem_fd;
 	struct file *file;
 	s32 buffer_index = -1;
 	size_t size = 0;
+	unsigned int u_start = 0;
+	unsigned int u_end   = 0;
+	u32 uErr = 0;
 	struct ion_handle *ion_buff_handle = NULL;
 
 	do {
+		DBG("enable_error_recovery %d", enable_error_recovery);
+		if (input_feed_waittime)
+			u_start = mpq_get_time_ms();
 		wait_event_interruptible(streambuff->packet_data.queue,
 			(!dvb_ringbuffer_empty(&streambuff->packet_data) ||
 			streambuff->packet_data.error != 0) ||
 			kthread_should_stop());
+		if (input_feed_waittime) {
+			u_end = mpq_get_time_ms();
+			ERR("Feed WaitTime %u\n", (u_end - u_start));
+		}
 
 		if (kthread_should_stop()) {
 			DBG("STOP signal Received\n");
 			return;
 		}
 
+		if(dev_inst->client_ctx->stop_called == true) {
+			DBG("VCD driver STOPPED already\n");
+			return;
+		}
+
+		mutex_lock(&mpq_dvb_video_device->lock);
+
 		DBG("Received Free Buffer : %d\n", free_buf);
+		data_drop = 0;
 
 		indx = mpq_streambuffer_pkt_next(streambuff, -1, &pktlen);
 
 		if (-1 == indx) {
 			DBG("Invalid Index -1\n");
+			mutex_unlock(&mpq_dvb_video_device->lock);
 			return;
 		}
 
@@ -154,49 +212,175 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			case DMX_IDX_VC1_FRAME_START:
 				DBG("IDR FRAME FOUND\n");
 				frame_found = true;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+					dev_inst->idr_rcvd = true;
+				}
+				break;
+			case DMX_IDX_H264_NON_IDR_START:
+			case DMX_IDX_MPEG_P_FRAME_START:
+			case DMX_IDX_MPEG_B_FRAME_START:
+			case DMX_IDX_VC1_FRAME_END:
+				DBG("NON IDR FRAME FOUND\n");
+				frame_found = true;
+				if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+						dev_inst->non_idr_rcvd = true;
+				}
 				break;
 			default:
 				break;
 			}
-			user_vaddr = (unsigned long)
-				dmx_data->in_buffer[free_buf].bufferaddr;
-			vidc_lookup_addr_table(dev_inst->client_ctx,
-				BUFFER_TYPE_INPUT, true, &user_vaddr,
-				&kernel_vaddr,	&phy_addr, &pmem_fd, &file,
-				&buffer_index);
-			/* kernel_vaddr will have the physical addr*/
-			/* in addr_table, get the input buffer */
-			/* virtual address to write in to it */
-			vidc_get_fd_info(dev_inst->client_ctx,
-				BUFFER_TYPE_INPUT, pmem_fd, kernel_vaddr,
-				buffer_index, &ion_buff_handle);
-			input_vaddr = (unsigned long)ion_map_kernel(
-				dev_inst->client_ctx->user_ion_client,
-				ion_buff_handle);
-			if (IS_ERR_OR_NULL((void *)input_vaddr)) {
-				ERR("ion_map failed!!");
-				break;
+
+			if (frame_found) {
+				ts_packets_num = meta_data.info.
+						framing.ts_packets_num;
+				ts_packets_drop_num = meta_data.info.
+						framing.ts_dropped_bytes;
+				drop_ratio = (ts_packets_drop_num*100)
+								/ts_packets_num;
+				DBG("drop_ratio value %d\n", drop_ratio);
+				if (((drop_ratio >= FRAME_DROP_THRESHOLD)
+					||
+					 (meta_data.info.framing.
+					 continuity_error_counter
+					 > CC_ERROR_THRESHOLD)
+					||
+					(meta_data.info.framing.
+					 transport_error_indicator_counter
+					 > TEI_ERROR_THRESHOLD))
+					&&enable_error_recovery) {
+					ERR("drop_ratio %d\n", drop_ratio);
+					ERR("CC Error %d\n",
+						meta_data.info.framing.
+						continuity_error_counter);
+					data_drop = 1;
+					user_vaddr = (unsigned long)
+						dmx_data->in_buffer[free_buf].
+						bufferaddr;
+					uErr = vidc_lookup_addr_table(
+						dev_inst->client_ctx,
+						BUFFER_TYPE_INPUT, true,
+						&user_vaddr,
+						&kernel_vaddr,	&phy_addr,
+						&pmem_fd, &file,
+						&buffer_index);
+					/* kernel_vaddr will have the physical addr*/
+					/* in addr_table, get the input buffer */
+					/* virtual address to write in to it */
+					vidc_get_fd_info(
+						dev_inst->client_ctx,
+						BUFFER_TYPE_INPUT, pmem_fd,
+						kernel_vaddr,
+						buffer_index,
+						&ion_buff_handle);
+					input_vaddr = (unsigned long)ion_map_kernel(
+							dev_inst->client_ctx->user_ion_client,
+							ion_buff_handle);
+					if (IS_ERR_OR_NULL((void *)input_vaddr)) {
+						ERR("ion_map failed!!");
+							break;
+					}
+					bytes_read = 0;
+					bytes_read = mpq_streambuffer_data_read(
+							streambuff,
+							(u8 *)(input_vaddr
+							+ size),
+							pkt_hdr.raw_data_len);
+					ERR("%d - Data Discarded \n",
+						bytes_read);
+
+					mpq_streambuffer_pkt_dispose(
+						streambuff, indx, 0);
+					frame_found = false;
+					size = 0;
+				}
 			}
-			bytes_read = 0;
-			bytes_read = mpq_streambuffer_data_read(streambuff,
+			if (data_drop == 0) {
+				user_vaddr = (unsigned long)
+				dmx_data->in_buffer[free_buf].bufferaddr;
+				vidc_lookup_addr_table(
+					dev_inst->client_ctx,
+					BUFFER_TYPE_INPUT, true,
+					&user_vaddr,
+					&kernel_vaddr,
+					&phy_addr, &pmem_fd, &file,
+					&buffer_index);
+				/* kernel_vaddr will have the physical addr*/
+				/* in addr_table, get the input buffer */
+				/* virtual address to write in to it */
+				vidc_get_fd_info(
+					dev_inst->client_ctx,
+					BUFFER_TYPE_INPUT, pmem_fd,
+					kernel_vaddr,
+					buffer_index,
+					&ion_buff_handle);
+				input_vaddr = (unsigned long)ion_map_kernel(
+						dev_inst->client_ctx->user_ion_client,
+						ion_buff_handle);
+				if (IS_ERR_OR_NULL((void *)input_vaddr)) {
+					ERR("ion_map failed!!");
+						break;
+				}
+				bytes_read = 0;
+				bytes_read = mpq_streambuffer_data_read(
+						streambuff,
 						(u8 *)(input_vaddr + size),
 						pkt_hdr.raw_data_len);
-			DBG("Data Read : %d from Packet Size : %d\n",
-				bytes_read, pkt_hdr.raw_data_len);
-			mpq_streambuffer_pkt_dispose(streambuff, indx, 0);
-			size +=	pkt_hdr.raw_data_len;
-			dmx_data->in_buffer[free_buf].pts =
-			(meta_data.info.framing.pts_dts_info.pts_exist) ?
-			(meta_data.info.framing.pts_dts_info.pts) : 0;
-			if (frame_found) {
-				dmx_data->in_buffer[free_buf].buffer_len =
-									size;
-				dmx_data->in_buffer[free_buf].client_data =
-							(void *)free_buf;
-				DBG("Size of Data Submitted : %d\n", size);
-				mpq_int_vid_dec_decode_frame(
-						dev_inst->client_ctx,
-						&dmx_data->in_buffer[free_buf]);
+				DBG("Data Read : %d from Packet Size : %d\n",
+					bytes_read, pkt_hdr.raw_data_len);
+				if ((meta_data.info.framing.pattern_type ==
+					DMX_IDX_MPEG_I_FRAME_START)
+					&& (pkt_hdr.raw_data_len >= 8))
+					mpq_mpeg2_getframerate(
+						dev_inst,
+						(u32)(streambuff->raw_data.data)
+						+ pkt_hdr.raw_data_offset);
+				mpq_streambuffer_pkt_dispose(
+					streambuff, indx, 0);
+				size +=	pkt_hdr.raw_data_len;
+				dmx_data->in_buffer[free_buf].pts =
+				(meta_data.info.framing.
+						pts_dts_info.pts_exist) ?
+					(meta_data.info.framing.pts_dts_info
+					.pts) : 0;
+				if (dev_inst->picture_type ==
+						VIDEO_DECODED_PICTURES_I) {
+					DBG("In IDR mode\n");
+					if ((frame_found) &&
+						(dev_inst->frame_count < 2) &&
+						((dev_inst->idr_rcvd) ||
+						(dev_inst->non_idr_rcvd))) {
+						dmx_data->in_buffer[free_buf].
+						buffer_len = size;
+						dmx_data->in_buffer[free_buf].
+						client_data = (void *)free_buf;
+						DBG("Submitted Data Size:%d\n",
+							size);
+						dev_inst->frame_count++;
+						DBG("Video Frame No: %d to decoder in IDR mode\n",
+							dev_inst->frame_count);
+						mpq_int_vid_dec_decode_frame(
+							dev_inst,
+							&dmx_data->in_buffer[free_buf]);
+					} else {
+						DBG("Size made zero");
+						DBG("for NON IDR frames\n");
+						size = 0;
+						frame_found = false;
+					}
+				} else {
+					DBG("In NON IDR mode\n");
+					if (frame_found) {
+						dmx_data->in_buffer[free_buf].
+						buffer_len = size;
+						dmx_data->in_buffer[free_buf].
+						client_data = (void *)free_buf;
+						DBG("Submitted DataSize:%d\n",
+							size);
+						mpq_int_vid_dec_decode_frame(
+							dev_inst,
+							&dmx_data->in_buffer[free_buf]);
+					}
+				}
 			}
 			ion_unmap_kernel(
 				dev_inst->client_ctx->user_ion_client,
@@ -210,6 +394,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 		default:
 			break;
 		}
+		mutex_unlock(&mpq_dvb_video_device->lock);
 	} while (!frame_found);
 
 }
@@ -220,12 +405,20 @@ static int mpq_bcast_data_handler(void *arg)
 	struct mpq_dmx_src_data *dmx_data = dev_inst->dmx_src_data;
 	struct mpq_bcast_msg *pMesg;
 	struct mpq_bcast_msg_info msg = {0};
+	unsigned int u_start = 0;
+	unsigned int u_end   = 0;
 
 	do {
+		if (input_buffer_waittime)
+			u_start = mpq_get_time_ms();
 		wait_event_interruptible(dmx_data->msg_wait,
 					((dmx_data->stream_buffer != NULL) &&
 					mpq_int_check_bcast_mq(dmx_data)) ||
 					kthread_should_stop());
+		if (input_buffer_waittime) {
+			u_end = mpq_get_time_ms();
+			pr_err("InputBuffer HoldTime %u\n", (u_end - u_start));
+		}
 
 		if (kthread_should_stop()) {
 			DBG("STOP signal Received\n");
@@ -601,6 +794,7 @@ static void mpq_int_vid_dec_output_frame_done(
 				ION_IOC_INV_CACHES);
 		}
 	}
+
 	mutex_lock(&client_ctx->msg_queue_lock);
 	list_add_tail(&vdec_msg->list, &client_ctx->msg_queue);
 	mutex_unlock(&client_ctx->msg_queue_lock);
@@ -814,6 +1008,23 @@ static int mpq_int_vid_dec_set_cont_on_reconfig(
 	return 0;
 }
 
+static int mpq_int_vid_dec_set_dvb_dbp_count(
+                        struct video_client_ctx *client_ctx)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	u32 vcd_status = VCD_ERR_FAIL;
+	u32 enable = true;
+	if (!client_ctx)
+		return -EINVAL;
+	vcd_property_hdr.prop_id = VCD_I_DVB_CONT_MODE;
+	vcd_property_hdr.sz = sizeof(u32);
+	vcd_status = vcd_set_property(client_ctx->vcd_handle,
+					&vcd_property_hdr, &enable);
+	if (vcd_status)
+		return -EIO;
+	return 0;
+}
+
 static int mpq_int_vid_dec_set_frame_resolution(
 				struct video_client_ctx *client_ctx,
 				struct vdec_picsize *video_resoultion)
@@ -881,6 +1092,10 @@ static int mpq_int_set_full_hd_frame_resolution(
 	rc = mpq_int_vid_dec_set_cont_on_reconfig(client_ctx);
 	if (rc)
 		DBG("Failed in mpq_int_vid_dec_set_cont_on_reconfig : %d\n",\
+			rc);
+	rc = mpq_int_vid_dec_set_dvb_dbp_count(client_ctx);
+	if (rc)
+		DBG("Failed in mpq_int_vid_dec_dvb_dbp_count : %d\n",\
 			rc);
 
 	return rc;
@@ -1071,6 +1286,34 @@ static int mpq_int_vid_dec_get_output_format(
 	}
 
 	return result;
+}
+
+
+static int mpq_int_video_dec_set_extra_user_data(
+			struct video_client_ctx *client_ctx,
+			u32 *extradata_flag)
+{
+	struct vcd_property_hdr vcd_property_hdr;
+	int rc = 0;
+	struct vcd_property_meta_data_enable vcd_meta_data;
+	u32 vcd_status = VCD_ERR_FAIL;
+
+	DBG(" Inside mpq_int_video_dec_set_extra_user_data \n");
+	/*DBG("%s():*extradata_flag 0x%x\n",__func__,*extradata_flag); */
+	if (!client_ctx || !extradata_flag)
+		return -EINVAL;
+
+	vcd_property_hdr.prop_id = VCD_I_METADATA_ENABLE;
+	vcd_property_hdr.sz = sizeof(struct vcd_property_meta_data_enable);
+	vcd_meta_data.meta_data_enable_flag = *extradata_flag;
+	DBG("vcd_meta_data.meta_data_enable_flag set to 0x%x\n", vcd_meta_data.meta_data_enable_flag);
+
+	vcd_status = vcd_set_property(client_ctx->vcd_handle, &vcd_property_hdr, &vcd_meta_data);
+	if (vcd_status)
+		return -EINVAL;
+	else
+		rc = 0;
+	return rc;
 }
 
 static int mpq_int_vid_dec_set_h264_mv_buffers(
@@ -1296,7 +1539,8 @@ static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 }
 
 static int mpq_int_vid_dec_set_buffer_req(struct video_client_ctx *client_ctx,
-				  struct video_buffer_req vdec_buf_req)
+				struct video_buffer_req vdec_buf_req,
+				u32 command_type)
 {
 	int rc = 0;
 	struct video_buffer_req vdec_req;
@@ -1305,14 +1549,36 @@ static int mpq_int_vid_dec_set_buffer_req(struct video_client_ctx *client_ctx,
 	if (rc)
 		DBG("Failed in mpq_int_vid_dec_get_buffer_req : %d\n", rc);
 
-	vdec_req.num_output_buffers = vdec_buf_req.num_output_buffers;
-	DBG(" num_output_buffers Set to %u\n", vdec_buf_req.num_output_buffers);
-	if (!vdec_buf_req.num_output_buffers)
-		return -EINVAL;
+	if(VIDEO_CMD_SET_BUFFER_COUNT == command_type)
+	{
+		if (!vdec_buf_req.num_output_buffers)
+			return -EINVAL;
+		DBG("Command VIDEO_CMD_SET_BUFFER_COUNT: input buffer count = %d\n",vdec_buf_req.num_output_buffers);
+		vdec_req.num_output_buffers = vdec_buf_req.num_output_buffers;
+	}
+	else if(VIDEO_CMD_SET_BUFFER_SIZE == command_type)
+	{
+		DBG("Command VIDEO_CMD_SET_BUFFER_SIZE: buffer size set to:%u\n", vdec_buf_req.output_buf_prop.buf_size);
+		DBG("Command VIDEO_CMD_SET_BUFFER_SIZE: input buffer size = %u\n",vdec_buf_req.output_buf_prop.buf_size);
+		vdec_req.output_buf_prop.buf_size = vdec_buf_req.output_buf_prop.buf_size;
+	}
+	DBG("num_output_buffers Set to %u\n", vdec_req.num_output_buffers);
+	DBG("vdec_req.output_buf_prop.buf_size %u\n",vdec_req.output_buf_prop.buf_size);
+
 	rc = mpq_int_set_out_buffer_req(client_ctx, &vdec_req);
 	if (rc)
 		DBG("Failed in mpq_int_set_out_buffer_req  %d\n", rc);
 
+	return 0;
+}
+
+static int mpq_int_vid_dec_set_decode_mode(struct mpq_dvb_video_inst *dev_inst,
+				  enum video_decoded_pictures_t pic_type)
+{
+	dev_inst->picture_type = pic_type;
+	dev_inst->frame_count   = 0;
+	dev_inst->idr_rcvd      = false;
+	dev_inst->non_idr_rcvd  = false;
 	return 0;
 }
 
@@ -1421,11 +1687,15 @@ static int mpq_int_vid_dec_pause_resume(struct video_client_ctx *client_ctx,
 		return 0;
 }
 
-static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_start_stop(struct mpq_dvb_video_inst *dev_inst,
 					u32 start)
 {
 	struct vid_dec_msg *vdec_msg = NULL;
 	u32 vcd_status;
+
+	struct video_client_ctx *client_ctx = NULL;
+
+	client_ctx = (struct video_client_ctx *)dev_inst->client_ctx;
 
 	DBG("Inside %s()", __func__);
 	if (!client_ctx) {
@@ -1474,6 +1744,7 @@ static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
 		vcd_status = VCD_ERR_FAIL;
 		if (!client_ctx->stop_called) {
 			client_ctx->stop_called = true;
+			kthread_stop(dev_inst->dmx_src_data->data_task);
 			vcd_status = vcd_stop(client_ctx->vcd_handle);
 		}
 		if (vcd_status) {
@@ -1488,9 +1759,10 @@ static int mpq_int_vid_dec_start_stop(struct video_client_ctx *client_ctx,
 	return 0;
 }
 
-static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
+static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 				struct video_data_buffer *input_frame)
 {
+	struct video_client_ctx *client_ctx;
 	struct vcd_frame_data vcd_input_buffer;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
 	int pmem_fd;
@@ -1500,9 +1772,10 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 	u32 ion_flag = 0;
 	struct ion_handle *buff_handle = NULL;
 
-	if (!client_ctx || !input_frame)
+	if (!dev_inst || !input_frame)
 		return -EINVAL;
 
+	client_ctx = dev_inst->client_ctx;
 	user_vaddr = (unsigned long)input_frame->bufferaddr;
 
 	if (vidc_lookup_addr_table(client_ctx, BUFFER_TYPE_INPUT,
@@ -1546,6 +1819,17 @@ static int mpq_int_vid_dec_decode_frame(struct video_client_ctx *client_ctx,
 				ION_IOC_CLEAN_CACHES);
 			}
 		}
+		/* Inform VCD decoder to decode only I Frame */
+		if (dev_inst->picture_type == VIDEO_DECODED_PICTURES_I) {
+			if (dev_inst->frame_count == 2)
+			{
+				vcd_input_buffer.flags  |= VCD_FRAME_FLAG_EOS;
+				dev_inst->frame_count    = 0;
+				dev_inst->non_idr_rcvd   = false;
+				dev_inst->idr_rcvd       = false;
+				DBG("EOS is marked during I decode mode\n");
+			}
+		}
 		vcd_status = vcd_decode_frame(client_ctx->vcd_handle,
 					      &vcd_input_buffer);
 		if (!vcd_status)
@@ -1572,7 +1856,6 @@ static int mpq_int_vid_dec_fill_output_buffer(
 	s32 buffer_index = -1;
 	u32 vcd_status = VCD_ERR_FAIL;
 	struct ion_handle *buff_handle = NULL;
-
 	struct vcd_frame_data vcd_frame;
 
 	if (!client_ctx || !fill_buffer)
@@ -1596,6 +1879,7 @@ static int mpq_int_vid_dec_fill_output_buffer(
 						buffer_index,
 						&buff_handle);
 		vcd_frame.buff_ion_handle = buff_handle;
+
 		vcd_status = vcd_fill_output_buffer(client_ctx->vcd_handle,
 						    &vcd_frame);
 		if (!vcd_status)
@@ -1861,10 +2145,14 @@ static int mpq_dvb_video_open(struct inode *inode, struct file *file)
 		mutex_unlock(&mpq_dvb_video_device->lock);
 		return -ENOMEM;
 	}
-
 	/* Set default source to memory for easier handling */
 	dev_inst->source = VIDEO_SOURCE_MEMORY;
 
+	/* Set default decoded picture type is ALL */
+	dev_inst->picture_type = VIDEO_DECODED_PICTURES_ALL;
+	/* No of frames after SPS/Sequence Header */
+	dev_inst->frame_count  = 0;
+	dev_inst->framerate = 0;
 	mutex_unlock(&mpq_dvb_video_device->lock);
 
 	return rc;
@@ -1874,11 +2162,17 @@ static int mpq_dvb_video_term_dmx_src(struct mpq_dvb_video_inst *dev_inst)
 {
 
 	struct mpq_dmx_src_data *dmx_data = dev_inst->dmx_src_data;
-
+	struct video_client_ctx *client_ctx = NULL;
 	if (NULL == dmx_data)
 		return 0;
 
-	kthread_stop(dmx_data->data_task);
+	client_ctx = (struct video_client_ctx *)dev_inst->client_ctx;
+
+	if (!client_ctx->stop_called) {
+		mutex_lock(&mpq_dvb_video_device->lock);
+		kthread_stop(dev_inst->dmx_src_data->data_task);
+		mutex_unlock(&mpq_dvb_video_device->lock);
+	}
 	mutex_destroy(&dmx_data->msg_queue_lock);
 
 	kfree(dmx_data);
@@ -1895,8 +2189,10 @@ static int mpq_dvb_video_release(struct inode *inode, struct file *file)
 
 	vidc_cleanup_addr_table(dev_inst->client_ctx, BUFFER_TYPE_OUTPUT);
 	vidc_cleanup_addr_table(dev_inst->client_ctx, BUFFER_TYPE_INPUT);
+
 	if (dev_inst->source == VIDEO_SOURCE_DEMUX)
 		mpq_dvb_video_term_dmx_src(dev_inst);
+
 	mpq_int_vid_dec_close_client(dev_inst->client_ctx);
 	memset((void *)dev_inst, 0, sizeof(struct mpq_dvb_video_inst));
 	vidc_release_firmware();
@@ -1961,6 +2257,9 @@ static int mpq_int_vdec_get_fps(struct video_client_ctx *client_ctx,
 	struct vcd_property_hdr vcd_property_hdr;
 	struct vcd_property_frame_rate vcd_frame_rate;
 	u32 vcd_status = VCD_ERR_FAIL;
+	int rc = 0;
+	struct mpq_dvb_video_inst *dev_inst;
+	u32 frame_rate = 0;
 
 	if (NULL == fps)
 		return -EINVAL;
@@ -1974,9 +2273,19 @@ static int mpq_int_vdec_get_fps(struct video_client_ctx *client_ctx,
 	vcd_status = vcd_get_property(client_ctx->vcd_handle,
 				      &vcd_property_hdr, &vcd_frame_rate);
 
-	if (vcd_status)
-		return -EINVAL;
-	else {
+	if (vcd_status) {
+		rc = mpq_get_dev_frm_client(client_ctx, &dev_inst);
+		if (rc == 0) {
+			frame_rate = mpq_mpeg2_convert_framerate(dev_inst->
+							framerate);
+			if (frame_rate)
+				*fps = frame_rate;
+			else
+				rc = -EINVAL;
+		} else
+			rc = -EINVAL;
+		return rc;
+	} else {
 		*fps = (vcd_frame_rate.fps_numerator * 1000)
 			/(vcd_frame_rate.fps_denominator);
 		return 0;
@@ -2041,9 +2350,17 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 		DBG("cmd : VIDEO_CMD_GET_BUFFER_REQ\n");
 		rc = mpq_int_vid_dec_get_buffer_req(client_ctx, &cmd->buf_req);
 		break;
+	case VIDEO_CMD_SET_BUFFER_SIZE:
+		DBG("cmd : VIDEO_CMD_SET_BUFFER_SIZE\n");
+		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req, VIDEO_CMD_SET_BUFFER_SIZE);
+		break;
 	case VIDEO_CMD_SET_BUFFER_COUNT:
 		DBG("cmd : VIDEO_CMD_SET_BUFFER_COUNT\n");
-		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req);
+		rc = mpq_int_vid_dec_set_buffer_req(client_ctx, cmd->buf_req, VIDEO_CMD_SET_BUFFER_COUNT);
+		break;
+	case VIDEO_CMD_SET_DECODE_MODE:
+		DBG("cmd : VIDEO_CMD_SET_DECODE_MODE\n");
+		rc = mpq_int_vid_dec_set_decode_mode(dev_inst, cmd->picture_type);
 		break;
 	case VIDEO_CMD_READ_RAW_OUTPUT:
 		DBG("cmd : VIDEO_CMD_READ_RAW_OUTPUT\n");
@@ -2072,6 +2389,11 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 		DBG("cmd : VIDEO_CMD_CLEAR_OUTPUT_BUFFER\n");
 		rc = mpq_int_vid_dec_flush(client_ctx, VDEC_FLUSH_TYPE_OUTPUT);
 		break;
+	case VIDEO_CMD_SET_USER_AND_EXTRA_DATA:
+		DBG("cmd : VIDEO_CMD_SET_USER_AND_EXTRA_DATA\n");
+		DBG("mpq_dvb_video_command_handler():Extradata flag 0x%x\n",cmd->flags);
+		rc = mpq_int_video_dec_set_extra_user_data(client_ctx, &cmd->flags);
+		break;
 	default:
 		rc = -EINVAL;
 		break;
@@ -2098,7 +2420,7 @@ static ssize_t mpq_dvb_video_write(struct file *file, const char __user *buf,
 	if (dev_inst == NULL)
 		return -EINVAL;
 
-	rc = mpq_int_vid_dec_decode_frame(dev_inst->client_ctx, input_frame);
+	rc = mpq_int_vid_dec_decode_frame(dev_inst, input_frame);
 	if (rc)
 		return -EIO;
 
@@ -2110,7 +2432,6 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 {
 	int rc;
 	struct vdec_msginfo vdec_msg_info = {};
-
 	memset(ev, 0, sizeof(struct video_event));
 
 	rc = mpq_int_vid_dec_get_next_msg(client_ctx, &vdec_msg_info);
@@ -2144,6 +2465,8 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 				vdec_msg_info.msgdata.output_frame.time_stamp;
 		ev->u.buffer.offset      =
 				vdec_msg_info.msgdata.output_frame.offset;
+		ev->u.buffer.flags       =
+				vdec_msg_info.msgdata.output_frame.flags;
 		ev->u.buffer.interlaced_format = map_scan_type(vdec_msg_info.\
 				msgdata.output_frame.interlaced_format);
 		break;
@@ -2200,6 +2523,10 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 		ev->u.buffer.client_data =
 				vdec_msg_info.msgdata.input_frame_clientdata;
 		break;
+	case VDEC_MSG_EVT_HW_ERROR:
+		DBG("VIDEO_EVENT_HW_ERROR\n");
+		ev->type = VIDEO_EVENT_STREAM_TIMEOUT_ERROR;
+		break;
 	}
 	return 0;
 }
@@ -2215,14 +2542,85 @@ static enum scan_format map_scan_type(enum vdec_interlaced_format type)
 	return INTERLACE_FRAME_PROGRESSIVE;
 }
 
-static int mpq_dvb_video_play(struct mpq_dvb_video_inst *dev_inst)
+void mpq_mpeg2_getframerate(struct mpq_dvb_video_inst *dev_inst,
+					unsigned long streambuff_rawdata_addr)
 {
-	return mpq_int_vid_dec_start_stop(dev_inst->client_ctx, true);
+	u8 framerate = 0;
+	u8 *metadata_addr = (u8 *)streambuff_rawdata_addr;
+	if ((metadata_addr[0] == MPEG2_PES_STARTCODE_BYTE1) &&
+		(metadata_addr[1] == MPEG2_PES_STARTCODE_BYTE2) &&
+		(metadata_addr[2] == MPEG2_PES_STARTCODE_BYTE3) &&
+		(metadata_addr[3] == MPEG2_SEQHDR_STARTCODE)) {
+		DBG("mpeg2 sequence header found\n");
+		framerate = (metadata_addr[7] & (0x0F));
+		if ((framerate > 0) && (framerate < 9)
+			&& (framerate != dev_inst->framerate)) {
+			struct vid_dec_msg *vdec_msg;
+			dev_inst->framerate = framerate;
+			vdec_msg = kzalloc(sizeof(struct vid_dec_msg),
+						GFP_KERNEL);
+			if (!vdec_msg) {
+				DBG("%s(): cannot allocate vid_dec_msg "\
+					" buffer\n", __func__);
+				return;
+			}
+			vdec_msg->vdec_msg_info.msgcode =
+				VDEC_MSG_EVT_CONFIG_CHANGED;
+			DBG("current framerate: %u\n", dev_inst->framerate);
+			DBG("new framerate: %u\n", framerate);
+			mutex_lock(&dev_inst->client_ctx->msg_queue_lock);
+			list_add_tail(&vdec_msg->list,
+				&dev_inst->client_ctx->msg_queue);
+			mutex_unlock(&dev_inst->client_ctx->msg_queue_lock);
+		}
+	}
 }
 
-static int mpq_dvb_video_stop(struct video_client_ctx *client_ctx)
+unsigned int mpq_mpeg2_convert_framerate(unsigned int framerate)
 {
-	return mpq_int_vid_dec_start_stop(client_ctx, false);
+	unsigned int frame_rate;
+	switch (framerate) {
+
+	case 1:
+			 frame_rate = 23976;
+			 break;
+	case 2:
+			 frame_rate = 24000;
+			 break;
+	case 3:
+			 frame_rate = 25000;
+			 break;
+	case 4:
+			 frame_rate = 29970;
+			 break;
+	case 5:
+			 frame_rate = 30000;
+			 break;
+	case 6:
+			 frame_rate = 50000;
+			 break;
+	case 7:
+			 frame_rate = 59940;
+			 break;
+	case 8:
+			 frame_rate = 60000;
+			 break;
+	default:
+			 frame_rate = 0;
+	}
+	DBG("frame rate : %d", frame_rate);
+	return frame_rate;
+}
+
+
+static int mpq_dvb_video_play(struct mpq_dvb_video_inst *dev_inst)
+{
+	return mpq_int_vid_dec_start_stop(dev_inst, true);
+}
+
+static int mpq_dvb_video_stop(struct mpq_dvb_video_inst *dev_inst)
+{
+	return mpq_int_vid_dec_start_stop(dev_inst, false);
 }
 
 static void mpq_dvb_video_get_stream_if(
@@ -2326,7 +2724,8 @@ static int mpq_dvb_video_ioctl(struct file *file,
 		break;
 	case VIDEO_STOP:
 		DBG("ioctl : VIDEO_STOP\n");
-		rc = mpq_dvb_video_stop(client_ctx);
+		dev_inst->framerate = 0;
+		rc = mpq_dvb_video_stop(dev_inst);
 		break;
 	case VIDEO_FREEZE:
 		DBG("ioctl : VIDEO_FREEZE\n");
@@ -2399,6 +2798,14 @@ static unsigned int mpq_dvb_video_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
+static unsigned int mpq_get_time_ms(void)
+{
+	struct timeval mpq_time;
+	do_gettimeofday(&mpq_time);
+	return (mpq_time.tv_sec * 1000) + (mpq_time.tv_usec / 1000);
+}
+
+
 /*
  * Driver Registration.
  */
@@ -2460,6 +2867,21 @@ static int __init mpq_dvb_video_init(void)
 
 	}
 
+#ifdef MPQ_ENABLE_DBGFS
+	mpq_dvb_video_device->root = mpq_get_debugfs_root();
+	if (mpq_dvb_video_device->root) {
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"input_feed_waittime",
+			(u32 *) &input_feed_waittime);
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"input_buffer_waittime",
+			(u32 *) &input_buffer_waittime);
+		mpq_debugfs_file_create(mpq_dvb_video_device->root,
+			"enable_error_recovery",
+			(u32 *) &enable_error_recovery);
+	}
+#endif
+	enable_error_recovery = 1;
 	return 0;
 
 free_region:
@@ -2474,6 +2896,7 @@ free_region:
 static void __exit mpq_dvb_video_exit(void)
 {
 	int i;
+	debugfs_remove(mpq_dvb_video_device->root);
 
 	for (i = 0; i < DVB_MPQ_NUM_VIDEO_DEVICES; i++)
 		dvb_unregister_device(
