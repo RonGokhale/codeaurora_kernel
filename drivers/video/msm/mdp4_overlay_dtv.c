@@ -675,6 +675,7 @@ int mdp4_dtv_on(struct platform_device *pdev)
 		mfd->cont_splash_done = 1;
 		mfd->vfmt_lk = 0;
 		mfd->vfmt_kernel = 0;
+                mdp_clk_ctrl(0);
 	}
 	mdp4_overlay_panel_mode(MDP4_MIXER1, MDP4_PANEL_DTV);
 
