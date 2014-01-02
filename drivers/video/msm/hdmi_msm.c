@@ -841,6 +841,7 @@ static void hdmi_msm_reinit_panel_info(void)
 
 static void hdmi_msm_send_event(boolean on)
 {
+	struct msm_fb_data_type *mfd = platform_get_drvdata(hdmi_msm_pdev);
 	char *envp[2];
 
 	/* QDSP OFF preceding the HPD event notification */
@@ -878,7 +879,7 @@ static void hdmi_msm_send_event(boolean on)
 			KOBJ_OFFLINE);
 	}
 
-	if (hdmi_prim_display) {
+	if (mfd->ref_cnt && hdmi_prim_display) {
 		if (on)
 			hdmi_msm_power_on(hdmi_msm_pdev);
 		else
