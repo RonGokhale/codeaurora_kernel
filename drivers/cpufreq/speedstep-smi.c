@@ -141,38 +141,6 @@ static int speedstep_smi_get_freqs(unsigned int *low, unsigned int *high)
 }
 
 /**
- * speedstep_get_state - set the SpeedStep state
- * @state: processor frequency state (SPEEDSTEP_LOW or SPEEDSTEP_HIGH)
- *
- */
-static int speedstep_get_state(void)
-{
-	u32 function = GET_SPEEDSTEP_STATE;
-	u32 result, state, edi, command, dummy;
-
-	command = (smi_sig & 0xffffff00) | (smi_cmd & 0xff);
-
-	pr_debug("trying to determine current setting with command %x "
-		"at port %x\n", command, smi_port);
-
-	__asm__ __volatile__(
-		"push %%ebp\n"
-		"out %%al, (%%dx)\n"
-		"pop %%ebp\n"
-		: "=a" (result),
-		  "=b" (state), "=D" (edi),
-		  "=c" (dummy), "=d" (dummy), "=S" (dummy)
-		: "a" (command), "b" (function), "c" (0),
-		  "d" (smi_port), "S" (0), "D" (0)
-	);
-
-	pr_debug("state is %x, result is %x\n", state, result);
-
-	return state & 1;
-}
-
-
-/**
  * speedstep_set_state - set the SpeedStep state
  * @state: new processor frequency state (SPEEDSTEP_LOW or SPEEDSTEP_HIGH)
  *
@@ -200,7 +168,19 @@ static void speedstep_set_state(unsigned int state)
 		if (retry) {
 			pr_debug("retry %u, previous result %u, waiting...\n",
 					retry, result);
+			/*
+			 * We need to enable interrupts, otherwise the blockage
+			 * won't resolve.
+			 *
+			 * We disable preemption so that other processes don't
+			 * run. If other processes were running, they could
+			 * submit more DMA requests, making the blockage worse.
+			 */
+			preempt_disable();
+			local_irq_enable();
 			mdelay(retry * 50);
+			local_irq_disable();
+			preempt_enable_no_resched();
 		}
 		retry++;
 		__asm__ __volatile__(
@@ -217,6 +197,7 @@ static void speedstep_set_state(unsigned int state)
 
 	/* enable IRQs */
 	local_irq_restore(flags);
+	preempt_check_resched();
 
 	if (new_state == state)
 		pr_debug("change to %u MHz succeeded after %u tries "
