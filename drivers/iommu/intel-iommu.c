@@ -382,7 +382,7 @@ struct device_domain_info {
 
 static void flush_unmaps_timeout(unsigned long data);
 
-DEFINE_TIMER(unmap_timer,  flush_unmaps_timeout, 0, 0);
+static DEFINE_TIMER(unmap_timer,  flush_unmaps_timeout, 0, 0);
 
 #define HIGH_WATER_MARK 250
 struct deferred_flush_tables {
@@ -3135,7 +3135,7 @@ static int intel_mapping_error(struct device *dev, dma_addr_t dma_addr)
 	return !dma_addr;
 }
 
-struct dma_map_ops intel_dma_ops = {
+static struct dma_map_ops intel_dma_ops = {
 	.alloc = intel_alloc_coherent,
 	.free = intel_free_coherent,
 	.map_sg = intel_map_sg,
