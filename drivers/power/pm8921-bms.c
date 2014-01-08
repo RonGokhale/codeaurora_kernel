@@ -173,6 +173,7 @@ struct pm8921_bms_chip {
 	int			prev_uuc_iavg_ma;
 	int			prev_pc_unusable;
 	int			adjust_soc_low_threshold;
+	int			battery_less_hardware;
 
 	int			ibat_at_cv_ua;
 	int			soc_at_cv;
@@ -816,6 +817,15 @@ int override_mode_simultaneous_battery_voltage_and_current(int *ibat_ua,
 	int usb_chg;
 	int batt_temp;
 
+	*ibat_ua = 0;
+	*vbat_uv = 0;
+
+	if (!the_chip)
+		return -EINVAL;
+
+	if (the_chip->battery_less_hardware)
+		return 0;
+
 	mutex_lock(&the_chip->bms_output_lock);
 
 	pm8xxx_writeb(the_chip->dev->parent, BMS_S1_DELAY, 0x00);
@@ -1259,6 +1269,9 @@ int pm8921_bms_cc_uah(int *cc_uah)
 
 	if (!the_chip)
 		return -EINVAL;
+
+	if (the_chip->battery_less_hardware)
+		return 0;
 
 	read_cc(the_chip, &cc);
 	calculate_cc_uah(the_chip, cc, cc_uah);
@@ -1814,7 +1827,11 @@ static int charging_adjustments(struct pm8921_bms_chip *chip,
 static void very_low_voltage_check(struct pm8921_bms_chip *chip,
 					int ibat_ua, int vbat_uv)
 {
+
 	int rc;
+
+	if (chip->battery_less_hardware)
+		return;
 	/*
 	 * if battery is very low (v_cutoff voltage + 20mv) hold
 	 * a wakelock untill soc = 0%
@@ -2284,6 +2301,9 @@ static int calculate_state_of_charge(struct pm8921_bms_chip *chip,
 	int new_calculated_soc;
 	static int firsttime = 1;
 
+	if (chip->battery_less_hardware)
+		return 100;
+
 	calculate_soc_params(chip, raw, batt_temp, chargecycles,
 						&fcc_uah,
 						&unusable_charge_uah,
@@ -2448,6 +2468,9 @@ static void calculate_soc_work(struct work_struct *work)
 				struct pm8921_bms_chip,
 				calculate_soc_delayed_work);
 
+	if (chip->battery_less_hardware)
+		return;
+
 	recalculate_soc(chip);
 	schedule_delayed_work(&chip->calculate_soc_delayed_work,
 			round_jiffies_relative(msecs_to_jiffies
@@ -2465,6 +2488,9 @@ static int report_state_of_charge(struct pm8921_bms_chip *chip)
 		pr_debug("Returning Fake SOC = %d%%\n", bms_fake_battery);
 		return bms_fake_battery;
 	}
+
+	if (the_chip->battery_less_hardware)
+		return 100;
 
 	get_batt_temp(chip, &batt_temp);
 
@@ -2625,6 +2651,9 @@ void pm8921_bms_invalidate_shutdown_soc(void)
 	last_real_fcc_batt_temp = -EINVAL;
 	battery_removed = 1;
 
+	if (the_chip->battery_less_hardware)
+		return;
+
 	pr_debug("Invalidating shutdown soc - the battery was removed\n");
 	if (shutdown_soc_invalid)
 		return;
@@ -2658,6 +2687,13 @@ static void calibrate_hkadc_work(struct work_struct *work)
 
 void pm8921_bms_calibrate_hkadc(void)
 {
+
+	if (!the_chip)
+		return;
+
+	if (the_chip->battery_less_hardware)
+		return;
+
 	schedule_work(&the_chip->calib_hkadc_work);
 }
 
@@ -2665,7 +2701,11 @@ int pm8921_bms_get_vsense_avg(int *result)
 {
 	int rc = -EINVAL;
 
+	*result = 0;
 	if (the_chip) {
+		if (the_chip->battery_less_hardware)
+			return 0;
+
 		mutex_lock(&the_chip->bms_output_lock);
 		pm_bms_lock_output_data(the_chip);
 		rc = read_vsense_avg(the_chip, result);
@@ -2692,6 +2732,9 @@ int pm8921_bms_get_battery_current(int *result_ua)
 		pr_err("r_sense is zero\n");
 		return -EINVAL;
 	}
+
+	if (the_chip->battery_less_hardware)
+		return 0;
 
 	mutex_lock(&the_chip->bms_output_lock);
 	pm_bms_lock_output_data(the_chip);
@@ -2729,6 +2772,10 @@ int pm8921_bms_get_current_max(void)
 		pr_err("called before initialization\n");
 		return -EINVAL;
 	}
+
+	if (the_chip->battery_less_hardware)
+		return 0;
+
 	return the_chip->imax_ua;
 }
 EXPORT_SYMBOL_GPL(pm8921_bms_get_current_max);
@@ -2741,6 +2788,9 @@ int pm8921_bms_get_fcc(void)
 		pr_err("called before initialization\n");
 		return -EINVAL;
 	}
+
+	if (the_chip->battery_less_hardware)
+		return 0;
 
 	get_batt_temp(the_chip, &batt_temp);
 	return calculate_fcc_uah(the_chip, batt_temp, last_chargecycles);
@@ -2766,6 +2816,12 @@ void pm8921_bms_charging_began(void)
 	int batt_temp;
 
 	get_batt_temp(the_chip, &batt_temp);
+
+	if (!the_chip)
+		return;
+
+	if (the_chip->battery_less_hardware)
+		return;
 
 	mutex_lock(&the_chip->last_ocv_uv_mutex);
 	calib_hkadc_check(the_chip, batt_temp);
@@ -2908,6 +2964,9 @@ void pm8921_bms_charging_end(int is_battery_full)
 	struct pm8921_soc_params raw;
 
 	if (the_chip == NULL)
+		return;
+
+	if (the_chip->battery_less_hardware)
 		return;
 
 	get_batt_temp(the_chip, &batt_temp);
@@ -3743,6 +3802,7 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 	chip->batt_id_channel = pdata->bms_cdata.batt_id_channel;
 	chip->revision = pm8xxx_get_revision(chip->dev->parent);
 	chip->enable_fcc_learning = pdata->enable_fcc_learning;
+	chip->battery_less_hardware = pdata->battery_less_hardware;
 	chip->min_fcc_learning_soc = pdata->min_fcc_learning_soc;
 	chip->min_fcc_ocv_pc = pdata->min_fcc_ocv_pc;
 	chip->min_fcc_learning_samples = pdata->min_fcc_learning_samples;
@@ -3821,6 +3881,7 @@ static int __devinit pm8921_bms_probe(struct platform_device *pdev)
 		goto free_irqs;
 	}
 	check_initial_ocv(chip);
+
 
 	/* enable the vbatt reading interrupts for scheduling hkadc calib */
 	pm8921_bms_enable_irq(chip, PM8921_BMS_GOOD_OCV);

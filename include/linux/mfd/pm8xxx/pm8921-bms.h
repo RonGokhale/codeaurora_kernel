@@ -89,6 +89,7 @@ struct pm8921_bms_platform_data {
 	int				high_ocv_correction_limit_uv;
 	int				low_ocv_correction_limit_uv;
 	int				hold_soc_est;
+	int				battery_less_hardware;
 };
 
 #if defined(CONFIG_PM8921_BMS) || defined(CONFIG_PM8921_BMS_MODULE)

@@ -555,4 +555,5 @@ void __init apq8064_init_pmic(void)
 
 	if (machine_is_mpq8064_hrd() || machine_is_mpq8064_dtv())
 		apq8064_pm8921_chg_pdata.disable_chg_rmvl_wrkarnd = 1;
+		apq8064_pm8921_bms_pdata.battery_less_hardware = 1;
 }
