@@ -31,6 +31,8 @@
 #include "i40e_adminq.h"
 #include "i40e_prototype.h"
 
+static void i40e_resume_aq(struct i40e_hw *hw);
+
 /**
  *  i40e_adminq_init_regs - Initialize AdminQ registers
  *  @hw: pointer to the hardware structure
@@ -43,13 +45,17 @@ static void i40e_adminq_init_regs(struct i40e_hw *hw)
 	if (hw->mac.type == I40E_MAC_VF) {
 		hw->aq.asq.tail = I40E_VF_ATQT1;
 		hw->aq.asq.head = I40E_VF_ATQH1;
+		hw->aq.asq.len  = I40E_VF_ATQLEN1;
 		hw->aq.arq.tail = I40E_VF_ARQT1;
 		hw->aq.arq.head = I40E_VF_ARQH1;
+		hw->aq.arq.len  = I40E_VF_ARQLEN1;
 	} else {
 		hw->aq.asq.tail = I40E_PF_ATQT;
 		hw->aq.asq.head = I40E_PF_ATQH;
+		hw->aq.asq.len  = I40E_PF_ATQLEN;
 		hw->aq.arq.tail = I40E_PF_ARQT;
 		hw->aq.arq.head = I40E_PF_ARQH;
+		hw->aq.arq.len  = I40E_PF_ARQLEN;
 	}
 }
 
@@ -60,9 +66,8 @@ static void i40e_adminq_init_regs(struct i40e_hw *hw)
 static i40e_status i40e_alloc_adminq_asq_ring(struct i40e_hw *hw)
 {
 	i40e_status ret_code;
-	struct i40e_virt_mem mem;
 
-	ret_code = i40e_allocate_dma_mem(hw, &hw->aq.asq_mem,
+	ret_code = i40e_allocate_dma_mem(hw, &hw->aq.asq.desc_buf,
 					 i40e_mem_atq_ring,
 					 (hw->aq.num_asq_entries *
 					 sizeof(struct i40e_aq_desc)),
@@ -70,20 +75,13 @@ static i40e_status i40e_alloc_adminq_asq_ring(struct i40e_hw *hw)
 	if (ret_code)
 		return ret_code;
 
-	hw->aq.asq.desc = hw->aq.asq_mem.va;
-	hw->aq.asq.dma_addr = hw->aq.asq_mem.pa;
-
-	ret_code = i40e_allocate_virt_mem(hw, &mem,
+	ret_code = i40e_allocate_virt_mem(hw, &hw->aq.asq.cmd_buf,
 					  (hw->aq.num_asq_entries *
 					  sizeof(struct i40e_asq_cmd_details)));
 	if (ret_code) {
-		i40e_free_dma_mem(hw, &hw->aq.asq_mem);
-		hw->aq.asq_mem.va = NULL;
-		hw->aq.asq_mem.pa = 0;
+		i40e_free_dma_mem(hw, &hw->aq.asq.desc_buf);
 		return ret_code;
 	}
-
-	hw->aq.asq.details = mem.va;
 
 	return ret_code;
 }
@@ -96,16 +94,11 @@ static i40e_status i40e_alloc_adminq_arq_ring(struct i40e_hw *hw)
 {
 	i40e_status ret_code;
 
-	ret_code = i40e_allocate_dma_mem(hw, &hw->aq.arq_mem,
+	ret_code = i40e_allocate_dma_mem(hw, &hw->aq.arq.desc_buf,
 					 i40e_mem_arq_ring,
 					 (hw->aq.num_arq_entries *
 					 sizeof(struct i40e_aq_desc)),
 					 I40E_ADMINQ_DESC_ALIGNMENT);
-	if (ret_code)
-		return ret_code;
-
-	hw->aq.arq.desc = hw->aq.arq_mem.va;
-	hw->aq.arq.dma_addr = hw->aq.arq_mem.pa;
 
 	return ret_code;
 }
@@ -119,14 +112,7 @@ static i40e_status i40e_alloc_adminq_arq_ring(struct i40e_hw *hw)
  **/
 static void i40e_free_adminq_asq(struct i40e_hw *hw)
 {
-	struct i40e_virt_mem mem;
-
-	i40e_free_dma_mem(hw, &hw->aq.asq_mem);
-	hw->aq.asq_mem.va = NULL;
-	hw->aq.asq_mem.pa = 0;
-	mem.va = hw->aq.asq.details;
-	i40e_free_virt_mem(hw, &mem);
-	hw->aq.asq.details = NULL;
+	i40e_free_dma_mem(hw, &hw->aq.asq.desc_buf);
 }
 
 /**
@@ -138,9 +124,7 @@ static void i40e_free_adminq_asq(struct i40e_hw *hw)
  **/
 static void i40e_free_adminq_arq(struct i40e_hw *hw)
 {
-	i40e_free_dma_mem(hw, &hw->aq.arq_mem);
-	hw->aq.arq_mem.va = NULL;
-	hw->aq.arq_mem.pa = 0;
+	i40e_free_dma_mem(hw, &hw->aq.arq.desc_buf);
 }
 
 /**
@@ -151,7 +135,6 @@ static i40e_status i40e_alloc_arq_bufs(struct i40e_hw *hw)
 {
 	i40e_status ret_code;
 	struct i40e_aq_desc *desc;
-	struct i40e_virt_mem mem;
 	struct i40e_dma_mem *bi;
 	int i;
 
@@ -160,11 +143,11 @@ static i40e_status i40e_alloc_arq_bufs(struct i40e_hw *hw)
 	 */
 
 	/* buffer_info structures do not need alignment */
-	ret_code = i40e_allocate_virt_mem(hw, &mem, (hw->aq.num_arq_entries *
-					  sizeof(struct i40e_dma_mem)));
+	ret_code = i40e_allocate_virt_mem(hw, &hw->aq.arq.dma_head,
+		(hw->aq.num_arq_entries * sizeof(struct i40e_dma_mem)));
 	if (ret_code)
 		goto alloc_arq_bufs;
-	hw->aq.arq.r.arq_bi = (struct i40e_dma_mem *)mem.va;
+	hw->aq.arq.r.arq_bi = (struct i40e_dma_mem *)hw->aq.arq.dma_head.va;
 
 	/* allocate the mapped buffers */
 	for (i = 0; i < hw->aq.num_arq_entries; i++) {
@@ -206,8 +189,7 @@ unwind_alloc_arq_bufs:
 	i--;
 	for (; i >= 0; i--)
 		i40e_free_dma_mem(hw, &hw->aq.arq.r.arq_bi[i]);
-	mem.va = hw->aq.arq.r.arq_bi;
-	i40e_free_virt_mem(hw, &mem);
+	i40e_free_virt_mem(hw, &hw->aq.arq.dma_head);
 
 	return ret_code;
 }
@@ -219,16 +201,15 @@ unwind_alloc_arq_bufs:
 static i40e_status i40e_alloc_asq_bufs(struct i40e_hw *hw)
 {
 	i40e_status ret_code;
-	struct i40e_virt_mem mem;
 	struct i40e_dma_mem *bi;
 	int i;
 
 	/* No mapped memory needed yet, just the buffer info structures */
-	ret_code = i40e_allocate_virt_mem(hw, &mem, (hw->aq.num_asq_entries *
-					  sizeof(struct i40e_dma_mem)));
+	ret_code = i40e_allocate_virt_mem(hw, &hw->aq.asq.dma_head,
+		(hw->aq.num_asq_entries * sizeof(struct i40e_dma_mem)));
 	if (ret_code)
 		goto alloc_asq_bufs;
-	hw->aq.asq.r.asq_bi = (struct i40e_dma_mem *)mem.va;
+	hw->aq.asq.r.asq_bi = (struct i40e_dma_mem *)hw->aq.asq.dma_head.va;
 
 	/* allocate the mapped buffers */
 	for (i = 0; i < hw->aq.num_asq_entries; i++) {
@@ -248,8 +229,7 @@ unwind_alloc_asq_bufs:
 	i--;
 	for (; i >= 0; i--)
 		i40e_free_dma_mem(hw, &hw->aq.asq.r.asq_bi[i]);
-	mem.va = hw->aq.asq.r.asq_bi;
-	i40e_free_virt_mem(hw, &mem);
+	i40e_free_virt_mem(hw, &hw->aq.asq.dma_head);
 
 	return ret_code;
 }
@@ -260,14 +240,17 @@ unwind_alloc_asq_bufs:
  **/
 static void i40e_free_arq_bufs(struct i40e_hw *hw)
 {
-	struct i40e_virt_mem mem;
 	int i;
 
+	/* free descriptors */
 	for (i = 0; i < hw->aq.num_arq_entries; i++)
 		i40e_free_dma_mem(hw, &hw->aq.arq.r.arq_bi[i]);
 
-	mem.va = hw->aq.arq.r.arq_bi;
-	i40e_free_virt_mem(hw, &mem);
+	/* free the descriptor memory */
+	i40e_free_dma_mem(hw, &hw->aq.arq.desc_buf);
+
+	/* free the dma header */
+	i40e_free_virt_mem(hw, &hw->aq.arq.dma_head);
 }
 
 /**
@@ -276,7 +259,6 @@ static void i40e_free_arq_bufs(struct i40e_hw *hw)
  **/
 static void i40e_free_asq_bufs(struct i40e_hw *hw)
 {
-	struct i40e_virt_mem mem;
 	int i;
 
 	/* only unmap if the address is non-NULL */
@@ -284,9 +266,14 @@ static void i40e_free_asq_bufs(struct i40e_hw *hw)
 		if (hw->aq.asq.r.asq_bi[i].pa)
 			i40e_free_dma_mem(hw, &hw->aq.asq.r.asq_bi[i]);
 
-	/* now free the buffer info list */
-	mem.va = hw->aq.asq.r.asq_bi;
-	i40e_free_virt_mem(hw, &mem);
+	/* free the buffer info list */
+	i40e_free_virt_mem(hw, &hw->aq.asq.cmd_buf);
+
+	/* free the descriptor memory */
+	i40e_free_dma_mem(hw, &hw->aq.asq.desc_buf);
+
+	/* free the dma header */
+	i40e_free_virt_mem(hw, &hw->aq.asq.dma_head);
 }
 
 /**
@@ -299,14 +286,18 @@ static void i40e_config_asq_regs(struct i40e_hw *hw)
 {
 	if (hw->mac.type == I40E_MAC_VF) {
 		/* configure the transmit queue */
-		wr32(hw, I40E_VF_ATQBAH1, upper_32_bits(hw->aq.asq.dma_addr));
-		wr32(hw, I40E_VF_ATQBAL1, lower_32_bits(hw->aq.asq.dma_addr));
+		wr32(hw, I40E_VF_ATQBAH1,
+		    upper_32_bits(hw->aq.asq.desc_buf.pa));
+		wr32(hw, I40E_VF_ATQBAL1,
+		    lower_32_bits(hw->aq.asq.desc_buf.pa));
 		wr32(hw, I40E_VF_ATQLEN1, (hw->aq.num_asq_entries |
 					  I40E_VF_ATQLEN1_ATQENABLE_MASK));
 	} else {
 		/* configure the transmit queue */
-		wr32(hw, I40E_PF_ATQBAH, upper_32_bits(hw->aq.asq.dma_addr));
-		wr32(hw, I40E_PF_ATQBAL, lower_32_bits(hw->aq.asq.dma_addr));
+		wr32(hw, I40E_PF_ATQBAH,
+		    upper_32_bits(hw->aq.asq.desc_buf.pa));
+		wr32(hw, I40E_PF_ATQBAL,
+		    lower_32_bits(hw->aq.asq.desc_buf.pa));
 		wr32(hw, I40E_PF_ATQLEN, (hw->aq.num_asq_entries |
 					  I40E_PF_ATQLEN_ATQENABLE_MASK));
 	}
@@ -322,14 +313,18 @@ static void i40e_config_arq_regs(struct i40e_hw *hw)
 {
 	if (hw->mac.type == I40E_MAC_VF) {
 		/* configure the receive queue */
-		wr32(hw, I40E_VF_ARQBAH1, upper_32_bits(hw->aq.arq.dma_addr));
-		wr32(hw, I40E_VF_ARQBAL1, lower_32_bits(hw->aq.arq.dma_addr));
+		wr32(hw, I40E_VF_ARQBAH1,
+		    upper_32_bits(hw->aq.arq.desc_buf.pa));
+		wr32(hw, I40E_VF_ARQBAL1,
+		    lower_32_bits(hw->aq.arq.desc_buf.pa));
 		wr32(hw, I40E_VF_ARQLEN1, (hw->aq.num_arq_entries |
 					  I40E_VF_ARQLEN1_ARQENABLE_MASK));
 	} else {
 		/* configure the receive queue */
-		wr32(hw, I40E_PF_ARQBAH, upper_32_bits(hw->aq.arq.dma_addr));
-		wr32(hw, I40E_PF_ARQBAL, lower_32_bits(hw->aq.arq.dma_addr));
+		wr32(hw, I40E_PF_ARQBAH,
+		    upper_32_bits(hw->aq.arq.desc_buf.pa));
+		wr32(hw, I40E_PF_ARQBAL,
+		    lower_32_bits(hw->aq.arq.desc_buf.pa));
 		wr32(hw, I40E_PF_ARQLEN, (hw->aq.num_arq_entries |
 					  I40E_PF_ARQLEN_ARQENABLE_MASK));
 	}
@@ -466,10 +461,9 @@ static i40e_status i40e_shutdown_asq(struct i40e_hw *hw)
 		return I40E_ERR_NOT_READY;
 
 	/* Stop firmware AdminQ processing */
-	if (hw->mac.type == I40E_MAC_VF)
-		wr32(hw, I40E_VF_ATQLEN1, 0);
-	else
-		wr32(hw, I40E_PF_ATQLEN, 0);
+	wr32(hw, hw->aq.asq.head, 0);
+	wr32(hw, hw->aq.asq.tail, 0);
+	wr32(hw, hw->aq.asq.len, 0);
 
 	/* make sure lock is available */
 	mutex_lock(&hw->aq.asq_mutex);
@@ -478,8 +472,6 @@ static i40e_status i40e_shutdown_asq(struct i40e_hw *hw)
 
 	/* free ring buffers */
 	i40e_free_asq_bufs(hw);
-	/* free the ring descriptors */
-	i40e_free_adminq_asq(hw);
 
 	mutex_unlock(&hw->aq.asq_mutex);
 
@@ -500,10 +492,9 @@ static i40e_status i40e_shutdown_arq(struct i40e_hw *hw)
 		return I40E_ERR_NOT_READY;
 
 	/* Stop firmware AdminQ processing */
-	if (hw->mac.type == I40E_MAC_VF)
-		wr32(hw, I40E_VF_ARQLEN1, 0);
-	else
-		wr32(hw, I40E_PF_ARQLEN, 0);
+	wr32(hw, hw->aq.arq.head, 0);
+	wr32(hw, hw->aq.arq.tail, 0);
+	wr32(hw, hw->aq.arq.len, 0);
 
 	/* make sure lock is available */
 	mutex_lock(&hw->aq.arq_mutex);
@@ -512,8 +503,6 @@ static i40e_status i40e_shutdown_arq(struct i40e_hw *hw)
 
 	/* free ring buffers */
 	i40e_free_arq_bufs(hw);
-	/* free the ring descriptors */
-	i40e_free_adminq_arq(hw);
 
 	mutex_unlock(&hw->aq.arq_mutex);
 
@@ -533,8 +522,9 @@ static i40e_status i40e_shutdown_arq(struct i40e_hw *hw)
  **/
 i40e_status i40e_init_adminq(struct i40e_hw *hw)
 {
-	u16 eetrack_lo, eetrack_hi;
 	i40e_status ret_code;
+	u16 eetrack_lo, eetrack_hi;
+	int retry = 0;
 
 	/* verify input for valid configuration */
 	if ((hw->aq.num_arq_entries == 0) ||
@@ -562,11 +552,24 @@ i40e_status i40e_init_adminq(struct i40e_hw *hw)
 	if (ret_code)
 		goto init_adminq_free_asq;
 
-	ret_code = i40e_aq_get_firmware_version(hw,
-				     &hw->aq.fw_maj_ver, &hw->aq.fw_min_ver,
-				     &hw->aq.api_maj_ver, &hw->aq.api_min_ver,
-				     NULL);
-	if (ret_code)
+	/* There are some cases where the firmware may not be quite ready
+	 * for AdminQ operations, so we retry the AdminQ setup a few times
+	 * if we see timeouts in this first AQ call.
+	 */
+	do {
+		ret_code = i40e_aq_get_firmware_version(hw,
+							&hw->aq.fw_maj_ver,
+							&hw->aq.fw_min_ver,
+							&hw->aq.api_maj_ver,
+							&hw->aq.api_min_ver,
+							NULL);
+		if (ret_code != I40E_ERR_ADMIN_QUEUE_TIMEOUT)
+			break;
+		retry++;
+		msleep(100);
+		i40e_resume_aq(hw);
+	} while (retry < 10);
+	if (ret_code != I40E_SUCCESS)
 		goto init_adminq_free_arq;
 
 	if (hw->aq.api_maj_ver != I40E_FW_API_VERSION_MAJOR ||
@@ -605,6 +608,9 @@ init_adminq_exit:
 i40e_status i40e_shutdown_adminq(struct i40e_hw *hw)
 {
 	i40e_status ret_code = 0;
+
+	if (i40e_check_asq_alive(hw))
+		i40e_aq_queue_shutdown(hw, true);
 
 	i40e_shutdown_asq(hw);
 	i40e_shutdown_arq(hw);
@@ -659,7 +665,7 @@ static u16 i40e_clean_asq(struct i40e_hw *hw)
  *  Returns true if the firmware has processed all descriptors on the
  *  admin send queue. Returns false if there are still requests pending.
  **/
-bool i40e_asq_done(struct i40e_hw *hw)
+static bool i40e_asq_done(struct i40e_hw *hw)
 {
 	/* AQ designers suggest use of head for better
 	 * timing reliability than DD bit
@@ -947,7 +953,7 @@ clean_arq_element_out:
 	return ret_code;
 }
 
-void i40e_resume_aq(struct i40e_hw *hw)
+static void i40e_resume_aq(struct i40e_hw *hw)
 {
 	u32 reg = 0;
 
@@ -956,27 +962,13 @@ void i40e_resume_aq(struct i40e_hw *hw)
 	hw->aq.asq.next_to_clean = 0;
 
 	i40e_config_asq_regs(hw);
-	reg = hw->aq.num_asq_entries;
-
-	if (hw->mac.type == I40E_MAC_VF) {
-		reg |= I40E_VF_ATQLEN_ATQENABLE_MASK;
-		wr32(hw, I40E_VF_ATQLEN1, reg);
-	} else {
-		reg |= I40E_PF_ATQLEN_ATQENABLE_MASK;
-		wr32(hw, I40E_PF_ATQLEN, reg);
-	}
+	reg = hw->aq.num_asq_entries | I40E_PF_ATQLEN_ATQENABLE_MASK;
+	wr32(hw, hw->aq.asq.len, reg);
 
 	hw->aq.arq.next_to_use = 0;
 	hw->aq.arq.next_to_clean = 0;
 
 	i40e_config_arq_regs(hw);
-	reg = hw->aq.num_arq_entries;
-
-	if (hw->mac.type == I40E_MAC_VF) {
-		reg |= I40E_VF_ATQLEN_ATQENABLE_MASK;
-		wr32(hw, I40E_VF_ARQLEN1, reg);
-	} else {
-		reg |= I40E_PF_ATQLEN_ATQENABLE_MASK;
-		wr32(hw, I40E_PF_ARQLEN, reg);
-	}
+	reg = hw->aq.num_arq_entries | I40E_PF_ATQLEN_ATQENABLE_MASK;
+	wr32(hw, hw->aq.arq.len, reg);
 }
