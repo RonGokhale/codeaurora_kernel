@@ -74,259 +74,207 @@ struct msm_gpiomux_config apq8064_ethernet_configs[] = {
 #endif
 
 #ifdef CONFIG_MSM_VCAP
-static struct gpiomux_setting gpio_vcap_config[] = {
-	{
-		.func = GPIOMUX_FUNC_GPIO,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_1,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_2,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_3,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_4,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_5,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_6,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_7,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_8,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_9,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
-	{
-		.func = GPIOMUX_FUNC_A,
-		.drv = GPIOMUX_DRV_2MA,
-		.pull = GPIOMUX_PULL_DOWN,
-	},
+static struct gpiomux_setting gpio_vcap_config = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
 };
 
 struct msm_gpiomux_config vcap_configs[] = {
 	{
 		.gpio = 20,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[7],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[7],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 25,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 24,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[1],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[1],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 23,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 19,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[8],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[8],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 22,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 21,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[7],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[7],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 12,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[6],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[6],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 18,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[9],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[9],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 11,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[10],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[10],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 10,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[9],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[9],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 9,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 26,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[1],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[1],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 8,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[3],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[3],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 7,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[7],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[7],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 6,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[7],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[7],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 80,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 86,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[1],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[1],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 85,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[4],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[4],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 84,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[3],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[3],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 5,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 4,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[3],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[3],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 3,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[6],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[6],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 2,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[5],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[5],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 82,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[4],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[4],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 83,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[4],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[4],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 87,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[2],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[2],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 	{
 		.gpio = 13,
 		.settings = {
-			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config[6],
-			[GPIOMUX_ACTIVE] =		&gpio_vcap_config[6],
+			[GPIOMUX_SUSPENDED] =	&gpio_vcap_config,
+			[GPIOMUX_ACTIVE] =		&gpio_vcap_config,
 		}
 	},
 };
