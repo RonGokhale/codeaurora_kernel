@@ -735,7 +735,9 @@ static void spi_pump_messages(struct kthread_work *work)
 	ret = master->transfer_one_message(master, master->cur_msg);
 	if (ret) {
 		dev_err(&master->dev,
-			"failed to transfer one message from queue\n");
+			"failed to transfer one message from queue: %d\n", ret);
+		master->cur_msg->status = ret;
+		spi_finalize_current_message(master);
 		return;
 	}
 }
@@ -791,11 +793,8 @@ struct spi_message *spi_get_next_queued_message(struct spi_master *master)
 
 	/* get a pointer to the next message, if any */
 	spin_lock_irqsave(&master->queue_lock, flags);
-	if (list_empty(&master->queue))
-		next = NULL;
-	else
-		next = list_entry(master->queue.next,
-				  struct spi_message, queue);
+	next = list_first_entry_or_null(&master->queue, struct spi_message,
+					queue);
 	spin_unlock_irqrestore(&master->queue_lock, flags);
 
 	return next;
@@ -1596,14 +1595,10 @@ int spi_setup(struct spi_device *spi)
 }
 EXPORT_SYMBOL_GPL(spi_setup);
 
-static int __spi_async(struct spi_device *spi, struct spi_message *message)
+static int __spi_validate(struct spi_device *spi, struct spi_message *message)
 {
 	struct spi_master *master = spi->master;
 	struct spi_transfer *xfer;
-
-	message->spi = spi;
-
-	trace_spi_message_submit(message);
 
 	if (list_empty(&message->transfers))
 		return -EINVAL;
@@ -1682,9 +1677,6 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 			if ((xfer->tx_nbits == SPI_NBITS_QUAD) &&
 				!(spi->mode & SPI_TX_QUAD))
 				return -EINVAL;
-			if ((spi->mode & SPI_3WIRE) &&
-				(xfer->tx_nbits != SPI_NBITS_SINGLE))
-				return -EINVAL;
 		}
 		/* check transfer rx_nbits */
 		if (xfer->rx_buf) {
@@ -1698,13 +1690,22 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 			if ((xfer->rx_nbits == SPI_NBITS_QUAD) &&
 				!(spi->mode & SPI_RX_QUAD))
 				return -EINVAL;
-			if ((spi->mode & SPI_3WIRE) &&
-				(xfer->rx_nbits != SPI_NBITS_SINGLE))
-				return -EINVAL;
 		}
 	}
 
 	message->status = -EINPROGRESS;
+
+	return 0;
+}
+
+static int __spi_async(struct spi_device *spi, struct spi_message *message)
+{
+	struct spi_master *master = spi->master;
+
+	message->spi = spi;
+
+	trace_spi_message_submit(message);
+
 	return master->transfer(spi, message);
 }
 
@@ -1742,6 +1743,10 @@ int spi_async(struct spi_device *spi, struct spi_message *message)
 	struct spi_master *master = spi->master;
 	int ret;
 	unsigned long flags;
+
+	ret = __spi_validate(spi, message);
+	if (ret != 0)
+		return ret;
 
 	spin_lock_irqsave(&master->bus_lock_spinlock, flags);
 
@@ -1790,6 +1795,10 @@ int spi_async_locked(struct spi_device *spi, struct spi_message *message)
 	struct spi_master *master = spi->master;
 	int ret;
 	unsigned long flags;
+
+	ret = __spi_validate(spi, message);
+	if (ret != 0)
+		return ret;
 
 	spin_lock_irqsave(&master->bus_lock_spinlock, flags);
 
