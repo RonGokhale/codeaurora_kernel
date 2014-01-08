@@ -694,6 +694,54 @@ static void atmel_spi_next_xfer_data(struct spi_master *master,
 	*plen = len;
 }
 
+static int atmel_spi_set_xfer_speed(struct atmel_spi *as,
+				    struct spi_device *spi,
+				    struct spi_transfer *xfer)
+{
+	u32			scbr, csr;
+	unsigned long		bus_hz;
+
+	/* v1 chips start out at half the peripheral bus speed. */
+	bus_hz = clk_get_rate(as->clk);
+	if (!atmel_spi_is_v2(as))
+		bus_hz /= 2;
+
+	/*
+	 * Calculate the lowest divider that satisfies the
+	 * constraint, assuming div32/fdiv/mbz == 0.
+	 */
+	if (xfer->speed_hz)
+		scbr = DIV_ROUND_UP(bus_hz, xfer->speed_hz);
+	else
+		/*
+		 * This can happend if max_speed is null.
+		 * In this case, we set the lowest possible speed
+		 */
+		scbr = 0xff;
+
+	/*
+	 * If the resulting divider doesn't fit into the
+	 * register bitfield, we can't satisfy the constraint.
+	 */
+	if (scbr >= (1 << SPI_SCBR_SIZE)) {
+		dev_err(&spi->dev,
+			"setup: %d Hz too slow, scbr %u; min %ld Hz\n",
+			xfer->speed_hz, scbr, bus_hz/255);
+		return -EINVAL;
+	}
+	if (scbr == 0) {
+		dev_err(&spi->dev,
+			"setup: %d Hz too high, scbr %u; max %ld Hz\n",
+			xfer->speed_hz, scbr, bus_hz);
+		return -EINVAL;
+	}
+	csr = spi_readl(as, CSR0 + 4 * spi->chip_select);
+	csr = SPI_BFINS(SCBR, scbr, csr);
+	spi_writel(as, CSR0 + 4 * spi->chip_select, csr);
+
+	return 0;
+}
+
 /*
  * Submit next transfer for PDC.
  * lock is held, spi irq is blocked
@@ -730,6 +778,8 @@ static void atmel_spi_pdc_next_xfer(struct spi_master *master,
 			len >>= 1;
 		spi_writel(as, RCR, len);
 		spi_writel(as, TCR, len);
+
+		atmel_spi_set_xfer_speed(as, msg->spi, xfer);
 
 		dev_dbg(&msg->spi->dev,
 			"  start xfer %p: len %u tx %p/%08llx rx %p/%08llx\n",
@@ -823,6 +873,7 @@ static void atmel_spi_dma_next_xfer(struct spi_master *master,
 
 		as->current_transfer = xfer;
 		len = xfer->len;
+		atmel_spi_set_xfer_speed(as, msg->spi, xfer);
 	}
 
 	if (atmel_spi_use_dma(as, xfer)) {
@@ -1264,9 +1315,8 @@ static int atmel_spi_setup(struct spi_device *spi)
 {
 	struct atmel_spi	*as;
 	struct atmel_spi_device	*asd;
-	u32			scbr, csr;
+	u32			csr;
 	unsigned int		bits = spi->bits_per_word;
-	unsigned long		bus_hz;
 	unsigned int		npcs_pin;
 	int			ret;
 
@@ -1290,33 +1340,7 @@ static int atmel_spi_setup(struct spi_device *spi)
 		return -EINVAL;
 	}
 
-	/* v1 chips start out at half the peripheral bus speed. */
-	bus_hz = clk_get_rate(as->clk);
-	if (!atmel_spi_is_v2(as))
-		bus_hz /= 2;
-
-	if (spi->max_speed_hz) {
-		/*
-		 * Calculate the lowest divider that satisfies the
-		 * constraint, assuming div32/fdiv/mbz == 0.
-		 */
-		scbr = DIV_ROUND_UP(bus_hz, spi->max_speed_hz);
-
-		/*
-		 * If the resulting divider doesn't fit into the
-		 * register bitfield, we can't satisfy the constraint.
-		 */
-		if (scbr >= (1 << SPI_SCBR_SIZE)) {
-			dev_dbg(&spi->dev,
-				"setup: %d Hz too slow, scbr %u; min %ld Hz\n",
-				spi->max_speed_hz, scbr, bus_hz/255);
-			return -EINVAL;
-		}
-	} else
-		/* speed zero means "as slow as possible" */
-		scbr = 0xff;
-
-	csr = SPI_BF(SCBR, scbr) | SPI_BF(BITS, bits - 8);
+	csr = SPI_BF(BITS, bits - 8);
 	if (spi->mode & SPI_CPOL)
 		csr |= SPI_BIT(CPOL);
 	if (!(spi->mode & SPI_CPHA))
@@ -1363,8 +1387,8 @@ static int atmel_spi_setup(struct spi_device *spi)
 	asd->csr = csr;
 
 	dev_dbg(&spi->dev,
-		"setup: %lu Hz bpw %u mode 0x%x -> csr%d %08x\n",
-		bus_hz / scbr, bits, spi->mode, spi->chip_select, csr);
+		"setup: bpw %u mode 0x%x -> csr%d %08x\n",
+		bits, spi->mode, spi->chip_select, csr);
 
 	if (!atmel_spi_is_v2(as))
 		spi_writel(as, CSR0 + 4 * spi->chip_select, csr);
@@ -1412,12 +1436,6 @@ static int atmel_spi_transfer(struct spi_device *spi, struct spi_message *msg)
 				dev_dbg(&spi->dev, "buffer len should be 16 bits aligned\n");
 				return -EINVAL;
 			}
-		}
-
-		/* FIXME implement these protocol options!! */
-		if (xfer->speed_hz < spi->max_speed_hz) {
-			dev_dbg(&spi->dev, "can't change speed in transfer\n");
-			return -ENOPROTOOPT;
 		}
 
 		/*
@@ -1510,7 +1528,7 @@ static int atmel_spi_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	clk = clk_get(&pdev->dev, "spi_clk");
+	clk = devm_clk_get(&pdev->dev, "spi_clk");
 	if (IS_ERR(clk))
 		return PTR_ERR(clk);
 
@@ -1570,14 +1588,14 @@ static int atmel_spi_probe(struct platform_device *pdev)
 		dev_info(&pdev->dev, "Atmel SPI Controller using PIO only\n");
 
 	if (as->use_pdc) {
-		ret = request_irq(irq, atmel_spi_pdc_interrupt, 0,
-					dev_name(&pdev->dev), master);
+		ret = devm_request_irq(&pdev->dev, irq, atmel_spi_pdc_interrupt,
+					0, dev_name(&pdev->dev), master);
 	} else {
 		tasklet_init(&as->tasklet, atmel_spi_tasklet_func,
 					(unsigned long)master);
 
-		ret = request_irq(irq, atmel_spi_pio_interrupt, 0,
-					dev_name(&pdev->dev), master);
+		ret = devm_request_irq(&pdev->dev, irq, atmel_spi_pio_interrupt,
+					0, dev_name(&pdev->dev), master);
 	}
 	if (ret)
 		goto out_unmap_regs;
@@ -1603,7 +1621,7 @@ static int atmel_spi_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Atmel SPI Controller at 0x%08lx (irq %d)\n",
 			(unsigned long)regs->start, irq);
 
-	ret = spi_register_master(master);
+	ret = devm_spi_register_master(&pdev->dev, master);
 	if (ret)
 		goto out_free_dma;
 
@@ -1617,7 +1635,6 @@ out_free_dma:
 	spi_writel(as, CR, SPI_BIT(SWRST)); /* AT91SAM9263 Rev B workaround */
 	clk_disable_unprepare(clk);
 out_free_irq:
-	free_irq(irq, master);
 out_unmap_regs:
 out_free_buffer:
 	if (!as->use_pdc)
@@ -1625,7 +1642,6 @@ out_free_buffer:
 	dma_free_coherent(&pdev->dev, BUFFER_SIZE, as->buffer,
 			as->buffer_dma);
 out_free:
-	clk_put(clk);
 	spi_master_put(master);
 	return ret;
 }
@@ -1668,10 +1684,6 @@ static int atmel_spi_remove(struct platform_device *pdev)
 			as->buffer_dma);
 
 	clk_disable_unprepare(as->clk);
-	clk_put(as->clk);
-	free_irq(as->irq, master);
-
-	spi_unregister_master(master);
 
 	return 0;
 }
