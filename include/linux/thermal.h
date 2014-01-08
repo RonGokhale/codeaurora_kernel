@@ -219,6 +219,7 @@ struct thermal_zone_device {
 	struct thermal_zone_device_ops *ops;
 	const struct thermal_zone_params *tzp;
 	struct thermal_governor *governor;
+	void *governor_data;
 	struct list_head thermal_instances;
 	struct idr idr;
 	struct mutex lock;
@@ -235,6 +236,15 @@ struct thermal_zone_device {
  */
 struct thermal_governor {
 	char name[THERMAL_NAME_LENGTH];
+
+	/*
+	 * The start and stop operations will be called when thermal zone is
+	 * registered and when change governor via sysfs or driver in running
+	 * time.
+	 */
+	int (*start)(struct thermal_zone_device *tz);
+	void (*stop)(struct thermal_zone_device *tz);
+
 	int (*throttle)(struct thermal_zone_device *tz, int trip);
 	struct list_head	governor_list;
 };
@@ -282,6 +292,7 @@ struct thermal_zone_params {
 	 */
 	bool no_hwmon;
 
+	void *governor_params;
 	int num_tbps;	/* Number of tbp entries */
 	struct thermal_bind_params *tbp;
 };
@@ -343,6 +354,7 @@ struct thermal_instance *get_thermal_instance(struct thermal_zone_device *,
 		struct thermal_cooling_device *, int);
 void thermal_cdev_update(struct thermal_cooling_device *);
 void thermal_notify_framework(struct thermal_zone_device *, int);
+int thermal_update_governor(struct thermal_zone_device *, const char *);
 
 #ifdef CONFIG_NET
 extern int thermal_generate_netlink_event(struct thermal_zone_device *tz,
