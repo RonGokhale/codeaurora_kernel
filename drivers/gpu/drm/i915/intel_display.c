@@ -1211,15 +1211,12 @@ static void assert_sprites_disabled(struct drm_i915_private *dev_priv,
 	}
 }
 
-static void assert_pch_refclk_enabled(struct drm_i915_private *dev_priv)
+static void ibx_assert_pch_refclk_enabled(struct drm_i915_private *dev_priv)
 {
 	u32 val;
 	bool enabled;
 
-	if (HAS_PCH_LPT(dev_priv->dev)) {
-		DRM_DEBUG_DRIVER("LPT does not has PCH refclk, skipping check\n");
-		return;
-	}
+	WARN_ON(!(HAS_PCH_IBX(dev_priv->dev) || HAS_PCH_CPT(dev_priv->dev)));
 
 	val = I915_READ(PCH_DREF_CONTROL);
 	enabled = !!(val & (DREF_SSC_SOURCE_MASK | DREF_NONSPREAD_SOURCE_MASK |
@@ -1372,6 +1369,15 @@ static void intel_init_dpio(struct drm_device *dev)
 		   DPLL_INTEGRATED_CRI_CLK_VLV);
 
 	DPIO_PHY_IOSF_PORT(DPIO_PHY0) = IOSF_PORT_DPIO;
+}
+
+static void intel_reset_dpio(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!IS_VALLEYVIEW(dev))
+		return;
+
 	/*
 	 * From VLV2A0_DP_eDP_DPIO_driver_vbios_notes_10.docx -
 	 *  6.	De-assert cmn_reset/side_reset. Same as VLV X0.
@@ -2373,6 +2379,8 @@ intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 			I915_WRITE(PF_WIN_POS(intel_crtc->pipe), 0);
 			I915_WRITE(PF_WIN_SZ(intel_crtc->pipe), 0);
 		}
+		intel_crtc->config.pipe_src_w = adjusted_mode->crtc_hdisplay;
+		intel_crtc->config.pipe_src_h = adjusted_mode->crtc_vdisplay;
 	}
 
 	ret = dev_priv->display.update_plane(crtc, fb, x, y);
@@ -3422,9 +3430,8 @@ void hsw_enable_ips(struct intel_crtc *crtc)
 		mutex_unlock(&dev_priv->rps.hw_lock);
 		/* Quoting Art Runyan: "its not safe to expect any particular
 		 * value in IPS_CTL bit 31 after enabling IPS through the
-		 * mailbox." Therefore we need to defer waiting on the state
-		 * change.
-		 * TODO: need to fix this for state checker
+		 * mailbox." Moreover, the mailbox may return a bogus state,
+		 * so we need to just enable it and continue on.
 		 */
 	} else {
 		I915_WRITE(IPS_CTL, IPS_ENABLE);
@@ -3451,9 +3458,10 @@ void hsw_disable_ips(struct intel_crtc *crtc)
 		mutex_lock(&dev_priv->rps.hw_lock);
 		WARN_ON(sandybridge_pcode_write(dev_priv, DISPLAY_IPS_CONTROL, 0));
 		mutex_unlock(&dev_priv->rps.hw_lock);
-	} else
+	} else {
 		I915_WRITE(IPS_CTL, 0);
-	POSTING_READ(IPS_CTL);
+		POSTING_READ(IPS_CTL);
+	}
 
 	/* We need to wait for a vblank before we can disable the plane. */
 	intel_wait_for_vblank(dev, crtc->pipe);
@@ -6995,8 +7003,9 @@ static bool haswell_get_pipe_config(struct intel_crtc *crtc,
 	if (intel_display_power_enabled(dev, pfit_domain))
 		ironlake_get_pfit_config(crtc, pipe_config);
 
-	pipe_config->ips_enabled = hsw_crtc_supports_ips(crtc) &&
-				   (I915_READ(IPS_CTL) & IPS_ENABLE);
+	if (IS_HASWELL(dev))
+		pipe_config->ips_enabled = hsw_crtc_supports_ips(crtc) &&
+			(I915_READ(IPS_CTL) & IPS_ENABLE);
 
 	pipe_config->pixel_multiplier = 1;
 
@@ -9326,7 +9335,9 @@ intel_pipe_config_compare(struct drm_device *dev,
 		PIPE_CONF_CHECK_I(pch_pfit.size);
 	}
 
-	PIPE_CONF_CHECK_I(ips_enabled);
+	/* BDW+ don't expose a synchronous way to read the state */
+	if (IS_HASWELL(dev))
+		PIPE_CONF_CHECK_I(ips_enabled);
 
 	PIPE_CONF_CHECK_I(double_wide);
 
@@ -9994,6 +10005,16 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 
 		ret = intel_pipe_set_base(set->crtc,
 					  set->x, set->y, set->fb);
+		/*
+		 * In the fastboot case this may be our only check of the
+		 * state after boot.  It would be better to only do it on
+		 * the first update, but we don't have a nice way of doing that
+		 * (and really, set_config isn't used much for high freq page
+		 * flipping, so increasing its cost here shouldn't be a big
+		 * deal).
+		 */
+		if (i915_fastboot && ret == 0)
+			intel_modeset_check_state(set->crtc->dev);
 	}
 
 	if (ret) {
@@ -10054,7 +10075,7 @@ static void ibx_pch_dpll_enable(struct drm_i915_private *dev_priv,
 				struct intel_shared_dpll *pll)
 {
 	/* PCH refclock must be enabled first */
-	assert_pch_refclk_enabled(dev_priv);
+	ibx_assert_pch_refclk_enabled(dev_priv);
 
 	I915_WRITE(PCH_DPLL(pll->id), pll->hw_state.dpll);
 
@@ -10122,8 +10143,6 @@ static void intel_shared_dpll_init(struct drm_device *dev)
 		dev_priv->num_shared_dpll = 0;
 
 	BUG_ON(dev_priv->num_shared_dpll > I915_NUM_PLLS);
-	DRM_DEBUG_KMS("%i shared PLLs initialized\n",
-		      dev_priv->num_shared_dpll);
 }
 
 static void intel_crtc_init(struct drm_device *dev, int pipe)
@@ -10818,7 +10837,7 @@ void intel_modeset_init_hw(struct drm_device *dev)
 
 	intel_init_clock_gating(dev);
 
-	intel_init_dpio(dev);
+	intel_reset_dpio(dev);
 
 	mutex_lock(&dev->struct_mutex);
 	intel_enable_gt_powersave(dev);
@@ -10879,6 +10898,9 @@ void intel_modeset_init(struct drm_device *dev)
 					      pipe_name(i), sprite_name(i, j), ret);
 		}
 	}
+
+	intel_init_dpio(dev);
+	intel_reset_dpio(dev);
 
 	intel_cpu_pll_init(dev);
 	intel_shared_dpll_init(dev);
@@ -11227,7 +11249,7 @@ void intel_modeset_setup_hw_state(struct drm_device *dev,
 		pll->on = false;
 	}
 
-	if (IS_HASWELL(dev))
+	if (HAS_PCH_SPLIT(dev))
 		ilk_wm_get_hw_state(dev);
 
 	if (force_restore) {
@@ -11456,7 +11478,8 @@ intel_display_capture_error_state(struct drm_device *dev)
 		enum transcoder cpu_transcoder = transcoders[i];
 
 		error->transcoder[i].power_domain_on =
-			intel_display_power_enabled_sw(dev, POWER_DOMAIN_PIPE(i));
+			intel_display_power_enabled_sw(dev,
+				POWER_DOMAIN_TRANSCODER(cpu_transcoder));
 		if (!error->transcoder[i].power_domain_on)
 			continue;
 
