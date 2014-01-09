@@ -37,7 +37,6 @@
 #include "msm-pcm-routing-v2.h"
 #include "audio_ocmem.h"
 #include <sound/tlv.h>
-#include "msm-dts-eagle.h"
 
 #define COMPRE_CAPTURE_NUM_PERIODS	16
 /* Allocate the worst case frame size for compressed audio */
@@ -650,14 +649,7 @@ static int compressed_set_volume(struct msm_audio *prtd, uint32_t volume)
 		}
 		if (rc < 0) {
 			pr_err("%s: Send Volume command failed rc=%d\n",
-						__func__, rc);
-		} else {
-			rc = msm_dts_eagle_set_volume(prtd->audio_client,
-						      lgain, rgain);
-			if (rc < 0) {
-				pr_err("%s: Send Volume command failed (DTS_EAGLE) rc=%d\n",
-						__func__, rc);
-			}
+				__func__, rc);
 		}
 	}
 	return rc;
@@ -823,13 +815,10 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 		/* the number of channels are required to call volume api
 		   accoridngly. So, get channels from hw params */
 		if ((params_channels(params) > 0) &&
-			(params_periods(params) <= runtime->hw.channels_max))
+		    (params_periods(params) <= runtime->hw.channels_max))
 			prtd->channel_mode = params_channels(params);
 
 		ret = compressed_set_volume(prtd, 0);
-
-		msm_dts_eagle_send_cache_pre(prtd->audio_client);
-
 		if (ret < 0)
 			pr_err("%s : Set Volume failed : %d", __func__, ret);
 
@@ -1109,8 +1098,6 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 
 		prtd->cmd_interrupt = 0;
 		return rc;
-	case SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM:
-		return msm_dts_eagle_ioctl_pre(prtd->audio_client, arg);
 	default:
 		break;
 	}

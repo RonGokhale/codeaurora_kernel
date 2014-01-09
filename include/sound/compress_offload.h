@@ -163,7 +163,6 @@ struct snd_compr_audio_info {
 #define SNDRV_COMPRESS_START		_IO('C', 0x32)
 #define SNDRV_COMPRESS_STOP		_IO('C', 0x33)
 #define SNDRV_COMPRESS_DRAIN		_IO('C', 0x34)
-#define SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM _IOW('C', 0x35, int)
 /*
  * TODO
  * 1. add mmap support
