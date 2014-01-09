@@ -240,7 +240,10 @@ static void soc_pcm_init_runtime_hw(struct snd_pcm_runtime *runtime,
 		cpu_stream->channels_min);
 	hw->channels_max = min(codec_stream->channels_max,
 		cpu_stream->channels_max);
-	hw->formats = codec_stream->formats & cpu_stream->formats;
+	if (hw->formats)
+		hw->formats &= codec_stream->formats & cpu_stream->formats;
+	else
+		hw->formats = codec_stream->formats & cpu_stream->formats;
 	hw->rates = codec_stream->rates & cpu_stream->rates;
 	if (codec_stream->rates
 		& (SNDRV_PCM_RATE_KNOT | SNDRV_PCM_RATE_CONTINUOUS))
@@ -2140,10 +2143,8 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 	int ret = 0, playback = 0, capture = 0;
 
 	if (rtd->dai_link->dynamic || rtd->dai_link->no_pcm) {
-		if (cpu_dai->driver->playback.channels_min)
-			playback = 1;
-		if (cpu_dai->driver->capture.channels_min)
-			capture = 1;
+		playback = rtd->dai_link->dpcm_playback;
+		capture = rtd->dai_link->dpcm_capture;
 	} else {
 		if (codec_dai->driver->playback.channels_min &&
 		    cpu_dai->driver->playback.channels_min)
