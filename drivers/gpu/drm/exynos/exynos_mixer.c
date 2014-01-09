@@ -916,11 +916,10 @@ static int mixer_enable_vblank(void *ctx)
 	DRM_DEBUG_KMS("pipe: %d\n", mixer_ctx->pipe);
 
 	spin_lock_irqsave(&res->reg_slock, flags);
+	mixer_ctx->int_en |= MXR_INT_EN_VSYNC;
 
-	if (!mixer_ctx->powered) {
-		mixer_ctx->int_en |= MXR_INT_EN_VSYNC;
+	if (!mixer_ctx->powered)
 		goto out;
-	}
 
 	/* enable vsync interrupt */
 	mixer_reg_writemask(res, MXR_INT_EN, MXR_INT_EN_VSYNC,
@@ -940,11 +939,10 @@ static void mixer_disable_vblank(void *ctx)
 	DRM_DEBUG_KMS("pipe: %d\n", mixer_ctx->pipe);
 
 	spin_lock_irqsave(&res->reg_slock, flags);
+	mixer_ctx->int_en &= ~MXR_INT_EN_VSYNC;
 
-	if (!mixer_ctx->powered) {
-		mixer_ctx->int_en &= ~MXR_INT_EN_VSYNC;
+	if (!mixer_ctx->powered)
 		goto out;
-	}
 
 	/* disable vsync interrupt */
 	mixer_reg_writemask(res, MXR_INT_EN, 0, MXR_INT_EN_VSYNC);
@@ -1157,15 +1155,20 @@ static void mixer_poweron(struct mixer_context *ctx)
 		clk_prepare_enable(res->sclk_mixer);
 	}
 
-	spin_lock_irqsave(&res->reg_slock, flags);
-	mixer_reg_write(res, MXR_INT_EN, ctx->int_en);
-	spin_unlock_irqrestore(&res->reg_slock, flags);
-
 	mixer_win_reset(ctx);
 
 	mixer_window_resume(ctx);
 
+	/*
+	 * We don't flip the powered bit until after the window state has been
+	 * reset since enabling it earlier will cause iommu faults for those
+	 * windows which are not properly setup.
+	 */
 	ctx->powered = true;
+
+	spin_lock_irqsave(&res->reg_slock, flags);
+	mixer_reg_write(res, MXR_INT_EN, ctx->int_en);
+	spin_unlock_irqrestore(&res->reg_slock, flags);
 }
 
 static void mixer_poweroff(struct mixer_context *ctx)
@@ -1182,6 +1185,7 @@ static void mixer_poweroff(struct mixer_context *ctx)
 
 	spin_lock_irqsave(&res->reg_slock, flags);
 	ctx->int_en = mixer_reg_read(res, MXR_INT_EN);
+	mixer_reg_write(res, MXR_INT_EN, 0);
 	spin_unlock_irqrestore(&res->reg_slock, flags);
 
 	clk_disable_unprepare(res->mixer);
