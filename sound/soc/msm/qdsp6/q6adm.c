@@ -2007,6 +2007,90 @@ fail_cmd:
 	return ret;
 }
 
+
+int adm_set_audio_output_delay(int port_id, int delay, bool is_compressed)
+{
+       int ret = 0;
+       int index, sz;
+       struct asm_pp_params_command *open = NULL;
+       struct audio_output_delay_param_t *adm_delay_param = NULL;
+
+       pr_debug("%s: port = %d delay = %d is_compressed = %d\n",
+                               __func__, port_id, delay, is_compressed);
+       index = afe_get_port_index(port_id);
+       if((index < 0) || (index > AFE_MAX_PORTS)) {
+               pr_err("%s: Invalid port_id : %d\n", __func__,port_id);
+               return -EINVAL;
+       }
+       if(RESET_COPP_ID == atomic_read(&this_adm.copp_id[index])) {
+               pr_err("%s: copp not started for the port %d\n", __func__, port_id);
+               return 0;
+       }
+
+       sz = sizeof(struct asm_pp_params_command) +
+               sizeof(struct audio_output_delay_param_t);
+       open = kzalloc(sz, GFP_KERNEL);
+       if (!open) {
+               pr_err("%s: allocate memory failed\n", __func__);
+               return -ENOMEM;
+       }
+       adm_delay_param = (struct audio_output_delay_param_t *)((u8 *)open +
+                                       sizeof(struct asm_pp_params_command));
+       adm_delay_param->delay_us = delay;
+
+       open->payload = NULL;
+       open->payload_size = sizeof(struct audio_output_delay_param_t) +
+                               sizeof(struct asm_pp_param_data_hdr);
+       if (is_compressed) {
+               open->params.param_id = AUDPROC_PARAM_ID_COMPRESSED_LATENCY;
+               open->params.module_id = AUDPROC_MODULE_ID_COMPRESSED_LATENCY;
+       } else {
+               open->params.param_id = AUDPROC_PARAM_ID_DELAY;
+               open->params.module_id = AUDPROC_MODULE_ID_DELAY;
+       }
+       open->params.param_size = sizeof(struct audio_output_delay_param_t);
+       open->params.reserved = 0;
+
+       open->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+                                               APR_HDR_LEN(APR_HDR_SIZE),
+                                               APR_PKT_VER);
+       open->hdr.pkt_size = sz;
+       open->hdr.src_svc = APR_SVC_ADM;
+       open->hdr.src_domain = APR_DOMAIN_APPS;
+       open->hdr.src_port = port_id;
+       open->hdr.dest_svc = APR_SVC_ADM;
+       open->hdr.dest_domain = APR_DOMAIN_ADSP;
+       open->hdr.dest_port = atomic_read(&this_adm.copp_id[index]);
+       open->hdr.token = port_id;
+       open->hdr.opcode = ADM_CMD_SET_PARAMS;
+
+       ret = apr_send_pkt(this_adm.apr, (uint32_t *)open);
+       if (ret < 0) {
+               pr_err("%s: ADM delay setting for port %d failed\n",
+                                               __func__, port_id);
+               ret = -EINVAL;
+               goto fail_cmd;
+       }
+
+       /* Wait for the callback with copp id */
+       ret = wait_event_timeout(this_adm.wait,
+                               1,
+                               msecs_to_jiffies(TIMEOUT_MS));
+       if (!ret) {
+               pr_err("%s:ADM delay setting timed out for port %d\n",
+                                               __func__, port_id);
+               ret = -EINVAL;
+               goto fail_cmd;
+       }
+
+fail_cmd:
+       kfree(open);
+       return ret;
+}
+
+
+
+
 int adm_get_copp_id(int port_index)
 {
 	pr_debug("%s\n", __func__);
