@@ -124,6 +124,8 @@ static int mdp_bl_scale_config(struct msm_fb_data_type *mfd,
 static void msm_fb_scale_bl(__u32 bl_max, __u32 *bl_lvl);
 static void msm_fb_commit_wq_handler(struct work_struct *work);
 static int msm_fb_pan_idle(struct msm_fb_data_type *mfd);
+static int msm_fb_commit_idle(struct msm_fb_data_type *mfd,
+	u32 cmd, u32 max_commit_cnt);
 
 #ifdef MSM_FB_ENABLE_DBGFS
 
@@ -1480,6 +1482,7 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	init_completion(&mfd->msmfb_update_notify);
 	init_completion(&mfd->msmfb_no_update_notify);
 	init_completion(&mfd->commit_comp);
+	init_completion(&mfd->fence_comp);
 	mutex_init(&mfd->sync_mutex);
 	INIT_WORK(&mfd->commit_work, msm_fb_commit_wq_handler);
 	mfd->msm_fb_backup = kzalloc(sizeof(struct msm_fb_backup_type),
@@ -1869,6 +1872,7 @@ int msm_fb_signal_timeline(struct msm_fb_data_type *mfd)
 		atomic_dec(&mfd->commit_cnt);
 	mfd->last_rel_fence = mfd->cur_rel_fence;
 	mfd->cur_rel_fence = 0;
+	complete_all(&mfd->fence_comp);
 	mutex_unlock(&mfd->sync_mutex);
 	return 0;
 }
@@ -1892,7 +1896,8 @@ void msm_fb_release_timeline(struct msm_fb_data_type *mfd)
 }
 
 DEFINE_SEMAPHORE(msm_fb_pan_sem);
-static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
+static int msm_fb_commit_idle(struct msm_fb_data_type *mfd,
+	u32 cmd, u32 max_commit_cnt)
 {
 	int ret = 0;
 
@@ -1902,21 +1907,43 @@ static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
 		ret = wait_for_completion_interruptible_timeout(
 				&mfd->commit_comp,
 			msecs_to_jiffies(WAIT_DISP_OP_TIMEOUT));
+		mutex_lock(&mfd->sync_mutex);
 		if (ret < 0)
 			ret = -ERESTARTSYS;
 		else if (!ret)
 			pr_err("%s wait for commit_comp timeout %d %d",
 				__func__, ret, mfd->is_committing);
 		if (ret <= 0) {
-			mutex_lock(&mfd->sync_mutex);
 			mfd->is_committing = 0;
 			complete_all(&mfd->commit_comp);
-			mutex_unlock(&mfd->sync_mutex);
 		}
-	} else {
-		mutex_unlock(&mfd->sync_mutex);
 	}
+	while (atomic_read(&mfd->commit_cnt) > max_commit_cnt) {
+		INIT_COMPLETION(mfd->fence_comp);
+		mutex_unlock(&mfd->sync_mutex);
+		ret = wait_for_completion_interruptible_timeout(
+				&mfd->fence_comp,
+			msecs_to_jiffies(WAIT_FENCE_FIRST_TIMEOUT / 4));
+		mutex_lock(&mfd->sync_mutex);
+		if (ret < 0)
+			ret = -ERESTARTSYS;
+		else if (!ret)
+			pr_err("%s wait for fence_comp timeout %d %d",
+				__func__, ret, atomic_read(&mfd->commit_cnt));
+		if (ret <= 0) {
+			complete_all(&mfd->fence_comp);
+			mutex_unlock(&mfd->sync_mutex);
+			msm_fb_release_timeline(mfd);
+			return ret;
+		}
+	}
+	mutex_unlock(&mfd->sync_mutex);
 	return ret;
+}
+
+static int msm_fb_pan_idle(struct msm_fb_data_type *mfd)
+{
+	return msm_fb_commit_idle(mfd, 0, 0);
 }
 
 static int msm_fb_pan_display_ex(struct fb_info *info,
@@ -3866,6 +3893,7 @@ static int msm_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	unsigned int avmute = 0;
 	mfd = (struct msm_fb_data_type *)info->par;
 	pdata = (struct msm_fb_panel_data *)mfd->pdev->dev.platform_data;
+	msm_fb_commit_idle(mfd, cmd, 1);
 
 	if (!info || !info->par)
 		return -EINVAL;
