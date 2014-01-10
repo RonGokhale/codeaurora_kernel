@@ -1650,11 +1650,23 @@ static int atmel_startup(struct uart_port *port)
 static void atmel_shutdown(struct uart_port *port)
 {
 	struct atmel_uart_port *atmel_port = to_atmel_uart_port(port);
+
 	/*
-	 * Ensure everything is stopped.
+	 * Clear out any scheduled tasklets before
+	 * we destroy the buffers
+	 */
+	tasklet_kill(&atmel_port->tasklet);
+
+	/*
+	 * Ensure everything is stopped and
+	 * disable all interrupts, port and break condition.
 	 */
 	atmel_stop_rx(port);
 	atmel_stop_tx(port);
+
+	UART_PUT_CR(port, ATMEL_US_RSTSTA);
+	UART_PUT_IDR(port, -1);
+
 
 	/*
 	 * Shut-down the DMA.
@@ -1665,10 +1677,10 @@ static void atmel_shutdown(struct uart_port *port)
 		atmel_port->release_tx(port);
 
 	/*
-	 * Disable all interrupts, port and break condition.
+	 * Reset ring buffer pointers
 	 */
-	UART_PUT_CR(port, ATMEL_US_RSTSTA);
-	UART_PUT_IDR(port, -1);
+	atmel_port->rx_ring.head = 0;
+	atmel_port->rx_ring.tail = 0;
 
 	/*
 	 * Free the interrupt
@@ -2441,11 +2453,12 @@ static int atmel_serial_remove(struct platform_device *pdev)
 	struct atmel_uart_port *atmel_port = to_atmel_uart_port(port);
 	int ret = 0;
 
+	tasklet_kill(&atmel_port->tasklet);
+
 	device_init_wakeup(&pdev->dev, 0);
 
 	ret = uart_remove_one_port(&atmel_uart, port);
 
-	tasklet_kill(&atmel_port->tasklet);
 	kfree(atmel_port->rx_ring.buf);
 
 	/* "port" is allocated statically, so we shouldn't free it */
