@@ -948,7 +948,8 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 	/* Only re-enable if cable still connected */
 	mutex_lock(&external_common_state_hpd_mutex);
 	if (external_common_state->hpd_state &&
-	    !(hdmi_msm_state->full_auth_done)) {
+	   !hdmi_msm_state->full_auth_done   &&
+	   !hdmi_msm_state->hdcp_activating) {
 		mutex_unlock(&external_common_state_hpd_mutex);
 		if (hdmi_msm_state->reauth == TRUE) {
 			DEV_DBG("%s: Starting HDCP re-authentication\n",
@@ -4362,6 +4363,7 @@ static void hdmi_msm_hpd_polarity_setup(void)
 	u32 cable_sense;
 	bool polarity = !external_common_state->hpd_state;
 	bool trigger = false;
+	struct msm_fb_data_type *mfd = platform_get_drvdata(hdmi_msm_pdev);
 
 	if (polarity)
 		HDMI_OUTP(0x0254, BIT(2) | BIT(1));
@@ -4370,7 +4372,8 @@ static void hdmi_msm_hpd_polarity_setup(void)
 
 	cable_sense = (HDMI_INP(0x0250) & BIT(1)) >> 1;
 
-	if (cable_sense == polarity)
+	if (!mfd->suspend.op_suspend &&
+	    (cable_sense == polarity))
 		trigger = true;
 
 	DEV_DBG("%s: listen=%s, sense=%s, trigger=%s\n", __func__,
@@ -4547,6 +4550,11 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 	mutex_lock(&hdmi_msm_power_mutex);
 	if (!external_common_state->hpd_state) {
 		DEV_DBG("%s:HDMI cable not connected\n", __func__);
+		goto error;
+	}
+
+	if (hdmi_msm_state->panel_power_on) {
+		DEV_INFO("HDMI already ON\n");
 		goto error;
 	}
 
