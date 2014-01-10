@@ -739,7 +739,7 @@ static inline int vti6_dev_init_gen(struct net_device *dev)
 	if (!dev->tstats)
 		return -ENOMEM;
 	for_each_possible_cpu(i) {
-		struct pcpu_tstats *stats;
+		struct pcpu_sw_netstats *stats;
 		stats = per_cpu_ptr(dev->tstats, i);
 		u64_stats_init(&stats->syncp);
 	}
