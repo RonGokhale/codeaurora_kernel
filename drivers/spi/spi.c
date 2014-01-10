@@ -370,6 +370,17 @@ static void spi_dev_set_name(struct spi_device *spi)
 		     spi->chip_select);
 }
 
+static int spi_dev_check(struct device *dev, void *data)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct spi_device *new_spi = data;
+
+	if (spi->master == new_spi->master &&
+	    spi->chip_select == new_spi->chip_select)
+		return -EBUSY;
+	return 0;
+}
+
 /**
  * spi_add_device - Add spi_device allocated with spi_alloc_device
  * @spi: spi_device to register
@@ -384,7 +395,6 @@ int spi_add_device(struct spi_device *spi)
 	static DEFINE_MUTEX(spi_add_lock);
 	struct spi_master *master = spi->master;
 	struct device *dev = master->dev.parent;
-	struct device *d;
 	int status;
 
 	/* Chipselects are numbered 0..max; validate. */
@@ -404,12 +414,10 @@ int spi_add_device(struct spi_device *spi)
 	 */
 	mutex_lock(&spi_add_lock);
 
-	d = bus_find_device_by_name(&spi_bus_type, NULL, dev_name(&spi->dev));
-	if (d != NULL) {
+	status = bus_for_each_dev(&spi_bus_type, NULL, spi, spi_dev_check);
+	if (status) {
 		dev_err(dev, "chipselect %d already in use\n",
 				spi->chip_select);
-		put_device(d);
-		status = -EBUSY;
 		goto done;
 	}
 
@@ -685,7 +693,7 @@ static void spi_pump_messages(struct kthread_work *work)
 	}
 	/* Extract head of queue */
 	master->cur_msg =
-	    list_entry(master->queue.next, struct spi_message, queue);
+		list_first_entry(&master->queue, struct spi_message, queue);
 
 	list_del_init(&master->cur_msg->queue);
 	if (master->busy)
@@ -735,7 +743,9 @@ static void spi_pump_messages(struct kthread_work *work)
 	ret = master->transfer_one_message(master, master->cur_msg);
 	if (ret) {
 		dev_err(&master->dev,
-			"failed to transfer one message from queue\n");
+			"failed to transfer one message from queue: %d\n", ret);
+		master->cur_msg->status = ret;
+		spi_finalize_current_message(master);
 		return;
 	}
 }
@@ -791,11 +801,8 @@ struct spi_message *spi_get_next_queued_message(struct spi_master *master)
 
 	/* get a pointer to the next message, if any */
 	spin_lock_irqsave(&master->queue_lock, flags);
-	if (list_empty(&master->queue))
-		next = NULL;
-	else
-		next = list_entry(master->queue.next,
-				  struct spi_message, queue);
+	next = list_first_entry_or_null(&master->queue, struct spi_message,
+					queue);
 	spin_unlock_irqrestore(&master->queue_lock, flags);
 
 	return next;
@@ -1596,14 +1603,10 @@ int spi_setup(struct spi_device *spi)
 }
 EXPORT_SYMBOL_GPL(spi_setup);
 
-static int __spi_async(struct spi_device *spi, struct spi_message *message)
+static int __spi_validate(struct spi_device *spi, struct spi_message *message)
 {
 	struct spi_master *master = spi->master;
 	struct spi_transfer *xfer;
-
-	message->spi = spi;
-
-	trace_spi_message_submit(message);
 
 	if (list_empty(&message->transfers))
 		return -EINVAL;
@@ -1682,9 +1685,6 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 			if ((xfer->tx_nbits == SPI_NBITS_QUAD) &&
 				!(spi->mode & SPI_TX_QUAD))
 				return -EINVAL;
-			if ((spi->mode & SPI_3WIRE) &&
-				(xfer->tx_nbits != SPI_NBITS_SINGLE))
-				return -EINVAL;
 		}
 		/* check transfer rx_nbits */
 		if (xfer->rx_buf) {
@@ -1698,13 +1698,22 @@ static int __spi_async(struct spi_device *spi, struct spi_message *message)
 			if ((xfer->rx_nbits == SPI_NBITS_QUAD) &&
 				!(spi->mode & SPI_RX_QUAD))
 				return -EINVAL;
-			if ((spi->mode & SPI_3WIRE) &&
-				(xfer->rx_nbits != SPI_NBITS_SINGLE))
-				return -EINVAL;
 		}
 	}
 
 	message->status = -EINPROGRESS;
+
+	return 0;
+}
+
+static int __spi_async(struct spi_device *spi, struct spi_message *message)
+{
+	struct spi_master *master = spi->master;
+
+	message->spi = spi;
+
+	trace_spi_message_submit(message);
+
 	return master->transfer(spi, message);
 }
 
@@ -1742,6 +1751,10 @@ int spi_async(struct spi_device *spi, struct spi_message *message)
 	struct spi_master *master = spi->master;
 	int ret;
 	unsigned long flags;
+
+	ret = __spi_validate(spi, message);
+	if (ret != 0)
+		return ret;
 
 	spin_lock_irqsave(&master->bus_lock_spinlock, flags);
 
@@ -1790,6 +1803,10 @@ int spi_async_locked(struct spi_device *spi, struct spi_message *message)
 	struct spi_master *master = spi->master;
 	int ret;
 	unsigned long flags;
+
+	ret = __spi_validate(spi, message);
+	if (ret != 0)
+		return ret;
 
 	spin_lock_irqsave(&master->bus_lock_spinlock, flags);
 
