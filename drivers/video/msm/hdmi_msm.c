@@ -903,6 +903,7 @@ static void hdmi_msm_cec_latch_work(struct work_struct *work)
 #endif
 
 static void hdcp_deauthenticate(void);
+
 static void hdmi_msm_hdcp_reauth_work(struct work_struct *work)
 {
 	if (!hdmi_msm_state->hdcp_enable) {
@@ -1306,28 +1307,54 @@ static boolean hdmi_msm_is_dvi_mode(void)
 	return (HDMI_INP_ND(0x0000) & 0x00000002) ? FALSE : TRUE;
 }
 
+void hdmi_msm_encryt_en(u32 enable)
+{
+	u32 hdcp_ctrl, hdmi_ctrl, delay_time;
+	struct msm_fb_data_type *mfd;
+
+	/* 0x0110 HDCP_CTRL
+	  [8] ENCRYPTION_ENABLE
+	  [0] ENABLE */
+	/* encryption_enable = 0 | hdcp block enable = 1 */
+	if (!hdmi_msm_state->hdcp_enable)
+		return;
+	mutex_lock(&hdmi_msm_power_mutex);
+	mfd = platform_get_drvdata(hdmi_msm_pdev);
+	delay_time = mfd->disp_frame_period;
+	if (delay_time == 0)
+		delay_time = 16666;
+	hdcp_ctrl = HDMI_INP_ND(0x0110);
+	hdmi_ctrl = HDMI_INP_ND(0x0000);
+	if (enable) {
+		if (!hdmi_msm_state->full_auth_done ||
+			!external_common_state->hdcp_active)
+			return;
+
+		hdcp_ctrl |= 0x101;
+		hdmi_ctrl |= 0x00000004;
+		HDMI_OUTP(0x0110, hdcp_ctrl);
+		usleep(delay_time);
+		HDMI_OUTP(0x0000, hdmi_ctrl);
+	} else {
+		hdcp_ctrl &= ~0x100;
+		hdmi_ctrl &= ~0x00000004;
+		HDMI_OUTP(0x0000, hdmi_ctrl);
+		usleep(delay_time);
+		HDMI_OUTP(0x0110, hdcp_ctrl);
+	}
+	mutex_unlock(&hdmi_msm_power_mutex);
+	DEV_DBG("%s: %s", enable ? "Enable" : "Disable");
+}
+
 void hdmi_msm_set_mode(boolean power_on)
 {
 	uint32 reg_val = 0;
 	if (power_on) {
 		/* ENABLE */
 		reg_val |= 0x00000001; /* Enable the block */
-		if (external_common_state->hdmi_sink == 0) {
+		if (external_common_state->hdmi_sink) {
 			/* HDMI_DVI_SEL */
 			reg_val |= 0x00000002;
-			if (hdmi_msm_state->hdcp_enable)
-				/* HDMI Encryption */
-				reg_val |= 0x00000004;
-			/* HDMI_CTRL */
-			HDMI_OUTP(0x0000, reg_val);
-			/* HDMI_DVI_SEL */
-			reg_val &= ~0x00000002;
-		} else {
-			if (hdmi_msm_state->hdcp_enable)
-				/* HDMI_Encryption_ON */
-				reg_val |= 0x00000006;
-			else
-				reg_val |= 0x00000002;
 		}
 	} else
 		reg_val = 0x00000002;
@@ -2271,6 +2298,7 @@ static void hdcp_deauthenticate(void)
 	  [0] ENABLE */
 	/* encryption_enable = 0 | hdcp block enable = 1 */
 	HDMI_OUTP(0x0110, 0x0);
+	msleep(20);
 
 	if (hdcp_link_status & 0x00000004)
 		hdcp_auth_info((hdcp_link_status & 0x000000F0) >> 4);
@@ -2713,8 +2741,8 @@ static int hdcp_authentication_part1(void)
 			goto error;
 		}
 
-		/* Enable HDCP Encryption */
-		HDMI_OUTP(0x0110, BIT(0) | BIT(8));
+		/* Enable HDMI */
+		HDMI_OUTP(0x0110, BIT(0));
 
 		DEV_INFO("HDCP: authentication part I, successful\n");
 		is_part1_done = FALSE;
