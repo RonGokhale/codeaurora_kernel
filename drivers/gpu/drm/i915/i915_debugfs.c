@@ -40,8 +40,6 @@
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
 
-#if defined(CONFIG_DEBUG_FS)
-
 enum {
 	ACTIVE_LIST,
 	INACTIVE_LIST,
@@ -406,16 +404,26 @@ static int i915_gem_object_info(struct seq_file *m, void* data)
 	seq_putc(m, '\n');
 	list_for_each_entry_reverse(file, &dev->filelist, lhead) {
 		struct file_stats stats;
+		struct task_struct *task;
 
 		memset(&stats, 0, sizeof(stats));
 		idr_for_each(&file->object_idr, per_file_stats, &stats);
+		/*
+		 * Although we have a valid reference on file->pid, that does
+		 * not guarantee that the task_struct who called get_pid() is
+		 * still alive (e.g. get_pid(current) => fork() => exit()).
+		 * Therefore, we need to protect this ->comm access using RCU.
+		 */
+		rcu_read_lock();
+		task = pid_task(file->pid, PIDTYPE_PID);
 		seq_printf(m, "%s: %u objects, %zu bytes (%zu active, %zu inactive, %zu unbound)\n",
-			   get_pid_task(file->pid, PIDTYPE_PID)->comm,
+			   task ? task->comm : "<unknown>",
 			   stats.count,
 			   stats.total,
 			   stats.active,
 			   stats.inactive,
 			   stats.unbound);
+		rcu_read_unlock();
 	}
 
 	mutex_unlock(&dev->struct_mutex);
@@ -1349,7 +1357,7 @@ static int i915_ips_status(struct seq_file *m, void *unused)
 		return 0;
 	}
 
-	if (I915_READ(IPS_CTL) & IPS_ENABLE)
+	if (IS_BROADWELL(dev) || I915_READ(IPS_CTL) & IPS_ENABLE)
 		seq_puts(m, "enabled\n");
 	else
 		seq_puts(m, "disabled\n");
@@ -2117,8 +2125,8 @@ static int i915_pipe_crc_create(struct dentry *root, struct drm_minor *minor,
 	info->dev = dev;
 	ent = debugfs_create_file(info->name, S_IRUGO, root, info,
 				  &i915_pipe_crc_fops);
-	if (IS_ERR(ent))
-		return PTR_ERR(ent);
+	if (!ent)
+		return -ENOMEM;
 
 	return drm_add_fake_info_node(minor, ent, info);
 }
@@ -3133,8 +3141,8 @@ static int i915_forcewake_create(struct dentry *root, struct drm_minor *minor)
 				  S_IRUSR,
 				  root, dev,
 				  &i915_forcewake_fops);
-	if (IS_ERR(ent))
-		return PTR_ERR(ent);
+	if (!ent)
+		return -ENOMEM;
 
 	return drm_add_fake_info_node(minor, ent, &i915_forcewake_fops);
 }
@@ -3151,8 +3159,8 @@ static int i915_debugfs_create(struct dentry *root,
 				  S_IRUGO | S_IWUSR,
 				  root, dev,
 				  fops);
-	if (IS_ERR(ent))
-		return PTR_ERR(ent);
+	if (!ent)
+		return -ENOMEM;
 
 	return drm_add_fake_info_node(minor, ent, fops);
 }
@@ -3282,5 +3290,3 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 		drm_debugfs_remove_files(info_list, 1, minor);
 	}
 }
-
-#endif /* CONFIG_DEBUG_FS */
