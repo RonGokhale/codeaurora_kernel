@@ -173,6 +173,7 @@ struct audio_client {
 	bool             perf_mode;
 
 	struct audio_session_priv_data  *session_priv_data;
+	bool		compr_passthr;
 };
 
 void q6asm_audio_client_free(struct audio_client *ac);
