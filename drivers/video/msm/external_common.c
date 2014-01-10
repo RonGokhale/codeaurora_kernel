@@ -32,7 +32,6 @@
 
 struct external_common_state_type *external_common_state;
 static int number_of_sad;
-
 EXPORT_SYMBOL(external_common_state);
 DEFINE_MUTEX(external_common_state_hpd_mutex);
 EXPORT_SYMBOL(external_common_state_hpd_mutex);
@@ -786,7 +785,7 @@ static ssize_t hdmi_common_rda_audio_data_block(struct device *dev,
 	memcpy(data, external_common_state->audio_data_block,
 			external_common_state->adb_size);
 
-	print_hex_dump(KERN_DEBUG, "AUDIO DATA BLOCK: ", DUMP_PREFIX_NONE,
+	print_hex_dump(KERN_INFO, "AUDIO DATA BLOCK: ", DUMP_PREFIX_NONE,
 			32, 8, buf, ret, false);
 
 	return ret;
@@ -813,7 +812,7 @@ static ssize_t hdmi_common_rda_spkr_alloc_data_block(struct device *dev,
 	memcpy(data, external_common_state->spkr_alloc_data_block,
 			external_common_state->sadb_size);
 
-	print_hex_dump(KERN_DEBUG, "SPKR ALLOC DATA BLOCK: ", DUMP_PREFIX_NONE,
+	print_hex_dump(KERN_INFO, "SPKR ALLOC DATA BLOCK: ", DUMP_PREFIX_NONE,
 			32, 8, buf, ret, false);
 
 	return ret;
@@ -1356,7 +1355,7 @@ static struct hdmi_edid_video_mode_property_type
 };
 
 static const uint8 *hdmi_edid_find_block(const uint8 *in_buf,
-		uint32 start_offset, uint8 type, uint8 *len)
+		uint32 start_offset, enum edid_data_block_type type, uint8 *len)
 {
 	/* the start of data block collection, start of Video Data Block */
 	uint32 offset = start_offset;
@@ -1403,8 +1402,8 @@ static void hdmi_edid_extract_vendor_id(const uint8 *in_buf,
 static uint32 hdmi_edid_extract_ieee_reg_id(const uint8 *in_buf)
 {
 	uint8 len;
-	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET, 3,
-			&len);
+	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET,
+				VENDOR_SPECIFIC_DATA_BLOCK, &len);
 
 	if (vsd == NULL)
 		return 0;
@@ -1422,8 +1421,8 @@ static uint32 hdmi_edid_extract_ieee_reg_id(const uint8 *in_buf)
 static void hdmi_edid_extract_3d_present(const uint8 *in_buf)
 {
 	uint8 len, offset;
-	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET, 3,
-			&len);
+	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET,
+				VENDOR_SPECIFIC_DATA_BLOCK, &len);
 
 	external_common_state->present_3d = 0;
 	if (vsd == NULL || len < 9) {
@@ -1443,8 +1442,8 @@ static void hdmi_edid_extract_3d_present(const uint8 *in_buf)
 static void hdmi_edid_extract_latency_fields(const uint8 *in_buf)
 {
 	uint8 len;
-	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET, 3,
-			&len);
+	const uint8 *vsd = hdmi_edid_find_block(in_buf, DBC_START_OFFSET,
+				VENDOR_SPECIFIC_DATA_BLOCK, &len);
 
 	if (vsd == NULL || len < 12 || !(vsd[8] & BIT(7))) {
 		external_common_state->video_latency = (uint16)-1;
@@ -1462,8 +1461,8 @@ static void hdmi_edid_extract_latency_fields(const uint8 *in_buf)
 static void hdmi_edid_extract_speaker_allocation_data(const uint8 *in_buf)
 {
 	uint8 len;
-	const uint8 *sadb = hdmi_edid_find_block(in_buf, DBC_START_OFFSET, 4,
-			&len);
+	const uint8 *sadb = hdmi_edid_find_block(in_buf, DBC_START_OFFSET,
+				SPEAKER_ALLOCATION_DATA_BLOCK, &len);
 
 	if (sadb == NULL)
 		return;
@@ -1478,8 +1477,8 @@ static void hdmi_edid_extract_speaker_allocation_data(const uint8 *in_buf)
 static void hdmi_edid_extract_audio_data_blocks(const uint8 *in_buf)
 {
 	uint8 len;
-	const uint8 *adb = hdmi_edid_find_block(in_buf, DBC_START_OFFSET, 1,
-			&len);
+	const uint8 *adb = hdmi_edid_find_block(in_buf, DBC_START_OFFSET,
+				AUDIO_DATA_BLOCK, &len);
 
 	if (external_common_state->audio_data_block == NULL)
 		return;
@@ -1497,7 +1496,8 @@ static void hdmi_edid_extract_extended_data_blocks(const uint8 *in_buf)
 	uint32 start_offset = DBC_START_OFFSET;
 
 	/* A Tage code of 7 identifies extended data blocks */
-	uint8 const *etag = hdmi_edid_find_block(in_buf, start_offset, 7, &len);
+	uint8 const *etag = hdmi_edid_find_block(in_buf, start_offset,
+				EXTENDED_DATA_BLOCK, &len);
 
 	while (etag != NULL) {
 		/* The extended data block should at least be 2 bytes long */
@@ -1543,7 +1543,8 @@ static void hdmi_edid_extract_extended_data_blocks(const uint8 *in_buf)
 
 		/* There could be more that one extended data block */
 		start_offset = etag - in_buf + len + 1;
-		etag = hdmi_edid_find_block(in_buf, start_offset, 7, &len);
+		etag = hdmi_edid_find_block(in_buf, start_offset,
+					EXTENDED_DATA_BLOCK, &len);
 	}
 }
 
@@ -1790,7 +1791,7 @@ static int hdmi_edid_get_display_vsd_3d_mode(const uint8 *data_buf,
 	uint16 structure_all, structure_mask;
 	const uint8 *vsd = num_og_cea_blocks ?
 		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
-				3, &len) : NULL;
+				VENDOR_SPECIFIC_DATA_BLOCK, &len) : NULL;
 	int i;
 
 	offset = HDMI_VSDB_3D_DATA_OFFSET(vsd);
@@ -1928,7 +1929,7 @@ static void hdmi_edid_get_display_mode(const uint8 *data_buf,
 	const uint8 *edid_blk1 = &data_buf[0x80];
 	const uint8 *svd = num_og_cea_blocks ?
 		hdmi_edid_find_block(data_buf+0x80, DBC_START_OFFSET,
-				2, &len) : NULL;
+				VIDEO_DATA_BLOCK, &len) : NULL;
 	boolean has60hz_mode	= FALSE;
 	boolean has50hz_mode	= FALSE;
 
