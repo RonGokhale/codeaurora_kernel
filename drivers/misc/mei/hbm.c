@@ -613,7 +613,7 @@ void mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 			dev->init_clients_timer = 0;
 			mei_hbm_enum_clients_req(dev);
 		} else {
-			dev_err(&dev->pdev->dev, "reset: wrong host start response\n");
+			dev_err_ratelimited(&dev->pdev->dev, "reset: wrong host start response\n");
 			mei_reset(dev, 1);
 			return;
 		}
@@ -690,7 +690,7 @@ void mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 				/* first property reqeust */
 				mei_hbm_prop_req(dev);
 		} else {
-			dev_err(&dev->pdev->dev, "reset: unexpected enumeration response hbm.\n");
+			dev_err_ratelimited(&dev->pdev->dev, "reset: unexpected enumeration response hbm.\n");
 			mei_reset(dev, 1);
 			return;
 		}
