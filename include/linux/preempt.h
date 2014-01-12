@@ -116,6 +116,21 @@ do { \
 
 #endif /* CONFIG_PREEMPT_COUNT */
 
+#ifdef CONFIG_PREEMPT
+#define preempt_set_need_resched() \
+do { \
+	set_preempt_need_resched(); \
+} while (0)
+#define preempt_fold_need_resched() \
+do { \
+	if (tif_need_resched()) \
+		set_preempt_need_resched(); \
+} while (0)
+#else
+#define preempt_set_need_resched() do { } while (0)
+#define preempt_fold_need_resched() do { } while (0)
+#endif
+
 #ifdef CONFIG_PREEMPT_NOTIFIERS
 
 struct preempt_notifier;
