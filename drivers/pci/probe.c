@@ -269,8 +269,8 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 		region.end = l + sz;
 	}
 
-	pcibios_bus_to_resource(dev, res, &region);
-	pcibios_resource_to_bus(dev, &inverted_region, res);
+	pcibios_bus_to_resource(dev->bus, res, &region);
+	pcibios_resource_to_bus(dev->bus, &inverted_region, res);
 
 	/*
 	 * If "A" is a BAR value (a bus address), "bus_to_resource(A)" is
@@ -364,7 +364,7 @@ static void pci_read_bridge_io(struct pci_bus *child)
 		res->flags = (io_base_lo & PCI_IO_RANGE_TYPE_MASK) | IORESOURCE_IO;
 		region.start = base;
 		region.end = limit + io_granularity - 1;
-		pcibios_bus_to_resource(dev, res, &region);
+		pcibios_bus_to_resource(dev->bus, res, &region);
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 }
@@ -386,7 +386,7 @@ static void pci_read_bridge_mmio(struct pci_bus *child)
 		res->flags = (mem_base_lo & PCI_MEMORY_RANGE_TYPE_MASK) | IORESOURCE_MEM;
 		region.start = base;
 		region.end = limit + 0xfffff;
-		pcibios_bus_to_resource(dev, res, &region);
+		pcibios_bus_to_resource(dev->bus, res, &region);
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 }
@@ -436,7 +436,7 @@ static void pci_read_bridge_mmio_pref(struct pci_bus *child)
 			res->flags |= IORESOURCE_MEM_64;
 		region.start = base;
 		region.end = limit + 0xfffff;
-		pcibios_bus_to_resource(dev, res, &region);
+		pcibios_bus_to_resource(dev->bus, res, &region);
 		dev_printk(KERN_DEBUG, &dev->dev, "  bridge window %pR\n", res);
 	}
 }
@@ -1084,24 +1084,24 @@ int pci_setup_device(struct pci_dev *dev)
 				region.end = 0x1F7;
 				res = &dev->resource[0];
 				res->flags = LEGACY_IO_RESOURCE;
-				pcibios_bus_to_resource(dev, res, &region);
+				pcibios_bus_to_resource(dev->bus, res, &region);
 				region.start = 0x3F6;
 				region.end = 0x3F6;
 				res = &dev->resource[1];
 				res->flags = LEGACY_IO_RESOURCE;
-				pcibios_bus_to_resource(dev, res, &region);
+				pcibios_bus_to_resource(dev->bus, res, &region);
 			}
 			if ((progif & 4) == 0) {
 				region.start = 0x170;
 				region.end = 0x177;
 				res = &dev->resource[2];
 				res->flags = LEGACY_IO_RESOURCE;
-				pcibios_bus_to_resource(dev, res, &region);
+				pcibios_bus_to_resource(dev->bus, res, &region);
 				region.start = 0x376;
 				region.end = 0x376;
 				res = &dev->resource[3];
 				res->flags = LEGACY_IO_RESOURCE;
-				pcibios_bus_to_resource(dev, res, &region);
+				pcibios_bus_to_resource(dev->bus, res, &region);
 			}
 		}
 		break;
@@ -1154,6 +1154,18 @@ static void pci_release_capabilities(struct pci_dev *dev)
 	pci_free_cap_save_buffers(dev);
 }
 
+static void pci_free_resources(struct pci_dev *dev)
+{
+	int i;
+
+	pci_cleanup_rom(dev);
+	for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+		struct resource *res = dev->resource + i;
+		if (res->parent)
+			release_resource(res);
+	}
+}
+
 /**
  * pci_release_dev - free a pci device structure when all users of it are finished.
  * @dev: device that's been disconnected
@@ -1163,9 +1175,14 @@ static void pci_release_capabilities(struct pci_dev *dev)
  */
 static void pci_release_dev(struct device *dev)
 {
-	struct pci_dev *pci_dev;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	pci_dev = to_pci_dev(dev);
+	down_write(&pci_bus_sem);
+	list_del(&pci_dev->bus_list);
+	up_write(&pci_bus_sem);
+
+	pci_free_resources(pci_dev);
+
 	pci_release_capabilities(pci_dev);
 	pci_release_of_node(pci_dev);
 	pcibios_release_device(pci_dev);
@@ -1381,8 +1398,6 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	dev->match_driver = false;
 	ret = device_add(&dev->dev);
 	WARN_ON(ret < 0);
-
-	pci_proc_attach_device(dev);
 }
 
 struct pci_dev *__ref pci_scan_single_device(struct pci_bus *bus, int devfn)
