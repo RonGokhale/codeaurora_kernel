@@ -897,6 +897,14 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		return;
 	}
 
+	if (!external_common_state->hpd_state) {
+		DEV_INFO("hdmi: hdmi cable is disconnected!\n");
+
+		/* notify hdcpmanager via uevent of disconnect */
+		if (hdmi_msm_state->hdcp_tx_ops.check_topology_op)
+			hdmi_msm_state->hdcp_tx_ops.check_topology_op();
+	}
+
 	hdmi_msm_send_event(external_common_state->hpd_state);
 }
 
@@ -3313,10 +3321,11 @@ error:
 }
 
 /* Invoked from user thread sysfs_read(...,sys/../hdcpmanager */
-static int hdmi_msm_request_hdcp_topology(void *output)
+static int hdmi_msm_request_hdcp_topology(void *output, int *sink)
 {
 	int ret = 0;
 	struct HDCP_V2V1_MSG_TOPOLOGY *tp = output;
+	*sink = 0;
 
 	if (hdmi_msm_state->full_auth_done == TRUE) {
 		if (mutex_lock_interruptible(&hdmi_msm_state_mutex)) {
@@ -3328,8 +3337,11 @@ static int hdmi_msm_request_hdcp_topology(void *output)
 		ret = sizeof(struct HDCP_V2V1_MSG_TOPOLOGY);
 
 		mutex_unlock(&hdmi_msm_state_mutex);
-	} else
+	} else if (!external_common_state->hpd_state) {
+		*sink = HDMI_PLUGOUT;
+	} else {
 		ret = -EFAULT;
+	}
 
 signal_interrupt:
 	return ret;
