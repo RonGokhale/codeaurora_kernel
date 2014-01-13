@@ -703,6 +703,15 @@ static struct chromeos_laptop squawks = {
 	},
 };
 
+static struct chromeos_laptop glimmer = {
+	.i2c_peripherals = {
+		/* Elan Touchpad. */
+		{ .add = setup_elantech_tp, I2C_ADAPTER_DESIGNWARE_0 },
+		/* Touchscreen. */
+		{ .add = setup_atmel_1664t_ts, I2C_ADAPTER_DESIGNWARE_5 },
+	},
+};
+
 #define _CBDD(board_) \
 	.callback = chromeos_laptop_dmi_matched, \
 	.driver_data = (void *)&board_
@@ -829,6 +838,14 @@ static struct dmi_system_id chromeos_laptop_dmi_table[] __initdata = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Squawks"),
 		},
 		_CBDD(squawks),
+	},
+	{
+		.ident = "Glimmer",
+		.matches = {
+			DMI_MATCH(DMI_BIOS_VENDOR, "coreboot"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Glimmer"),
+		},
+		_CBDD(glimmer),
 	},
 	{ }
 };
