@@ -124,21 +124,14 @@ static char *split_if_spec(char *str, ...)
 static void setup_etheraddr(struct net_device *dev, char *str)
 {
 	unsigned char *addr = dev->dev_addr;
-	char *end;
-	int i;
 
 	if (str == NULL)
 		goto random;
 
-	for (i = 0; i < ETH_ALEN; i++) {
-		addr[i] = kstrtoul(str, 16, &end);
-		if ((end == str) ||
-		    ((*end != ':') && (*end != ',') && (*end != '\0'))) {
-			pr_err("%s: failed to parse '%s' as an ethernet address\n",
-			       dev->name, str);
-			goto random;
-		}
-		str = end + 1;
+	if (!mac_pton(str, addr)) {
+		pr_err("%s: failed to parse '%s' as an ethernet address\n",
+		       dev->name, str);
+		goto random;
 	}
 	if (is_multicast_ether_addr(addr)) {
 		pr_err("%s: attempt to assign a multicast ethernet address\n",
