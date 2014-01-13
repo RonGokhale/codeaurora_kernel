@@ -2124,7 +2124,7 @@ bug_out:
 
     spin_unlock_irqrestore(&sc->lmc_lock, flags);
 
-    lmc_trace(dev, "lmc_driver_timout out");
+    lmc_trace(dev, "lmc_driver_timeout out");
 
 
 }
