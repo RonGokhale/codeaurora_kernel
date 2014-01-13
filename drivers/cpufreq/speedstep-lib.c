@@ -464,6 +464,7 @@ unsigned int speedstep_get_freqs(enum speedstep_processor processor,
 
 out:
 	local_irq_restore(flags);
+	preempt_check_resched();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(speedstep_get_freqs);
