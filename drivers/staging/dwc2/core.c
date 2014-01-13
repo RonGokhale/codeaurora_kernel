@@ -2629,12 +2629,10 @@ int dwc2_get_hwparams(struct dwc2_hsotg *hsotg)
 
 	hptxfsiz = readl(hsotg->regs + HPTXFSIZ);
 	dev_dbg(hsotg->dev, "hptxfsiz=%08x\n", hptxfsiz);
-/*
 	gusbcfg = readl(hsotg->regs + GUSBCFG);
 	gusbcfg &= ~GUSBCFG_FORCEHOSTMODE;
 	writel(gusbcfg, hsotg->regs + GUSBCFG);
 	usleep_range(100000, 150000);
-*/
 
 	/* hwcfg2 */
 	hw->op_mode = (hwcfg2 & GHWCFG2_OP_MODE_MASK) >>
