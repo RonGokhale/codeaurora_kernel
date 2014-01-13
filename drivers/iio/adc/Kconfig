@@ -204,4 +204,10 @@ config VIPERBOARD_ADC
 	  Say yes here to access the ADC part of the Nano River
 	  Technologies Viperboard.
 
+config XILINX_XADC
+	tristate "Xilinx XADC driver"
+	depends on ARCH_ZYNQ || MICROBLAZE || COMPILE_TEST
+	select IIO_BUFFER
+	select IIO_TRIGGERED_BUFFER
+
 endmenu
