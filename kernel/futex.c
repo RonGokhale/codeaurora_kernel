@@ -64,6 +64,7 @@
 #include <linux/hugetlb.h>
 #include <linux/freezer.h>
 #include <linux/bootmem.h>
+#include <linux/uaccess.h>
 
 #include <asm/futex.h>
 
@@ -2845,6 +2846,7 @@ SYSCALL_DEFINE6(futex, u32 __user *, uaddr, int, op, u32, val,
 
 static int __init futex_init(void)
 {
+	mm_segment_t fs;
 	u32 curval;
 	unsigned long i;
 
@@ -2869,8 +2871,11 @@ static int __init futex_init(void)
 	 * implementation, the non-functional ones will return
 	 * -ENOSYS.
 	 */
+	fs = get_fs();
+	set_fs(USER_DS);
 	if (cmpxchg_futex_value_locked(&curval, NULL, 0, 0) == -EFAULT)
 		futex_cmpxchg_enabled = 1;
+	set_fs(fs);
 
 	for (i = 0; i < futex_hashsize; i++) {
 		plist_head_init(&futex_queues[i].chain);

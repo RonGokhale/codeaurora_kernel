@@ -75,7 +75,7 @@ int mei_reset(struct mei_device *dev)
 	    state != MEI_DEV_DISABLED &&
 	    state != MEI_DEV_POWER_DOWN &&
 	    state != MEI_DEV_POWER_UP)
-		dev_warn(&dev->pdev->dev, "unexpected reset: dev_state = %s\n",
+		dev_warn_ratelimited(&dev->pdev->dev, "unexpected reset: dev_state = %s\n",
 			 mei_dev_state_str(state));
 
 	/* we're already in reset, cancel the init timer
