@@ -106,12 +106,8 @@ asoc_simple_card_sub_parse_of(struct device_node *np,
 				     &dai->sysclk);
 	} else {
 		clk = of_clk_get(*node, 0);
-		if (IS_ERR(clk)) {
-			ret = PTR_ERR(clk);
-			goto parse_error;
-		}
-
-		dai->sysclk = clk_get_rate(clk);
+		if (!IS_ERR(clk))
+			dai->sysclk = clk_get_rate(clk);
 	}
 
 	ret = 0;
@@ -138,10 +134,12 @@ static int asoc_simple_card_parse_of(struct device_node *node,
 		(SND_SOC_DAIFMT_FORMAT_MASK | SND_SOC_DAIFMT_INV_MASK);
 
 	/* DAPM routes */
-	ret = snd_soc_of_parse_audio_routing(&info->snd_card,
-					"simple-audio-routing");
-	if (ret)
-		return ret;
+	if (of_property_read_bool(node, "simple-audio-card,routing")) {
+		ret = snd_soc_of_parse_audio_routing(&info->snd_card,
+					"simple-audio-card,routing");
+		if (ret)
+			return ret;
+	}
 
 	/* CPU sub-node */
 	ret = -EINVAL;
@@ -216,15 +214,17 @@ static int asoc_simple_card_probe(struct platform_device *pdev)
 					dev_err(dev, "parse error %d\n", ret);
 				return ret;
 			}
+		} else {
+			return -ENOMEM;
 		}
 	} else {
-		cinfo->snd_card.dev = &pdev->dev;
 		cinfo = pdev->dev.platform_data;
-	}
+		if (!cinfo) {
+			dev_err(dev, "no info for asoc-simple-card\n");
+			return -EINVAL;
+		}
 
-	if (!cinfo) {
-		dev_err(dev, "no info for asoc-simple-card\n");
-		return -EINVAL;
+		cinfo->snd_card.dev = &pdev->dev;
 	}
 
 	if (!cinfo->name	||
