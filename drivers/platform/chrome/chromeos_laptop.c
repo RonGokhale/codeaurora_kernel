@@ -676,6 +676,13 @@ static struct chromeos_laptop samus = {
 	.has_keyboard_backlight = true,
 };
 
+static struct chromeos_laptop squawks = {
+	.i2c_peripherals = {
+		/* Elan Touchpad. */
+		{ .add = setup_elantech_tp, I2C_ADAPTER_DESIGNWARE_0 },
+	},
+};
+
 #define _CBDD(board_) \
 	.callback = chromeos_laptop_dmi_matched, \
 	.driver_data = (void *)&board_
@@ -794,6 +801,14 @@ static struct dmi_system_id chromeos_laptop_dmi_table[] __initdata = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Samus"),
 		},
 		_CBDD(samus),
+	},
+	{
+		.ident = "Squawks",
+		.matches = {
+			DMI_MATCH(DMI_BIOS_VENDOR, "coreboot"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Squawks"),
+		},
+		_CBDD(squawks),
 	},
 	{ }
 };
