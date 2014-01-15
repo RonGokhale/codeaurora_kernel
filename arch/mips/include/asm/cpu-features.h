@@ -279,6 +279,10 @@
 
 #ifndef cpu_dcache_line_size
 #define cpu_dcache_line_size()	cpu_data[0].dcache.linesz
+#else
+#if (cpu_dcache_line_size() != (1 << CONFIG_MIPS_L1_CACHE_SHIFT))
+#error "cpu_dcache_line_size does not match CONFIG_MIPS_L1_CACHE_SHIFT"
+#endif
 #endif
 #ifndef cpu_icache_line_size
 #define cpu_icache_line_size()	cpu_data[0].icache.linesz
