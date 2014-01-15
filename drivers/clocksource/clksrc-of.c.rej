@@ -1,0 +1,9 @@
+--- drivers/clocksource/clksrc-of.c
++++ drivers/clocksource/clksrc-of.c
+@@ -35,6 +35,5 @@
+ 
+ 		init_func = match->data;
+ 		init_func(np);
+-		of_node_put(np);
+ 	}
+ }
