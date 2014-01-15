@@ -1075,6 +1075,7 @@ static int super_90_validate(struct mddev *mddev, struct md_rdev *rdev)
 	rdev->raid_disk = -1;
 	clear_bit(Faulty, &rdev->flags);
 	clear_bit(In_sync, &rdev->flags);
+	clear_bit(Bitmap_sync, &rdev->flags);
 	clear_bit(WriteMostly, &rdev->flags);
 
 	if (mddev->raid_disks == 0) {
@@ -1153,6 +1154,8 @@ static int super_90_validate(struct mddev *mddev, struct md_rdev *rdev)
 		 */
 		if (ev1 < mddev->bitmap->events_cleared)
 			return 0;
+		if (ev1 < mddev->events)
+			set_bit(Bitmap_sync, &rdev->flags);
 	} else {
 		if (ev1 < mddev->events)
 			/* just a hot-add of a new device, leave raid_disk at -1 */
@@ -1168,6 +1171,7 @@ static int super_90_validate(struct mddev *mddev, struct md_rdev *rdev)
 			    desc->raid_disk < mddev->raid_disks */) {
 			set_bit(In_sync, &rdev->flags);
 			rdev->raid_disk = desc->raid_disk;
+			rdev->saved_raid_disk = desc->raid_disk;
 		} else if (desc->state & (1<<MD_DISK_ACTIVE)) {
 			/* active but not in sync implies recovery up to
 			 * reshape position.  We don't know exactly where
@@ -1561,6 +1565,7 @@ static int super_1_validate(struct mddev *mddev, struct md_rdev *rdev)
 	rdev->raid_disk = -1;
 	clear_bit(Faulty, &rdev->flags);
 	clear_bit(In_sync, &rdev->flags);
+	clear_bit(Bitmap_sync, &rdev->flags);
 	clear_bit(WriteMostly, &rdev->flags);
 
 	if (mddev->raid_disks == 0) {
@@ -1643,6 +1648,8 @@ static int super_1_validate(struct mddev *mddev, struct md_rdev *rdev)
 		 */
 		if (ev1 < mddev->bitmap->events_cleared)
 			return 0;
+		if (ev1 < mddev->events)
+			set_bit(Bitmap_sync, &rdev->flags);
 	} else {
 		if (ev1 < mddev->events)
 			/* just a hot-add of a new device, leave raid_disk at -1 */
@@ -1663,10 +1670,14 @@ static int super_1_validate(struct mddev *mddev, struct md_rdev *rdev)
 			set_bit(Faulty, &rdev->flags);
 			break;
 		default:
+			rdev->saved_raid_disk = role;
 			if ((le32_to_cpu(sb->feature_map) &
-			     MD_FEATURE_RECOVERY_OFFSET))
+			     MD_FEATURE_RECOVERY_OFFSET)) {
 				rdev->recovery_offset = le64_to_cpu(sb->recovery_offset);
-			else
+				if (!(le32_to_cpu(sb->feature_map) &
+				      MD_FEATURE_RECOVERY_BITMAP))
+					rdev->saved_raid_disk = -1;
+			} else
 				set_bit(In_sync, &rdev->flags);
 			rdev->raid_disk = role;
 			break;
@@ -1728,6 +1739,9 @@ static void super_1_sync(struct mddev *mddev, struct md_rdev *rdev)
 			cpu_to_le32(MD_FEATURE_RECOVERY_OFFSET);
 		sb->recovery_offset =
 			cpu_to_le64(rdev->recovery_offset);
+		if (rdev->saved_raid_disk >= 0 && mddev->bitmap)
+			sb->feature_map |=
+				cpu_to_le32(MD_FEATURE_RECOVERY_BITMAP);
 	}
 	if (test_bit(Replacement, &rdev->flags))
 		sb->feature_map |=
@@ -2469,8 +2483,7 @@ repeat:
 		if (rdev->sb_loaded != 1)
 			continue; /* no noise on spare devices */
 
-		if (!test_bit(Faulty, &rdev->flags) &&
-		    rdev->saved_raid_disk == -1) {
+		if (!test_bit(Faulty, &rdev->flags)) {
 			md_super_write(mddev,rdev,
 				       rdev->sb_start, rdev->sb_size,
 				       rdev->sb_page);
@@ -2486,11 +2499,9 @@ repeat:
 				rdev->badblocks.size = 0;
 			}
 
-		} else if (test_bit(Faulty, &rdev->flags))
+		} else
 			pr_debug("md: %s (skipping faulty)\n",
 				 bdevname(rdev->bdev, b));
-		else
-			pr_debug("(skipping incremental s/r ");
 
 		if (mddev->level == LEVEL_MULTIPATH)
 			/* only need to write one superblock... */
@@ -2606,6 +2617,8 @@ state_store(struct md_rdev *rdev, const char *buf, size_t len)
 	 *  blocked - sets the Blocked flags
 	 *  -blocked - clears the Blocked and possibly simulates an error
 	 *  insync - sets Insync providing device isn't active
+	 *  -insync - clear Insync for a device with a slot assigned,
+	 *            so that it gets rebuilt based on bitmap
 	 *  write_error - sets WriteErrorSeen
 	 *  -write_error - clears WriteErrorSeen
 	 */
@@ -2653,6 +2666,11 @@ state_store(struct md_rdev *rdev, const char *buf, size_t len)
 		err = 0;
 	} else if (cmd_match(buf, "insync") && rdev->raid_disk == -1) {
 		set_bit(In_sync, &rdev->flags);
+		err = 0;
+	} else if (cmd_match(buf, "-insync") && rdev->raid_disk >= 0) {
+		clear_bit(In_sync, &rdev->flags);
+		rdev->saved_raid_disk = rdev->raid_disk;
+		rdev->raid_disk = -1;
 		err = 0;
 	} else if (cmd_match(buf, "write_error")) {
 		set_bit(WriteErrorSeen, &rdev->flags);
@@ -2786,6 +2804,7 @@ slot_store(struct md_rdev *rdev, const char *buf, size_t len)
 		else
 			rdev->saved_raid_disk = -1;
 		clear_bit(In_sync, &rdev->flags);
+		clear_bit(Bitmap_sync, &rdev->flags);
 		err = rdev->mddev->pers->
 			hot_add_disk(rdev->mddev, rdev);
 		if (err) {
@@ -3580,6 +3599,8 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 	pers->run(mddev);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
 	mddev_resume(mddev);
+	if (!mddev->thread)
+		md_update_sb(mddev, 1);
 	sysfs_notify(&mddev->kobj, NULL, "level");
 	md_new_event(mddev);
 	return rv;
@@ -5758,8 +5779,10 @@ static int add_new_disk(struct mddev * mddev, mdu_disk_info_t *info)
 			    info->raid_disk < mddev->raid_disks) {
 				rdev->raid_disk = info->raid_disk;
 				set_bit(In_sync, &rdev->flags);
+				clear_bit(Bitmap_sync, &rdev->flags);
 			} else
 				rdev->raid_disk = -1;
+			rdev->saved_raid_disk = rdev->raid_disk;
 		} else
 			super_types[mddev->major_version].
 				validate_super(mddev, rdev);
@@ -5771,11 +5794,6 @@ static int add_new_disk(struct mddev * mddev, mdu_disk_info_t *info)
 			export_rdev(rdev);
 			return -EINVAL;
 		}
-
-		if (test_bit(In_sync, &rdev->flags))
-			rdev->saved_raid_disk = rdev->raid_disk;
-		else
-			rdev->saved_raid_disk = -1;
 
 		clear_bit(In_sync, &rdev->flags); /* just to be sure */
 		if (info->state & (1<<MD_DISK_WRITEMOSTLY))
@@ -7704,10 +7722,12 @@ static int remove_and_add_spares(struct mddev *mddev,
 		if (test_bit(Faulty, &rdev->flags))
 			continue;
 		if (mddev->ro &&
-		    rdev->saved_raid_disk < 0)
+		    ! (rdev->saved_raid_disk >= 0 &&
+		       !test_bit(Bitmap_sync, &rdev->flags)))
 			continue;
 
-		rdev->recovery_offset = 0;
+		if (rdev->saved_raid_disk < 0)
+			rdev->recovery_offset = 0;
 		if (mddev->pers->
 		    hot_add_disk(mddev, rdev) == 0) {
 			if (sysfs_link_rdev(mddev, rdev))
@@ -7785,9 +7805,12 @@ void md_check_recovery(struct mddev *mddev)
 			 * As we only add devices that are already in-sync,
 			 * we can activate the spares immediately.
 			 */
-			clear_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 			remove_and_add_spares(mddev, NULL);
-			mddev->pers->spare_active(mddev);
+			/* There is no thread, but we need to call
+			 * ->spare_active and clear saved_raid_disk
+			 */
+			md_reap_sync_thread(mddev);
+			clear_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 			goto unlock;
 		}
 
@@ -7924,14 +7947,10 @@ void md_reap_sync_thread(struct mddev *mddev)
 		mddev->pers->finish_reshape(mddev);
 
 	/* If array is no-longer degraded, then any saved_raid_disk
-	 * information must be scrapped.  Also if any device is now
-	 * In_sync we must scrape the saved_raid_disk for that device
-	 * do the superblock for an incrementally recovered device
-	 * written out.
+	 * information must be scrapped.
 	 */
-	rdev_for_each(rdev, mddev)
-		if (!mddev->degraded ||
-		    test_bit(In_sync, &rdev->flags))
+	if (!mddev->degraded)
+		rdev_for_each(rdev, mddev)
 			rdev->saved_raid_disk = -1;
 
 	md_update_sb(mddev, 1);

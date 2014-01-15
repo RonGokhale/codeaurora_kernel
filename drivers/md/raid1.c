@@ -922,9 +922,8 @@ static sector_t wait_barrier(struct r1conf *conf, struct bio *bio)
 				conf->next_window_requests++;
 			else
 				conf->current_window_requests++;
-		}
-		if (bio->bi_iter.bi_sector >= conf->start_next_window)
 			sector = conf->start_next_window;
+		}
 	}
 
 	conf->nr_pending++;
