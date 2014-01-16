@@ -500,7 +500,7 @@ void intel_panel_set_backlight(struct intel_connector *connector, u32 level,
 	u32 freq;
 	unsigned long flags;
 
-	if (pipe == INVALID_PIPE)
+	if (!panel->backlight.present || pipe == INVALID_PIPE)
 		return;
 
 	spin_lock_irqsave(&dev_priv->backlight_lock, flags);
@@ -577,7 +577,7 @@ void intel_panel_disable_backlight(struct intel_connector *connector)
 	enum pipe pipe = intel_get_pipe_from_connector(connector);
 	unsigned long flags;
 
-	if (pipe == INVALID_PIPE)
+	if (!panel->backlight.present || pipe == INVALID_PIPE)
 		return;
 
 	/*
@@ -780,7 +780,7 @@ void intel_panel_enable_backlight(struct intel_connector *connector)
 	enum pipe pipe = intel_get_pipe_from_connector(connector);
 	unsigned long flags;
 
-	if (pipe == INVALID_PIPE)
+	if (!panel->backlight.present || pipe == INVALID_PIPE)
 		return;
 
 	DRM_DEBUG_KMS("pipe %c\n", pipe_name(pipe));
