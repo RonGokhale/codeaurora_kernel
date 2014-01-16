@@ -167,6 +167,7 @@ static boolean msg_recv_complete = TRUE;
 #define HDMI_CEC_WR_CHECK_CONFIG 0x370
 
 #define HDMI_VERSION_2_0 0x02000000
+#define HDMI_CEC_DEFAULT_LOGICAL_ADDR 15
 
 /* Supported CEC key code mapping table. Each element number indicates the key
  * code defined in CEC and its associated element value is the mapped key code
@@ -320,9 +321,10 @@ void hdmi_msm_cec_init(void)
 
 	/*
 	 * 0x02A0 CEC_ADDR
-	 * Starting with a default address of 4
+	 * Starting with a default address
 	 */
-	HDMI_OUTP(0x02A0, HDMI_MSM_CEC_ADDR_LOGICAL_ADDR(4));
+	HDMI_OUTP(0x02A0,
+		HDMI_MSM_CEC_ADDR_LOGICAL_ADDR(HDMI_CEC_DEFAULT_LOGICAL_ADDR));
 
 	hdmi_msm_state->first_monitor = 0;
 	hdmi_msm_state->fsm_reset_done = false;
@@ -388,6 +390,11 @@ void hdmi_msm_cec_write_logical_addr(int addr)
 	 *   LOGICAL_ADDR       7:0  NUM
 	 */
 	HDMI_OUTP(0x02A0, addr & 0xFF);
+}
+
+int hdmi_msm_cec_read_logical_addr(void)
+{
+	return (HDMI_INP(0x02A0) & 0xff);
 }
 
 void hdmi_msm_dump_cec_msg(struct hdmi_msm_cec_msg *msg)
@@ -607,7 +614,7 @@ void hdmi_msm_cec_msg_recv(void)
 		DEV_INFO("Recvd a Give Phy Addr cmd\n");
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
 		/* Setup a frame for sending out phy addr */
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 
 		/* Broadcast */
 		temp_msg.recvr_id = 0xf;
@@ -623,7 +630,7 @@ void hdmi_msm_cec_msg_recv(void)
 		/* Abort */
 		DEV_INFO("Recvd an abort cmd 0xFF\n");
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 
@@ -642,7 +649,7 @@ void hdmi_msm_cec_msg_recv(void)
 		/* Give OSD name */
 		DEV_INFO("Recvd cmd 0x046\n");
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 
@@ -669,7 +676,7 @@ void hdmi_msm_cec_msg_recv(void)
 		/* Give Device Power status */
 		DEV_INFO("Recvd a Power status message\n");
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 
@@ -695,7 +702,7 @@ void hdmi_msm_cec_msg_recv(void)
 		/* Set Stream Path */
 		DEV_INFO("Recvd Set Stream\n");
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 
 		/*Broadcast this message*/
 		temp_msg.recvr_id = 0xf;
@@ -710,7 +717,7 @@ void hdmi_msm_cec_msg_recv(void)
 		 * sending <Image View On> message
 		 */
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 		/* opcode for Image View On */
@@ -766,7 +773,7 @@ void hdmi_msm_cec_msg_recv(void)
 			hdmi_msm_state->cec_queue_wr->opcode);
 #ifdef __SEND_ABORT__
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 		/* opcode for feature abort */
@@ -780,7 +787,7 @@ void hdmi_msm_cec_msg_recv(void)
 		break;
 #else
 		memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-		temp_msg.sender_id = 0x4;
+		temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 		temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 		i = 0;
 		/* OSD String */
@@ -819,7 +826,7 @@ void hdmi_msm_cec_one_touch_play(void)
 	struct hdmi_msm_cec_msg temp_msg;
 	uint32 i = 0;
 	memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-	temp_msg.sender_id = 0x4;
+	temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 	/*
 	 * Broadcast this message
 	 */
@@ -836,7 +843,7 @@ void hdmi_msm_cec_one_touch_play(void)
 	 * sending <Image View On> message
 	 */
 	memset(&temp_msg, 0x00, sizeof(struct hdmi_msm_cec_msg));
-	temp_msg.sender_id = 0x4;
+	temp_msg.sender_id = hdmi_msm_cec_read_logical_addr();
 	temp_msg.recvr_id = hdmi_msm_state->cec_queue_wr->sender_id;
 	i = 0;
 	/* Image View On */
@@ -5463,6 +5470,11 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	hdcp_tx_init(&hdmi_msm_ops, &hdmi_msm_state->hdcp_tx_ops);
 
 	hdmi_msm_cec_init_input_event();
+
+	/* Init logical addr to default address */
+	hdmi_msm_state->cec_logical_addr = HDMI_CEC_DEFAULT_LOGICAL_ADDR;
+	hdmi_msm_cec_write_logical_addr(hdmi_msm_state->cec_logical_addr);
+
 	return 0;
 
 error:
