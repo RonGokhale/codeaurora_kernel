@@ -168,7 +168,7 @@ static void __init keystone_timer_init(struct device_node *np)
 	}
 
 	clk = of_clk_get(np, 0);
-	if (!clk) {
+	if (IS_ERR(clk)) {
 		pr_err("%s: failed to get clock\n", __func__);
 		iounmap(timer.base);
 		return;
