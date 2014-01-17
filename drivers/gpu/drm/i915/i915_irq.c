@@ -675,7 +675,9 @@ static bool intel_pipe_in_vblank_locked(struct drm_device *dev, enum pipe pipe)
 }
 
 static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
-			     int *vpos, int *hpos, ktime_t *stime, ktime_t *etime)
+				    int *vpos, int *hpos,
+				    ktime_t *stime, ktime_t *etime,
+				    bool adjust)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc = dev_priv->pipe_to_crtc_mapping[pipe];
@@ -756,16 +758,18 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 
 	in_vbl = position >= vbl_start && position < vbl_end;
 
-	/*
-	 * While in vblank, position will be negative
-	 * counting up towards 0 at vbl_end. And outside
-	 * vblank, position will be positive counting
-	 * up since vbl_end.
-	 */
-	if (position >= vbl_start)
-		position -= vbl_end;
-	else
-		position += vtotal - vbl_end;
+	if (adjust) {
+		/*
+		 * While in vblank, position will be negative
+		 * counting up towards 0 at vbl_end. And outside
+		 * vblank, position will be positive counting
+		 * up since vbl_end.
+		 */
+		if (position >= vbl_start)
+			position -= vbl_end;
+		else
+			position += vtotal - vbl_end;
+	}
 
 	if (IS_GEN2(dev) || IS_G4X(dev) || INTEL_INFO(dev)->gen >= 5) {
 		*vpos = position;
@@ -780,6 +784,24 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		ret |= DRM_SCANOUTPOS_INVBL;
 
 	return ret;
+}
+
+static int i915_get_scanout_position(struct drm_device *dev, int pipe,
+				     int *vpos, int *hpos,
+				     ktime_t *stime, ktime_t *etime)
+{
+	return i915_get_crtc_scanoutpos(dev, pipe, vpos, hpos,
+					stime, etime, true);
+}
+
+int intel_get_crtc_scanline(struct drm_crtc *crtc)
+{
+	int vpos = 0, hpos = 0;
+
+	i915_get_crtc_scanoutpos(crtc->dev, to_intel_crtc(crtc)->pipe,
+				 &vpos, &hpos, NULL, NULL, false);
+
+	return vpos;
 }
 
 static int i915_get_vblank_timestamp(struct drm_device *dev, int pipe,
@@ -3782,7 +3804,7 @@ void intel_irq_init(struct drm_device *dev)
 
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		dev->driver->get_vblank_timestamp = i915_get_vblank_timestamp;
-		dev->driver->get_scanout_position = i915_get_crtc_scanoutpos;
+		dev->driver->get_scanout_position = i915_get_scanout_position;
 	}
 
 	if (IS_VALLEYVIEW(dev)) {
