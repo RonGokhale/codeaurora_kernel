@@ -334,9 +334,7 @@ struct snd_soc_jack_pin;
 #include <sound/soc-dapm.h>
 #include <sound/soc-dpcm.h>
 
-#ifdef CONFIG_GPIOLIB
 struct snd_soc_jack_gpio;
-#endif
 
 typedef int (*hw_write_t)(void *,const char* ,int);
 
@@ -446,6 +444,17 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 			struct snd_soc_jack_gpio *gpios);
 void snd_soc_jack_free_gpios(struct snd_soc_jack *jack, int count,
 			struct snd_soc_jack_gpio *gpios);
+#else
+static inline int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
+					 struct snd_soc_jack_gpio *gpios)
+{
+	return 0;
+}
+
+static inline void snd_soc_jack_free_gpios(struct snd_soc_jack *jack, int count,
+					   struct snd_soc_jack_gpio *gpios)
+{
+}
 #endif
 
 /* codec register bit access */
@@ -580,7 +589,6 @@ struct snd_soc_jack_zone {
  *		       to provide more complex checks (eg, reading an
  *		       ADC).
  */
-#ifdef CONFIG_GPIOLIB
 struct snd_soc_jack_gpio {
 	unsigned int gpio;
 	const char *name;
@@ -594,7 +602,6 @@ struct snd_soc_jack_gpio {
 
 	int (*jack_status_check)(void);
 };
-#endif
 
 struct snd_soc_jack {
 	struct mutex mutex;
@@ -1035,6 +1042,7 @@ struct snd_soc_pcm_runtime {
 
 	/* Dynamic PCM BE runtime data */
 	struct snd_soc_dpcm_runtime dpcm[2];
+	int fe_compr;
 
 	long pmdown_time;
 	unsigned char pop_wait:1;
