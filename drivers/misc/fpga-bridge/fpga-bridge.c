@@ -65,9 +65,21 @@ static ssize_t fpga_bridge_enable_set(struct device *dev,
 	return count;
 }
 
-static struct device_attribute fpga_bridge_attrs[] = {
-	__ATTR(enable, S_IRUGO | S_IWUSR, fpga_bridge_enable_show, fpga_bridge_enable_set),
-	__ATTR_NULL
+static DEVICE_ATTR(enable, S_IRUGO | S_IWUSR, fpga_bridge_enable_show,
+	       fpga_bridge_enable_set);
+
+static struct attribute *fpga_bridge_attrs[] = {
+	&dev_attr_enable.attr,
+	NULL,
+};
+
+static const struct attribute_group fpga_bridge_group = {
+	.attrs = fpga_bridge_attrs,
+};
+
+const struct attribute_group *fpga_bridge_groups[] = {
+	&fpga_bridge_group,
+	NULL,
 };
 
 static int fpga_bridge_alloc_id(struct fpga_bridge *bridge, int request_nr)
@@ -198,7 +210,7 @@ static int __init fpga_bridge_dev_init(void)
 	if (IS_ERR(fpga_bridge_class))
 		return PTR_ERR(fpga_bridge_class);
 
-	fpga_bridge_class->dev_attrs = fpga_bridge_attrs;
+	fpga_bridge_class->dev_groups = fpga_bridge_groups;
 
 	return 0;
 }

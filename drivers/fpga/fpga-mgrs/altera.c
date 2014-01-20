@@ -259,7 +259,7 @@ static int alt_fpga_wait_for_config_done(struct fpga_manager *mgr)
 	int timeout, ret = 0;
 
 	alt_fpga_disable_irqs(mgr);
-	INIT_COMPLETION(mgr->status_complete);
+	reinit_completion(&mgr->status_complete);
 	alt_fpga_enable_irqs(mgr, ALT_FPGAMGR_MON_CONF_DONE);
 
 	timeout = wait_for_completion_interruptible_timeout(

@@ -57,10 +57,22 @@ static ssize_t fpga_mgr_status_show(struct device *dev,
 	return mgr->mops->status(mgr, buf);
 }
 
-static struct device_attribute fpga_mgr_attrs[] = {
-	__ATTR(name, S_IRUGO, fpga_mgr_name_show, NULL),
-	__ATTR(status, S_IRUGO, fpga_mgr_status_show, NULL),
-	__ATTR_NULL
+static DEVICE_ATTR(name, S_IRUGO, fpga_mgr_name_show, NULL);
+static DEVICE_ATTR(status, S_IRUGO, fpga_mgr_status_show, NULL);
+
+static struct attribute *fpga_mgr_attrs[] = {
+	&dev_attr_name.attr,
+	&dev_attr_status.attr,
+	NULL,
+};
+
+static const struct attribute_group fpga_mgr_group = {
+	.attrs = fpga_mgr_attrs,
+};
+
+const struct attribute_group *fpga_mgr_groups[] = {
+	&fpga_mgr_group,
+	NULL,
 };
 
 static int fpga_mgr_get_new_minor(struct fpga_manager *mgr, int request_nr)
@@ -219,7 +231,7 @@ static int __init fpga_mgr_dev_init(void)
 	if (IS_ERR(fpga_mgr_class))
 		return PTR_ERR(fpga_mgr_class);
 
-	fpga_mgr_class->dev_attrs = fpga_mgr_attrs;
+	fpga_mgr_class->dev_groups = fpga_mgr_groups;
 
 	ret = alloc_chrdev_region(&fpga_mgr_dev, 0, FPGA_MAX_MINORS, "fpga");
 	if (ret) {

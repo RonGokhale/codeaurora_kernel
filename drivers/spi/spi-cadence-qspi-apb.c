@@ -442,12 +442,14 @@ static int cadence_qspi_apb_dma_start(
 		dmaconf.direction = DMA_DEV_TO_MEM;
 		dmaconf.src_addr = pdata->qspi_ahb_phy;
 		dmaconf.src_addr_width = 4;
+		dmaconf.src_maxburst = 1;
 	} else {
 		dmachan = cadence_qspi->txchan;
 		data_direction = DMA_TO_DEVICE;
 		dmaconf.direction = DMA_MEM_TO_DEV;
 		dmaconf.dst_addr = pdata->qspi_ahb_phy;
 		dmaconf.dst_addr_width = 4;
+		dmaconf.dst_maxburst = 1;
 	}
 
 	/* map the buffer address */

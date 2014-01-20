@@ -90,14 +90,14 @@ static int dw_spi_mmio_probe(struct platform_device *pdev)
 	if(of_property_read_u32(pdev->dev.of_node, "num-chipselect", &prop)) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine num-chipselect\n");
-		goto err_irq;
+		goto err_unmap;
 	}
 	dws->num_cs = prop;
 
 	if(of_property_read_u32(pdev->dev.of_node, "bus-num", &prop)) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "couldn't determine bus-num\n");
-		goto err_irq;
+		goto err_unmap;
 	}
 	dws->bus_num = prop;
 #else

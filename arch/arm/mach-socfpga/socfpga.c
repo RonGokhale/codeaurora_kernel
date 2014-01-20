@@ -275,8 +275,6 @@ static void __init socfpga_init_irq(void)
 {
 	irqchip_init();
 	socfpga_sysmgr_init();
-
-	of_clk_init(NULL);
 }
 
 static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
