@@ -52,7 +52,6 @@
 #include "stmmac.h"
 
 #define STMMAC_ALIGN(x)	L1_CACHE_ALIGN(x)
-#define JUMBO_LEN	9000
 
 /* Module parameters */
 #define TX_TIMEO	5000
@@ -988,6 +987,8 @@ static int init_dma_desc_rings(struct net_device *dev)
 
 	priv->dma_buf_sz = bfsize;
 
+	priv->dma_buf_sz = bfsize;
+
 	if (netif_msg_probe(priv))
 		pr_debug("%s: txsize %d, rxsize %d, bfsize %d\n", __func__,
 			 txsize, rxsize, bfsize);
@@ -1583,6 +1584,86 @@ static void stmmac_init_tx_coalesce(struct stmmac_priv *priv)
 	priv->txtimer.data = (unsigned long)priv;
 	priv->txtimer.function = stmmac_tx_timer;
 	add_timer(&priv->txtimer);
+}
+
+/**
+ * stmmac_hw_setup: setup mac in a usable state.
+ *  @dev : pointer to the device structure.
+ *  Description:
+ *  This function sets up the ip in a usable state.
+ *  Return value:
+ *  0 on success and an appropriate (-)ve integer as defined in errno.h
+ *  file on failure.
+ */
+static int stmmac_hw_setup(struct net_device *dev)
+{
+	struct stmmac_priv *priv = netdev_priv(dev);
+	int ret;
+
+	ret = init_dma_desc_rings(dev);
+	if (ret < 0) {
+		pr_err("%s: DMA descriptors initialization failed\n", __func__);
+		return ret;
+	}
+	/* DMA initialization and SW reset */
+	ret = stmmac_init_dma_engine(priv);
+	if (ret < 0) {
+		pr_err("%s: DMA engine initialization failed\n", __func__);
+		return ret;
+	}
+
+	/* Copy the MAC addr into the HW  */
+	priv->hw->mac->set_umac_addr(priv->ioaddr, dev->dev_addr, 0);
+
+	/* If required, perform hw setup of the bus. */
+	if (priv->plat->bus_setup)
+		priv->plat->bus_setup(priv->ioaddr);
+
+	/* Initialize the MAC Core */
+	priv->hw->mac->core_init(priv->ioaddr, dev->mtu);
+
+	/* Enable the MAC Rx/Tx */
+	stmmac_set_mac(priv->ioaddr, true);
+
+	/* Set the HW DMA mode and the COE */
+	stmmac_dma_operation_mode(priv);
+
+	stmmac_mmc_setup(priv);
+
+	ret = stmmac_init_ptp(priv);
+	if (ret)
+		pr_warn("%s: failed PTP initialisation\n", __func__);
+
+#ifdef CONFIG_STMMAC_DEBUG_FS
+	ret = stmmac_init_fs(dev);
+	if (ret < 0)
+		pr_warn("%s: failed debugFS registration\n", __func__);
+#endif
+	/* Start the ball rolling... */
+	pr_debug("%s: DMA RX/TX processes started...\n", dev->name);
+	priv->hw->dma->start_tx(priv->ioaddr);
+	priv->hw->dma->start_rx(priv->ioaddr);
+
+	/* Dump DMA/MAC registers */
+	if (netif_msg_hw(priv)) {
+		priv->hw->mac->dump_regs(priv->ioaddr);
+		priv->hw->dma->dump_regs(priv->ioaddr);
+	}
+	priv->tx_lpi_timer = STMMAC_DEFAULT_TWT_LS;
+
+	priv->eee_enabled = stmmac_eee_init(priv);
+
+	stmmac_init_tx_coalesce(priv);
+
+	if ((priv->use_riwt) && (priv->hw->dma->rx_watchdog)) {
+		priv->rx_riwt = MAX_DMA_RIWT;
+		priv->hw->dma->rx_watchdog(priv->ioaddr, MAX_DMA_RIWT);
+	}
+
+	if (priv->pcs && priv->hw->mac->ctrl_ane)
+		priv->hw->mac->ctrl_ane(priv->ioaddr, 0);
+
+	return 0;
 }
 
 /**
@@ -2237,6 +2318,14 @@ static int stmmac_change_mtu(struct net_device *dev, int new_mtu)
 		pr_err("%s: must be stopped to change its MTU\n", dev->name);
 		return -EBUSY;
 	}
+
+	if (priv->plat->enh_desc)
+		max_mtu = JUMBO_LEN;
+	else
+		max_mtu = SKB_MAX_HEAD(NET_SKB_PAD + NET_IP_ALIGN);
+
+	if (priv->plat->maxmtu < max_mtu)
+		max_mtu = priv->plat->maxmtu;
 
 	if ((new_mtu < 46) || (new_mtu > max_mtu)) {
 		pr_err("%s: invalid MTU, max MTU is: %d\n", dev->name, max_mtu);

@@ -52,10 +52,13 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 					   sizeof(struct stmmac_mdio_bus_data),
 					   GFP_KERNEL);
 
-	/* Set maxmtu to 1500 by default in case the maxmtu
-	 * paramter is not present.
-	*/
-	plat->maxmtu = 1500;
+	plat->force_sf_dma_mode = of_property_read_bool(np, "snps,force_sf_dma_mode");
+
+	/* Set the maxmtu to a default of JUMBO_LEN in case the
+	 * parameter is not present in the device tree.
+	 */
+	plat->maxmtu = JUMBO_LEN;
+
 	/*
 	 * Currently only the properties needed on SPEAr600
 	 * are provided. All other properties should be added
@@ -64,7 +67,14 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 	if (of_device_is_compatible(np, "st,spear600-gmac") ||
 		of_device_is_compatible(np, "snps,dwmac-3.70a") ||
 		of_device_is_compatible(np, "snps,dwmac")) {
-		of_property_read_u32(np, "snps,max-mtu", &plat->maxmtu);
+		/* Note that the max-frame-size parameter as defined in the
+		 * ePAPR v1.1 spec is defined as max-frame-size, it's
+		 * actually used as the IEEE definition of MAC Client
+		 * data, or MTU. The ePAPR specification is confusing as
+		 * the definition is max-frame-size, but usage examples
+		 * are clearly MTUs
+		 */
+		of_property_read_u32(np, "max-frame-size", &plat->maxmtu);
 		plat->has_gmac = 1;
 		plat->pmt = 1;
 	}

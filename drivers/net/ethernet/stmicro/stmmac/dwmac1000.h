@@ -127,7 +127,7 @@ enum power_event {
 #define GMAC_ANE_PSE_SHIFT	7
 
 /* GMAC Configuration defines */
-#define GMAC_CONTROL_2K 0x08000000      /* IEEE 802.3as 2K packets */
+#define GMAC_CONTROL_2K 0x08000000	/* IEEE 802.3as 2K packets */
 #define GMAC_CONTROL_TC	0x01000000	/* Transmit Conf. in RGMII/SGMII */
 #define GMAC_CONTROL_WD	0x00800000	/* Disable Watchdog on receive */
 #define GMAC_CONTROL_JD	0x00400000	/* Jabber disable */
