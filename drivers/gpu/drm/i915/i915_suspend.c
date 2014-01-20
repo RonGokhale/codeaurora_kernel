@@ -237,7 +237,7 @@ static void i915_save_display(struct drm_device *dev)
 	}
 
 	/* Only regfile.save FBC state on the platform that supports FBC */
-	if (I915_HAS_FBC(dev)) {
+	if (HAS_FBC(dev)) {
 		if (HAS_PCH_SPLIT(dev)) {
 			dev_priv->regfile.saveDPFC_CB_BASE = I915_READ(ILK_DPFC_CB_BASE);
 		} else if (IS_GM45(dev)) {
@@ -300,7 +300,7 @@ static void i915_restore_display(struct drm_device *dev)
 
 	/* only restore FBC info on the platform that supports FBC*/
 	intel_disable_fbc(dev);
-	if (I915_HAS_FBC(dev)) {
+	if (HAS_FBC(dev)) {
 		if (HAS_PCH_SPLIT(dev)) {
 			I915_WRITE(ILK_DPFC_CB_BASE, dev_priv->regfile.saveDPFC_CB_BASE);
 		} else if (IS_GM45(dev)) {
@@ -323,10 +323,6 @@ int i915_save_state(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
-
-	if (INTEL_INFO(dev)->gen <= 4)
-		pci_read_config_byte(dev->pdev, LBB,
-				     &dev_priv->regfile.saveLBB);
 
 	mutex_lock(&dev->struct_mutex);
 
@@ -376,10 +372,6 @@ int i915_restore_state(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
-
-	if (INTEL_INFO(dev)->gen <= 4)
-		pci_write_config_byte(dev->pdev, LBB,
-				      dev_priv->regfile.saveLBB);
 
 	mutex_lock(&dev->struct_mutex);
 

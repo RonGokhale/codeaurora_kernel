@@ -65,8 +65,8 @@
 #define wait_for_atomic_us(COND, US) _wait_for((COND), \
 					       DIV_ROUND_UP((US), 1000), 0)
 
-#define KHz(x) (1000*x)
-#define MHz(x) KHz(1000*x)
+#define KHz(x) (1000 * (x))
+#define MHz(x) KHz(1000 * (x))
 
 /*
  * Display related stuff
@@ -359,6 +359,8 @@ struct intel_crtc {
 	bool cursor_visible;
 
 	struct intel_crtc_config config;
+	struct intel_crtc_config *new_config;
+	bool new_enabled;
 
 	uint32_t ddi_pll_sel;
 
@@ -485,6 +487,9 @@ struct intel_dp {
 	int backlight_off_delay;
 	struct delayed_work panel_vdd_work;
 	bool want_panel_vdd;
+	unsigned long last_power_cycle;
+	unsigned long last_power_on;
+	unsigned long last_backlight_off;
 	bool psr_setup_done;
 	struct intel_connector *attached_connector;
 };
@@ -540,6 +545,7 @@ struct intel_unpin_work {
 struct intel_set_config {
 	struct drm_encoder **save_connector_encoders;
 	struct drm_crtc **save_encoder_crtcs;
+	bool *save_crtc_enabled;
 
 	bool fb_changed;
 	bool mode_changed;
@@ -625,6 +631,7 @@ void intel_ddi_get_config(struct intel_encoder *encoder,
 
 
 /* intel_display.c */
+const char *intel_output_name(int output);
 int intel_pch_rawclk(struct drm_device *dev);
 void intel_mark_busy(struct drm_device *dev);
 void intel_mark_fb_busy(struct drm_i915_gem_object *obj,
@@ -722,12 +729,10 @@ void intel_dp_check_link_status(struct intel_dp *intel_dp);
 bool intel_dp_compute_config(struct intel_encoder *encoder,
 			     struct intel_crtc_config *pipe_config);
 bool intel_dp_is_edp(struct drm_device *dev, enum port port);
-void ironlake_edp_backlight_on(struct intel_dp *intel_dp);
-void ironlake_edp_backlight_off(struct intel_dp *intel_dp);
-void ironlake_edp_panel_on(struct intel_dp *intel_dp);
-void ironlake_edp_panel_off(struct intel_dp *intel_dp);
-void ironlake_edp_panel_vdd_on(struct intel_dp *intel_dp);
-void ironlake_edp_panel_vdd_off(struct intel_dp *intel_dp, bool sync);
+void intel_edp_backlight_on(struct intel_dp *intel_dp);
+void intel_edp_backlight_off(struct intel_dp *intel_dp);
+void intel_edp_panel_on(struct intel_dp *intel_dp);
+void intel_edp_panel_off(struct intel_dp *intel_dp);
 void intel_edp_psr_enable(struct intel_dp *intel_dp);
 void intel_edp_psr_disable(struct intel_dp *intel_dp);
 void intel_edp_psr_update(struct drm_device *dev);

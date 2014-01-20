@@ -1184,6 +1184,11 @@ struct intel_vbt_data {
 	int edp_bpp;
 	struct edp_power_seq edp_pps;
 
+	struct {
+		u16 pwm_freq_hz;
+		bool active_low_pwm;
+	} backlight;
+
 	/* MIPI DSI */
 	struct {
 		u16 panel_id;
@@ -1210,7 +1215,7 @@ struct intel_wm_level {
 	uint32_t fbc_val;
 };
 
-struct hsw_wm_values {
+struct ilk_wm_values {
 	uint32_t wm_pipe[3];
 	uint32_t wm_lp[3];
 	uint32_t wm_lp_spr[3];
@@ -1355,8 +1360,6 @@ typedef struct drm_i915_private {
 	drm_dma_handle_t *status_page_dmah;
 	struct resource mch_res;
 
-	atomic_t irq_received;
-
 	/* protects the irq masks */
 	spinlock_t irq_lock;
 
@@ -1396,7 +1399,6 @@ typedef struct drm_i915_private {
 
 	/* overlay */
 	struct intel_overlay *overlay;
-	unsigned int sprite_scaling_enabled;
 
 	/* backlight registers and fields in struct intel_panel */
 	spinlock_t backlight_lock;
@@ -1517,7 +1519,7 @@ typedef struct drm_i915_private {
 		uint16_t cur_latency[5];
 
 		/* current hardware state */
-		struct hsw_wm_values hw;
+		struct ilk_wm_values hw;
 	} wm;
 
 	struct i915_package_c8 pc8;
@@ -1840,7 +1842,7 @@ struct drm_i915_file_private {
 
 #define HAS_FW_BLC(dev) (INTEL_INFO(dev)->gen > 2)
 #define HAS_PIPE_CXSR(dev) (INTEL_INFO(dev)->has_pipe_cxsr)
-#define I915_HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
+#define HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
 #define HAS_IPS(dev)		(IS_ULT(dev) || IS_BROADWELL(dev))
 
@@ -1848,7 +1850,7 @@ struct drm_i915_file_private {
 #define HAS_FPGA_DBG_UNCLAIMED(dev)	(INTEL_INFO(dev)->has_fpga_dbg)
 #define HAS_PSR(dev)		(IS_HASWELL(dev) || IS_BROADWELL(dev))
 #define HAS_PC8(dev)		(IS_HASWELL(dev)) /* XXX HSW:ULX */
-#define HAS_RUNTIME_PM(dev)	false
+#define HAS_RUNTIME_PM(dev)	(IS_HASWELL(dev))
 
 #define INTEL_PCH_DEVICE_ID_MASK		0xff00
 #define INTEL_PCH_IBX_DEVICE_ID_TYPE		0x3b00
@@ -2013,6 +2015,7 @@ void i915_gem_object_unpin(struct drm_i915_gem_object *obj);
 int __must_check i915_vma_unbind(struct i915_vma *vma);
 int __must_check i915_gem_object_ggtt_unbind(struct drm_i915_gem_object *obj);
 int i915_gem_object_put_pages(struct drm_i915_gem_object *obj);
+void i915_gem_release_all_mmaps(struct drm_i915_private *dev_priv);
 void i915_gem_release_mmap(struct drm_i915_gem_object *obj);
 void i915_gem_lastclose(struct drm_device *dev);
 
@@ -2550,6 +2553,35 @@ timespec_to_jiffies_timeout(const struct timespec *value)
 	unsigned long j = timespec_to_jiffies(value);
 
 	return min_t(unsigned long, MAX_JIFFY_OFFSET, j + 1);
+}
+
+/*
+ * If you need to wait X milliseconds between events A and B, but event B
+ * doesn't happen exactly after event A, you record the timestamp (jiffies) of
+ * when event A happened, then just before event B you call this function and
+ * pass the timestamp as the first argument, and X as the second argument.
+ */
+static inline void
+wait_remaining_ms_from_jiffies(unsigned long timestamp_jiffies, int to_wait_ms)
+{
+	unsigned long target_jiffies, tmp_jiffies;
+	unsigned int remaining_ms;
+
+	/*
+	 * Don't re-read the value of "jiffies" every time since it may change
+	 * behind our back and break the math.
+	 */
+	tmp_jiffies = jiffies;
+	target_jiffies = timestamp_jiffies +
+			 msecs_to_jiffies_timeout(to_wait_ms);
+
+	if (time_after(target_jiffies, tmp_jiffies)) {
+		remaining_ms = jiffies_to_msecs((long)target_jiffies -
+						(long)tmp_jiffies);
+		while (remaining_ms)
+			remaining_ms =
+				schedule_timeout_uninterruptible(remaining_ms);
+	}
 }
 
 #endif

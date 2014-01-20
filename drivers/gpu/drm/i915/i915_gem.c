@@ -1465,6 +1465,22 @@ out:
 	return ret;
 }
 
+void i915_gem_release_all_mmaps(struct drm_i915_private *dev_priv)
+{
+	struct i915_vma *vma;
+
+	/*
+	 * Only the global gtt is relevant for gtt memory mappings, so restrict
+	 * list traversal to objects bound into the global address space. Note
+	 * that the active list should be empty, but better safe than sorry.
+	 */
+	WARN_ON(!list_empty(&dev_priv->gtt.base.active_list));
+	list_for_each_entry(vma, &dev_priv->gtt.base.active_list, mm_list)
+		i915_gem_release_mmap(vma->obj);
+	list_for_each_entry(vma, &dev_priv->gtt.base.inactive_list, mm_list)
+		i915_gem_release_mmap(vma->obj);
+}
+
 /**
  * i915_gem_release_mmap - remove physical page mappings
  * @obj: obj in question
@@ -2314,7 +2330,7 @@ static void i915_set_reset_status(struct intel_ring_buffer *ring,
 
 	if (ring->hangcheck.action != HANGCHECK_WAIT &&
 	    i915_request_guilty(request, acthd, &inside)) {
-		DRM_ERROR("%s hung %s bo (0x%lx ctx %d) at 0x%x\n",
+		DRM_DEBUG("%s hung %s bo (0x%lx ctx %d) at 0x%x\n",
 			  ring->name,
 			  inside ? "inside" : "flushing",
 			  offset,
@@ -2372,16 +2388,6 @@ static void i915_gem_reset_ring_status(struct drm_i915_private *dev_priv,
 static void i915_gem_reset_ring_cleanup(struct drm_i915_private *dev_priv,
 					struct intel_ring_buffer *ring)
 {
-	while (!list_empty(&ring->request_list)) {
-		struct drm_i915_gem_request *request;
-
-		request = list_first_entry(&ring->request_list,
-					   struct drm_i915_gem_request,
-					   list);
-
-		i915_gem_free_request(request);
-	}
-
 	while (!list_empty(&ring->active_list)) {
 		struct drm_i915_gem_object *obj;
 
@@ -2390,6 +2396,23 @@ static void i915_gem_reset_ring_cleanup(struct drm_i915_private *dev_priv,
 				       ring_list);
 
 		i915_gem_object_move_to_inactive(obj);
+	}
+
+	/*
+	 * We must free the requests after all the corresponding objects have
+	 * been moved off active lists. Which is the same order as the normal
+	 * retire_requests function does. This is important if object hold
+	 * implicit references on things like e.g. ppgtt address spaces through
+	 * the request.
+	 */
+	while (!list_empty(&ring->request_list)) {
+		struct drm_i915_gem_request *request;
+
+		request = list_first_entry(&ring->request_list,
+					   struct drm_i915_gem_request,
+					   list);
+
+		i915_gem_free_request(request);
 	}
 }
 
