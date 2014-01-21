@@ -4064,9 +4064,8 @@ static int valleyview_calc_cdclk(struct drm_i915_private *dev_priv,
 	/* Looks like the 200MHz CDclk freq doesn't work on some configs */
 }
 
-static int intel_mode_max_pixclk(struct drm_i915_private *dev_priv,
-				 unsigned modeset_pipes,
-				 struct intel_crtc_config *pipe_config)
+/* compute the max pixel clock for new configuration */
+static int intel_mode_max_pixclk(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
 	struct intel_crtc *intel_crtc;
@@ -4074,31 +4073,26 @@ static int intel_mode_max_pixclk(struct drm_i915_private *dev_priv,
 
 	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list,
 			    base.head) {
-		if (modeset_pipes & (1 << intel_crtc->pipe))
+		if (intel_crtc->new_enabled)
 			max_pixclk = max(max_pixclk,
-					 pipe_config->adjusted_mode.crtc_clock);
-		else if (intel_crtc->base.enabled)
-			max_pixclk = max(max_pixclk,
-					 intel_crtc->config.adjusted_mode.crtc_clock);
+					 intel_crtc->new_config->adjusted_mode.crtc_clock);
 	}
 
 	return max_pixclk;
 }
 
 static void valleyview_modeset_global_pipes(struct drm_device *dev,
-					    unsigned *prepare_pipes,
-					    unsigned modeset_pipes,
-					    struct intel_crtc_config *pipe_config)
+					    unsigned *prepare_pipes)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc;
-	int max_pixclk = intel_mode_max_pixclk(dev_priv, modeset_pipes,
-					       pipe_config);
+	int max_pixclk = intel_mode_max_pixclk(dev_priv);
 	int cur_cdclk = valleyview_cur_cdclk(dev_priv);
 
 	if (valleyview_calc_cdclk(dev_priv, max_pixclk) == cur_cdclk)
 		return;
 
+	/* disable/enable all currently active pipes while we change cdclk */
 	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list,
 			    base.head)
 		if (intel_crtc->base.enabled)
@@ -4108,7 +4102,7 @@ static void valleyview_modeset_global_pipes(struct drm_device *dev,
 static void valleyview_modeset_global_resources(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int max_pixclk = intel_mode_max_pixclk(dev_priv, 0, NULL);
+	int max_pixclk = intel_mode_max_pixclk(dev_priv);
 	int cur_cdclk = valleyview_cur_cdclk(dev_priv);
 	int req_cdclk = valleyview_calc_cdclk(dev_priv, max_pixclk);
 
@@ -7831,6 +7825,8 @@ bool intel_get_load_detect_pipe(struct drm_connector *connector,
 	to_intel_connector(connector)->new_encoder = intel_encoder;
 
 	intel_crtc = to_intel_crtc(crtc);
+	intel_crtc->new_enabled = true;
+	intel_crtc->new_config = &intel_crtc->config;
 	old->dpms_mode = connector->dpms;
 	old->load_detect_temp = true;
 	old->release_fb = NULL;
@@ -7854,21 +7850,28 @@ bool intel_get_load_detect_pipe(struct drm_connector *connector,
 		DRM_DEBUG_KMS("reusing fbdev for load-detection framebuffer\n");
 	if (IS_ERR(fb)) {
 		DRM_DEBUG_KMS("failed to allocate framebuffer for load-detection\n");
-		mutex_unlock(&crtc->mutex);
-		return false;
+		goto fail;
 	}
 
 	if (intel_set_mode(crtc, mode, 0, 0, fb)) {
 		DRM_DEBUG_KMS("failed to set mode on load-detect pipe\n");
 		if (old->release_fb)
 			old->release_fb->funcs->destroy(old->release_fb);
-		mutex_unlock(&crtc->mutex);
-		return false;
+		goto fail;
 	}
 
 	/* let the connector get through one full cycle before testing */
 	intel_wait_for_vblank(dev, intel_crtc->pipe);
 	return true;
+
+ fail:
+	intel_crtc->new_enabled = crtc->enabled;
+	if (intel_crtc->new_enabled)
+		intel_crtc->new_config = &intel_crtc->config;
+	else
+		intel_crtc->new_config = NULL;
+	mutex_unlock(&crtc->mutex);
+	return false;
 }
 
 void intel_release_load_detect_pipe(struct drm_connector *connector,
@@ -7878,6 +7881,7 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 		intel_attached_encoder(connector);
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct drm_crtc *crtc = encoder->crtc;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s], [ENCODER:%d:%s]\n",
 		      connector->base.id, drm_get_connector_name(connector),
@@ -7886,6 +7890,8 @@ void intel_release_load_detect_pipe(struct drm_connector *connector,
 	if (old->load_detect_temp) {
 		to_intel_connector(connector)->new_encoder = NULL;
 		intel_encoder->new_crtc = NULL;
+		intel_crtc->new_enabled = false;
+		intel_crtc->new_config = NULL;
 		intel_set_mode(crtc, NULL, 0, 0, NULL);
 
 		if (old->release_fb) {
@@ -8750,6 +8756,7 @@ static bool intel_encoder_crtc_ok(struct drm_encoder *encoder,
  */
 static void intel_modeset_update_staged_output_state(struct drm_device *dev)
 {
+	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 
@@ -8764,6 +8771,16 @@ static void intel_modeset_update_staged_output_state(struct drm_device *dev)
 		encoder->new_crtc =
 			to_intel_crtc(encoder->base.crtc);
 	}
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list,
+			    base.head) {
+		crtc->new_enabled = crtc->base.enabled;
+
+		if (crtc->new_enabled)
+			crtc->new_config = &crtc->config;
+		else
+			crtc->new_config = NULL;
+	}
 }
 
 /**
@@ -8773,6 +8790,7 @@ static void intel_modeset_update_staged_output_state(struct drm_device *dev)
  */
 static void intel_modeset_commit_output_state(struct drm_device *dev)
 {
+	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 
@@ -8784,6 +8802,11 @@ static void intel_modeset_commit_output_state(struct drm_device *dev)
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list,
 			    base.head) {
 		encoder->base.crtc = &encoder->new_crtc->base;
+	}
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list,
+			    base.head) {
+		crtc->base.enabled = crtc->new_enabled;
 	}
 }
 
@@ -9111,29 +9134,22 @@ intel_modeset_affected_pipes(struct drm_crtc *crtc, unsigned *modeset_pipes,
 			*prepare_pipes |= 1 << encoder->new_crtc->pipe;
 	}
 
-	/* Check for any pipes that will be fully disabled ... */
+	/* Check for pipes that will be enabled/disabled ... */
 	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list,
 			    base.head) {
-		bool used = false;
-
-		/* Don't try to disable disabled crtcs. */
-		if (!intel_crtc->base.enabled)
+		if (intel_crtc->base.enabled == intel_crtc->new_enabled)
 			continue;
 
-		list_for_each_entry(encoder, &dev->mode_config.encoder_list,
-				    base.head) {
-			if (encoder->new_crtc == intel_crtc)
-				used = true;
-		}
-
-		if (!used)
+		if (!intel_crtc->new_enabled)
 			*disable_pipes |= 1 << intel_crtc->pipe;
+		else
+			*prepare_pipes |= 1 << intel_crtc->pipe;
 	}
 
 
 	/* set_mode is also used to update properties on life display pipes. */
 	intel_crtc = to_intel_crtc(crtc);
-	if (crtc->enabled)
+	if (intel_crtc->new_enabled)
 		*prepare_pipes |= 1 << intel_crtc->pipe;
 
 	/*
@@ -9192,10 +9208,13 @@ intel_modeset_update_state(struct drm_device *dev, unsigned prepare_pipes)
 
 	intel_modeset_commit_output_state(dev);
 
-	/* Update computed state. */
+	/* Double check state. */
 	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list,
 			    base.head) {
-		intel_crtc->base.enabled = intel_crtc_in_use(&intel_crtc->base);
+		WARN_ON(intel_crtc->base.enabled != intel_crtc_in_use(&intel_crtc->base));
+		WARN_ON(intel_crtc->new_config &&
+			intel_crtc->new_config != &intel_crtc->config);
+		WARN_ON(intel_crtc->base.enabled != !!intel_crtc->new_config);
 	}
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
@@ -9629,6 +9648,7 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 		}
 		intel_dump_pipe_config(to_intel_crtc(crtc), pipe_config,
 				       "[modeset]");
+		to_intel_crtc(crtc)->new_config = pipe_config;
 	}
 
 	/*
@@ -9639,8 +9659,7 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 	 * adjusted_mode bits in the crtc directly.
 	 */
 	if (IS_VALLEYVIEW(dev)) {
-		valleyview_modeset_global_pipes(dev, &prepare_pipes,
-						modeset_pipes, pipe_config);
+		valleyview_modeset_global_pipes(dev, &prepare_pipes);
 
 		/* may have added more to prepare_pipes than we should */
 		prepare_pipes &= ~disable_pipes;
@@ -9662,6 +9681,7 @@ static int __intel_set_mode(struct drm_crtc *crtc,
 		/* mode_set/enable/disable functions rely on a correct pipe
 		 * config. */
 		to_intel_crtc(crtc)->config = *pipe_config;
+		to_intel_crtc(crtc)->new_config = &to_intel_crtc(crtc)->config;
 	}
 
 	/* Only after disabling all output pipelines that will be changed can we
@@ -9737,15 +9757,23 @@ static void intel_set_config_free(struct intel_set_config *config)
 
 	kfree(config->save_connector_encoders);
 	kfree(config->save_encoder_crtcs);
+	kfree(config->save_crtc_enabled);
 	kfree(config);
 }
 
 static int intel_set_config_save_state(struct drm_device *dev,
 				       struct intel_set_config *config)
 {
+	struct drm_crtc *crtc;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	int count;
+
+	config->save_crtc_enabled =
+		kcalloc(dev->mode_config.num_crtc,
+			sizeof(bool), GFP_KERNEL);
+	if (!config->save_crtc_enabled)
+		return -ENOMEM;
 
 	config->save_encoder_crtcs =
 		kcalloc(dev->mode_config.num_encoder,
@@ -9764,6 +9792,11 @@ static int intel_set_config_save_state(struct drm_device *dev,
 	 * restored, not the drivers personal bookkeeping.
 	 */
 	count = 0;
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		config->save_crtc_enabled[count++] = crtc->enabled;
+	}
+
+	count = 0;
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		config->save_encoder_crtcs[count++] = encoder->crtc;
 	}
@@ -9779,9 +9812,20 @@ static int intel_set_config_save_state(struct drm_device *dev,
 static void intel_set_config_restore_state(struct drm_device *dev,
 					   struct intel_set_config *config)
 {
+	struct intel_crtc *crtc;
 	struct intel_encoder *encoder;
 	struct intel_connector *connector;
 	int count;
+
+	count = 0;
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, base.head) {
+		crtc->new_enabled = config->save_crtc_enabled[count++];
+
+		if (crtc->new_enabled)
+			crtc->new_config = &crtc->config;
+		else
+			crtc->new_config = NULL;
+	}
 
 	count = 0;
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, base.head) {
@@ -9867,9 +9911,9 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 				 struct drm_mode_set *set,
 				 struct intel_set_config *config)
 {
-	struct drm_crtc *new_crtc;
 	struct intel_connector *connector;
 	struct intel_encoder *encoder;
+	struct intel_crtc *crtc;
 	int ro;
 
 	/* The upper layers ensure that we either disable a crtc or have a list
@@ -9912,6 +9956,8 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 	/* Update crtc of enabled connectors. */
 	list_for_each_entry(connector, &dev->mode_config.connector_list,
 			    base.head) {
+		struct drm_crtc *new_crtc;
+
 		if (!connector->new_encoder)
 			continue;
 
@@ -9962,7 +10008,56 @@ intel_modeset_stage_output_state(struct drm_device *dev,
 	}
 	/* Now we've also updated encoder->new_crtc for all encoders. */
 
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list,
+			    base.head) {
+		crtc->new_enabled = false;
+
+		list_for_each_entry(encoder,
+				    &dev->mode_config.encoder_list,
+				    base.head) {
+			if (encoder->new_crtc == crtc) {
+				crtc->new_enabled = true;
+				break;
+			}
+		}
+
+		if (crtc->new_enabled != crtc->base.enabled) {
+			DRM_DEBUG_KMS("crtc %sabled, full mode switch\n",
+				      crtc->new_enabled ? "en" : "dis");
+			config->mode_changed = true;
+		}
+
+		if (crtc->new_enabled)
+			crtc->new_config = &crtc->config;
+		else
+			crtc->new_config = NULL;
+	}
+
 	return 0;
+}
+
+static void disable_crtc_nofb(struct intel_crtc *crtc)
+{
+	struct drm_device *dev = crtc->base.dev;
+	struct intel_encoder *encoder;
+	struct intel_connector *connector;
+
+	DRM_DEBUG_KMS("Trying to restore without FB -> disabling pipe %c\n",
+		      pipe_name(crtc->pipe));
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list, base.head) {
+		if (connector->new_encoder &&
+		    connector->new_encoder->new_crtc == crtc)
+			connector->new_encoder = NULL;
+	}
+
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, base.head) {
+		if (encoder->new_crtc == crtc)
+			encoder->new_crtc = NULL;
+	}
+
+	crtc->new_enabled = false;
+	crtc->new_config = NULL;
 }
 
 static int intel_crtc_set_config(struct drm_mode_set *set)
@@ -10040,6 +10135,15 @@ static int intel_crtc_set_config(struct drm_mode_set *set)
 			      set->crtc->base.id, ret);
 fail:
 		intel_set_config_restore_state(dev, config);
+
+		/*
+		 * HACK: if the pipe was on, but we didn't have a framebuffer,
+		 * force the pipe off to avoid oopsing in the modeset code
+		 * due to fb==NULL. This should only happen during boot since
+		 * we don't yet reconstruct the FB from the hardware state.
+		 */
+		if (to_intel_crtc(save_set.crtc)->new_enabled && !save_set.fb)
+			disable_crtc_nofb(to_intel_crtc(save_set.crtc));
 
 		/* Try to restore the config */
 		if (config->mode_changed &&

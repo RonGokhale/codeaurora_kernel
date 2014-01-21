@@ -909,6 +909,11 @@ static void i915_hotplug_work_func(struct work_struct *work)
 		drm_kms_helper_hotplug_event(dev);
 }
 
+static void intel_hpd_irq_uninstall(struct drm_i915_private *dev_priv)
+{
+	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+}
+
 static void ironlake_rps_change_irq_handler(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -1230,6 +1235,9 @@ static inline void intel_hpd_irq_handler(struct drm_device *dev,
 	if (!hotplug_trigger)
 		return;
 
+	DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x\n",
+			  hotplug_trigger);
+
 	spin_lock(&dev_priv->irq_lock);
 	for (i = 1; i < HPD_NUM_PINS; i++) {
 
@@ -1419,8 +1427,6 @@ static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 	int pipe;
 	u32 pipe_stats[I915_MAX_PIPES];
 
-	atomic_inc(&dev_priv->irq_received);
-
 	while (true) {
 		iir = I915_READ(VLV_IIR);
 		gt_iir = I915_READ(GTIIR);
@@ -1467,9 +1473,6 @@ static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 		if (iir & I915_DISPLAY_PORT_INTERRUPT) {
 			u32 hotplug_status = I915_READ(PORT_HOTPLUG_STAT);
 			u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_I915;
-
-			DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x\n",
-					 hotplug_status);
 
 			intel_hpd_irq_handler(dev, hotplug_trigger, hpd_status_i915);
 
@@ -1732,8 +1735,6 @@ static irqreturn_t ironlake_irq_handler(int irq, void *arg)
 	u32 de_iir, gt_iir, de_ier, sde_ier = 0;
 	irqreturn_t ret = IRQ_NONE;
 
-	atomic_inc(&dev_priv->irq_received);
-
 	/* We get interrupts on unclaimed registers, so check for this before we
 	 * do any I915_{READ,WRITE}. */
 	intel_uncore_check_errors(dev);
@@ -1801,8 +1802,6 @@ static irqreturn_t gen8_irq_handler(int irq, void *arg)
 	irqreturn_t ret = IRQ_NONE;
 	uint32_t tmp = 0;
 	enum pipe pipe;
-
-	atomic_inc(&dev_priv->irq_received);
 
 	master_ctl = I915_READ(GEN8_MASTER_IRQ);
 	master_ctl &= ~GEN8_MASTER_IRQ_CONTROL;
@@ -2626,8 +2625,6 @@ static void ironlake_irq_preinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 
-	atomic_set(&dev_priv->irq_received, 0);
-
 	I915_WRITE(HWSTAM, 0xeffe);
 
 	I915_WRITE(DEIMR, 0xffffffff);
@@ -2643,8 +2640,6 @@ static void valleyview_irq_preinstall(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	int pipe;
-
-	atomic_set(&dev_priv->irq_received, 0);
 
 	/* VLV magic */
 	I915_WRITE(VLV_IMR, 0);
@@ -2674,8 +2669,6 @@ static void gen8_irq_preinstall(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int pipe;
-
-	atomic_set(&dev_priv->irq_received, 0);
 
 	I915_WRITE(GEN8_MASTER_IRQ, 0);
 	POSTING_READ(GEN8_MASTER_IRQ);
@@ -3001,8 +2994,6 @@ static void gen8_irq_uninstall(struct drm_device *dev)
 	if (!dev_priv)
 		return;
 
-	atomic_set(&dev_priv->irq_received, 0);
-
 	I915_WRITE(GEN8_MASTER_IRQ, 0);
 
 #define GEN8_IRQ_FINI_NDX(type, which) do { \
@@ -3043,7 +3034,7 @@ static void valleyview_irq_uninstall(struct drm_device *dev)
 	if (!dev_priv)
 		return;
 
-	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+	intel_hpd_irq_uninstall(dev_priv);
 
 	for_each_pipe(pipe)
 		I915_WRITE(PIPESTAT(pipe), 0xffff);
@@ -3066,7 +3057,7 @@ static void ironlake_irq_uninstall(struct drm_device *dev)
 	if (!dev_priv)
 		return;
 
-	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+	intel_hpd_irq_uninstall(dev_priv);
 
 	I915_WRITE(HWSTAM, 0xffffffff);
 
@@ -3094,8 +3085,6 @@ static void i8xx_irq_preinstall(struct drm_device * dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	int pipe;
-
-	atomic_set(&dev_priv->irq_received, 0);
 
 	for_each_pipe(pipe)
 		I915_WRITE(PIPESTAT(pipe), 0);
@@ -3181,8 +3170,6 @@ static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
 		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
 
-	atomic_inc(&dev_priv->irq_received);
-
 	iir = I915_READ16(IIR);
 	if (iir == 0)
 		return IRQ_NONE;
@@ -3259,8 +3246,6 @@ static void i915_irq_preinstall(struct drm_device * dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	int pipe;
-
-	atomic_set(&dev_priv->irq_received, 0);
 
 	if (I915_HAS_HOTPLUG(dev)) {
 		I915_WRITE(PORT_HOTPLUG_EN, 0);
@@ -3367,8 +3352,6 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
 	int pipe, ret = IRQ_NONE;
 
-	atomic_inc(&dev_priv->irq_received);
-
 	iir = I915_READ(IIR);
 	do {
 		bool irq_received = (iir & ~flip_mask) != 0;
@@ -3406,9 +3389,6 @@ static irqreturn_t i915_irq_handler(int irq, void *arg)
 		    (iir & I915_DISPLAY_PORT_INTERRUPT)) {
 			u32 hotplug_status = I915_READ(PORT_HOTPLUG_STAT);
 			u32 hotplug_trigger = hotplug_status & HOTPLUG_INT_STATUS_I915;
-
-			DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x\n",
-				  hotplug_status);
 
 			intel_hpd_irq_handler(dev, hotplug_trigger, hpd_status_i915);
 
@@ -3470,7 +3450,7 @@ static void i915_irq_uninstall(struct drm_device * dev)
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	int pipe;
 
-	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+	intel_hpd_irq_uninstall(dev_priv);
 
 	if (I915_HAS_HOTPLUG(dev)) {
 		I915_WRITE(PORT_HOTPLUG_EN, 0);
@@ -3493,8 +3473,6 @@ static void i965_irq_preinstall(struct drm_device * dev)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	int pipe;
-
-	atomic_set(&dev_priv->irq_received, 0);
 
 	I915_WRITE(PORT_HOTPLUG_EN, 0);
 	I915_WRITE(PORT_HOTPLUG_STAT, I915_READ(PORT_HOTPLUG_STAT));
@@ -3604,20 +3582,16 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 	u32 iir, new_iir;
 	u32 pipe_stats[I915_MAX_PIPES];
 	unsigned long irqflags;
-	int irq_received;
 	int ret = IRQ_NONE, pipe;
 	u32 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
 		I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT;
 
-	atomic_inc(&dev_priv->irq_received);
-
 	iir = I915_READ(IIR);
 
 	for (;;) {
+		bool irq_received = (iir & ~flip_mask) != 0;
 		bool blc_event = false;
-
-		irq_received = (iir & ~flip_mask) != 0;
 
 		/* Can't rely on pipestat interrupt bit in iir as it might
 		 * have been cleared after the pipestat interrupt was received.
@@ -3640,7 +3614,7 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 					DRM_DEBUG_DRIVER("pipe %c underrun\n",
 							 pipe_name(pipe));
 				I915_WRITE(reg, pipe_stats[pipe]);
-				irq_received = 1;
+				irq_received = true;
 			}
 		}
 		spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
@@ -3656,9 +3630,6 @@ static irqreturn_t i965_irq_handler(int irq, void *arg)
 			u32 hotplug_trigger = hotplug_status & (IS_G4X(dev) ?
 								  HOTPLUG_INT_STATUS_G4X :
 								  HOTPLUG_INT_STATUS_I915);
-
-			DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x\n",
-				  hotplug_status);
 
 			intel_hpd_irq_handler(dev, hotplug_trigger,
 					      IS_G4X(dev) ? hpd_status_g4x : hpd_status_i915);
@@ -3729,7 +3700,7 @@ static void i965_irq_uninstall(struct drm_device * dev)
 	if (!dev_priv)
 		return;
 
-	del_timer_sync(&dev_priv->hotplug_reenable_timer);
+	intel_hpd_irq_uninstall(dev_priv);
 
 	I915_WRITE(PORT_HOTPLUG_EN, 0);
 	I915_WRITE(PORT_HOTPLUG_STAT, I915_READ(PORT_HOTPLUG_STAT));
@@ -3746,7 +3717,7 @@ static void i965_irq_uninstall(struct drm_device * dev)
 	I915_WRITE(IIR, I915_READ(IIR));
 }
 
-static void i915_reenable_hotplug_timer_func(unsigned long data)
+static void intel_hpd_irq_reenable(unsigned long data)
 {
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *)data;
 	struct drm_device *dev = dev_priv->dev;
@@ -3793,7 +3764,7 @@ void intel_irq_init(struct drm_device *dev)
 	setup_timer(&dev_priv->gpu_error.hangcheck_timer,
 		    i915_hangcheck_elapsed,
 		    (unsigned long) dev);
-	setup_timer(&dev_priv->hotplug_reenable_timer, i915_reenable_hotplug_timer_func,
+	setup_timer(&dev_priv->hotplug_reenable_timer, intel_hpd_irq_reenable,
 		    (unsigned long) dev_priv);
 
 	pm_qos_add_request(&dev_priv->pm_qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
