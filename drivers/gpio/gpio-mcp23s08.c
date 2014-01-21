@@ -425,7 +425,7 @@ static int mcp23s08_probe_one(struct mcp23s08 *mcp, struct device *dev,
 	}
 
 	mcp->chip.base = base;
-	mcp->chip.can_sleep = 1;
+	mcp->chip.can_sleep = true;
 	mcp->chip.dev = dev;
 	mcp->chip.owner = THIS_MODULE;
 
@@ -640,7 +640,7 @@ static int mcp23s08_probe(struct spi_device *spi)
 
 	match = of_match_device(of_match_ptr(mcp23s08_spi_of_match), &spi->dev);
 	if (match) {
-		type = (int)match->data;
+		type = (int)(uintptr_t)match->data;
 		status = of_property_read_u32(spi->dev.of_node,
 			    "microchip,spi-present-mask", &spi_present_mask);
 		if (status) {
