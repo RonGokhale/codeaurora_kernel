@@ -44,9 +44,6 @@ MODULE_PARM_DESC(modeset,
 		"Use kernel modesetting [KMS] (0=DRM_I915_KMS from .config, "
 		"1=on, -1=force vga console preference [default])");
 
-unsigned int i915_fbpercrtc __always_unused = 0;
-module_param_named(fbpercrtc, i915_fbpercrtc, int, 0400);
-
 int i915_panel_ignore_lid __read_mostly = 1;
 module_param_named(panel_ignore_lid, i915_panel_ignore_lid, int, 0600);
 MODULE_PARM_DESC(panel_ignore_lid,
@@ -59,7 +56,7 @@ MODULE_PARM_DESC(powersave,
 		"Enable powersavings, fbc, downclocking, etc. (default: true)");
 
 int i915_semaphores __read_mostly = -1;
-module_param_named(semaphores, i915_semaphores, int, 0600);
+module_param_named(semaphores, i915_semaphores, int, 0400);
 MODULE_PARM_DESC(semaphores,
 		"Use semaphores for inter-ring sync (default: -1 (use per-chip defaults))");
 
@@ -341,7 +338,6 @@ static const struct intel_device_info intel_haswell_m_info = {
 };
 
 static const struct intel_device_info intel_broadwell_d_info = {
-	.is_preliminary = 1,
 	.gen = 8, .num_pipes = 3,
 	.need_gfx_hws = 1, .has_hotplug = 1,
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
@@ -350,7 +346,6 @@ static const struct intel_device_info intel_broadwell_d_info = {
 };
 
 static const struct intel_device_info intel_broadwell_m_info = {
-	.is_preliminary = 1,
 	.gen = 8, .is_mobile = 1, .num_pipes = 3,
 	.need_gfx_hws = 1, .has_hotplug = 1,
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
@@ -645,6 +640,7 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 	/* KMS EnterVT equivalent */
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		intel_init_pch_refclk(dev);
+		drm_mode_config_reset(dev);
 
 		mutex_lock(&dev->struct_mutex);
 
@@ -657,7 +653,6 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 		intel_modeset_init_hw(dev);
 
 		drm_modeset_lock_all(dev);
-		drm_mode_config_reset(dev);
 		intel_modeset_setup_hw_state(dev, true);
 		drm_modeset_unlock_all(dev);
 
@@ -924,7 +919,15 @@ static int i915_runtime_suspend(struct device *device)
 
 	del_timer_sync(&dev_priv->gpu_error.hangcheck_timer);
 	dev_priv->pm.suspended = true;
-	intel_opregion_notify_adapter(dev, PCI_D3cold);
+
+	/*
+	 * current versions of firmware which depend on this opregion
+	 * notification have repurposed the D1 definition to mean
+	 * "runtime suspended" vs. what you would normally expect (D3)
+	 * to distinguish it from notifications that might be sent
+	 * via the suspend path.
+	 */
+	intel_opregion_notify_adapter(dev, PCI_D1);
 
 	return 0;
 }

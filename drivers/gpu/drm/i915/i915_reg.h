@@ -73,7 +73,8 @@
 #define   I915_GC_RENDER_CLOCK_166_MHZ	(0 << 0)
 #define   I915_GC_RENDER_CLOCK_200_MHZ	(1 << 0)
 #define   I915_GC_RENDER_CLOCK_333_MHZ	(4 << 0)
-#define LBB	0xf4
+#define PCI_LBPC 0xf4 /* legacy/combination backlight modes, also called LBB */
+
 
 /* Graphics reset regs */
 #define I965_GDRST 0xc0 /* PCI config register */
@@ -2138,7 +2139,8 @@
 #define   DP_AUX_CHANNEL_D_INT_STATUS_G4X	(1 << 6)
 #define   DP_AUX_CHANNEL_C_INT_STATUS_G4X	(1 << 5)
 #define   DP_AUX_CHANNEL_B_INT_STATUS_G4X	(1 << 4)
-#define   DP_AUX_CHANNEL_MASK_INT_STATUS_G4X	(1 << 4)
+#define   DP_AUX_CHANNEL_MASK_INT_STATUS_G4X	(7 << 4)
+
 /* SDVO is different across gen3/4 */
 #define   SDVOC_HOTPLUG_INT_STATUS_G4X		(1 << 3)
 #define   SDVOB_HOTPLUG_INT_STATUS_G4X		(1 << 2)
