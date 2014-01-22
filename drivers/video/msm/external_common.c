@@ -2450,7 +2450,7 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 		DEV_INFO("%s: selecting resolution from fastboot param %d\n",
 			__func__, hdmi_prim_resolution);
 	} else if (userformat) {
-		format = userformat - 1;
+		format = userformat;
 		DEV_INFO("%s: selecting resolution from reserved format %d\n",
 			__func__, userformat);
 	} else if (mfd->var_vic) {
