@@ -562,11 +562,16 @@ enum {
 	metadata_op_none,
 	metadata_op_base_blend,
 	metadata_op_frame_rate,
+	metadata_op_panel_tune,
 	metadata_op_max
 };
 
 struct mdp_blend_cfg {
 	uint32_t is_premultiplied;
+};
+
+struct panel_param_cfg {
+	int32_t h_back_porch;
 };
 
 struct msmfb_metadata {
@@ -575,6 +580,7 @@ struct msmfb_metadata {
 	union {
 		struct mdp_blend_cfg blend_cfg;
 		uint32_t panel_frame_rate;
+		struct panel_param_cfg panel_cfg;
 	} data;
 };
 

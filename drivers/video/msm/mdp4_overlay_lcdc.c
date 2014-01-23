@@ -63,6 +63,7 @@ static struct vsycn_ctrl {
 	struct msm_fb_data_type *mfd;
 	struct mdp4_overlay_pipe *base_pipe;
 	struct vsync_update vlist[2];
+	struct panel_param_cfg lvds_panel_cfg;
 	int vsync_irq_enabled;
 	ktime_t vsync_time;
 	wait_queue_head_t wait_queue;
@@ -647,7 +648,13 @@ int mdp4_lcdc_on(struct platform_device *pdev)
 	/*
 	 * LCDC timing setting
 	 */
-	h_back_porch = var->left_margin;
+	if (vctrl->lvds_panel_cfg.h_back_porch) {
+		h_back_porch = (148 + vctrl->lvds_panel_cfg.h_back_porch)/2;
+		vctrl->lvds_panel_cfg.h_back_porch = 0;
+	} else {
+		h_back_porch = var->left_margin;
+	}
+
 	h_front_porch = var->right_margin;
 	v_back_porch = var->upper_margin;
 	v_front_porch = var->lower_margin;
@@ -1138,3 +1145,13 @@ void mdp4_lcdc_set_avparams(struct mdp4_overlay_pipe *pipe, int id)
         vctrl->vg2fd = id;
 }
 
+int mdp4_update_panel_tune(struct msm_fb_data_type *mfd,
+				struct panel_param_cfg *panel_param_cfg)
+{
+	int ret = 0;
+	struct vsycn_ctrl *vctrl;
+	vctrl = &vsync_ctrl_db[0];
+
+	vctrl->lvds_panel_cfg.h_back_porch = panel_param_cfg->h_back_porch;
+	return ret;
+}
