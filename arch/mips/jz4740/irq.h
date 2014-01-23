@@ -15,7 +15,7 @@
 #ifndef __MIPS_JZ4740_IRQ_H__
 #define __MIPS_JZ4740_IRQ_H__
 
-#include <linux/irq.h>
+struct irq_data;
 
 extern void jz4740_irq_suspend(struct irq_data *data);
 extern void jz4740_irq_resume(struct irq_data *data);
