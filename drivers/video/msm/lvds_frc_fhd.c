@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -99,6 +99,47 @@ panel_off_exit:
 	return ret;
 }
 
+static ssize_t lvds_frc_fhd_pll_update(struct device *dev,
+				       struct device_attribute *attr,
+				       const char *buf, size_t count)
+{
+	ssize_t ret = strnlen(buf, PAGE_SIZE);
+	struct msm_fb_data_type *mfd = platform_get_drvdata(frc_fbpdev);
+	uint8 i;
+
+	mfd->panel_info.lvds.update_ctrl_reg = true;
+
+	for (i = 0; i < 8; i++) {
+		pr_info("%s, buf[%d] = 0x%x\n", __func__, i, *(buf + (i * 4)));
+		mfd->panel_info.lvds.ctrl_reg[i] = *(buf + (i * 4));
+	}
+
+	return ret;
+}
+
+static DEVICE_ATTR(lvds_pll_update, S_IWOTH, NULL, lvds_frc_fhd_pll_update);
+static struct attribute *lvds_frc_fhd_attrs[] = {
+	&dev_attr_lvds_pll_update.attr,
+	NULL,
+};
+
+static struct attribute_group lvds_frc_fhd_attr_group = {
+	.attrs = lvds_frc_fhd_attrs,
+};
+
+static int lvds_frc_fhd_create_sysfs(struct platform_device *pdev)
+{
+	int rc;
+	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
+
+	rc = sysfs_create_group(&mfd->fbi->dev->kobj, &lvds_frc_fhd_attr_group);
+	if (rc)
+		pr_err("%s: sysfs group creation failed, rc=%d\n",
+			__func__, rc);
+
+	return rc;
+}
+
 static int __devinit lvds_frc_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -121,6 +162,8 @@ static int __devinit lvds_frc_probe(struct platform_device *pdev)
 		rc = -ENODEV;
 		goto probe_exit;
 	}
+
+	lvds_frc_fhd_create_sysfs(frc_fbpdev);
 
 probe_exit:
 	return rc;
