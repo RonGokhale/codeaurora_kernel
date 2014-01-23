@@ -1314,16 +1314,31 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 
 		memset(open.dev_channel_mapping, 0, 8);
 
-		if (channel_mode == 1)	{
+		if ((channel_mode > 2)	&&
+			multi_ch_map.set_channel_map == true) {
+			memcpy(open.dev_channel_mapping,
+				multi_ch_map.channel_mapping,
+				PCM_FORMAT_MAX_NUM_CHANNEL);
+		} else if (channel_mode == 1) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 2) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+		} else if (channel_mode == 3) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 4) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-			open.dev_channel_mapping[2] = PCM_CHANNEL_RB;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[3] = PCM_CHANNEL_RB;
+		} else if (channel_mode == 5) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
 			open.dev_channel_mapping[3] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[4] = PCM_CHANNEL_RB;
 		} else if (channel_mode == 6) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
@@ -1331,6 +1346,14 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 			open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
 			open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
 			open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+		} else if (channel_mode == 7) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
+			open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
+			open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+			open.dev_channel_mapping[6] = PCM_CHANNEL_CS;
 		} else if (channel_mode == 8) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
@@ -1345,11 +1368,6 @@ int adm_multi_ch_copp_open(int port_id, int path, int rate, int channel_mode,
 					channel_mode);
 			return -EINVAL;
 		}
-                if ((channel_mode > 2) &&
-			multi_ch_map.set_channel_map && path == ADM_PATH_PLAYBACK)
-			memcpy(open.dev_channel_mapping,
-				multi_ch_map.channel_mapping,
-				PCM_FORMAT_MAX_NUM_CHANNEL);
 
 		open.hdr.src_svc = APR_SVC_ADM;
 		open.hdr.src_domain = APR_DOMAIN_APPS;
@@ -1469,16 +1487,31 @@ int adm_multi_ch_copp_open_v2(int port_id, int path, int rate, int channel_mode,
 
 		memset(open.dev_channel_mapping, 0, 8);
 
-		if (channel_mode == 1)	{
+		if ((channel_mode > 2)	&&
+			multi_ch_map.set_channel_map == true) {
+			memcpy(open.dev_channel_mapping,
+				multi_ch_map.channel_mapping,
+				PCM_FORMAT_MAX_NUM_CHANNEL);
+		} else if (channel_mode == 1) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 2) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+		} else if (channel_mode == 3) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
 		} else if (channel_mode == 4) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-			open.dev_channel_mapping[2] = PCM_CHANNEL_RB;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[3] = PCM_CHANNEL_RB;
+		} else if (channel_mode == 5) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
 			open.dev_channel_mapping[3] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[4] = PCM_CHANNEL_RB;
 		} else if (channel_mode == 6) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
@@ -1486,6 +1519,14 @@ int adm_multi_ch_copp_open_v2(int port_id, int path, int rate, int channel_mode,
 			open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
 			open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
 			open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+		} else if (channel_mode == 7) {
+			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
+			open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
+			open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
+			open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+			open.dev_channel_mapping[6] = PCM_CHANNEL_CS;
 		} else if (channel_mode == 8) {
 			open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
 			open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
@@ -1583,148 +1624,171 @@ fail_cmd:
 int adm_multi_ch_copp_open_v3(int port_id, int path, int rate, int channel_mode,
                                int topology, int perfmode, uint16_t bit_width)
 {
-       struct adm_multi_ch_copp_open_command_v2 open;
-       int ret = 0;
-       int index;
+	struct adm_multi_ch_copp_open_command_v2 open;
+	int ret = 0;
+	int index;
 
-       pr_debug("%s: port %d path:%d rate:%d channel :%d\n", __func__,
-                               port_id, path, rate, channel_mode);
+	pr_debug("%s: port %d path:%d rate:%d channel :%d\n", __func__,
+				port_id, path, rate, channel_mode);
 
-       port_id = afe_convert_virtual_to_portid(port_id);
+	port_id = afe_convert_virtual_to_portid(port_id);
 
-       if (afe_validate_port(port_id) < 0) {
-               pr_err("%s port idi[%d] is invalid\n", __func__, port_id);
-               return -ENODEV;
-       }
+	if (afe_validate_port(port_id) < 0) {
+		pr_err("%s port idi[%d] is invalid\n", __func__, port_id);
+		return -ENODEV;
+	}
 
-       index = afe_get_port_index(port_id);
-       pr_debug("%s: Port ID %d, index %d\n", __func__, port_id, index);
+	index = afe_get_port_index(port_id);
+	pr_debug("%s: Port ID %d, index %d\n", __func__, port_id, index);
 
-       if (this_adm.apr == NULL) {
-               this_adm.apr = apr_register("ADSP", "ADM", adm_callback,
-                                               0xFFFFFFFF, &this_adm);
-               if (this_adm.apr == NULL) {
-                       pr_err("%s: Unable to register ADM\n", __func__);
-                       ret = -ENODEV;
-                       return ret;
-               }
-               rtac_set_adm_handle(this_adm.apr);
-       }
+	if (this_adm.apr == NULL) {
+		this_adm.apr = apr_register("ADSP", "ADM", adm_callback,
+						0xFFFFFFFF, &this_adm);
+		if (this_adm.apr == NULL) {
+			pr_err("%s: Unable to register ADM\n", __func__);
+			ret = -ENODEV;
+			return ret;
+		}
+		rtac_set_adm_handle(this_adm.apr);
+	}
 
-       /* Create a COPP if port id are not enabled */
-       if (atomic_read(&this_adm.copp_cnt[index]) == 0) {
+	/* Create a COPP if port id are not enabled */
+	if (atomic_read(&this_adm.copp_cnt[index]) == 0) {
 
-               open.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-                               APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
+		open.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+				APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
 
-               open.hdr.pkt_size =
-                       sizeof(struct adm_multi_ch_copp_open_command_v2);
+		open.hdr.pkt_size =
+			sizeof(struct adm_multi_ch_copp_open_command_v2);
 
-               open.hdr.opcode = ADM_CMD_MULTI_CHANNEL_COPP_OPEN_V3;
-               open.hdr.src_svc = APR_SVC_ADM;
-               open.hdr.src_domain = APR_DOMAIN_APPS;
-               open.hdr.src_port = port_id;
-               open.hdr.dest_svc = APR_SVC_ADM;
-               open.hdr.dest_domain = APR_DOMAIN_ADSP;
-               open.hdr.dest_port = port_id;
-               open.hdr.token = port_id;
-               open.mode = path;
-               open.endpoint_id1 = port_id;
+		open.hdr.opcode = ADM_CMD_MULTI_CHANNEL_COPP_OPEN_V3;
+		open.hdr.src_svc = APR_SVC_ADM;
+		open.hdr.src_domain = APR_DOMAIN_APPS;
+		open.hdr.src_port = port_id;
+		open.hdr.dest_svc = APR_SVC_ADM;
+		open.hdr.dest_domain = APR_DOMAIN_ADSP;
+		open.hdr.dest_port = port_id;
+		open.hdr.token = port_id;
+		open.mode = path;
+		open.endpoint_id1 = port_id;
 
-               if (this_adm.ec_ref_rx == 0) {
-                       open.endpoint_id2 = 0xFFFF;
-               } else if (this_adm.ec_ref_rx && (path != 1)) {
-                               open.endpoint_id2 = this_adm.ec_ref_rx;
-                               this_adm.ec_ref_rx = 0;
-               }
-               open.topology_id = get_adm_tx_topology();
-               open.channel_config = channel_mode & 0x00FF;
-               open.bit_width = bit_width;
-               open.rate  = rate;
+		if (this_adm.ec_ref_rx == 0) {
+			open.endpoint_id2 = 0xFFFF;
+		} else if (this_adm.ec_ref_rx && (path != 1)) {
+				open.endpoint_id2 = this_adm.ec_ref_rx;
+				this_adm.ec_ref_rx = 0;
+		}
+		open.topology_id = get_adm_tx_topology();
+		open.channel_config = channel_mode & 0x00FF;
+		open.bit_width = bit_width;
+		open.rate  = rate;
 
-               memset(open.dev_channel_mapping, 0, 8);
-               if (path == ADM_PATH_COMPRESSED_RX) {
-                       open.flags = 0;
-                       open.topology_id =
-                               COMPRESSED_PASSTHROUGH_DEFAULT_TOPOLOGY;
-                       open.bit_width = 16;
-               } else if (path == ADM_PATH_PLAYBACK) {
-                       open.flags = ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT;
-                       if (channel_mode == 1)  {
-                               open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
-                       } else if (channel_mode == 2) {
-                               open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
-                               open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-                       } else if (channel_mode == 4) {
-                               open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
-                               open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-                               open.dev_channel_mapping[2] = PCM_CHANNEL_RB;
-                               open.dev_channel_mapping[3] = PCM_CHANNEL_LB;
-                       } else if (channel_mode == 6) {
-                               open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
-                               open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-                               open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
-                               open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
-                               open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
-                               open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
-                       } else if (channel_mode == 8) {
-                               open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
-                               open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
-                               open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
-                               open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
-                               open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
-                               open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
-                               open.dev_channel_mapping[6] = PCM_CHANNEL_FLC;
-                               open.dev_channel_mapping[7] = PCM_CHANNEL_FRC;
-                       } else {
-                               pr_err("%s invalid num_chan %d\n", __func__,
-                                               channel_mode);
-                               return -EINVAL;
-                       }
-               } else {
-                       open.flags = ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT;
-                       if ((open.topology_id ==
-                               VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
-                           (open.topology_id ==
-                               VPM_TX_DM_FLUENCE_COPP_TOPOLOGY))
-                               rate = 16000;
-               }
+		memset(open.dev_channel_mapping, 0, 8);
+		if (path == ADM_PATH_COMPRESSED_RX) {
+			open.flags = 0;
+			open.topology_id =
+				COMPRESSED_PASSTHROUGH_DEFAULT_TOPOLOGY;
+			open.bit_width = 16;
+		} else if (path == ADM_PATH_PLAYBACK) {
+			open.flags = ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT;
+			if ((channel_mode > 2)	&&
+				multi_ch_map.set_channel_map == true) {
+				memcpy(open.dev_channel_mapping,
+					multi_ch_map.channel_mapping,
+					PCM_FORMAT_MAX_NUM_CHANNEL);
+			} else if (channel_mode == 1) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FC;
+			} else if (channel_mode == 2) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+			} else if (channel_mode == 3) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
+			} else if (channel_mode == 4) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_LB;
+				open.dev_channel_mapping[3] = PCM_CHANNEL_RB;
+			} else if (channel_mode == 5) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_FC;
+				open.dev_channel_mapping[3] = PCM_CHANNEL_LB;
+				open.dev_channel_mapping[4] = PCM_CHANNEL_RB;
+			} else if (channel_mode == 6) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
+				open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
+				open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
+				open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+			} else if (channel_mode == 7) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
+				open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
+				open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
+				open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+				open.dev_channel_mapping[6] = PCM_CHANNEL_CS;
+			} else if (channel_mode == 8) {
+				open.dev_channel_mapping[0] = PCM_CHANNEL_FL;
+				open.dev_channel_mapping[1] = PCM_CHANNEL_FR;
+				open.dev_channel_mapping[2] = PCM_CHANNEL_LFE;
+				open.dev_channel_mapping[3] = PCM_CHANNEL_FC;
+				open.dev_channel_mapping[4] = PCM_CHANNEL_LB;
+				open.dev_channel_mapping[5] = PCM_CHANNEL_RB;
+				open.dev_channel_mapping[6] = PCM_CHANNEL_FLC;
+				open.dev_channel_mapping[7] = PCM_CHANNEL_FRC;
+			} else {
+				pr_err("%s invalid num_chan %d\n", __func__,
+						channel_mode);
+				return -EINVAL;
+			}
+		} else {
+			open.flags = ADM_MULTI_CH_COPP_OPEN_PERF_MODE_BIT;
+			if ((open.topology_id ==
+				VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
+			    (open.topology_id ==
+				VPM_TX_DM_FLUENCE_COPP_TOPOLOGY))
+				rate = 16000;
+		}
 
 
-               pr_debug("%s open.endpoint_id1:%d open.endpoint_id2:%d",
-                       __func__, open.endpoint_id1, open.endpoint_id2);
+		pr_debug("%s open.endpoint_id1:%d open.endpoint_id2:%d",
+			__func__, open.endpoint_id1, open.endpoint_id2);
 
-               if (open.topology_id  == 0)
-                       open.topology_id = topology;
+		if (open.topology_id  == 0)
+			open.topology_id = topology;
 
-               pr_debug("%s: channel_config=%d port_id=%d\n",
-                       __func__, open.channel_config,
-                       open.endpoint_id1);
-               pr_debug("%s: rate=%d topology_id=0x%X\n",
-                       __func__, open.rate, open.topology_id);
+		pr_debug("%s: channel_config=%d port_id=%d\n",
+			__func__, open.channel_config,
+			open.endpoint_id1);
+		pr_debug("%s: rate=%d topology_id=0x%X\n",
+			__func__, open.rate, open.topology_id);
 
-               atomic_set(&this_adm.cmd_open_state[index], 0);
+		atomic_set(&this_adm.cmd_open_state[index], 0);
 
-               ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
-               if (ret < 0) {
-                       pr_err("%s:ADM enable for port %d failed\n",
-                                               __func__, port_id);
-                       ret = -EINVAL;
-                       goto fail_cmd;
-               }
-               /* Wait for the callback with copp id */
-               ret = wait_event_timeout(this_adm.wait,
-                       atomic_read(&this_adm.cmd_open_state[index]),
-                       msecs_to_jiffies(TIMEOUT_MS));
-               if (!ret) {
-                       pr_err("%s ADM open failed for port %d\n", __func__,
-                                                               port_id);
-                       ret = -EINVAL;
-                       goto fail_cmd;
-               }
-       }
-       atomic_inc(&this_adm.copp_cnt[index]);
-       return 0;
+		ret = apr_send_pkt(this_adm.apr, (uint32_t *)&open);
+		if (ret < 0) {
+			pr_err("%s:ADM enable for port %d failed\n",
+						__func__, port_id);
+			ret = -EINVAL;
+			goto fail_cmd;
+		}
+		/* Wait for the callback with copp id */
+		ret = wait_event_timeout(this_adm.wait,
+			atomic_read(&this_adm.cmd_open_state[index]),
+			msecs_to_jiffies(TIMEOUT_MS));
+		if (!ret) {
+			pr_err("%s ADM open failed for port %d\n", __func__,
+								port_id);
+			ret = -EINVAL;
+			goto fail_cmd;
+		}
+	}
+	atomic_inc(&this_adm.copp_cnt[index]);
+	return 0;
 
 fail_cmd:
 
