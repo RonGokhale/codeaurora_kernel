@@ -652,6 +652,20 @@ static ssize_t mdp_stat_read(
 	bp += len;
 	dlen -= len;
 
+	len = snprintf(bp, dlen, "frame_repeat_cnt: %08lu\n\n",
+					mdp4_stat.frame_repeat_cnt);
+	bp += len;
+	dlen -= len;
+
+	len = snprintf(bp, dlen, "frame_cnt_from_last_drop: %08lu\n\n",
+					mdp4_stat.frame_cnt_from_last_drop);
+	bp += len;
+	dlen -= len;
+
+	len = snprintf(bp, dlen, "frame_cnt: %08lu\n\n", mdp4_stat.frame_cnt);
+	bp += len;
+	dlen -= len;
+
 	tot = (uint32)bp - (uint32)debug_buf;
 	*bp = 0;
 	tot++;
@@ -671,6 +685,47 @@ static const struct file_operations mdp_stat_fops = {
 	.release = mdp_stat_release,
 	.read = mdp_stat_read,
 	.write = mdp_stat_write,
+};
+
+static int mdp_frame_cnt_reset_open(struct inode *inode, struct file *file)
+{
+	/* non-seekable */
+	file->f_mode &= ~(FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
+	return 0;
+}
+
+static int mdp_frame_cnt_reset_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static ssize_t mdp_frame_cnt_reset_write(
+	struct file *file,
+	const char __user *buff,
+	size_t count,
+	loff_t *ppos)
+{
+	mdp4_stat.frame_repeat_cnt = 0;
+	mdp4_stat.frame_cnt_from_last_drop = 0;
+	mdp4_stat.frame_cnt = 0;
+
+	return count;
+}
+
+static ssize_t mdp_frame_cnt_reset_read(
+	struct file *file,
+	char __user *buff,
+	size_t count,
+	loff_t *ppos)
+{
+	return 0;	/* do nothing */
+}
+
+static const struct file_operations mdp_frame_repeat_cnt_reset_fops = {
+	.open = mdp_frame_cnt_reset_open,
+	.release = mdp_frame_cnt_reset_release,
+	.read = mdp_frame_cnt_reset_read,
+	.write = mdp_frame_cnt_reset_write,
 };
 #endif
 
@@ -1590,6 +1645,12 @@ int mdp_debugfs_init(void)
 		printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
 			__FILE__, __LINE__);
 		return -1;
+	}
+	if (debugfs_create_file("reset_framedrop", 0644, dent, 0,
+			&mdp_frame_repeat_cnt_reset_fops) == NULL) {
+		printk(KERN_ERR "%s(%d): debugfs_create_file: debug fail\n",
+			__FILE__, __LINE__);
+		return -EFAULT;
 	}
 #endif
 

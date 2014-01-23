@@ -473,6 +473,9 @@ struct mdp4_statistic {
 	ulong err_stage;
 	ulong err_play;
 	ulong err_underflow;
+	ulong frame_repeat_cnt;
+	ulong frame_cnt_from_last_drop;
+	ulong frame_cnt;
 };
 
 struct vsync_update {
