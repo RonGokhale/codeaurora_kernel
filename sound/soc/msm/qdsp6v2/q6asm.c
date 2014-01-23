@@ -77,17 +77,10 @@ static void q6asm_reset_buf_state(struct audio_client *ac);
 static int q6asm_map_channels(u8 *channel_mapping, uint32_t channels);
 void *q6asm_mmap_apr_reg(void);
 
-struct generic_get_data_ {
-	int valid;
-	int size_in_ints;
-	int ints[];
-};
-static struct generic_get_data_ *generic_get_data;
 
 #ifdef CONFIG_DEBUG_FS
 #define OUT_BUFFER_SIZE 56
 #define IN_BUFFER_SIZE 24
-#define CMD_GET_HDR_SZ 16
 
 static struct timeval out_cold_tv;
 static struct timeval out_warm_tv;
@@ -107,16 +100,6 @@ static struct audio_client common_client;
 static int set_custom_topology;
 static int topology_map_handle;
 
-struct asm_dts_eagle_param {
-	struct apr_hdr	hdr;
-	struct asm_stream_cmd_set_pp_params_v2 param;
-	struct asm_stream_param_data_v2 data;
-} __packed;
-
-struct asm_dts_eagle_param_get {
-	struct apr_hdr	hdr;
-	struct asm_stream_cmd_get_pp_params_v2 param;
-} __packed;
 
 int q6asm_mmap_apr_dereg(void)
 {
@@ -1329,19 +1312,6 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 			if (payload[0] != 0)
 				pr_err("%s: ASM_STREAM_CMDRSP_GET_PP_PARAMS_V2 returned error = 0x%x\n",
 					__func__, payload[0]);
-
-		if (generic_get_data) {
-			generic_get_data->valid = 1;
-			generic_get_data->size_in_ints = payload[3];
-			for (i = 0; i < generic_get_data->size_in_ints; i++)
-				generic_get_data->ints[i] = payload[4+i];
-			pr_debug("DTS_EAGLE_ASM callback size in ints = %i\n",
-				 generic_get_data->size_in_ints);
-			atomic_set(&ac->time_flag, 0);
-			wake_up(&ac->time_wait);
-			break;
-		}
-
 		rtac_make_asm_callback(ac->session, payload,
 			data->payload_size);
 		break;
@@ -1636,8 +1606,7 @@ static int __q6asm_open_read(struct audio_client *ac,
 	open.src_endpointype = ASM_END_POINT_DEVICE_MATRIX;
 
 	open.preprocopo_id = get_asm_topology();
-	if ((open.preprocopo_id == 0) ||
-		(open.preprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX))
+	if (open.preprocopo_id == 0)
 		open.preprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
 	open.bits_per_sample = bits_per_sample;
 	open.mode_flags = 0x0;
@@ -1738,18 +1707,6 @@ static int __q6asm_open_write(struct audio_client *ac, uint32_t format,
 	open.postprocopo_id = get_asm_topology();
 	if (open.postprocopo_id == 0)
 		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
-
-	/* check as HPX topology is read even for low latency path */
-	if ((ac->perf_mode) &&
-	    (open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX))
-		open.postprocopo_id = ASM_STREAM_POSTPROC_TOPO_ID_NONE;
-
-	pr_debug("%s: perf_mode %d asm_topology 0x%x", __func__,
-		 ac->perf_mode, open.postprocopo_id);
-
-	/* For DTS EAGLE only, force 24 bit */
-	if (open.postprocopo_id == ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX)
-		open.bits_per_sample = 24;
 
 	switch (format) {
 	case FORMAT_LINEAR_PCM:
@@ -3233,124 +3190,6 @@ int q6asm_set_mute(struct audio_client *ac, int muteflag)
 	}
 	rc = 0;
 fail_cmd:
-	return rc;
-}
-
-int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, int size,
-						void *data)
-{
-	int sz = sizeof(struct asm_dts_eagle_param) + size, rc = 0;
-	struct asm_dts_eagle_param *ad = kzalloc(sz, GFP_KERNEL);
-	if (!ad) {
-		pr_err("DTS_EAGLE_ASM: error allocating mem of size %i", sz);
-		return -ENOMEM;
-	}
-
-	if (!ac || ac->apr == NULL || size <= 0 || !data) {
-		pr_err("DTS_EAGLE_ASM: APR handle NULL, invalid size %i or pointer %p.\n",
-			size, data);
-		return -EINVAL;
-	}
-
-	q6asm_add_hdr_async(ac, &ad->hdr, sz, 1);
-	ad->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
-	ad->param.data_payload_addr_lsw = 0;
-	ad->param.data_payload_addr_msw = 0;
-
-	ad->param.mem_map_handle = 0;
-	ad->param.data_payload_size = size +
-					sizeof(struct asm_stream_param_data_v2);
-	ad->data.module_id = AUDPROC_MODULE_ID_DTS_HPX_PREMIX;
-	ad->data.param_id = param_id;
-	ad->data.param_size = size;
-	ad->data.reserved = 0;
-
-	memcpy(((char *)ad) + sizeof(struct asm_dts_eagle_param), data, size);
-
-	rc = apr_send_pkt(ac->apr, (uint32_t *)ad);
-	if (rc < 0) {
-		pr_err("DTS_EAGLE_ASM: %s: set-params send failed paramid[0x%x]\n",
-			__func__, ad->data.param_id);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
-	rc = wait_event_timeout(ac->cmd_wait,
-			(atomic_read(&ac->cmd_state) == 0), 5*HZ);
-	if (!rc) {
-		pr_err("DTS_EAGLE_ASM: %s: timeout, set-params paramid[0x%x]\n",
-			__func__, ad->data.param_id);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-	rc = 0;
-fail_cmd:
-	kfree(ad);
-	return rc;
-}
-
-int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
-							void *data)
-{
-	struct asm_dts_eagle_param_get *ad;
-	int rc = 0, sz;
-
-	if (!ac || ac->apr == NULL || size <= 0 || !data) {
-		pr_err("DTS_EAGLE_ASM: APR handle NULL, invalid size %i or pointer %p.\n",
-			size, data);
-		return -EINVAL;
-	}
-	sz = sizeof(struct asm_dts_eagle_param_get) + CMD_GET_HDR_SZ + size;
-	ad = kzalloc(sz, GFP_KERNEL);
-	if (!ad) {
-		pr_err("DTS_EAGLE_ASM: error allocating memory of size %i", sz);
-		return -ENOMEM;
-	}
-	q6asm_add_hdr(ac, &ad->hdr, sz, TRUE);
-	ad->hdr.opcode = ASM_STREAM_CMD_GET_PP_PARAMS_V2;
-	ad->param.data_payload_addr_lsw = 0;
-	ad->param.data_payload_addr_msw = 0;
-	ad->param.mem_map_handle = 0;
-	ad->param.module_id = AUDPROC_MODULE_ID_DTS_HPX_PREMIX;
-	ad->param.param_id = param_id;
-	ad->param.param_max_size = size + CMD_GET_HDR_SZ;
-	ad->param.reserved = 0;
-	atomic_set(&ac->time_flag, 1);
-
-	generic_get_data = kzalloc(size + sizeof(struct generic_get_data_),
-				   GFP_KERNEL);
-	if (!generic_get_data) {
-		pr_err("DTS_EAGLE_ASM: error allocating mem of size %i", size);
-		rc = -ENOMEM;
-		goto fail_cmd;
-	}
-	rc = apr_send_pkt(ac->apr, (uint32_t *)ad);
-	if (rc < 0) {
-		pr_err("DTS_EAGLE_ASM: Commmand 0x%x failed\n", ad->hdr.opcode);
-		goto fail_cmd;
-	}
-	rc = wait_event_timeout(ac->time_wait,
-			(atomic_read(&ac->time_flag) == 0), 5*HZ);
-	if (!rc) {
-		pr_err("DTS_EAGLE_ASM: %s: timeout in getting session time from DSP\n",
-			__func__);
-		rc = -EINVAL;
-		goto fail_cmd;
-	}
-
-	if (generic_get_data->valid) {
-		rc = 0;
-		memcpy(data, generic_get_data->ints, size);
-	} else {
-		rc = -EINVAL;
-		pr_err("DTS_EAGLE_ADM - %s: EAGLE get params problem getting data - check callback error value",
-				__func__);
-	}
-
-fail_cmd:
-	kfree(ad);
-	kfree(generic_get_data);
-	generic_get_data = NULL;
 	return rc;
 }
 

@@ -133,17 +133,6 @@ enum {
 	MSM_BACKEND_DAI_MAX,
 };
 
-struct msm_pcm_routing_bdai_data {
-	u16 port_id; /* AFE port ID */
-	u8 active; /* track if this backend is enabled */
-	unsigned long fe_sessions; /* Front-end sessions */
-	unsigned long port_sessions; /* track Tx BE ports -> Rx BE */
-	unsigned int  sample_rate;
-	unsigned int  channel;
-	unsigned int  format;
-	char *name;
-};
-
 /* dai_id: front-end ID,
  * dspst_id:  DSP audio stream ID
  * stream_type: playback or capture
@@ -162,6 +151,4 @@ int multi_ch_pcm_set_volume(unsigned volume);
 uint32_t get_adm_rx_topology(void);
 
 uint32_t get_adm_tx_topology(void);
-
-int msm_pcm_routing_is_backend_active(int port_id);
 #endif /*_MSM_PCM_H*/
