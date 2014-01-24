@@ -1687,6 +1687,18 @@ static int msm_routing_set_srs_SS3D_control_HDMI(
 	return ret;
 }
 
+static int msm_routing_set_srs_SS3D_control_Proxy(
+		struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol) {
+	int ret;
+        pr_debug("%s",__func__);
+	mutex_lock(&routing_lock);
+	srs_port_id = RT_PROXY_PORT_001_RX;
+	ret = msm_routing_set_srs_SS3D_control_(kcontrol, ucontrol);
+	mutex_unlock(&routing_lock);
+	return ret;
+}
+
 static void msm_send_eq_values(int eq_idx)
 {
 	int result;
@@ -2985,6 +2997,26 @@ static const struct snd_kcontrol_new lpa_SRS_SS3D_controls_I2S[] = {
 	}
 };
 
+static const struct snd_kcontrol_new lpa_SRS_SS3D_controls_Proxy[] = {
+	{.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+	.name = "SRS SS3D Proxy",
+	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |
+		SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.info = snd_soc_info_volsw, \
+	.get = msm_routing_get_srs_SS3D_control,
+	.put = msm_routing_set_srs_SS3D_control_Proxy,
+	.private_value = ((unsigned long)&(struct soc_mixer_control)
+	{.reg = SND_SOC_NOPM,
+	.rreg = SND_SOC_NOPM,
+	.shift = 0,
+	.rshift = 0,
+	.max = 0xFFFFFFFF,
+	.platform_max = 0xFFFFFFFF,
+	.invert = 0
+	})
+	}
+};
+
 static const struct snd_kcontrol_new eq_enable_mixer_controls[] = {
 	SOC_SINGLE_EXT("MultiMedia1 EQ Enable", SND_SOC_NOPM,
 	MSM_FRONTEND_DAI_MULTIMEDIA1, 1, 0, msm_routing_get_eq_enable_mixer,
@@ -4062,6 +4094,10 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	snd_soc_add_platform_controls(platform,
 				lpa_SRS_SS3D_controls_I2S,
 			ARRAY_SIZE(lpa_SRS_SS3D_controls_I2S));
+
+        snd_soc_add_platform_controls(platform,
+				lpa_SRS_SS3D_controls_Proxy,
+			ARRAY_SIZE(lpa_SRS_SS3D_controls_Proxy));
 
 	snd_soc_add_platform_controls(platform,
 				ec_ref_rx_mixer_controls,
