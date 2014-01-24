@@ -477,15 +477,15 @@ void hdmi_msm_dump_cec_msg(struct hdmi_msm_cec_msg *msg)
 {
 #ifdef CEC_MSG_PRINT
 	int i;
-	DEV_DBG("sender_id     : %d", msg->sender_id);
-	DEV_DBG("recvr_id     : %d", msg->recvr_id);
+	DEV_INFO("sender_id     : %d", msg->sender_id);
+	DEV_INFO("recvr_id     : %d", msg->recvr_id);
 	if (msg->frame_size < 2) {
 		DEV_DBG("polling message");
 		return;
 	}
-	DEV_DBG("opcode      : %02x", msg->opcode);
+	DEV_INFO("opcode      : %02x", msg->opcode);
 	for (i = 0; i < msg->frame_size - 2; i++)
-		DEV_DBG("operand(%2d) : %02x", i + 1, msg->operand[i]);
+		DEV_INFO("operand(%2d) : %02x", i + 1, msg->operand[i]);
 #endif /* CEC_MSG_PRINT */
 }
 
