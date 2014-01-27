@@ -42,6 +42,9 @@ static int (*restore_fp_context32)(struct sigcontext32 __user *sc);
 extern asmlinkage int _save_fp_context32(struct sigcontext32 __user *sc);
 extern asmlinkage int _restore_fp_context32(struct sigcontext32 __user *sc);
 
+extern asmlinkage int _save_msa_context32(struct sigcontext32 __user *sc);
+extern asmlinkage int _restore_msa_context32(struct sigcontext32 __user *sc);
+
 /*
  * Including <asm/unistd.h> would give use the 64-bit syscall numbers ...
  */
@@ -111,19 +114,58 @@ static int copy_fp_from_sigcontext32(struct sigcontext32 __user *sc)
 }
 
 /*
+ * These functions will save only the upper 64 bits of the vector registers,
+ * since the lower 64 bits have already been saved as the scalar FP context.
+ */
+static int copy_msa_to_sigcontext32(struct sigcontext32 __user *sc)
+{
+	int i;
+	int err = 0;
+
+	for (i = 0; i < NUM_FPU_REGS; i++) {
+		err |=
+		    __put_user(get_fpr64(&current->thread.fpu.fpr[i], 1),
+			       &sc->sc_msaregs[i]);
+	}
+	err |= __put_user(current->thread.fpu.msacsr, &sc->sc_msa_csr);
+
+	return err;
+}
+
+static int copy_msa_from_sigcontext32(struct sigcontext32 __user *sc)
+{
+	int i;
+	int err = 0;
+	u64 val;
+
+	for (i = 0; i < NUM_FPU_REGS; i++) {
+		err |= __get_user(val, &sc->sc_msaregs[i]);
+		set_fpr64(&current->thread.fpu.fpr[i], 1, val);
+	}
+	err |= __get_user(current->thread.fpu.msacsr, &sc->sc_msa_csr);
+
+	return err;
+}
+
+/*
  * sigcontext handlers
  */
-static int protected_save_fp_context32(struct sigcontext32 __user *sc)
+static int protected_save_fp_context32(struct sigcontext32 __user *sc,
+				       unsigned used_math)
 {
 	int err;
 	while (1) {
 		lock_fpu_owner();
 		if (is_fpu_owner()) {
 			err = save_fp_context32(sc);
+			if (!err && (used_math & USEDMATH_MSA))
+				err = _save_msa_context32(sc);
 			unlock_fpu_owner();
 		} else {
 			unlock_fpu_owner();
 			err = copy_fp_to_sigcontext32(sc);
+			if (!err && (used_math & USEDMATH_MSA))
+				err = copy_msa_to_sigcontext32(sc);
 		}
 		if (likely(!err))
 			break;
@@ -137,17 +179,27 @@ static int protected_save_fp_context32(struct sigcontext32 __user *sc)
 	return err;
 }
 
-static int protected_restore_fp_context32(struct sigcontext32 __user *sc)
+static int protected_restore_fp_context32(struct sigcontext32 __user *sc,
+					  unsigned used_math)
 {
 	int err, tmp __maybe_unused;
 	while (1) {
 		lock_fpu_owner();
 		if (is_fpu_owner()) {
 			err = restore_fp_context32(sc);
+			if (!err && (used_math & USEDMATH_MSA)) {
+				enable_msa();
+				err = _restore_msa_context32(sc);
+			} else {
+				/* signal handler may have used MSA */
+				disable_msa();
+			}
 			unlock_fpu_owner();
 		} else {
 			unlock_fpu_owner();
 			err = copy_fp_from_sigcontext32(sc);
+			if (!err && (used_math & USEDMATH_MSA))
+				err = copy_msa_from_sigcontext32(sc);
 		}
 		if (likely(!err))
 			break;
@@ -186,7 +238,8 @@ static int setup_sigcontext32(struct pt_regs *regs,
 		err |= __put_user(mflo3(), &sc->sc_lo3);
 	}
 
-	used_math = !!used_math();
+	used_math = used_math() ? USEDMATH_FP : 0;
+	used_math |= thread_msa_context_live() ? USEDMATH_MSA : 0;
 	err |= __put_user(used_math, &sc->sc_used_math);
 
 	if (used_math) {
@@ -194,20 +247,21 @@ static int setup_sigcontext32(struct pt_regs *regs,
 		 * Save FPU state to signal context.  Signal handler
 		 * will "inherit" current FPU state.
 		 */
-		err |= protected_save_fp_context32(sc);
+		err |= protected_save_fp_context32(sc, used_math);
 	}
 	return err;
 }
 
 static int
-check_and_restore_fp_context32(struct sigcontext32 __user *sc)
+check_and_restore_fp_context32(struct sigcontext32 __user *sc,
+			       unsigned used_math)
 {
 	int err, sig;
 
 	err = sig = fpcsr_pending(&sc->sc_fpc_csr);
 	if (err > 0)
 		err = 0;
-	err |= protected_restore_fp_context32(sc);
+	err |= protected_restore_fp_context32(sc, used_math);
 	return err ?: sig;
 }
 
@@ -244,9 +298,10 @@ static int restore_sigcontext32(struct pt_regs *regs,
 	if (used_math) {
 		/* restore fpu context if we have used it before */
 		if (!err)
-			err = check_and_restore_fp_context32(sc);
+			err = check_and_restore_fp_context32(sc, used_math);
 	} else {
-		/* signal handler may have used FPU.  Give it up. */
+		/* signal handler may have used FPU or MSA. Disable them. */
+		disable_msa();
 		lose_fpu(0);
 	}
 
