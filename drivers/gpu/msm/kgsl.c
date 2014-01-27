@@ -672,6 +672,9 @@ kgsl_get_process_private(struct kgsl_device *device,
 
 	private = kgsl_find_process_private(cur_dev_priv);
 
+	if (!private)
+		return NULL;
+
 	mutex_lock(&private->process_private_mutex);
 	if (!private->mem_rb.rb_node)
 		private->mem_rb = RB_ROOT;
