@@ -3012,7 +3012,7 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 
 	gen6_set_rps_thresholds(dev_priv, val);
 
-	if (IS_HASWELL(dev))
+	if (IS_HASWELL(dev) || IS_BROADWELL(dev))
 		I915_WRITE(GEN6_RPNSWREQ,
 			   HSW_FREQUENCY(val));
 	else
