@@ -3242,6 +3242,25 @@ static void gen6_enable_rps_interrupts(struct drm_device *dev)
 	I915_WRITE(GEN6_PMINTRMSK, ~enabled_intrs);
 }
 
+static void parse_rp_state_cap(struct drm_i915_private *dev_priv, u32 rp_state_cap)
+{
+
+	/* In units of 50MHz */
+	dev_priv->rps.nominal_freq	 = (rp_state_cap >> 16) & 0xff;
+	dev_priv->rps.min_freq_hardlimit = (rp_state_cap >>  8) & 0xff;
+	dev_priv->rps.max_freq_hardlimit = (rp_state_cap >>  0) & 0xff;
+	dev_priv->rps.max_freq_overclock = dev_priv->rps.max_freq_hardlimit;
+	dev_priv->rps.nominal_freq = dev_priv->rps.min_freq_hardlimit;
+	dev_priv->rps.cur_freq = 0;
+
+	/* Preserve min/max settings in case of re-init */
+	if (dev_priv->rps.max_freq_softlimit == 0)
+		dev_priv->rps.max_freq_softlimit = dev_priv->rps.max_freq_hardlimit;
+
+	if (dev_priv->rps.min_freq_softlimit == 0)
+		dev_priv->rps.min_freq_softlimit = dev_priv->rps.min_freq_hardlimit;
+}
+
 static void gen8_enable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3260,6 +3279,7 @@ static void gen8_enable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 
 	rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
+	parse_rp_state_cap(dev_priv, rp_state_cap);
 
 	/* 2b: Program RC6 thresholds.*/
 	I915_WRITE(GEN6_RC6_WAKE_RATE_LIMIT, 40 << 16);
@@ -3348,20 +3368,7 @@ static void gen6_enable_rps(struct drm_device *dev)
 	rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
 	gt_perf_status = I915_READ(GEN6_GT_PERF_STATUS);
 
-	/* In units of 50MHz */
-	dev_priv->rps.nominal_freq	 = (rp_state_cap >> 16) & 0xff;
-	dev_priv->rps.min_freq_hardlimit = (rp_state_cap >>  8) & 0xff;
-	dev_priv->rps.max_freq_hardlimit = (rp_state_cap >>  0) & 0xff;
-	dev_priv->rps.max_freq_overclock = dev_priv->rps.max_freq_hardlimit;
-	dev_priv->rps.nominal_freq = dev_priv->rps.min_freq_hardlimit;
-	dev_priv->rps.cur_freq = 0;
-
-	/* Preserve min/max settings in case of re-init */
-	if (dev_priv->rps.max_freq_softlimit == 0)
-		dev_priv->rps.max_freq_softlimit = dev_priv->rps.max_freq_hardlimit;
-
-	if (dev_priv->rps.min_freq_softlimit == 0)
-		dev_priv->rps.min_freq_softlimit = dev_priv->rps.min_freq_hardlimit;
+	parse_rp_state_cap(dev_priv, rp_state_cap);
 
 	/* disable the counters and set deterministic thresholds */
 	I915_WRITE(GEN6_RC_CONTROL, 0);
