@@ -17,7 +17,8 @@ endif
 # The -m16 option is supported by GCC >= 4.9 and clang >= 3.5. For
 # older versions of GCC, include an *assembly* header to make sure that
 # gcc doesn't play any games behind our back.
-CODE16GCC_CFLAGS := -m32 -Wa,$(srctree)/arch/x86/boot/code16gcc.h
+CODE16GCC_CFLAGS := -m32 -Wa,$(srctree)/arch/x86/boot/code16gcc.h \
+		    $(call cc-option, -no-integrated-as,)
 M16_CFLAGS	 := $(call cc-option, -m16, $(CODE16GCC_CFLAGS))
 
 REALMODE_CFLAGS	:= $(M16_CFLAGS) -g -Os -D__KERNEL__ \
