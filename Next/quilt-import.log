@@ -1,0 +1,15 @@
+Importing jdelvare-hwmon based on 3.13
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard d8ec26d7f8287f5788a494f56e8814210f0e64be
+HEAD is now at d8ec26d7f828 Linux 3.13
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-01-add-it8603e-support.patch
+Applying: hwmon: (it87) Add support for the ITE IT8603E
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-02-correct-chip-name.patch
+Applying: hwmon: (it87) Print proper names for the IT8771E and IT8772E
+$ git am ../quilt/jdelvare-hwmon/update-Jean-Delvare-address.patch
+Applying: Update Jean Delvare's e-mail address
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 68d5516b35c7...1829e1e81f67 master     -> jdelvare-hwmon/master  (forced update)
