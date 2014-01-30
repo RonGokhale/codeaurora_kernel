@@ -1348,7 +1348,7 @@ static void hdmi_msm_reinit_panel_info(void)
 		mfd->var_pixclock     = mfd->panel_info.clk_rate;
 	}
 	/*store the global value of vic not the local*/
-	mfd->var_vic = external_common_state->video_resolution + 1;
+	mfd->var_vic = external_common_state->video_resolution;
 }
 
 static void hdmi_msm_send_event(boolean on)
