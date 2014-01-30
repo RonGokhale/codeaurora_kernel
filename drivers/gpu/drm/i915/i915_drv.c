@@ -783,6 +783,8 @@ int i915_reset(struct drm_device *dev)
 	mutex_lock(&dev->struct_mutex);
 
 	i915_gem_reset(dev);
+	if (IS_BROADWELL(dev))
+		intel_disable_gt_powersave(dev);
 
 	simulated = dev_priv->gpu_error.stop_rings != 0;
 
@@ -837,7 +839,7 @@ int i915_reset(struct drm_device *dev)
 		 * reset and the re-install of drm irq. Skip for ironlake per
 		 * previous concerns that it doesn't respond well to some forms
 		 * of re-init after reset. */
-		if (INTEL_INFO(dev)->gen > 5) {
+		if (INTEL_INFO(dev)->gen > 5 && !IS_BROADWELL(dev)) {
 			mutex_lock(&dev->struct_mutex);
 			intel_enable_gt_powersave(dev);
 			mutex_unlock(&dev->struct_mutex);

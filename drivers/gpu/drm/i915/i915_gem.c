@@ -2465,6 +2465,7 @@ void i915_gem_reset(struct drm_device *dev)
 void
 i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 {
+	struct drm_i915_private *dev_priv = ring->dev->dev_private;
 	uint32_t seqno;
 
 	if (list_empty(&ring->request_list))
@@ -2487,6 +2488,15 @@ i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 
 		if (!i915_seqno_passed(seqno, obj->last_read_seqno))
 			break;
+
+		/* Wa: can't find the w/a name.
+		 * This doesn't actually implement the w/a, but it a workaround
+		 * for the workaround. It defers using rc6 until we know valid
+		 * state exists.
+		 */
+		if (IS_BROADWELL(ring->dev) && intel_enable_rc6(ring->dev) &&
+		    !dev_priv->rps.enabled && ring->id == RCS)
+			intel_enable_gt_powersave(ring->dev);
 
 		i915_gem_object_move_to_inactive(obj);
 	}
