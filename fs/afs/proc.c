@@ -130,8 +130,8 @@ int afs_proc_init(void)
 	if (!proc_afs)
 		goto error_dir;
 
-	if (!proc_create("cells", 0, proc_afs, &afs_proc_cells_fops) ||
-	    !proc_create("rootcell", 0, proc_afs, &afs_proc_rootcell_fops))
+	if (!proc_create("cells", S_IFREG | S_IRUGO | S_IWUSR, proc_afs, &afs_proc_cells_fops) ||
+	    !proc_create("rootcell", S_IFREG | S_IRUGO | S_IWUSR, proc_afs, &afs_proc_rootcell_fops))
 		goto error_tree;
 
 	_leave(" = 0");
