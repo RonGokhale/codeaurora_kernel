@@ -1963,3 +1963,9 @@ int __init kvmppc_booke_init(void)
 #endif /* !BOOKE_HV */
 	return 0;
 }
+
+void __exit kvmppc_booke_exit(void)
+{
+	free_pages(kvmppc_booke_handlers, VCPU_SIZE_ORDER);
+	kvm_exit();
+}
