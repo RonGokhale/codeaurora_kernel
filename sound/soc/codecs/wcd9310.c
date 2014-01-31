@@ -5039,6 +5039,18 @@ static int tabla_hw_params(struct snd_pcm_substream *substream,
 					0x03, (rx_fs_rate_reg_val >> 0x05));
 		} else {
 			tabla_set_rxsb_port_format(params, dai);
+			switch (params_format(params)) {
+				case SNDRV_PCM_FORMAT_S24_LE:
+					tabla->dai[dai->id].bit_width = 24;
+				break;
+				case SNDRV_PCM_FORMAT_S16_LE:
+					tabla->dai[dai->id].bit_width = 16;
+				break;
+			default:
+				pr_err("%s: Invalid format %d\n", __func__,
+					params_format(params));
+				return -EINVAL;
+			}
 			tabla->dai[dai->id].rate = params_rate(params);
 		}
 		break;
