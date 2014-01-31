@@ -1,0 +1,3 @@
+Importing jdelvare-hwmon based on 9b0cd304f26b9fca140de15deeac2bf357d1f388
+	quilt series is empty
+$ git branch -f jdelvare-hwmon/master 9b0cd304f26b9fca140de15deeac2bf357d1f388
