@@ -2467,6 +2467,9 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata)
 		/* CPU multiplier */
 		data |= (((uint64_t)4ULL) << 40);
 		break;
+	case MSR_IA32_PERF_CAPABILITIES:
+		data = 0;
+		break;
 	case MSR_EFER:
 		data = vcpu->arch.efer;
 		break;
