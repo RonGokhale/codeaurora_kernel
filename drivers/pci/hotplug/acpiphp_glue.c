@@ -742,7 +742,7 @@ static void trim_stale_devices(struct pci_dev *dev)
 
 		/* The device is a bridge. so check the bus below it. */
 		pm_runtime_get_sync(&dev->dev);
-		list_for_each_entry_safe(child, tmp, &bus->devices, bus_list)
+		list_for_each_entry_safe_reverse(child, tmp, &bus->devices, bus_list)
 			trim_stale_devices(child);
 
 		pm_runtime_put(&dev->dev);
@@ -773,8 +773,8 @@ static void acpiphp_check_bridge(struct acpiphp_bridge *bridge)
 			; /* do nothing */
 		} else if (get_slot_status(slot) == ACPI_STA_ALL) {
 			/* remove stale devices if any */
-			list_for_each_entry_safe(dev, tmp, &bus->devices,
-						 bus_list)
+			list_for_each_entry_safe_reverse(dev, tmp,
+							 &bus->devices, bus_list)
 				if (PCI_SLOT(dev->devfn) == slot->device)
 					trim_stale_devices(dev);
 
@@ -805,7 +805,7 @@ static void acpiphp_sanitize_bus(struct pci_bus *bus)
 	int i;
 	unsigned long type_mask = IORESOURCE_IO | IORESOURCE_MEM;
 
-	list_for_each_entry_safe(dev, tmp, &bus->devices, bus_list) {
+	list_for_each_entry_safe_reverse(dev, tmp, &bus->devices, bus_list) {
 		for (i=0; i<PCI_BRIDGE_RESOURCES; i++) {
 			struct resource *res = &dev->resource[i];
 			if ((res->flags & type_mask) && !res->start &&
@@ -829,7 +829,11 @@ void acpiphp_check_host_bridge(acpi_handle handle)
 
 	bridge = acpiphp_handle_to_bridge(handle);
 	if (bridge) {
+		pci_lock_rescan_remove();
+
 		acpiphp_check_bridge(bridge);
+
+		pci_unlock_rescan_remove();
 		put_bridge(bridge);
 	}
 }
@@ -852,6 +856,7 @@ static void hotplug_event(acpi_handle handle, u32 type, void *data)
 
 	mutex_unlock(&acpiphp_context_lock);
 
+	pci_lock_rescan_remove();
 	acpi_get_name(handle, ACPI_FULL_PATHNAME, &buffer);
 
 	switch (type) {
@@ -905,6 +910,7 @@ static void hotplug_event(acpi_handle handle, u32 type, void *data)
 		break;
 	}
 
+	pci_unlock_rescan_remove();
 	if (bridge)
 		put_bridge(bridge);
 }
@@ -915,11 +921,9 @@ static void hotplug_event_work(void *data, u32 type)
 	acpi_handle handle = context->handle;
 
 	acpi_scan_lock_acquire();
-	pci_lock_rescan_remove();
 
 	hotplug_event(handle, type, context);
 
-	pci_unlock_rescan_remove();
 	acpi_scan_lock_release();
 	acpi_evaluate_hotplug_ost(handle, type, ACPI_OST_SC_SUCCESS, NULL);
 	put_bridge(context->func.parent);
