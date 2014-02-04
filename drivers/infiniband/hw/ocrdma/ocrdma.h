@@ -53,6 +53,8 @@
 
 #define OCRDMA_UVERBS(CMD_NAME) (1ull << IB_USER_VERBS_CMD_##CMD_NAME)
 
+#define convert_to_64bit(lo, hi) ((u64)hi << 32 | (u64)lo)
+
 struct ocrdma_dev_attr {
 	u8 fw_ver[32];
 	u32 vendor_id;
@@ -162,6 +164,18 @@ struct ocrdma_mr {
 	struct ocrdma_hw_mr hwmr;
 };
 
+struct ocrdma_stats {
+	u8 type;
+	struct ocrdma_dev *dev;
+};
+
+struct stats_mem {
+	struct ocrdma_mqe mqe;
+	void *va;
+	dma_addr_t pa;
+	u32 size;
+	char *debugfs_mem;
+};
 
 struct phy_info {
 	u16 auto_speeds_supported;
@@ -223,6 +237,20 @@ struct ocrdma_dev {
 	struct ocrdma_mr *stag_arr[OCRDMA_MAX_STAG];
 	u16 pvid;
 	u32 asic_id;
+
+	ulong last_stats_time;
+	struct mutex stats_lock; /* provide synch for debugfs operations */
+	struct stats_mem stats_mem;
+	struct ocrdma_stats rsrc_stats;
+	struct ocrdma_stats rx_stats;
+	struct ocrdma_stats wqe_stats;
+	struct ocrdma_stats tx_stats;
+	struct ocrdma_stats db_err_stats;
+	struct ocrdma_stats tx_qp_err_stats;
+	struct ocrdma_stats rx_qp_err_stats;
+	struct ocrdma_stats tx_dbg_stats;
+	struct ocrdma_stats rx_dbg_stats;
+	struct dentry *dir;
 };
 
 struct ocrdma_cq {

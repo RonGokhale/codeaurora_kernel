@@ -1176,6 +1176,48 @@ mbx_err:
 	return status;
 }
 
+int ocrdma_mbx_rdma_stats(struct ocrdma_dev *dev, bool reset)
+{
+	struct ocrdma_rdma_stats_req *req = dev->stats_mem.va;
+	struct ocrdma_mqe *mqe = &dev->stats_mem.mqe;
+	struct ocrdma_rdma_stats_resp *old_stats = NULL;
+	int status;
+
+	old_stats = kzalloc(sizeof(*old_stats), GFP_KERNEL);
+	if (old_stats == NULL)
+		return -ENOMEM;
+
+	memset(mqe, 0, sizeof(*mqe));
+	mqe->hdr.pyld_len = dev->stats_mem.size;
+	mqe->hdr.spcl_sge_cnt_emb |=
+			(1 << OCRDMA_MQE_HDR_SGE_CNT_SHIFT) &
+				OCRDMA_MQE_HDR_SGE_CNT_MASK;
+	mqe->u.nonemb_req.sge[0].pa_lo = (u32) (dev->stats_mem.pa & 0xffffffff);
+	mqe->u.nonemb_req.sge[0].pa_hi = (u32) upper_32_bits(dev->stats_mem.pa);
+	mqe->u.nonemb_req.sge[0].len = dev->stats_mem.size;
+
+	/* Cache the old stats */
+	memcpy(old_stats, req, sizeof(struct ocrdma_rdma_stats_resp));
+	memset(req, 0, dev->stats_mem.size);
+
+	ocrdma_init_mch((struct ocrdma_mbx_hdr *)req,
+			OCRDMA_CMD_GET_RDMA_STATS,
+			OCRDMA_SUBSYS_ROCE,
+			dev->stats_mem.size);
+	if (reset)
+		req->reset_stats = reset;
+
+	status = ocrdma_nonemb_mbx_cmd(dev, mqe, dev->stats_mem.va);
+	if (status)
+		/* Copy from cache, if mbox fails */
+		memcpy(req, old_stats, sizeof(struct ocrdma_rdma_stats_resp));
+	else
+		ocrdma_le32_to_cpu(req, dev->stats_mem.size);
+
+	kfree(old_stats);
+	return status;
+}
+
 int ocrdma_mbx_get_ctrl_attribs(struct ocrdma_dev *dev)
 {
 	int status = -ENOMEM;

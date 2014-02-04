@@ -72,6 +72,7 @@ enum {
 
 	OCRDMA_CMD_ATTACH_MCAST,
 	OCRDMA_CMD_DETACH_MCAST,
+	OCRDMA_CMD_GET_RDMA_STATS,
 
 	OCRDMA_CMD_MAX
 };
@@ -1744,6 +1745,157 @@ struct ocrdma_av {
 	struct ocrdma_grh grh;
 	u32 valid;
 } __packed;
+
+struct ocrdma_rsrc_stats {
+	u32 dpp_pds;
+	u32 non_dpp_pds;
+	u32 rc_dpp_qps;
+	u32 uc_dpp_qps;
+	u32 ud_dpp_qps;
+	u32 rc_non_dpp_qps;
+	u32 rsvd;
+	u32 uc_non_dpp_qps;
+	u32 ud_non_dpp_qps;
+	u32 rsvd1;
+	u32 srqs;
+	u32 rbqs;
+	u32 r64K_nsmr;
+	u32 r64K_to_2M_nsmr;
+	u32 r2M_to_44M_nsmr;
+	u32 r44M_to_1G_nsmr;
+	u32 r1G_to_4G_nsmr;
+	u32 nsmr_count_4G_to_32G;
+	u32 r32G_to_64G_nsmr;
+	u32 r64G_to_128G_nsmr;
+	u32 r128G_to_higher_nsmr;
+	u32 embedded_nsmr;
+	u32 frmr;
+	u32 prefetch_qps;
+	u32 ondemand_qps;
+	u32 phy_mr;
+	u32 mw;
+	u32 rsvd2[7];
+};
+
+struct ocrdma_db_err_stats {
+	u32 sq_doorbell_errors;
+	u32 cq_doorbell_errors;
+	u32 rq_srq_doorbell_errors;
+	u32 cq_overflow_errors;
+	u32 rsvd[4];
+};
+
+struct ocrdma_wqe_stats {
+	u32 large_send_rc_wqes_lo;
+	u32 large_send_rc_wqes_hi;
+	u32 large_write_rc_wqes_lo;
+	u32 large_write_rc_wqes_hi;
+	u32 rsvd[4];
+	u32 read_wqes_lo;
+	u32 read_wqes_hi;
+	u32 frmr_wqes_lo;
+	u32 frmr_wqes_hi;
+	u32 mw_bind_wqes_lo;
+	u32 mw_bind_wqes_hi;
+	u32 invalidate_wqes_lo;
+	u32 invalidate_wqes_hi;
+	u32 rsvd1[2];
+	u32 dpp_wqe_drops;
+	u32 rsvd2[5];
+};
+
+struct ocrdma_tx_stats {
+	u32 send_pkts_lo;
+	u32 send_pkts_hi;
+	u32 write_pkts_lo;
+	u32 write_pkts_hi;
+	u32 read_pkts_lo;
+	u32 read_pkts_hi;
+	u32 read_rsp_pkts_lo;
+	u32 read_rsp_pkts_hi;
+	u32 ack_pkts_lo;
+	u32 ack_pkts_hi;
+	u32 send_bytes_lo;
+	u32 send_bytes_hi;
+	u32 write_bytes_lo;
+	u32 write_bytes_hi;
+	u32 read_req_bytes_lo;
+	u32 read_req_bytes_hi;
+	u32 read_rsp_bytes_lo;
+	u32 read_rsp_bytes_hi;
+	u32 ack_timeouts;
+	u32 rsvd[5];
+};
+
+
+struct ocrdma_tx_qp_err_stats {
+	u32 local_length_errors;
+	u32 local_protection_errors;
+	u32 local_qp_operation_errors;
+	u32 retry_count_exceeded_errors;
+	u32 rnr_retry_count_exceeded_errors;
+	u32 rsvd[3];
+};
+
+struct ocrdma_rx_stats {
+	u32 roce_frame_bytes_lo;
+	u32 roce_frame_bytes_hi;
+	u32 roce_frame_icrc_drops;
+	u32 roce_frame_payload_len_drops;
+	u32 ud_drops;
+	u32 qp1_drops;
+	u32 psn_error_request_packets;
+	u32 psn_error_resp_packets;
+	u32 rnr_nak_timeouts;
+	u32 rnr_nak_receives;
+	u32 roce_frame_rxmt_drops;
+	u32 nak_count_psn_sequence_errors;
+	u32 rc_drop_count_lookup_errors;
+	u32 rq_rnr_naks;
+	u32 srq_rnr_naks;
+	u32 roce_frames_lo;
+	u32 roce_frames_hi;
+	u32 rsvd;
+};
+
+struct ocrdma_rx_qp_err_stats {
+	u32 nak_invalid_requst_errors;
+	u32 nak_remote_operation_errors;
+	u32 nak_count_remote_access_errors;
+	u32 local_length_errors;
+	u32 local_protection_errors;
+	u32 local_qp_operation_errors;
+	u32 rsvd[2];
+};
+
+struct ocrdma_tx_dbg_stats {
+	u32 data[100];
+};
+
+struct ocrdma_rx_dbg_stats {
+	u32 data[200];
+};
+
+struct ocrdma_rdma_stats_req {
+	struct ocrdma_mbx_hdr hdr;
+	u8 reset_stats;
+	u8 rsvd[3];
+} __packed;
+
+struct ocrdma_rdma_stats_resp {
+	struct ocrdma_mbx_hdr hdr;
+	struct ocrdma_rsrc_stats act_rsrc_stats;
+	struct ocrdma_rsrc_stats th_rsrc_stats;
+	struct ocrdma_db_err_stats	db_err_stats;
+	struct ocrdma_wqe_stats		wqe_stats;
+	struct ocrdma_tx_stats		tx_stats;
+	struct ocrdma_tx_qp_err_stats	tx_qp_err_stats;
+	struct ocrdma_rx_stats		rx_stats;
+	struct ocrdma_rx_qp_err_stats	rx_qp_err_stats;
+	struct ocrdma_tx_dbg_stats	tx_dbg_stats;
+	struct ocrdma_rx_dbg_stats	rx_dbg_stats;
+} __packed;
+
 
 struct mgmt_hba_attribs {
 	u8 flashrom_version_string[32];
