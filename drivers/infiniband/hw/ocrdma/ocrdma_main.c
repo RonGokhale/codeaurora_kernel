@@ -372,6 +372,12 @@ static struct ocrdma_dev *ocrdma_add(struct be_dev_info *dev_info)
 	spin_lock(&ocrdma_devlist_lock);
 	list_add_tail_rcu(&dev->entry, &ocrdma_dev_list);
 	spin_unlock(&ocrdma_devlist_lock);
+	pr_info("%s %s: %s \"%s\" port %d\n",
+		dev_name(&dev->nic_info.pdev->dev), hca_name(dev),
+		port_speed_string(dev), dev->model_number,
+		dev->hba_port_num);
+	pr_info("%s ocrdma%d driver loaded successfully\n",
+		dev_name(&dev->nic_info.pdev->dev), dev->id);
 	return dev;
 
 alloc_err:

@@ -243,6 +243,23 @@ static int ocrdma_get_mbx_errno(u32 status)
 	return err_num;
 }
 
+char *port_speed_string(struct ocrdma_dev *dev)
+{
+	char *str = "";
+	u16 speeds_supported;
+
+	speeds_supported = dev->phy.fixed_speeds_supported |
+				dev->phy.auto_speeds_supported;
+	if (speeds_supported & OCRDMA_PHY_SPEED_40GBPS)
+		str = "40Gbps ";
+	else if (speeds_supported & OCRDMA_PHY_SPEED_10GBPS)
+		str = "10Gbps ";
+	else if (speeds_supported & OCRDMA_PHY_SPEED_1GBPS)
+		str = "1Gbps ";
+
+	return str;
+}
+
 static int ocrdma_get_mbx_cqe_errno(u16 cqe_status)
 {
 	int err_num = -EINVAL;
@@ -330,6 +347,11 @@ static void *ocrdma_init_emb_mqe(u8 opcode, u32 cmd_len)
 	ocrdma_init_mch(&mqe->u.emb_req.mch, opcode, OCRDMA_SUBSYS_ROCE,
 			mqe->hdr.pyld_len);
 	return mqe;
+}
+
+static void *ocrdma_alloc_mqe(void)
+{
+	return kzalloc(sizeof(struct ocrdma_mqe), GFP_KERNEL);
 }
 
 static void ocrdma_free_q(struct ocrdma_dev *dev, struct ocrdma_queue_info *q)
@@ -1154,6 +1176,54 @@ mbx_err:
 	return status;
 }
 
+int ocrdma_mbx_get_ctrl_attribs(struct ocrdma_dev *dev)
+{
+	int status = -ENOMEM;
+	struct ocrdma_dma_mem dma;
+	struct ocrdma_mqe *mqe;
+	struct ocrdma_get_ctrl_attribs_rsp *ctrl_attr_rsp;
+	struct mgmt_hba_attribs *hba_attribs;
+
+	mqe = ocrdma_alloc_mqe();
+	if (!mqe)
+		return status;
+	memset(mqe, 0, sizeof(*mqe));
+
+	dma.size = sizeof(struct ocrdma_get_ctrl_attribs_rsp);
+	dma.va	 = dma_alloc_coherent(&dev->nic_info.pdev->dev,
+					dma.size, &dma.pa, GFP_KERNEL);
+	if (!dma.va)
+		goto free_mqe;
+
+	mqe->hdr.pyld_len = dma.size;
+	mqe->hdr.spcl_sge_cnt_emb |=
+			(1 << OCRDMA_MQE_HDR_SGE_CNT_SHIFT) &
+			OCRDMA_MQE_HDR_SGE_CNT_MASK;
+	mqe->u.nonemb_req.sge[0].pa_lo = (u32) (dma.pa & 0xffffffff);
+	mqe->u.nonemb_req.sge[0].pa_hi = (u32) upper_32_bits(dma.pa);
+	mqe->u.nonemb_req.sge[0].len = dma.size;
+
+	memset(dma.va, 0, dma.size);
+	ocrdma_init_mch((struct ocrdma_mbx_hdr *)dma.va,
+			OCRDMA_CMD_GET_CTRL_ATTRIBUTES,
+			OCRDMA_SUBSYS_COMMON,
+			dma.size);
+
+	status = ocrdma_nonemb_mbx_cmd(dev, mqe, dma.va);
+	if (!status) {
+		ctrl_attr_rsp = (struct ocrdma_get_ctrl_attribs_rsp *)dma.va;
+		hba_attribs = &ctrl_attr_rsp->ctrl_attribs.hba_attribs;
+
+		dev->hba_port_num = hba_attribs->phy_port;
+		strncpy(dev->model_number,
+			hba_attribs->controller_model_number, 31);
+	}
+	dma_free_coherent(&dev->nic_info.pdev->dev, dma.size, dma.va, dma.pa);
+free_mqe:
+	kfree(mqe);
+	return status;
+}
+
 static int ocrdma_mbx_query_dev(struct ocrdma_dev *dev)
 {
 	int status = -ENOMEM;
@@ -1196,6 +1266,35 @@ int ocrdma_mbx_get_link_speed(struct ocrdma_dev *dev, u8 *lnk_speed)
 	rsp = (struct ocrdma_get_link_speed_rsp *)cmd;
 	*lnk_speed = rsp->phys_port_speed;
 
+mbx_err:
+	kfree(cmd);
+	return status;
+}
+
+int ocrdma_mbx_get_phy_info(struct ocrdma_dev *dev)
+{
+	int status = -ENOMEM;
+	struct ocrdma_mqe *cmd;
+	struct ocrdma_get_phy_info_rsp *rsp;
+
+	cmd = ocrdma_init_emb_mqe(OCRDMA_CMD_PHY_DETAILS, sizeof(*cmd));
+	if (!cmd)
+		return status;
+
+	ocrdma_init_mch((struct ocrdma_mbx_hdr *)&cmd->u.cmd[0],
+			OCRDMA_CMD_PHY_DETAILS, OCRDMA_SUBSYS_COMMON,
+			sizeof(*cmd));
+
+	status = ocrdma_mbx_cmd(dev, (struct ocrdma_mqe *)cmd);
+	if (status)
+		goto mbx_err;
+
+	rsp = (struct ocrdma_get_phy_info_rsp *)cmd;
+	dev->phy.phy_type = le16_to_cpu(rsp->phy_type);
+	dev->phy.auto_speeds_supported  =
+			le16_to_cpu(rsp->auto_speeds_supported);
+	dev->phy.fixed_speeds_supported =
+			le16_to_cpu(rsp->fixed_speeds_supported);
 mbx_err:
 	kfree(cmd);
 	return status;
@@ -2570,6 +2669,13 @@ int ocrdma_init_hw(struct ocrdma_dev *dev)
 	status = ocrdma_mbx_create_ah_tbl(dev);
 	if (status)
 		goto conf_err;
+	status = ocrdma_mbx_get_phy_info(dev);
+	if (status)
+		goto conf_err;
+	status = ocrdma_mbx_get_ctrl_attribs(dev);
+	if (status)
+		goto conf_err;
+
 	return 0;
 
 conf_err:

@@ -44,6 +44,11 @@
 #define OCRDMA_ROCE_DRV_DESC "Emulex OneConnect RoCE Driver"
 #define OCRDMA_NODE_DESC "Emulex OneConnect RoCE HCA"
 
+#define OC_NAME_SH	OCRDMA_NODE_DESC "(Skyhawk)"
+#define OC_NAME_UNKNOWN OCRDMA_NODE_DESC "(Unknown)"
+
+#define OC_SKH_DEVICE_PF 0x720
+#define OC_SKH_DEVICE_VF 0x728
 #define OCRDMA_MAX_AH 512
 
 #define OCRDMA_UVERBS(CMD_NAME) (1ull << IB_USER_VERBS_CMD_##CMD_NAME)
@@ -84,6 +89,12 @@ struct ocrdma_dev_attr {
 	u8 local_ca_ack_delay;
 	u8 ird;
 	u8 num_ird_pages;
+};
+
+struct ocrdma_dma_mem {
+	void *va;
+	dma_addr_t pa;
+	u32 size;
 };
 
 struct ocrdma_pbl {
@@ -151,6 +162,14 @@ struct ocrdma_mr {
 	struct ocrdma_hw_mr hwmr;
 };
 
+
+struct phy_info {
+	u16 auto_speeds_supported;
+	u16 fixed_speeds_supported;
+	u16 phy_type;
+	u16 interface_type;
+};
+
 struct ocrdma_dev {
 	struct ib_device ibdev;
 	struct ocrdma_dev_attr attr;
@@ -194,6 +213,9 @@ struct ocrdma_dev {
 	struct mqe_ctx mqe_ctx;
 
 	struct be_dev_info nic_info;
+	struct phy_info phy;
+	char model_number[32];
+	u32 hba_port_num;
 
 	struct list_head entry;
 	struct rcu_head rcu;
@@ -432,6 +454,17 @@ static inline int ocrdma_resolve_dmac(struct ocrdma_dev *dev,
 	else
 		memcpy(mac_addr, ah_attr->dmac, ETH_ALEN);
 	return 0;
+}
+
+static inline char *hca_name(struct ocrdma_dev *dev)
+{
+	switch (dev->nic_info.pdev->device) {
+	case OC_SKH_DEVICE_PF:
+	case OC_SKH_DEVICE_VF:
+		return OC_NAME_SH;
+	default:
+		return OC_NAME_UNKNOWN;
+	}
 }
 
 static inline int ocrdma_get_eq_table_index(struct ocrdma_dev *dev,
