@@ -25,6 +25,8 @@
 #include <linux/kthread.h>
 #include <linux/completion.h>
 
+struct dma_chan;
+
 /*
  * INTERFACES between SPI master-side drivers and SPI infrastructure.
  * (There's no SPI slave support for Linux yet...)
@@ -273,7 +275,7 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  *	message while queuing transfers that arrive in the meantime. When the
  *	driver is finished with this message, it must call
  *	spi_finalize_current_message() so the subsystem can issue the next
- *	transfer
+ *	message
  * @unprepare_transfer_hardware: there are currently no more messages on the
  *	queue so the subsystem notifies the driver that it may relax the
  *	hardware by issuing this call
@@ -287,7 +289,10 @@ static inline void spi_unregister_driver(struct spi_driver *sdrv)
  *                  - return 1 if the transfer is still in progress. When
  *                    the driver is finished with this transfer it must
  *                    call spi_finalize_current_transfer() so the subsystem
- *                    can issue the next transfer
+ *                    can issue the next transfer. Note: transfer_one and
+ *                    transfer_one_message are mutually exclusive; when both
+ *                    are set, the generic subsystem does not call your
+ *                    transfer_one callback.
  * @unprepare_message: undo any work done by prepare_message().
  * @cs_gpios: Array of GPIOs to use as chip select lines; one per CS
  *	number. Any individual value may be -ENOENT for CS lines that
@@ -387,6 +392,17 @@ struct spi_master {
 	void			(*cleanup)(struct spi_device *spi);
 
 	/*
+	 * Used to enable core support for DMA handling, if can_dma()
+	 * exists and returns true then the transfer will be mapped
+	 * prior to transfer_one() being called.  The driver should
+	 * not modify or store xfer and dma_tx and dma_rx must be set
+	 * while the device is prepared.
+	 */
+	bool			(*can_dma)(struct spi_master *master,
+					   struct spi_device *spi,
+					   struct spi_transfer *xfer);
+
+	/*
 	 * These hooks are for drivers that want to use the generic
 	 * master transfer queueing mechanism. If these are used, the
 	 * transfer() function above must NOT be specified by the driver.
@@ -404,6 +420,7 @@ struct spi_master {
 	bool				rt;
 	bool				auto_runtime_pm;
 	bool                            cur_msg_prepared;
+	bool				cur_msg_mapped;
 	struct completion               xfer_completion;
 
 	int (*prepare_transfer_hardware)(struct spi_master *master);
@@ -425,6 +442,10 @@ struct spi_master {
 
 	/* gpio chip select */
 	int			*cs_gpios;
+
+	/* DMA channels for use with core dmaengine helpers */
+	struct dma_chan		*dma_tx;
+	struct dma_chan		*dma_rx;
 };
 
 static inline void *spi_master_get_devdata(struct spi_master *master)
