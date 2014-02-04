@@ -1,0 +1,27 @@
+Importing jdelvare-hwmon based on 5cb480f6b488128140c940abff3c36f524a334a8
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 5cb480f6b488128140c940abff3c36f524a334a8
+HEAD is now at 5cb480f6b488 Merge branch 'misc' of git://git.kernel.org/pub/scm/linux/kernel/git/mmarek/kbuild
+$ git am ../quilt/jdelvare-hwmon/hwmon-sensors-fix-sensors_lm75-dependencies.patch
+Applying: hwmon: Fix SENSORS_LM75 dependencies to eliminate build errors
+$ git am ../quilt/jdelvare-hwmon/hwmon-sensors-fix-sensors_tmp102-dependencies.patch
+Applying: hwmon: Fix SENSORS_TMP102 dependencies to eliminate build errors
+$ git am ../quilt/jdelvare-hwmon/hwmon-f71805f-fix-author-address.patch
+Applying: hwmon: (f71805f) Fix author's address
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-01-add-additional-sysfs-group-for-temp2_type-attribute.patch
+Applying: hwmon: (lm63) Add additional sysfs group for temp2_type attribute
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-02-introduce-dev-variable-to-point-to-client-dev.patch
+Applying: hwmon: (lm63) Introduce 'dev' variable to point to client->dev
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-03-create-all-sysfs-groups-in-one-call.patch
+Applying: hwmon: (lm63) Create all sysfs groups in one call
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-04-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm63) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-adm1021-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (adm1021) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm80-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm80) Convert to use devm_hwmon_device_register_with_groups
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + ac6e3e783d3e...4fada9bfd39d master     -> jdelvare-hwmon/master  (forced update)
