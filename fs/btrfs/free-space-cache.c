@@ -2973,10 +2973,10 @@ struct inode *lookup_free_ino_inode(struct btrfs_root *root,
 {
 	struct inode *inode = NULL;
 
-	spin_lock(&root->cache_lock);
-	if (root->cache_inode)
-		inode = igrab(root->cache_inode);
-	spin_unlock(&root->cache_lock);
+	spin_lock(&root->ino_cache_lock);
+	if (root->ino_cache_inode)
+		inode = igrab(root->ino_cache_inode);
+	spin_unlock(&root->ino_cache_lock);
 	if (inode)
 		return inode;
 
@@ -2984,10 +2984,10 @@ struct inode *lookup_free_ino_inode(struct btrfs_root *root,
 	if (IS_ERR(inode))
 		return inode;
 
-	spin_lock(&root->cache_lock);
+	spin_lock(&root->ino_cache_lock);
 	if (!btrfs_fs_closing(root->fs_info))
-		root->cache_inode = igrab(inode);
-	spin_unlock(&root->cache_lock);
+		root->ino_cache_inode = igrab(inode);
+	spin_unlock(&root->ino_cache_lock);
 
 	return inode;
 }
