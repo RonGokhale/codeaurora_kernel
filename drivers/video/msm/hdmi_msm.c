@@ -93,7 +93,6 @@ static int hdmi_msm_res_priority[HDMI_VFRMT_MAX] = {
 
 struct workqueue_struct *hdmi_work_queue;
 struct hdmi_msm_state_type *hdmi_msm_state;
-static struct platform_device *hdmi_msm_pdev;
 
 static struct platform_device *hdmi_msm_pdev;
 
@@ -5757,8 +5756,6 @@ error:
 
 	external_common_state_remove();
 
-	hdcp_tx_deinit();
-
 	if (hdmi_msm_state->hdmi_app_clk)
 		clk_put(hdmi_msm_state->hdmi_app_clk);
 	if (hdmi_msm_state->hdmi_m_pclk)
@@ -5800,6 +5797,8 @@ static int __devexit hdmi_msm_remove(struct platform_device *pdev)
 	}
 
 	external_common_state_remove();
+
+	hdcp_tx_deinit();
 
 	if (hdmi_msm_state->hdmi_app_clk)
 		clk_put(hdmi_msm_state->hdmi_app_clk);
