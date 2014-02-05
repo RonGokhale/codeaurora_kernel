@@ -1164,7 +1164,7 @@ static DEVICE_ATTR(edid_3d_modes, S_IRUGO,
 	hdmi_common_rda_edid_3d_modes, NULL);
 static DEVICE_ATTR(3d_present, S_IRUGO, hdmi_common_rda_3d_present, NULL);
 static DEVICE_ATTR(hdcp_present, S_IRUGO, hdmi_common_rda_hdcp_present, NULL);
-static DEVICE_ATTR(hdmi_audio, S_IWUGO, NULL, external_common_wta_hdmi_audio);
+static DEVICE_ATTR(hdmi_audio, S_IROTH | S_IWUSR | S_IWGRP, NULL, external_common_wta_hdmi_audio);
 #endif
 #ifdef CONFIG_FB_MSM_HDMI_3D
 static DEVICE_ATTR(format_3d, S_IRUGO | S_IWUSR | S_IWGRP,
