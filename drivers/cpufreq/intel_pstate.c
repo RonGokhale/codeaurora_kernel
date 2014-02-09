@@ -956,12 +956,12 @@ static int __init intel_pstate_init(void)
 	if (!all_cpu_data)
 		return -ENOMEM;
 
+	rdmsrl(MSR_RAPL_POWER_UNIT, units);
+	energy_divisor = 1 << ((units >> 8) & 0x1f); /* bits{12:8} */
+
 	rc = cpufreq_register_driver(&intel_pstate_driver);
 	if (rc)
 		goto out;
-
-	rdmsrl(MSR_RAPL_POWER_UNIT, units);
-	energy_divisor = 1 << ((units >> 8) & 0x1f); /* bits{12:8} */
 
 	intel_pstate_debug_expose_params();
 	intel_pstate_sysfs_expose_params();
