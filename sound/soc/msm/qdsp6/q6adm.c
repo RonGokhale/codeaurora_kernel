@@ -69,6 +69,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_GLOBAL);
 		open = kzalloc(sz, GFP_KERNEL);
+		if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+				__func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_GLOBAL) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS;
@@ -92,6 +97,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_WOWHD);
 		open = kzalloc(sz, GFP_KERNEL);
+		 if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+				__func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_WOWHD) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS_WOWHD;
@@ -116,6 +126,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_CSHP);
 		open = kzalloc(sz, GFP_KERNEL);
+		 if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+			__func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_CSHP) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS_CSHP;
@@ -139,6 +154,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_HPF);
 		open = kzalloc(sz, GFP_KERNEL);
+		 if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+				 __func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_HPF) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS_HPF;
@@ -157,6 +177,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_PEQ);
 		open = kzalloc(sz, GFP_KERNEL);
+		 if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+				__func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_PEQ) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS_PEQ;
@@ -177,6 +202,11 @@ int srs_trumedia_open(int port_id, int srs_tech_id, void *srs_params)
 		sz = sizeof(struct asm_pp_params_command) +
 			sizeof(struct srs_trumedia_params_HL);
 		open = kzalloc(sz, GFP_KERNEL);
+		 if (!open) {
+			pr_err("%s, adm params memory alloc failed\n",
+				__func__);
+			return -ENOMEM;
+		}
 		open->payload_size = sizeof(struct srs_trumedia_params_HL) +
 					sizeof(struct asm_pp_param_data_hdr);
 		open->params.param_id = SRS_TRUMEDIA_PARAMS_HL;
