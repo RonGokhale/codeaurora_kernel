@@ -165,6 +165,7 @@ struct pool {
 
 	struct pool_features pf;
 	bool low_water_triggered:1;	/* A dm event has been sent */
+	bool metadata_low_water_triggered:1;
 
 	struct dm_bio_prison *prison;
 	struct dm_kcopyd_client *copier;
@@ -1824,6 +1825,7 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	INIT_LIST_HEAD(&pool->prepared_mappings);
 	INIT_LIST_HEAD(&pool->prepared_discards);
 	pool->low_water_triggered = false;
+	pool->metadata_low_water_triggered = false;
 	bio_list_init(&pool->retry_on_resume_list);
 
 	pool->shared_read_ds = dm_deferred_set_create();
@@ -1993,10 +1995,16 @@ static int parse_pool_features(struct dm_arg_set *as, struct pool_features *pf,
 static void metadata_low_callback(void *context)
 {
 	struct pool *pool = context;
+	unsigned long flags;
+
+	if (pool->metadata_low_water_triggered)
+		return;
 
 	DMWARN("%s: reached low water mark for metadata device: sending event.",
 	       dm_device_name(pool->pool_md));
-
+	spin_lock_irqsave(&pool->lock, flags);
+	pool->metadata_low_water_triggered = true;
+	spin_unlock_irqrestore(&pool->lock, flags);
 	dm_table_event(pool->ti->table);
 }
 
@@ -2350,6 +2358,7 @@ static void pool_resume(struct dm_target *ti)
 
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->low_water_triggered = false;
+	pool->metadata_low_water_triggered = false;
 	__requeue_bios(pool);
 	spin_unlock_irqrestore(&pool->lock, flags);
 

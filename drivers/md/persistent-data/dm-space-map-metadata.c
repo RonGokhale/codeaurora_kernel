@@ -21,9 +21,7 @@
  */
 struct threshold {
 	bool threshold_set;
-	bool value_set;
 	dm_block_t threshold;
-	dm_block_t current_value;
 	dm_sm_threshold_fn fn;
 	void *context;
 };
@@ -31,7 +29,6 @@ struct threshold {
 static void threshold_init(struct threshold *t)
 {
 	t->threshold_set = false;
-	t->value_set = false;
 }
 
 static void set_threshold(struct threshold *t, dm_block_t value,
@@ -43,24 +40,10 @@ static void set_threshold(struct threshold *t, dm_block_t value,
 	t->context = context;
 }
 
-static bool below_threshold(struct threshold *t, dm_block_t value)
-{
-	return t->threshold_set && value <= t->threshold;
-}
-
-static bool threshold_already_triggered(struct threshold *t)
-{
-	return t->value_set && below_threshold(t, t->current_value);
-}
-
 static void check_threshold(struct threshold *t, dm_block_t value)
 {
-	if (below_threshold(t, value) &&
-	    !threshold_already_triggered(t))
+	if (t->threshold_set && value <= t->threshold)
 		t->fn(t->context);
-
-	t->value_set = true;
-	t->current_value = value;
 }
 
 /*----------------------------------------------------------------*/
