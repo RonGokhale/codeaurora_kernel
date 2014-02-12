@@ -3817,6 +3817,14 @@ static void alc290_fixup_mono_speakers(struct hda_codec *codec,
 	}
 }
 
+static void alc_fixup_clear_init_hook(struct hda_codec *codec,
+				      const struct hda_fixup *fix, int action)
+{
+	struct alc_spec *spec = codec->spec;
+	if (action == HDA_FIXUP_ACT_PROBE)
+		spec->init_hook = NULL;
+}
+
 /* for hda_fixup_thinkpad_acpi() */
 #include "thinkpad_helper.c"
 
@@ -3858,6 +3866,7 @@ enum {
 	ALC271_FIXUP_HP_GATE_MIC_JACK,
 	ALC271_FIXUP_HP_GATE_MIC_JACK_E1_572,
 	ALC269_FIXUP_ACER_AC700,
+	ALC271_FIXUP_ACER_AO725,
 	ALC269_FIXUP_LIMIT_INT_MIC_BOOST,
 	ALC269VB_FIXUP_ASUS_ZENBOOK,
 	ALC269VB_FIXUP_ASUS_ZENBOOK_UX31A,
@@ -4250,13 +4259,19 @@ static const struct hda_fixup alc269_fixups[] = {
 		.type = HDA_FIXUP_FUNC,
 		.v.func = alc_fixup_headset_mode_alc255,
 	},
+	[ALC271_FIXUP_ACER_AO725] = {
+		.type = HDA_FIXUP_FUNC,
+		.v.func = alc_fixup_clear_init_hook,
+		.chained = true,
+		.chain_id = ALC271_FIXUP_HP_GATE_MIC_JACK,
+	},
 };
 
 static const struct snd_pci_quirk alc269_fixup_tbl[] = {
 	SND_PCI_QUIRK(0x1025, 0x029b, "Acer 1810TZ", ALC269_FIXUP_INV_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x0349, "Acer AOD260", ALC269_FIXUP_INV_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x047c, "Acer AC700", ALC269_FIXUP_ACER_AC700),
-	SND_PCI_QUIRK(0x1025, 0x0740, "Acer AO725", ALC271_FIXUP_HP_GATE_MIC_JACK),
+	SND_PCI_QUIRK(0x1025, 0x0740, "Acer AO725", ALC271_FIXUP_ACER_AO725),
 	SND_PCI_QUIRK(0x1025, 0x0742, "Acer AO756", ALC271_FIXUP_HP_GATE_MIC_JACK),
 	SND_PCI_QUIRK_VENDOR(0x1025, "Acer Aspire", ALC271_FIXUP_DMIC),
 	SND_PCI_QUIRK(0x1025, 0x0775, "Acer Aspire E1-572", ALC271_FIXUP_HP_GATE_MIC_JACK_E1_572),
@@ -4523,7 +4538,6 @@ static int patch_alc269(struct hda_codec *codec)
 		if (err < 0)
 			goto error;
 		spec->init_hook = alc269_fill_coef;
-		alc269_fill_coef(codec);
 		break;
 
 	case 0x10ec0280:
