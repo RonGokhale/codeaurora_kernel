@@ -474,6 +474,15 @@ void __pgd_error(const char *file, int line, unsigned long val)
 	pr_crit("%s:%d: bad pgd %016lx.\n", file, line, val);
 }
 
+void abort(void)
+{
+	BUG();
+
+	/* if that doesn't kill us, halt */
+	panic("Oops failed to kill thread");
+}
+EXPORT_SYMBOL(abort);
+
 /* GENERIC_BUG traps */
 
 int is_valid_bugaddr(unsigned long addr)
