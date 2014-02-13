@@ -250,6 +250,10 @@ struct mdss_dsi_ctrl_pdata {
 	int mdss_dsi_clk_on;
 	int rst_gpio;
 	int disp_en_gpio;
+#if defined(CONFIG_ARCH_MSM8974_APOLLO)
+        int disp_lcd_en_gpio;
+        int mbist_gpio;
+#endif
 	int disp_te_gpio;
 	int mode_gpio;
 	int rst_gpio_requested;

@@ -2467,6 +2467,7 @@ static void dwc3_id_work(struct work_struct *w)
 	}
 }
 
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
 {
 	struct dwc3_msm *mdwc = data;
@@ -2481,6 +2482,7 @@ static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static void dwc3_adc_notification(enum qpnp_tm_state state, void *ctx)
 {
@@ -2542,6 +2544,7 @@ static void dwc3_init_adc_work(struct work_struct *w)
 	mdwc->id_adc_detect = true;
 }
 
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 static ssize_t adc_enable_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
@@ -2578,6 +2581,7 @@ static ssize_t adc_enable_store(struct device *dev,
 
 static DEVICE_ATTR(adc_enable, S_IRUGO | S_IWUSR, adc_enable_show,
 		adc_enable_store);
+#endif
 
 static int dwc3_msm_ext_chg_open(struct inode *inode, struct file *file)
 {
@@ -2733,7 +2737,9 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 	struct dwc3_msm *mdwc;
 	struct resource *res;
 	void __iomem *tcsr;
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 	unsigned long flags;
+#endif
 	int ret = 0;
 	int len = 0;
 	u32 tmp[3];
@@ -2933,7 +2939,8 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 		}
 		enable_irq_wake(mdwc->hs_phy_irq);
 	}
-
+        /* remove ID pin detection, this causes problem on some of G2 board */
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 	if (mdwc->ext_xceiv.otg_capability) {
 		mdwc->pmic_id_irq =
 			platform_get_irq_byname(pdev, "pmic_id_irq");
@@ -2978,7 +2985,7 @@ static int __devinit dwc3_msm_probe(struct platform_device *pdev)
 			mdwc->pmic_id_irq = 0;
 		}
 	}
-
+#endif
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	if (!res) {
 		dev_dbg(&pdev->dev, "missing TCSR memory resource\n");

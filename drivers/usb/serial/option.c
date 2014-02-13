@@ -1273,10 +1273,12 @@ static bool debug;
 
 /* per port private data */
 
+#if 0
 #define N_IN_URB 4
 #define N_OUT_URB 4
 #define IN_BUFLEN 4096
 #define OUT_BUFLEN 4096
+#endif
 
 struct option_port_private {
 	/* Input endpoints and buffer for this port */

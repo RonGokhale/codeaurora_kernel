@@ -201,8 +201,19 @@ static void __msm_power_off(int lower_pshold)
 	return;
 }
 
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+#include <linux/power_supply.h>
+#endif
+
 static void msm_power_off(void)
 {
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        /* Restart to charge mode instead of halt because of QC PMIC bug */
+        if (power_supply_is_system_supplied()) {
+                msm_restart(0, "oem-1");
+                return;
+        }
+#endif
 	/* MSM initiated power off, lower ps_hold */
 	__msm_power_off(1);
 }

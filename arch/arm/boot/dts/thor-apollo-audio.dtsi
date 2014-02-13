@@ -1,0 +1,130 @@
+/*
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/include/ "skeleton.dtsi"
+
+&soc {
+	i2c@f9968000 { /* BLSP#12 */
+	        max97236@40 {
+			compatible = "maxim,max97236";
+			reg = <0x40>;
+			interrupt-parent = <&msmgpio>; /* GPIO handler */
+			interrupts = <50 0x2>; /* GPIO will be converted to gpio_irq */
+			maxim,irq-gpio = <&msmgpio 50 0x00>; /* Pass a GPIO */
+
+			vdd_hp_mux-supply = <&pm8941_l18>;
+			status = "disabled";
+		};
+	};
+
+	sound {
+		qcom,model = "msm8974-taiko-tablet-snd-card";
+
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"Lineout_1 amp", "LINEOUT1",
+			"Lineout_3 amp", "LINEOUT3",
+			"Lineout_2 amp", "LINEOUT2",
+			"Lineout_4 amp", "LINEOUT4",
+			"DMIC1", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic1",
+			"DMIC2", "MIC BIAS1 External",
+			"MIC BIAS1 External", "Digital Mic2",
+			/* "MAX97236_JACK_MICROPHONE", "MAX97236_MIC_BIAS",
+			"MAX97236_JACK_MICROPHONE", "Headset Mic", */ /* Headset Mic is DAPM_MIC of the board */
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic";
+			/* "AMIC2", "MAX97236_MOUT"; */  /* MAX97236_MOUT is the DAPM_OUTPUT of MAX97236 */
+
+	        qcom,cdc-mclk-gpios = <&pm8941_gpios 15 0>;
+	        taiko-mclk-clk = <&pm8941_clkdiv1>;
+	        qcom,taiko-mclk-clk-freq = <9600000>;
+
+	        qcom,ext-spk-amp-gpio = <&pm8841_mpps 1 0>;
+		qcom,ext-spk-amp-boost-supply = <&pm8941_chg_boost>;
+
+	        maxim,max97236-extclk-gpios = <&pm8941_gpios 16 0>;
+	        max97236-extclk-clk = <&pm8941_clkdiv2>;
+	        maxim,max97236-extclk-freq = <1200000>;
+	      };
+};
+
+&slim_msm {
+        taiko_codec {
+                qcom,cdc-micbias1-ext-cap = <1>;
+                qcom,cdc-micbias2-ext-cap;
+                qcom,cdc-micbias3-ext-cap;
+                qcom,cdc-micbias4-ext-cap;
+
+                /* If boot isn't available, vph_pwr_vreg can be used instead */
+                cdc-vdd-spkdrv-supply = <&pm8941_boost>;
+                qcom,cdc-vdd-spkdrv-voltage = <5000000 5000000>;
+                qcom,cdc-vdd-spkdrv-current = <1250000>;
+
+                qcom,cdc-on-demand-supplies = "cdc-vdd-spkdrv";
+
+
+        };
+};
+
+&pm8841_mpps {
+	mpp@a000 { /* MPP 1 */
+	        /* CLASS_D_EN speakers PA */
+	        qcom,mode = <1>; /* DIG_OUT */
+	        qcom,output-type = <0>;  /* PNP_PIN_OUT_BUF_CMOS */
+	        qcom,vin-sel = <2>; /* S3A 1.8v */
+	        qcom,src-select = <0>; /* CONSTANT */
+	        qcom,master-en = <1>; /* ENABLE MPP */
+	};
+};
+
+&pm8941_gpios {
+	gpio@cf00 { /* GPIO 16 */
+		qcom,mode = <1>;  /* Digital output */
+		qcom,output-type = <0>; /* CMOS logic */
+		qcom,pull = <5>;
+		qcom,vin-sel = <2>;
+		qcom,out-strength = <3>;
+		qcom,src-sel = <2>;
+		qcom,master-en = <1>;
+	};
+};
+
+&spmi_bus {
+	qcom,pm8941@0 {
+		pm8941_clkdiv2: clkdiv@5c00 {
+			qcom,cxo-div = <5>;
+		};
+	};
+};
+
+&vph_pwr_vreg {
+	status = "ok";
+};
+
+&slim_msm {
+        taiko_codec {
+              qcom,cdc-dmic-sample-rate = <2400000>;
+              qcom,cdc-micbias2-ext-cap;
+              qcom,cdc-micbias3-ext-cap;
+              /*
+               * Liquid has external spkrdrv supply. Give a dummy supply to
+               * make codec driver's happy.
+               */
+              cdc-vdd-spkdrv-supply = <&vph_pwr_vreg>;
+              qcom,cdc-vdd-spkdrv-voltage = <0 0>;
+              qcom,cdc-vdd-spkdrv-current = <0>;
+              qcom,cdc-on-demand-supplies = "cdc-vdd-spkdrv";
+       };
+};

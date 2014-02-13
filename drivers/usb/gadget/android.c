@@ -2695,7 +2695,11 @@ static struct usb_composite_driver android_usb_driver = {
 	.dev		= &device_desc,
 	.strings	= dev_strings,
 	.unbind		= android_usb_unbind,
+#if defined(CONFIG_ARCH_MSM8974_APOLLO)
+        .max_speed      = USB_SPEED_HIGH
+#else
 	.max_speed	= USB_SPEED_SUPER
+#endif
 };
 
 static int

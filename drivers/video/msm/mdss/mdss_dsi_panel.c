@@ -21,12 +21,21 @@
 #include <linux/leds.h>
 #include <linux/qpnp/pwm.h>
 #include <linux/err.h>
+#if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
+#include <linux/lp855x.h>
+#endif
 
 #include "mdss_dsi.h"
 
 #define DT_CMD_HDR 6
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
+#if 0
+#if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
+extern wait_queue_head_t panel_on_waitqueue;
+extern int lcd_panel_enabled;
+#endif
+#endif
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 {
@@ -178,10 +187,57 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		return;
 	}
 
+#if defined(CONFIG_ARCH_MSM8974_APOLLO)
+        if (!gpio_is_valid(ctrl_pdata->disp_lcd_en_gpio)) {
+                pr_debug("%s:%d, lcd en not configured\n",
+                           __func__, __LINE__);
+                return;
+        }
+
+        if (!gpio_is_valid(ctrl_pdata->mbist_gpio)) {
+                pr_debug("%s:%d, mbist line not configured\n",
+                           __func__, __LINE__);
+                return;
+        }
+#endif
+
 	pr_debug("%s: enable = %d\n", __func__, enable);
 	pinfo = &(ctrl_pdata->panel_data.panel_info);
 
 	if (enable) {
+#if defined(CONFIG_ARCH_MSM8974_APOLLO)
+                gpio_set_value((ctrl_pdata->rst_gpio), 0);
+                udelay(200);
+                wmb();
+
+                gpio_set_value((ctrl_pdata->mbist_gpio), 0);
+                udelay(200);
+                wmb();
+
+                gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+                udelay(1200);
+                wmb();
+
+                gpio_set_value((ctrl_pdata->disp_lcd_en_gpio), 1);
+                msleep(15); //udelay(15000);
+                wmb();
+
+                gpio_set_value((ctrl_pdata->rst_gpio), 1);
+                msleep(10); //udelay(10000);
+                wmb();
+#else
+                gpio_set_value((ctrl_pdata->rst_gpio), 1);
+                msleep(20);
+                gpio_set_value((ctrl_pdata->rst_gpio), 0);
+                udelay(200);
+                gpio_set_value((ctrl_pdata->rst_gpio), 1);
+                msleep(20);
+                wmb();
+                if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
+                        gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
+                wmb();
+#endif
+
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 1);
 
@@ -204,7 +260,22 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
+#if 0
+#if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
+
+                pr_debug("Panel enabled\n");
+                msleep(30); /* extra time needed for panel to get ready */
+                lcd_panel_enabled = 1;
+                wmb();
+                wake_up(&panel_on_waitqueue);
+#endif
+#endif
 	} else {
+#if defined(CONFIG_ARCH_MSM8974_APOLLO)
+                gpio_set_value((ctrl_pdata->disp_lcd_en_gpio), 0);
+                msleep(20);
+                wmb();
+#endif
 		gpio_set_value((ctrl_pdata->rst_gpio), 0);
 		if (gpio_is_valid(ctrl_pdata->disp_en_gpio))
 			gpio_set_value((ctrl_pdata->disp_en_gpio), 0);
@@ -291,6 +362,9 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	switch (ctrl_pdata->bklt_ctrl) {
 	case BL_WLED:
 		led_trigger_event(bl_led_trigger, bl_level);
+#if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
+                //lp855x_bl_set(bl_level);
+#endif
 		break;
 	case BL_PWM:
 		mdss_dsi_panel_bklt_pwm(ctrl_pdata, bl_level);

@@ -361,13 +361,16 @@ static int msm_ehci_init_vbus(struct msm_hcd *mhcd, int init)
 	mhcd->vbus = devm_regulator_get(mhcd->dev, "vbus");
 	ret = PTR_ERR(mhcd->vbus);
 	if (ret == -EPROBE_DEFER) {
+		pr_info("%s: 1\n", __func__);
 		pr_debug("failed to get vbus handle, defer probe\n");
 		return ret;
 	} else if (IS_ERR(mhcd->vbus)) {
+		pr_info("%s: 2\n", __func__);
 		pr_err("Unable to get vbus\n");
 		return -ENODEV;
 	}
 
+	pr_info("%s: 3\n", __func__);
 	if (pdata) {
 		hcd->power_budget = pdata->power_budget;
 
@@ -381,6 +384,7 @@ static int msm_ehci_init_vbus(struct msm_hcd *mhcd, int init)
 				enable_irq_wake(pdata->dock_connect_irq);
 		}
 	}
+	pr_info("%s: 4, %d\n", __func__, rc);
 	return rc;
 }
 

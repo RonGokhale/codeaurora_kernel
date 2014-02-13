@@ -33,14 +33,14 @@ static struct gpiomux_setting mdm2ap_status_cfg = {
 	.pull = GPIOMUX_PULL_NONE,
 	.dir = GPIOMUX_OUT_LOW,
 };
-
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO) && !defined(CONFIG_ARCH_MSM8974_GALVAJEM)
 static struct gpiomux_setting mdm2ap_errfatal_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 	.dir = GPIOMUX_OUT_LOW,
 };
-
+#endif
 static struct gpiomux_setting mdm2ap_pblrdy = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
@@ -78,6 +78,7 @@ static struct msm_gpiomux_config mdm_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &mdm2ap_status_cfg,
 		}
 	},
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO) && !defined(CONFIG_ARCH_MSM8974_GALVAJEM)
 	/* MDM2AP_ERRFATAL */
 	{
 		.gpio = 82,
@@ -85,6 +86,7 @@ static struct msm_gpiomux_config mdm_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &mdm2ap_errfatal_cfg,
 		}
 	},
+#endif
 	/* AP2MDM_ERRFATAL */
 	{
 		.gpio = 106,
@@ -167,6 +169,96 @@ static struct msm_gpiomux_config msm_eth_configs[] = {
 	},
 };
 #endif
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_GALVAJEM)
+static struct gpiomux_setting ar_gpio_active_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting ar_gpio_suspended_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config msm_ar_gpio_configs[] __initdata = {
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_GALVAJEM)
+        {
+                .gpio      = 45,        /* WiFi_3.3v for AR6004 */
+                .settings = {
+                        [GPIOMUX_SUSPENDED] = &ar_gpio_suspended_cfg,
+                        [GPIOMUX_ACTIVE] = &ar_gpio_active_cfg,
+                },
+	},
+        {
+                .gpio      = 46,        /* BT_1.8v for AR3002 */
+                .settings = {
+                        [GPIOMUX_SUSPENDED] = &ar_gpio_suspended_cfg,
+                        [GPIOMUX_ACTIVE] = &ar_gpio_active_cfg,
+                },
+        },
+#endif
+        {
+                .gpio      = 51,        /* BT_WAKE for AR3002 */
+                .settings = {
+                        [GPIOMUX_SUSPENDED] = &ar_gpio_suspended_cfg,
+                        [GPIOMUX_ACTIVE] = &ar_gpio_active_cfg,
+                },
+        },
+        {
+                .gpio      = 79,        /* BT_INT2AP_N for AR3002 */
+                .settings = {
+                        [GPIOMUX_SUSPENDED] = &ar_gpio_suspended_cfg,
+                        [GPIOMUX_ACTIVE]    = &ar_gpio_active_cfg,
+                },
+        }
+};
+
+static struct gpiomux_setting gpio_uart7_active_cfg = {
+        .func = GPIOMUX_FUNC_3,
+        .drv = GPIOMUX_DRV_8MA,
+        .pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gpio_uart7_suspend_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct msm_gpiomux_config msm_blsp2_uart7_configs[] __initdata = {
+        {
+                .gpio   = 41,           /* BLSP2 UART7 TX */
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &gpio_uart7_active_cfg,
+                        [GPIOMUX_SUSPENDED] = &gpio_uart7_suspend_cfg,
+                },
+
+        },
+        {
+                .gpio   = 42,           /* BLSP2 UART7 RX */
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &gpio_uart7_active_cfg,
+                        [GPIOMUX_SUSPENDED] = &gpio_uart7_suspend_cfg,
+                },
+        },
+        {
+                .gpio   = 43,           /* BLSP2 UART7 CTS */
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &gpio_uart7_active_cfg,
+                        [GPIOMUX_SUSPENDED] = &gpio_uart7_suspend_cfg,
+                },
+        },
+        {
+                .gpio   = 44,           /* BLSP2 UART7 RFR */
+                .settings = {
+                        [GPIOMUX_ACTIVE] = &gpio_uart7_active_cfg,
+                        [GPIOMUX_SUSPENDED] = &gpio_uart7_suspend_cfg,
+                },
+        }
+};
+#endif
 
 static struct gpiomux_setting gpio_suspend_config[] = {
 	{
@@ -181,14 +273,14 @@ static struct gpiomux_setting gpio_suspend_config[] = {
 		.dir = GPIOMUX_OUT_LOW,
 	},
 };
-
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO) && !defined(CONFIG_ARCH_MSM8974_GALVAJEM)
 static struct gpiomux_setting gpio_epm_config = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv  = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 	.dir = GPIOMUX_OUT_HIGH,
 };
-
+#endif
 static struct gpiomux_setting gpio_epm_marker_config = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv  = GPIOMUX_DRV_2MA,
@@ -230,6 +322,21 @@ static struct gpiomux_setting gpio_i2c_config = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 };
+
+#ifdef CONFIG_ARCH_MSM8974_APOLLO
+static struct gpiomux_setting bist_en_act_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_NONE,
+        .dir = GPIOMUX_OUT_LOW,
+};
+static struct gpiomux_setting lcd_te_act_cfg = {
+        .func = GPIOMUX_FUNC_GPIO,
+        .drv = GPIOMUX_DRV_2MA,
+        .pull = GPIOMUX_PULL_DOWN,
+        .dir = GPIOMUX_IN,
+};
+#endif
 
 static struct gpiomux_setting gpio_i2c_act_config = {
 	.func = GPIOMUX_FUNC_3,
@@ -312,6 +419,20 @@ static struct msm_gpiomux_config hap_lvl_shft_config[] __initdata = {
 	},
 };
 
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+static struct gpiomux_setting touch_gpio_active_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_UP,
+};
+
+static struct gpiomux_setting touch_gpio_suspend_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+#endif
+
 static struct msm_gpiomux_config msm_touch_configs[] __initdata = {
 	{
 		.gpio      = 60,		/* TOUCH RESET */
@@ -327,8 +448,85 @@ static struct msm_gpiomux_config msm_touch_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &atmel_int_sus_cfg,
 		},
 	},
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+	{
+		.gpio      = 55,		/* GPIO-0 */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &touch_gpio_active_cfg,
+			[GPIOMUX_SUSPENDED] = &touch_gpio_suspend_cfg,
+		},
+	},
+	{
+		.gpio      = 56,		/* GPIO-1 */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &touch_gpio_active_cfg,
+			[GPIOMUX_SUSPENDED] = &touch_gpio_suspend_cfg,
+		},
+	},
+#endif
 
 };
+
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+
+static struct gpiomux_setting wwan_sus_cfg = {
+  .func = GPIOMUX_FUNC_GPIO,
+  .drv  = GPIOMUX_DRV_2MA,
+  .pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting wwan_act_cfg = {
+  .func = GPIOMUX_FUNC_GPIO,
+  .drv  = GPIOMUX_DRV_2MA,
+  .pull = GPIOMUX_PULL_NONE,
+  .dir  = GPIOMUX_IN
+};
+
+static struct msm_gpiomux_config msm_ad7614_configs[] __initdata = {
+  {
+    .gpio      = 28,/* AD7614 Interrupt */
+    .settings = {
+      [GPIOMUX_ACTIVE] = &wwan_act_cfg,
+      [GPIOMUX_SUSPENDED] = &wwan_sus_cfg,
+    },
+  },
+};
+
+static struct msm_gpiomux_config msm_bu52061_configs[] __initdata = {
+  {
+    .gpio      = 34,/* HALL_SEN1 Rohm bu52061 Interrupt */
+    .settings = {
+      [GPIOMUX_ACTIVE] = &wwan_act_cfg,
+      [GPIOMUX_SUSPENDED] = &wwan_sus_cfg,
+    },
+  },
+#ifdef CONFIG_ARCH_MSM8974_APOLLO
+  {
+    .gpio      = 73,/* HALL_SEN2 Rohm bu52061 Interrupt */
+    .settings = {
+      [GPIOMUX_ACTIVE] = &wwan_act_cfg,
+      [GPIOMUX_SUSPENDED] = &wwan_sus_cfg,
+    },
+  },
+  {
+    .gpio      = 65,/* HALL_SEN3 Rohm bu52061 Interrupt */
+    .settings = {
+      [GPIOMUX_ACTIVE] = &wwan_act_cfg,
+      [GPIOMUX_SUSPENDED] = &wwan_sus_cfg,
+    },
+  },
+  {
+    .gpio      = 33,/* HALL_SEN4 Rohm bu52061 Interrupt */
+    .settings = {
+      [GPIOMUX_ACTIVE] = &wwan_act_cfg,
+      [GPIOMUX_SUSPENDED] = &wwan_sus_cfg,
+    },
+  },
+#endif
+};
+
+#endif
+
 
 static struct gpiomux_setting hsic_sus_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
@@ -477,7 +675,7 @@ static struct msm_gpiomux_config msm_hdmi_configs[] __initdata = {
 		},
 	},
 };
-
+#if 0
 static struct gpiomux_setting gpio_uart7_active_cfg = {
 	.func = GPIOMUX_FUNC_3,
 	.drv = GPIOMUX_DRV_8MA,
@@ -489,7 +687,6 @@ static struct gpiomux_setting gpio_uart7_suspend_cfg = {
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_DOWN,
 };
-
 static struct msm_gpiomux_config msm_blsp2_uart7_configs[] __initdata = {
 	{
 		.gpio	= 41,	/* BLSP2 UART7 TX */
@@ -520,6 +717,7 @@ static struct msm_gpiomux_config msm_blsp2_uart7_configs[] __initdata = {
 		},
 	},
 };
+#endif
 
 static struct msm_gpiomux_config msm_rumi_blsp_configs[] __initdata = {
 	{
@@ -547,12 +745,14 @@ static struct msm_gpiomux_config msm_lcd_configs[] __initdata = {
 };
 
 static struct msm_gpiomux_config msm_epm_configs[] __initdata = {
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO) && !defined(CONFIG_ARCH_MSM8974_GALVAJEM)
 	{
 		.gpio      = 81,		/* EPM enable */
 		.settings = {
 			[GPIOMUX_SUSPENDED] = &gpio_epm_config,
 		},
 	},
+#endif
 	{
 		.gpio      = 85,		/* EPM MARKER2 */
 		.settings = {
@@ -602,6 +802,27 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 		.settings = {
 			[GPIOMUX_ACTIVE] = &gpio_spi_cs1_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_susp_config,
+		},
+	},
+#endif
+#ifdef CONFIG_ARCH_MSM8974_APOLLO
+	{
+		.gpio = 0,		/* for LCD_EN display */
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &lcd_en_act_cfg,
+			[GPIOMUX_SUSPENDED] = &lcd_en_sus_cfg,
+		},
+		.gpio = 1,		/* for LCD_MBIST */
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &bist_en_act_cfg,
+			[GPIOMUX_SUSPENDED] = &lcd_en_sus_cfg,
+		},
+	},
+	{
+		.gpio      = 12,		/* for LCD_TE */
+		.settings = {
+			[GPIOMUX_ACTIVE]    = &lcd_te_act_cfg,
+			[GPIOMUX_SUSPENDED] = &lcd_en_sus_cfg,
 		},
 	},
 #endif
@@ -655,6 +876,7 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
 		},
 	},
+#if defined(CONFIG_KS8851) || defined(CONFIG_KS8851_MODULE)
 	{
 		.gpio      = 53,		/* BLSP2 QUP4 SPI_DATA_MOSI */
 		.settings = {
@@ -683,6 +905,7 @@ static struct msm_gpiomux_config msm_blsp_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &gpio_suspend_config[0],
 		},
 	},
+#endif
 };
 
 static struct msm_gpiomux_config msm8974_slimbus_config[] __initdata = {
@@ -1356,6 +1579,49 @@ static void msm_gpiomux_sdc4_install(void)
 #else
 static void msm_gpiomux_sdc4_install(void) {}
 #endif /* CONFIG_MMC_MSM_SDC4_SUPPORT */
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_GALVAJEM)
+static struct gpiomux_setting usb3_resume_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_4MA,
+	.pull = GPIOMUX_PULL_DOWN,
+};
+
+static struct gpiomux_setting usb3_wakeup_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_DOWN,
+	.dir  = GPIOMUX_IN
+};
+
+static struct gpiomux_setting usb_boot_cfg = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_DOWN,
+	.dir  = GPIOMUX_IN
+};
+
+static struct msm_gpiomux_config thor_usb3_configs[] = {
+	{	
+		.gpio = 81,
+		.settings = {	
+			[GPIOMUX_SUSPENDED] = &usb3_resume_cfg,	
+		},	
+	},
+	{
+		.gpio = 82,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &usb3_wakeup_cfg,	
+		},
+	},	
+	{
+		.gpio = 103,
+		.settings = {
+			[GPIOMUX_ACTIVE] = &usb_boot_cfg,
+			[GPIOMUX_SUSPENDED] = &usb_boot_cfg,
+		},
+	},
+};
+#endif
 
 static struct msm_gpiomux_config apq8074_dragonboard_ts_config[] __initdata = {
 	{
@@ -1426,6 +1692,11 @@ void __init msm_8974_init_gpiomux(void)
 		msm_gpiomux_sdc4_install();
 
 	msm_gpiomux_install(msm_taiko_config, ARRAY_SIZE(msm_taiko_config));
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_GALVAJEM)
+	msm_gpiomux_install(msm_ar_gpio_configs, ARRAY_SIZE(msm_ar_gpio_configs));
+	msm_gpiomux_install(msm_blsp2_uart7_configs, ARRAY_SIZE(msm_blsp2_uart7_configs));
+	msm_gpiomux_install(thor_usb3_configs, ARRAY_SIZE(thor_usb3_configs));
+#endif
 
 	msm_gpiomux_install(msm_hsic_configs, ARRAY_SIZE(msm_hsic_configs));
 	msm_gpiomux_install(msm_hsic_hub_configs,
@@ -1451,6 +1722,13 @@ void __init msm_8974_init_gpiomux(void)
 						of_board_is_mtp())
 		msm_gpiomux_install(msm_epm_configs,
 				ARRAY_SIZE(msm_epm_configs));
+
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        /* add for intergating ADI Prox sensor driver */
+        msm_gpiomux_install(msm_ad7614_configs, ARRAY_SIZE(msm_ad7614_configs));
+        /* add for intergating hall sensor driver */
+        msm_gpiomux_install(msm_bu52061_configs, ARRAY_SIZE(msm_bu52061_configs));
+#endif
 
 	msm_gpiomux_install_nowrite(msm_lcd_configs,
 			ARRAY_SIZE(msm_lcd_configs));

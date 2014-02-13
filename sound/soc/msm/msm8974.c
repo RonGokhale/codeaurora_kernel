@@ -227,7 +227,7 @@ static int msm8974_liquid_ext_spk_power_amp_init(void)
 			return -EINVAL;
 		}
 		gpio_direction_output(ext_spk_amp_gpio, 0);
-
+#if !defined(CONFIG_SND_SOC_MSM8974_THOR) && !defined(CONFIG_SND_SOC_MSM8974_APOLLO)
 		if (ext_spk_amp_regulator == NULL) {
 			ext_spk_amp_regulator = regulator_get(&spdev->dev,
 									"qcom,ext-spk-amp");
@@ -240,6 +240,7 @@ static int msm8974_liquid_ext_spk_power_amp_init(void)
 				return PTR_ERR(ext_spk_amp_regulator);
 			}
 		}
+#endif
 	}
 
 	ext_ult_spk_amp_gpio = of_get_named_gpio(spdev->dev.of_node,

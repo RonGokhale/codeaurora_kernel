@@ -369,7 +369,11 @@ static int config_buf(struct usb_configuration *config,
 	c->bNumInterfaces = config->next_interface_id;
 	c->bConfigurationValue = config->bConfigurationValue;
 	c->iConfiguration = config->iConfiguration;
-	c->bmAttributes = USB_CONFIG_ATT_ONE | config->bmAttributes;
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        c->bmAttributes = USB_CONFIG_ATT_SELFPOWER | USB_CONFIG_ATT_ONE | config->bmAttributes;
+#else
+        c->bmAttributes = USB_CONFIG_ATT_ONE | config->bmAttributes;
+#endif
 	c->bMaxPower = config->bMaxPower ? :
 		(CONFIG_USB_GADGET_VBUS_DRAW / config->cdev->vbus_draw_units);
 

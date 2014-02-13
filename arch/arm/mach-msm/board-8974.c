@@ -49,7 +49,14 @@
 #include "modem_notifier.h"
 #include "platsmp.h"
 
-
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+enum WLANBT_STATUS {
+    WLANOFF_BTOFF = 1,
+    WLANOFF_BTON,
+    WLANON_BTOFF,
+    WLANON_BTON
+};
+#endif
 static struct memtype_reserve msm8974_reserve_table[] __initdata = {
 	[MEMTYPE_SMI] = {
 	},

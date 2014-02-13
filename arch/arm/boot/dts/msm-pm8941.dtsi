@@ -42,7 +42,7 @@
 		qcom,temp_alarm-vadc = <&pm8941_vadc>;
 	};
 
-	qcom,power-on@800 {
+	pm8941_pon: qcom,power-on@800 {
 		compatible = "qcom,qpnp-power-on";
 		reg = <0x800 0x100>;
 		interrupts = <0x0 0x8 0x0>,
@@ -550,7 +550,7 @@
 		};
 	};
 
-	qcom,pm8941_rtc {
+	pm8941_rtc: qcom,pm8941_rtc {
 		spmi-dev-container;
 		compatible = "qcom,qpnp-rtc";
 		#address-cells = <1>;

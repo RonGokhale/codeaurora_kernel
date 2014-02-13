@@ -17,7 +17,6 @@
  */
 
 /include/ "msm8974-v2.0-1.dtsi"
-/include/ "apq8074-v2.0-1-ion.dtsi"
 
 &soc {
 	qcom,qseecom@a700000 {
@@ -31,15 +30,12 @@
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
+		qcom,support-bus-scaling = <1>;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
-				<55 512 3936000 393600>,
-				<55 512 3936000 393600>,
-				<55 512 3936000 393600>;
-	};
-
-	sound {
-		compatible = "qcom,apq8074-audio-taiko";
+				<55 512 0 0>,
+				<55 512 120000 1200000>,
+				<55 512 393600 3936000>;
 	};
 };
 
@@ -51,13 +47,9 @@
 	status = "disabled";
 };
 
-&sdcc3 {
-	qcom,sup-voltages = <2000 2000>;
-	status = "ok";
-};
-
 &ehci {
+	qcom,sw-fpr-control;
+	qcom,phy-sof-workaround;
 	hsusb_vdd_dig-supply = <&pm8841_s2_corner>;
 	qcom,vdd-voltage-level = <1 2 3 5 7>;
 };
-

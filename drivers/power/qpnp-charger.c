@@ -1488,8 +1488,11 @@ static irqreturn_t
 qpnp_chg_usb_usbin_valid_irq_handler(int irq, void *_chip)
 {
 	struct qpnp_chg_chip *chip = _chip;
-	int usb_present, host_mode, usbin_health;
+	int usb_present, host_mode;
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 	u8 psy_health_sts;
+	int usbin_health;
+#endif
 
 	usb_present = qpnp_chg_is_usb_chg_plugged_in(chip);
 	host_mode = qpnp_chg_is_otg_en_set(chip);
@@ -1499,7 +1502,7 @@ qpnp_chg_usb_usbin_valid_irq_handler(int irq, void *_chip)
 	/* In host mode notifications cmoe from USB supply */
 	if (host_mode)
 		return IRQ_HANDLED;
-
+#if !defined(CONFIG_ARCH_MSM8974_THOR) && !defined(CONFIG_ARCH_MSM8974_APOLLO)
 	if (chip->usb_present ^ usb_present) {
 		chip->usb_present = usb_present;
 		if (!usb_present) {
@@ -1566,7 +1569,7 @@ qpnp_chg_usb_usbin_valid_irq_handler(int irq, void *_chip)
 		power_supply_set_present(chip->usb_psy, chip->usb_present);
 		schedule_work(&chip->batfet_lcl_work);
 	}
-
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -4597,6 +4600,9 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	struct resource *resource;
 	struct spmi_resource *spmi_resource;
 	int rc = 0;
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        u8 value = 0x00;
+#endif
 
 	chip = devm_kzalloc(&spmi->dev,
 			sizeof(struct qpnp_chg_chip), GFP_KERNEL);
@@ -4610,13 +4616,21 @@ qpnp_charger_probe(struct spmi_device *spmi)
 	chip->dev = &(spmi->dev);
 	chip->spmi = spmi;
 
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        chip->usb_psy = power_supply_get_by_name("smb349_usb");
+        if (!chip->usb_psy) {
+                pr_err("smb supply not found deferring probe\n");
+                rc = -EPROBE_DEFER;
+                goto fail_chg_enable;
+        }
+#else
 	chip->usb_psy = power_supply_get_by_name("usb");
 	if (!chip->usb_psy) {
 		pr_err("usb supply not found deferring probe\n");
 		rc = -EPROBE_DEFER;
 		goto fail_chg_enable;
 	}
-
+#endif
 	mutex_init(&chip->jeita_configure_lock);
 	spin_lock_init(&chip->usbin_health_monitor_lock);
 	alarm_init(&chip->reduce_power_stage_alarm, ANDROID_ALARM_RTC_WAKEUP,
@@ -4940,6 +4954,16 @@ qpnp_charger_probe(struct spmi_device *spmi)
 
 	schedule_delayed_work(&chip->aicl_check_work,
 		msecs_to_jiffies(EOC_CHECK_PERIOD_MS));
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        pr_info("Enabling VBUS override\n");
+
+        value = 0xa5;
+        spmi_ext_register_writel(spmi->ctrl, 0, 0x13d0, &value, 1);
+
+        value = 0x2f;
+        spmi_ext_register_writel(spmi->ctrl, 0, 0x13ea, &value, 1);
+#endif
+
 	pr_info("success chg_dis = %d, bpd = %d, usb = %d, dc = %d b_health = %d batt_present = %d\n",
 			chip->charging_disabled,
 			chip->bpd_detection,
@@ -4960,6 +4984,21 @@ fail_chg_enable:
 	regulator_unregister(chip->boost_vreg.rdev);
 	return rc;
 }
+
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+static void qpnp_charger_shutdown(struct spmi_device *spmi)
+{
+        u8 value = 0x00;
+
+        pr_info("Disabling USB override\n");
+
+        value = 0xa5;
+        spmi_ext_register_writel(spmi->ctrl, 0, 0x13d0, &value, 1);
+
+        value = 0x00;
+        spmi_ext_register_writel(spmi->ctrl, 0, 0x13ea, &value, 1);
+}
+#endif
 
 static int __devexit
 qpnp_charger_remove(struct spmi_device *spmi)
@@ -5036,6 +5075,9 @@ static const struct dev_pm_ops qpnp_chg_pm_ops = {
 static struct spmi_driver qpnp_charger_driver = {
 	.probe		= qpnp_charger_probe,
 	.remove		= __devexit_p(qpnp_charger_remove),
+#if defined(CONFIG_ARCH_MSM8974_THOR) || defined(CONFIG_ARCH_MSM8974_APOLLO)
+        .shutdown       = qpnp_charger_shutdown,
+#endif
 	.driver		= {
 		.name		= QPNP_CHARGER_DEV_NAME,
 		.owner		= THIS_MODULE,

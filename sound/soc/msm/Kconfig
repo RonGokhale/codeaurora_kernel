@@ -190,6 +190,12 @@ config SND_SOC_MSM8974
 	 the machine drivers and the corresponding
 	 DAI-links.
 
+
+config SND_SOC_MSM8974_APOLLO
+        tristate "Addtional Soc Machine driver for APOLLO"
+        depends on ARCH_MSM8974_APOLLO
+        select SND_SOC_MAX97236
+
 config SND_SOC_APQ8074
 	tristate "SoC Machine driver for APQ8O74 boards"
 	depends on ARCH_MSM8974

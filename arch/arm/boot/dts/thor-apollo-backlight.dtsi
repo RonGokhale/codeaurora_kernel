@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/include/ "skeleton.dtsi"
+
+&soc {
+        i2c@f9968000 { /* BLSP#12 */
+                cell-index = <12>;
+                compatible = "qcom,i2c-qup";
+                reg = <0xf9968000 0x1000>;
+                #address-cells = <1>;
+                #size-cells = <0>;
+                reg-names = "qup_phys_addr";
+                interrupts = <0 106 0>;
+                interrupt-names = "qup_err_intr";
+                qcom,i2c-bus-freq = <100000>;
+                qcom,i2c-src-freq = <50000000>;
+		qcom,scl-gpio = <&msmgpio 88 0>;
+		qcom,sda-gpio = <&msmgpio 87 0>;
+                qcom,master-id = <84>;
+		status = "disabled";
+	};
+
+	i2c@f9968000 {			
+		lp8557@2C  {
+			compatible = "ti,lp855x";
+			vcc_i2c-supply = <&pm8941_lvs1>;
+			reg = <0x2C>;
+			ti,lp855x-en-gpio = <&msmgpio 57 0x00>;
+			ti,lp855x-device-control = <65>;
+			ti,lp855x-mode = <2>;
+			ti,lp855x-initial-brightness = <0x65>;
+			ti,lp855x-load-new-rom-data = <1>;
+			ti,lp855x-size-program = <2>;
+			ti,lp855x-rom-data = <0x11 0x05>, <0x14 0xFF>;
+			ti,lp855x-cont-splash-enabled = <1>;
+			status = "disabled";
+		};	
+        };
+};
