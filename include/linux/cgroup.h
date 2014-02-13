@@ -18,10 +18,10 @@
 #include <linux/rwsem.h>
 #include <linux/idr.h>
 #include <linux/workqueue.h>
-#include <linux/xattr.h>
 #include <linux/fs.h>
 #include <linux/percpu-refcount.h>
 #include <linux/seq_file.h>
+#include <linux/kernfs.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -37,28 +37,13 @@ extern void cgroup_post_fork(struct task_struct *p);
 extern void cgroup_exit(struct task_struct *p, int run_callbacks);
 extern int cgroupstats_build(struct cgroupstats *stats,
 				struct dentry *dentry);
-extern int cgroup_load_subsys(struct cgroup_subsys *ss);
-extern void cgroup_unload_subsys(struct cgroup_subsys *ss);
 
 extern int proc_cgroup_show(struct seq_file *, void *);
 
-/*
- * Define the enumeration of all cgroup subsystems.
- *
- * We define ids for builtin subsystems and then modular ones.
- */
-#define SUBSYS(_x) _x ## _subsys_id,
+/* define the enumeration of all cgroup subsystems */
+#define SUBSYS(_x) _x ## _cgrp_id,
 enum cgroup_subsys_id {
-#define IS_SUBSYS_ENABLED(option) IS_BUILTIN(option)
 #include <linux/cgroup_subsys.h>
-#undef IS_SUBSYS_ENABLED
-	CGROUP_BUILTIN_SUBSYS_COUNT,
-
-	__CGROUP_SUBSYS_TEMP_PLACEHOLDER = CGROUP_BUILTIN_SUBSYS_COUNT - 1,
-
-#define IS_SUBSYS_ENABLED(option) IS_MODULE(option)
-#include <linux/cgroup_subsys.h>
-#undef IS_SUBSYS_ENABLED
 	CGROUP_SUBSYS_COUNT,
 };
 #undef SUBSYS
@@ -153,11 +138,6 @@ enum {
 	CGRP_SANE_BEHAVIOR,
 };
 
-struct cgroup_name {
-	struct rcu_head rcu_head;
-	char name[];
-};
-
 struct cgroup {
 	unsigned long flags;		/* "unsigned long" so bitops work */
 
@@ -166,11 +146,15 @@ struct cgroup {
 	 *
 	 * The ID of the root cgroup is always 0, and a new cgroup
 	 * will be assigned with a smallest available ID.
+	 *
+	 * Allocating/Removing ID must be protected by cgroup_mutex.
 	 */
 	int id;
 
 	/* the number of attached css's */
 	int nr_css;
+
+	atomic_t refcnt;
 
 	/*
 	 * We link our 'sibling' struct into our parent's 'children'.
@@ -178,10 +162,9 @@ struct cgroup {
 	 */
 	struct list_head sibling;	/* my parent's children */
 	struct list_head children;	/* my children */
-	struct list_head files;		/* my files */
 
 	struct cgroup *parent;		/* my parent */
-	struct dentry *dentry;		/* cgroup fs entry, RCU protected */
+	struct kernfs_node *kn;		/* cgroup kernfs entry */
 
 	/*
 	 * Monotonically increasing unique serial number which defines a
@@ -190,19 +173,6 @@ struct cgroup {
 	 * It's used to allow interrupting and resuming iterations.
 	 */
 	u64 serial_nr;
-
-	/*
-	 * This is a copy of dentry->d_name, and it's needed because
-	 * we can't use dentry->d_name in cgroup_path().
-	 *
-	 * You must acquire rcu_read_lock() to access cgrp->name, and
-	 * the only place that can change it is rename(), which is
-	 * protected by parent dir's i_mutex.
-	 *
-	 * Normally you should use cgroup_name() wrapper rather than
-	 * access it directly.
-	 */
-	struct cgroup_name __rcu *name;
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
@@ -235,9 +205,6 @@ struct cgroup {
 	/* For css percpu_ref killing and RCU-protected deletion */
 	struct rcu_head rcu_head;
 	struct work_struct destroy_work;
-
-	/* directory xattrs */
-	struct simple_xattrs xattrs;
 };
 
 #define MAX_CGROUP_ROOT_NAMELEN 64
@@ -279,6 +246,8 @@ enum {
 	 * - "release_agent" and "notify_on_release" are removed.
 	 *   Replacement notification mechanism will be implemented.
 	 *
+	 * - "xattr" mount option is deprecated.  kernfs always enables it.
+	 *
 	 * - cpuset: tasks will be kept in empty cpusets when hotplug happens
 	 *   and take masks of ancestors with non-empty cpus/mems, instead of
 	 *   being moved to an ancestor.
@@ -304,11 +273,11 @@ enum {
 
 /*
  * A cgroupfs_root represents the root of a cgroup hierarchy, and may be
- * associated with a superblock to form an active hierarchy.  This is
+ * associated with a kernfs_root to form an active hierarchy.  This is
  * internal to cgroup core.  Don't access directly from controllers.
  */
 struct cgroupfs_root {
-	struct super_block *sb;
+	struct kernfs_root *kf_root;
 
 	/* The bitmask of subsystems attached to this hierarchy */
 	unsigned long subsys_mask;
@@ -316,11 +285,11 @@ struct cgroupfs_root {
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
 
-	/* The root cgroup for this hierarchy */
+	/* The root cgroup.  Root is destroyed on its release. */
 	struct cgroup top_cgroup;
 
-	/* Tracks how many cgroups are currently defined in hierarchy.*/
-	int number_of_cgroups;
+	/* Number of cgroups in the hierarchy, used only for /proc/cgroups */
+	atomic_t nr_cgrps;
 
 	/* A list running through the active hierarchies */
 	struct list_head root_list;
@@ -370,10 +339,9 @@ struct css_set {
 	struct list_head cgrp_links;
 
 	/*
-	 * Set of subsystem states, one for each subsystem. This array
-	 * is immutable after creation apart from the init_css_set
-	 * during subsystem registration (at boot time) and modular subsystem
-	 * loading/unloading.
+	 * Set of subsystem states, one for each subsystem. This array is
+	 * immutable after creation apart from the init_css_set during
+	 * subsystem registration (at boot time).
 	 */
 	struct cgroup_subsys_state *subsys[CGROUP_SUBSYS_COUNT];
 
@@ -414,8 +382,9 @@ struct cftype {
 	umode_t mode;
 
 	/*
-	 * If non-zero, defines the maximum length of string that can
-	 * be passed to write_string; defaults to 64
+	 * The maximum length of string, excluding trailing nul, that can
+	 * be passed to write_string.  If < PAGE_SIZE-1, PAGE_SIZE-1 is
+	 * assumed.
 	 */
 	size_t max_write_len;
 
@@ -423,10 +392,12 @@ struct cftype {
 	unsigned int flags;
 
 	/*
-	 * The subsys this file belongs to.  Initialized automatically
-	 * during registration.  NULL for cgroup core files.
+	 * Fields used for internal bookkeeping.  Initialized automatically
+	 * during registration.
 	 */
-	struct cgroup_subsys *ss;
+	struct cgroup_subsys *ss;	/* NULL for cgroup core files */
+	struct list_head node;		/* anchored at ss->cfts */
+	struct kernfs_ops *kf_ops;
 
 	/*
 	 * read_u64() is a shortcut for the common case of returning a
@@ -473,36 +444,10 @@ struct cftype {
 	 * kick type for multiplexing.
 	 */
 	int (*trigger)(struct cgroup_subsys_state *css, unsigned int event);
-};
 
-/*
- * cftype_sets describe cftypes belonging to a subsystem and are chained at
- * cgroup_subsys->cftsets.  Each cftset points to an array of cftypes
- * terminated by zero length name.
- */
-struct cftype_set {
-	struct list_head		node;	/* chained at subsys->cftsets */
-	struct cftype			*cfts;
-};
-
-/*
- * cgroupfs file entry, pointed to from leaf dentry->d_fsdata.  Don't
- * access directly.
- */
-struct cfent {
-	struct list_head		node;
-	struct dentry			*dentry;
-	struct cftype			*type;
-	struct cgroup_subsys_state	*css;
-
-	/* file xattrs */
-	struct simple_xattrs		xattrs;
-};
-
-/* seq_file->private points to the following, only ->priv is public */
-struct cgroup_open_file {
-	struct cfent			*cfe;
-	void				*priv;
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+	struct lock_class_key	lockdep_key;
+#endif
 };
 
 /*
@@ -514,31 +459,64 @@ static inline bool cgroup_sane_behavior(const struct cgroup *cgrp)
 	return cgrp->root->flags & CGRP_ROOT_SANE_BEHAVIOR;
 }
 
-/* Caller should hold rcu_read_lock() */
-static inline const char *cgroup_name(const struct cgroup *cgrp)
+/* returns ino associated with a cgroup, 0 indicates unmounted root */
+static inline ino_t cgroup_ino(struct cgroup *cgrp)
 {
-	return rcu_dereference(cgrp->name)->name;
-}
-
-static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
-{
-	struct cgroup_open_file *of = seq->private;
-	return of->cfe->css;
+	if (cgrp->kn)
+		return cgrp->kn->ino;
+	else
+		return 0;
 }
 
 static inline struct cftype *seq_cft(struct seq_file *seq)
 {
-	struct cgroup_open_file *of = seq->private;
-	return of->cfe->type;
+	struct kernfs_open_file *of = seq->private;
+
+	return of->kn->priv;
 }
+
+struct cgroup_subsys_state *seq_css(struct seq_file *seq);
+
+/*
+ * Name / path handling functions.  All are thin wrappers around the kernfs
+ * counterparts and can be called under any context.
+ */
+
+static inline int cgroup_name(struct cgroup *cgrp, char *buf, size_t buflen)
+{
+	return kernfs_name(cgrp->kn, buf, buflen);
+}
+
+static inline char * __must_check cgroup_path(struct cgroup *cgrp, char *buf,
+					      size_t buflen)
+{
+	return kernfs_path(cgrp->kn, buf, buflen);
+}
+
+static inline void pr_cont_cgroup_name(struct cgroup *cgrp)
+{
+	/* dummy_top doesn't have a kn associated */
+	if (cgrp->kn)
+		pr_cont_kernfs_name(cgrp->kn);
+	else
+		pr_cont("/");
+}
+
+static inline void pr_cont_cgroup_path(struct cgroup *cgrp)
+{
+	/* dummy_top doesn't have a kn associated */
+	if (cgrp->kn)
+		pr_cont_kernfs_path(cgrp->kn);
+	else
+		pr_cont("/");
+}
+
+char *task_cgroup_path(struct task_struct *task, char *buf, size_t buflen);
 
 int cgroup_add_cftypes(struct cgroup_subsys *ss, struct cftype *cfts);
 int cgroup_rm_cftypes(struct cftype *cfts);
 
 bool cgroup_is_descendant(struct cgroup *cgrp, struct cgroup *ancestor);
-
-int cgroup_path(const struct cgroup *cgrp, char *buf, int buflen);
-int task_cgroup_path(struct task_struct *task, char *buf, size_t buflen);
 
 int cgroup_task_count(const struct cgroup *cgrp);
 
@@ -564,7 +542,7 @@ int cgroup_taskset_size(struct cgroup_taskset *tset);
 	     (task) = cgroup_taskset_next((tset)))			\
 		if (!(skip_css) ||					\
 		    cgroup_taskset_cur_css((tset),			\
-			(skip_css)->ss->subsys_id) != (skip_css))
+			(skip_css)->ss->id) != (skip_css))
 
 /*
  * Control Group subsystem type.
@@ -589,7 +567,6 @@ struct cgroup_subsys {
 		     struct task_struct *task);
 	void (*bind)(struct cgroup_subsys_state *root_css);
 
-	int subsys_id;
 	int disabled;
 	int early_init;
 
@@ -608,27 +585,26 @@ struct cgroup_subsys {
 	bool broken_hierarchy;
 	bool warned_broken_hierarchy;
 
+	/* the following two fields are initialized automtically during boot */
+	int id;
 #define MAX_CGROUP_TYPE_NAMELEN 32
 	const char *name;
 
 	/* link to parent, protected by cgroup_lock() */
 	struct cgroupfs_root *root;
 
-	/* list of cftype_sets */
-	struct list_head cftsets;
+	/*
+	 * List of cftypes.  Each entry is the first entry of an array
+	 * terminated by zero length name.
+	 */
+	struct list_head cfts;
 
-	/* base cftypes, automatically [de]registered with subsys itself */
+	/* base cftypes, automatically registered with subsys itself */
 	struct cftype *base_cftypes;
-	struct cftype_set base_cftset;
-
-	/* should be defined only by modular subsystems */
-	struct module *module;
 };
 
-#define SUBSYS(_x) extern struct cgroup_subsys _x ## _subsys;
-#define IS_SUBSYS_ENABLED(option) IS_BUILTIN(option)
+#define SUBSYS(_x) extern struct cgroup_subsys _x ## _cgrp_subsys;
 #include <linux/cgroup_subsys.h>
-#undef IS_SUBSYS_ENABLED
 #undef SUBSYS
 
 /**
@@ -843,8 +819,8 @@ int css_scan_tasks(struct cgroup_subsys_state *css,
 int cgroup_attach_task_all(struct task_struct *from, struct task_struct *);
 int cgroup_transfer_tasks(struct cgroup *to, struct cgroup *from);
 
-struct cgroup_subsys_state *css_from_dir(struct dentry *dentry,
-					 struct cgroup_subsys *ss);
+struct cgroup_subsys_state *css_tryget_from_dir(struct dentry *dentry,
+						struct cgroup_subsys *ss);
 
 #else /* !CONFIG_CGROUPS */
 
