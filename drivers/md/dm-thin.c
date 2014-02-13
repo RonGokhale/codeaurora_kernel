@@ -1758,6 +1758,8 @@ static void __pool_destroy(struct pool *pool)
 
 static struct kmem_cache *_new_mapping_cache;
 
+static dm_block_t get_metadata_dev_size_in_blocks(struct block_device *);
+
 static struct pool *pool_create(struct mapped_device *pool_md,
 				struct block_device *metadata_dev,
 				unsigned long block_size,
@@ -1768,8 +1770,10 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	struct pool *pool;
 	struct dm_pool_metadata *pmd;
 	bool format_device = read_only ? false : true;
+	dm_block_t nr_blocks = get_metadata_dev_size_in_blocks(metadata_dev);
 
-	pmd = dm_pool_metadata_open(metadata_dev, block_size, format_device);
+	pmd = dm_pool_metadata_open(metadata_dev, block_size, format_device,
+				    nr_blocks);
 	if (IS_ERR(pmd)) {
 		*error = "Error creating metadata object";
 		return (struct pool *)pmd;
@@ -2000,16 +2004,27 @@ static void metadata_low_callback(void *context)
 	dm_table_event(pool->ti->table);
 }
 
-static sector_t get_metadata_dev_size(struct block_device *bdev)
+static sector_t get_dev_size(struct block_device *bdev)
 {
-	sector_t metadata_dev_size = i_size_read(bdev->bd_inode) >> SECTOR_SHIFT;
+	return i_size_read(bdev->bd_inode) >> SECTOR_SHIFT;
+}
+
+static void warn_if_metadata_device_too_big(struct block_device *bdev)
+{
+	sector_t metadata_dev_size = get_dev_size(bdev);
 	char buffer[BDEVNAME_SIZE];
 
-	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS_WARNING) {
+	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS_WARNING)
 		DMWARN("Metadata device %s is larger than %u sectors: excess space will not be used.",
 		       bdevname(bdev, buffer), THIN_METADATA_MAX_SECTORS);
-		metadata_dev_size = THIN_METADATA_MAX_SECTORS_WARNING;
-	}
+}
+
+static sector_t get_metadata_dev_size(struct block_device *bdev)
+{
+	sector_t metadata_dev_size = get_dev_size(bdev);
+
+	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS)
+		metadata_dev_size = THIN_METADATA_MAX_SECTORS;
 
 	return metadata_dev_size;
 }
@@ -2096,12 +2111,7 @@ static int pool_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		ti->error = "Error opening metadata block device";
 		goto out_unlock;
 	}
-
-	/*
-	 * Run for the side-effect of possibly issuing a warning if the
-	 * device is too big.
-	 */
-	(void) get_metadata_dev_size(metadata_dev->bdev);
+	warn_if_metadata_device_too_big(metadata_dev->bdev);
 
 	r = dm_get_device(ti, argv[1], FMODE_READ | FMODE_WRITE, &data_dev);
 	if (r) {
@@ -2288,6 +2298,7 @@ static int maybe_resize_metadata_dev(struct dm_target *ti, bool *need_commit)
 		return -EINVAL;
 
 	} else if (metadata_dev_size > sb_metadata_dev_size) {
+		warn_if_metadata_device_too_big(pool->md_dev);
 		DMINFO("%s: growing the metadata device from %llu to %llu blocks",
 		       dm_device_name(pool->pool_md),
 		       sb_metadata_dev_size, metadata_dev_size);

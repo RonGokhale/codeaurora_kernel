@@ -120,7 +120,7 @@ struct dm_block_manager *dm_tm_get_bm(struct dm_transaction_manager *tm);
  * shouldn't be used.
  */
 int dm_tm_create_with_sm(struct dm_block_manager *bm, dm_block_t sb_location,
-			 struct dm_transaction_manager **tm,
+			 dm_block_t nr_blocks, struct dm_transaction_manager **tm,
 			 struct dm_space_map **sm);
 
 int dm_tm_open_with_sm(struct dm_block_manager *bm, dm_block_t sb_location,

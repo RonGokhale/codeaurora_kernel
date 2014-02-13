@@ -322,7 +322,7 @@ static int dm_tm_create_internal(struct dm_block_manager *bm,
 				 dm_block_t sb_location,
 				 struct dm_transaction_manager **tm,
 				 struct dm_space_map **sm,
-				 int create,
+				 int create, dm_block_t nr_blocks,
 				 void *sm_root, size_t sm_len)
 {
 	int r;
@@ -338,8 +338,9 @@ static int dm_tm_create_internal(struct dm_block_manager *bm,
 	}
 
 	if (create) {
-		r = dm_sm_metadata_create(*sm, *tm, dm_bm_nr_blocks(bm),
-					  sb_location);
+		if (!nr_blocks)
+			nr_blocks = dm_bm_nr_blocks(bm);
+		r = dm_sm_metadata_create(*sm, *tm, nr_blocks, sb_location);
 		if (r) {
 			DMERR("couldn't create metadata space map");
 			goto bad;
@@ -362,10 +363,10 @@ bad:
 }
 
 int dm_tm_create_with_sm(struct dm_block_manager *bm, dm_block_t sb_location,
-			 struct dm_transaction_manager **tm,
+			 dm_block_t nr_blocks, struct dm_transaction_manager **tm,
 			 struct dm_space_map **sm)
 {
-	return dm_tm_create_internal(bm, sb_location, tm, sm, 1, NULL, 0);
+	return dm_tm_create_internal(bm, sb_location, tm, sm, 1, nr_blocks, NULL, 0);
 }
 EXPORT_SYMBOL_GPL(dm_tm_create_with_sm);
 
@@ -374,7 +375,7 @@ int dm_tm_open_with_sm(struct dm_block_manager *bm, dm_block_t sb_location,
 		       struct dm_transaction_manager **tm,
 		       struct dm_space_map **sm)
 {
-	return dm_tm_create_internal(bm, sb_location, tm, sm, 0, sm_root, root_len);
+	return dm_tm_create_internal(bm, sb_location, tm, sm, 0, 0, sm_root, root_len);
 }
 EXPORT_SYMBOL_GPL(dm_tm_open_with_sm);
 

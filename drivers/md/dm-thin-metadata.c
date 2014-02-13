@@ -494,11 +494,11 @@ bad_locked:
 	return r;
 }
 
-static int __format_metadata(struct dm_pool_metadata *pmd)
+static int __format_metadata(struct dm_pool_metadata *pmd, dm_block_t nr_blocks)
 {
 	int r;
 
-	r = dm_tm_create_with_sm(pmd->bm, THIN_SUPERBLOCK_LOCATION,
+	r = dm_tm_create_with_sm(pmd->bm, THIN_SUPERBLOCK_LOCATION, nr_blocks,
 				 &pmd->tm, &pmd->metadata_sm);
 	if (r < 0) {
 		DMERR("tm_create_with_sm failed");
@@ -633,7 +633,8 @@ bad_unlock_sblock:
 	return r;
 }
 
-static int __open_or_format_metadata(struct dm_pool_metadata *pmd, bool format_device)
+static int __open_or_format_metadata(struct dm_pool_metadata *pmd, bool format_device,
+				     dm_block_t nr_blocks)
 {
 	int r, unformatted;
 
@@ -642,12 +643,13 @@ static int __open_or_format_metadata(struct dm_pool_metadata *pmd, bool format_d
 		return r;
 
 	if (unformatted)
-		return format_device ? __format_metadata(pmd) : -EPERM;
+		return format_device ? __format_metadata(pmd, nr_blocks) : -EPERM;
 
 	return __open_metadata(pmd);
 }
 
-static int __create_persistent_data_objects(struct dm_pool_metadata *pmd, bool format_device)
+static int __create_persistent_data_objects(struct dm_pool_metadata *pmd, bool format_device,
+					    dm_block_t nr_blocks)
 {
 	int r;
 
@@ -659,7 +661,7 @@ static int __create_persistent_data_objects(struct dm_pool_metadata *pmd, bool f
 		return PTR_ERR(pmd->bm);
 	}
 
-	r = __open_or_format_metadata(pmd, format_device);
+	r = __open_or_format_metadata(pmd, format_device, nr_blocks);
 	if (r)
 		dm_block_manager_destroy(pmd->bm);
 
@@ -799,7 +801,8 @@ out_locked:
 
 struct dm_pool_metadata *dm_pool_metadata_open(struct block_device *bdev,
 					       sector_t data_block_size,
-					       bool format_device)
+					       bool format_device,
+					       dm_block_t nr_blocks)
 {
 	int r;
 	struct dm_pool_metadata *pmd;
@@ -818,7 +821,7 @@ struct dm_pool_metadata *dm_pool_metadata_open(struct block_device *bdev,
 	pmd->bdev = bdev;
 	pmd->data_block_size = data_block_size;
 
-	r = __create_persistent_data_objects(pmd, format_device);
+	r = __create_persistent_data_objects(pmd, format_device, nr_blocks);
 	if (r) {
 		kfree(pmd);
 		return ERR_PTR(r);
@@ -1568,7 +1571,7 @@ int dm_pool_abort_metadata(struct dm_pool_metadata *pmd)
 
 	__set_abort_with_changes_flags(pmd);
 	__destroy_persistent_data_objects(pmd);
-	r = __create_persistent_data_objects(pmd, false);
+	r = __create_persistent_data_objects(pmd, false, 0);
 	if (r)
 		pmd->fail_io = true;
 
