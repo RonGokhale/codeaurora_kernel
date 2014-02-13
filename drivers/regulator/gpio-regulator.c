@@ -136,6 +136,7 @@ static struct gpio_regulator_config *
 of_get_gpio_regulator_config(struct device *dev, struct device_node *np)
 {
 	struct gpio_regulator_config *config;
+	struct property *prop;
 	const char *regtype;
 	int proplen, gpio, i;
 	int ret;
