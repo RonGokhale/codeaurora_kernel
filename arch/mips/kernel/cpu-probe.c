@@ -23,6 +23,7 @@
 #include <asm/cpu-type.h>
 #include <asm/fpu.h>
 #include <asm/mipsregs.h>
+#include <asm/msa.h>
 #include <asm/watch.h>
 #include <asm/elf.h>
 #include <asm/spram.h>
@@ -124,6 +125,20 @@ static inline unsigned long cpu_get_fpu_id(void)
 static inline int __cpu_has_fpu(void)
 {
 	return ((cpu_get_fpu_id() & FPIR_IMP_MASK) != FPIR_IMP_NONE);
+}
+
+static inline unsigned long cpu_get_msa_id(void)
+{
+	unsigned long status, conf5, msa_id;
+
+	status = read_c0_status();
+	__enable_fpu(FPU_64BIT);
+	conf5 = read_c0_config5();
+	enable_msa();
+	msa_id = read_msa_ir();
+	write_c0_config5(conf5);
+	write_c0_status(status);
+	return msa_id;
 }
 
 static inline void cpu_probe_vmbits(struct cpuinfo_mips *c)
@@ -301,6 +316,8 @@ static inline unsigned int decode_config3(struct cpuinfo_mips *c)
 		c->ases |= MIPS_ASE_VZ;
 	if (config3 & MIPS_CONF3_SC)
 		c->options |= MIPS_CPU_SEGMENTS;
+	if (config3 & MIPS_CONF3_MSA)
+		c->ases |= MIPS_ASE_MSA;
 
 	return config3 & MIPS_CONF_M;
 }
@@ -398,8 +415,10 @@ static void decode_configs(struct cpuinfo_mips *c)
 
 	mips_probe_watch_registers(c);
 
+#ifndef CONFIG_MIPS_CPS
 	if (cpu_has_mips_r2)
 		c->core = read_c0_ebase() & 0x3ff;
+#endif
 }
 
 #define R4K_OPTS (MIPS_CPU_TLB | MIPS_CPU_4KEX | MIPS_CPU_4K_CACHE \
@@ -806,7 +825,7 @@ static inline void cpu_probe_mips(struct cpuinfo_mips *c, unsigned int cpu)
 		__cpu_name[cpu] = "MIPS 1004Kc";
 		break;
 	case PRID_IMP_1074K:
-		c->cputype = CPU_74K;
+		c->cputype = CPU_1074K;
 		__cpu_name[cpu] = "MIPS 1074Kc";
 		break;
 	case PRID_IMP_INTERAPTIV_UP:
@@ -1176,6 +1195,12 @@ void cpu_probe(void)
 	else
 		c->srsets = 1;
 
+	if (cpu_has_msa) {
+		c->msa_id = cpu_get_msa_id();
+		WARN(c->msa_id & MSA_IR_WRPF,
+		     "Vector register partitioning unimplemented!");
+	}
+
 	cpu_probe_vmbits(c);
 
 #ifdef CONFIG_64BIT
@@ -1192,4 +1217,6 @@ void cpu_report(void)
 		smp_processor_id(), c->processor_id, cpu_name_string());
 	if (c->options & MIPS_CPU_FPU)
 		printk(KERN_INFO "FPU revision is: %08x\n", c->fpu_id);
+	if (cpu_has_msa)
+		pr_info("MSA revision is: %08x\n", c->msa_id);
 }
