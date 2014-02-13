@@ -28,7 +28,6 @@
 		qcom,scl-gpio = <&msmgpio 88 0>;
 		qcom,sda-gpio = <&msmgpio 87 0>;
                 qcom,master-id = <84>;
-		status = "disabled";
 	};
 
 	i2c@f9968000 {			
@@ -44,7 +43,6 @@
 			ti,lp855x-size-program = <2>;
 			ti,lp855x-rom-data = <0x11 0x05>, <0x14 0xFF>;
 			ti,lp855x-cont-splash-enabled = <1>;
-			status = "disabled";
 		};	
         };
 };

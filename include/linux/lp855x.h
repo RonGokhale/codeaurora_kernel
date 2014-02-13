@@ -46,12 +46,19 @@
 #define LP8556_I2C_CONFIG	((ENABLE_BL << BL_CTL_SHFT) | \
 				(LP8556_I2C_ONLY << BRT_MODE_SHFT))
 #define LP8556_COMB2_CONFIG	(LP8556_COMBINED2 << BRT_MODE_SHFT)
+#define LP8556_FAST_CONFIG	BIT(7) /* use it if EPROMs should be maintained
+					  when exiting the low power mode */
 
-/* ROM area boundary */
-#define EEPROM_START	(0xA0)
-#define EEPROM_END	(0xA7)
-#define EPROM_START	(0xA0)
-#define EPROM_END	(0xAF)
+/* CONFIG register - LP8557 */
+#define LP8557_PWM_STANDBY	BIT(7)
+#define LP8557_PWM_FILTER	BIT(6)
+#define LP8557_RELOAD_EPROM	BIT(3)	/* use it if EPROMs should be reset
+					   when the backlight turns on */
+#define LP8557_DISABLE_LEDS	BIT(2)
+#define LP8557_PWM_CONFIG	LP8557_PWM_ONLY
+#define LP8557_I2C_CONFIG	LP8557_I2C_ONLY
+#define LP8557_COMB1_CONFIG	LP8557_COMBINED1
+#define LP8557_COMB2_CONFIG	LP8557_COMBINED2
 
 enum lp855x_chip_id {
 	LP8550,
@@ -59,6 +66,7 @@ enum lp855x_chip_id {
 	LP8552,
 	LP8553,
 	LP8556,
+	LP8557,
 };
 
 enum lp855x_brightness_ctrl_mode {
@@ -93,6 +101,13 @@ enum lp8556_brightness_source {
 	LP8556_COMBINED2,	/* pwm + i2c after the shaper block */
 };
 
+enum lp8557_brightness_source {
+	LP8557_PWM_ONLY,
+	LP8557_I2C_ONLY,
+	LP8557_COMBINED1,	/* pwm + i2c after the shaper block */
+	LP8557_COMBINED2,	/* pwm + i2c before the shaper block */
+};
+
 struct lp855x_pwm_data {
 	void (*pwm_set_intensity) (int brightness, int max_brightness);
 	int (*pwm_get_intensity) (int max_brightness);
@@ -122,10 +137,14 @@ struct lp855x_platform_data {
 	enum lp855x_brightness_ctrl_mode mode;
 	u8 device_control;
 	int initial_brightness;
+	int gpio_enable;
 	struct lp855x_pwm_data pwm_data;
 	u8 load_new_rom_data;
 	int size_program;
 	struct lp855x_rom_data *rom_data;
+	int cont_splash_enabled;
 };
+
+void lp855x_bl_set(int val);
 
 #endif
