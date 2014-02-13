@@ -172,21 +172,30 @@ of_get_gpio_regulator_config(struct device *dev, struct device_node *np)
 	if (!config->gpios)
 		return ERR_PTR(-ENOMEM);
 
+	prop = of_find_property(np, "gpios-states", NULL);
+	if (prop) {
+		proplen = prop->length / sizeof(int);
+		if (proplen != config->nr_gpios) {
+			dev_warn(dev, "gpios <-> gpios-states mismatch\n");
+			prop = NULL;
+		}
+	}
+
 	for (i = 0; i < config->nr_gpios; i++) {
 		gpio = of_get_named_gpio(np, "gpios", i);
 		if (gpio < 0)
 			break;
 		config->gpios[i].gpio = gpio;
+		if (prop && be32_to_cpup((int *)prop->value + i))
+			config->gpios[i].flags = GPIOF_OUT_INIT_HIGH;
 	}
 
 	/* Fetch states. */
-	prop = of_find_property(np, "states", NULL);
-	if (!prop) {
+	proplen = of_property_count_u32_elems(np, "states");
+	if (proplen < 0) {
 		dev_err(dev, "No 'states' property found\n");
 		return ERR_PTR(-EINVAL);
 	}
-
-	proplen = prop->length / sizeof(int);
 
 	config->states = devm_kzalloc(dev,
 				sizeof(struct gpio_regulator_state)
@@ -196,10 +205,10 @@ of_get_gpio_regulator_config(struct device *dev, struct device_node *np)
 		return ERR_PTR(-ENOMEM);
 
 	for (i = 0; i < proplen / 2; i++) {
-		config->states[i].value =
-			be32_to_cpup((int *)prop->value + (i * 2));
-		config->states[i].gpios =
-			be32_to_cpup((int *)prop->value + (i * 2 + 1));
+		of_property_read_u32_index(np, "states", i * 2,
+					   &config->states[i].value);
+		of_property_read_u32_index(np, "states", i * 2 + 1,
+					   &config->states[i].gpios);
 	}
 	config->nr_states = i;
 
@@ -239,10 +248,8 @@ static int gpio_regulator_probe(struct platform_device *pdev)
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(struct gpio_regulator_data),
 			       GFP_KERNEL);
-	if (drvdata == NULL) {
-		dev_err(&pdev->dev, "Failed to allocate device data\n");
+	if (drvdata == NULL)
 		return -ENOMEM;
-	}
 
 	drvdata->desc.name = kstrdup(config->supply_name, GFP_KERNEL);
 	if (drvdata->desc.name == NULL) {
