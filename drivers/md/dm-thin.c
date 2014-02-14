@@ -989,6 +989,13 @@ static void retry_on_resume(struct bio *bio)
 	spin_unlock_irqrestore(&pool->lock, flags);
 }
 
+static bool should_error_unserviceable_bio(struct pool *pool)
+{
+	return (unlikely(get_pool_mode(pool) == PM_FAIL) ||
+		pool->pf.error_if_no_space ||
+		dm_pool_is_metadata_out_of_space(pool->pmd));
+}
+
 static void handle_unserviceable_bio(struct pool *pool, struct bio *bio)
 {
 	/*
@@ -997,7 +1004,7 @@ static void handle_unserviceable_bio(struct pool *pool, struct bio *bio)
 	 */
 	WARN_ON_ONCE(get_pool_mode(pool) != PM_READ_ONLY);
 
-	if (pool->pf.error_if_no_space)
+	if (should_error_unserviceable_bio(pool))
 		bio_io_error(bio);
 	else
 		retry_on_resume(bio);
@@ -1007,6 +1014,11 @@ static void retry_bios_on_resume(struct pool *pool, struct dm_bio_prison_cell *c
 {
 	struct bio *bio;
 	struct bio_list bios;
+
+	if (should_error_unserviceable_bio(pool)) {
+		cell_error(pool, cell);
+		return;
+	}
 
 	bio_list_init(&bios);
 	cell_release(pool, cell, &bios);
