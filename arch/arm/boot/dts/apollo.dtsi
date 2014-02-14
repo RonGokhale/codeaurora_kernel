@@ -10,8 +10,8 @@
  * GNU General Public License for more details.
  */
 
-/include/ "dsi-panel-jdi-dualmipi0-video.dtsi"
-/include/ "dsi-panel-jdi-dualmipi1-video.dtsi"
+/include/ "dsi-panel-jdi-dualmipi0-video-apollo.dtsi"
+/include/ "dsi-panel-jdi-dualmipi1-video-apollo.dtsi"
 /include/ "msm8974-leds.dtsi"
 /include/ "thor-apollo-backlight.dtsi"
 /include/ "thor-apollo-audio.dtsi"
@@ -20,15 +20,6 @@
 &soc {
 	serial@f991e000 {
 		status = "ok";
-	};
-
-	qcom,mdss_dsi_jdi_dualmipi0_video {
-		status = "ok";
-		qcom,cont-splash-enabled;
-	};
-	qcom,mdss_dsi_jdi_dualmipi1_video {
-		status = "ok";
-		qcom,cont-splash-enabled;
 	};
 
 	qcom,mdss_mdp@fd900000 {
@@ -689,3 +680,39 @@
 &sdhc_2 {
 	qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
 };
+
+&fb_mem {
+	reg = <0 0x2000000>;  /* size 32MB */
+};
+
+
+&dsi_dual0_jdi_video {
+	qcom,cont-splash-enabled;
+};
+
+&dsi_dual1_jdi_video {
+	qcom,cont-splash-enabled;
+};
+
+&mdss_mdp {
+	qcom,mdss-pref-prim-intf = "dsi";
+};
+
+&mdss_fb0 {
+	qcom,mdss-mixer-swap;
+	qcom,memblock-reserve = <0x7F000000 0xFA0000>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_dual0_jdi_video>;
+	qcom,platform-enable-gpio = <&msmgpio 58 0>;
+	qcom,platform-reset-gpio = <&pm8941_gpios 19 0>;
+	qcom,platform-lcd-enable-gpio = <&msmgpio 0 0>;
+	qcom,platform-lcd-mbist-gpio = <&msmgpio 1 0>;
+	qcom,platform-te-gpio = <&msmgpio 12 0>;
+};
+
+&mdss_dsi1 {
+	qcom,dsi-pref-prim-pan = <&dsi_dual1_jdi_video>;
+};
+
