@@ -2364,6 +2364,12 @@ static void pool_postsuspend(struct dm_target *ti)
 	cancel_delayed_work(&pool->waker);
 	flush_workqueue(pool->wq);
 	(void) commit(pool);
+
+	/*
+	 * The pool mode may have changed, sync it so bind_control_target()
+	 * doesn't cause an unexpected mode transition on resume.
+	 */
+	pt->adjusted_pf.mode = get_pool_mode(pool);
 }
 
 static int check_arg_count(unsigned argc, unsigned args_required)
