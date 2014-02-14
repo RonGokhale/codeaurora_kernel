@@ -339,7 +339,6 @@ static int lp855x_bl_update_status(struct backlight_device *bl)
 	/* Move backlight setting to /sys/class/leds/lcd-backlight/brightness
 	   This is because ALS is handled there (scaled backlight) */
 	dev_err(lp->dev, "%s: backlight should be set through leds interface\n", __func__);
-
 #if 0
 	enum lp855x_brightness_ctrl_mode mode = lp->pdata->mode;
 
@@ -596,7 +595,6 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 		dev_err(&cl->dev, "%s: Failed to allocate memory for pdata\n", __func__);
 		return -ENOMEM;
 	}
-		
 	if (cl->dev.of_node) {
 		ret = lp855x_parse_dt(&cl->dev, pdata);
 		if (ret)
@@ -625,7 +623,11 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 		dev_err(&cl->dev, "lp855x vcc_i2c NOT ok \n");
 		goto err_dev;
 	}
-	regulator_enable(vcc_i2c);
+	ret = regulator_enable(vcc_i2c);
+	if (ret) {
+		dev_err(lp->dev, "regulator enable err: %d\n", ret);
+		goto err_dev;
+	}
 	msleep(3);	
 
 	ret = lp855x_configure(lp);
@@ -648,7 +650,10 @@ static int lp855x_probe(struct i2c_client *cl, const struct i2c_device_id *id)
 	}
 
 	lp855x_ctx = lp;
-
+/* This is a hack to update initial brightness, will remove after Android setting is right */
+#if defined(CONFIG_ARCH_APQ8084_LOKI)
+	lp855x_bl_update_register(lp, pdata->initial_brightness);
+#endif	
 	return 0;
 
 err_sysfs:
@@ -657,7 +662,7 @@ err_dev:
 	return ret;
 }
 
-static int __devexit lp855x_remove(struct i2c_client *cl)
+static int lp855x_remove(struct i2c_client *cl)
 {
 	struct lp855x *lp = i2c_get_clientdata(cl);
 
@@ -697,7 +702,7 @@ static struct i2c_driver lp855x_driver = {
 		.of_match_table = lp855x_match_table,
 	},
 	.probe = lp855x_probe,
-	.remove = __devexit_p(lp855x_remove),
+	.remove = lp855x_remove,
 	.id_table = lp855x_ids,
 };
 
