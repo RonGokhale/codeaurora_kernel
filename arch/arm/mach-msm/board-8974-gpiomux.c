@@ -215,6 +215,7 @@ static struct msm_gpiomux_config msm_ar_gpio_configs[] __initdata = {
         }
 };
 
+#endif
 static struct gpiomux_setting gpio_uart7_active_cfg = {
         .func = GPIOMUX_FUNC_3,
         .drv = GPIOMUX_DRV_8MA,
@@ -258,7 +259,6 @@ static struct msm_gpiomux_config msm_blsp2_uart7_configs[] __initdata = {
                 },
         }
 };
-#endif
 
 static struct gpiomux_setting gpio_suspend_config[] = {
 	{
