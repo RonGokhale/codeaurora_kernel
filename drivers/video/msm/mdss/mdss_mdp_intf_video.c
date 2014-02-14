@@ -663,11 +663,6 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 	pinfo = &ctl->panel_data->panel_info;
 	mixer = mdss_mdp_mixer_get(ctl, MDSS_MDP_MIXER_MUX_LEFT);
 
-	if (!mixer) {
-		pr_err("mixer not setup correctly\n");
-		return -ENODEV;
-	}
-
 	i = ctl->intf_num - MDSS_MDP_INTF0;
 	if (i < mdata->nintf) {
 		ctx = ((struct mdss_mdp_video_ctx *) mdata->video_intf) + i;
