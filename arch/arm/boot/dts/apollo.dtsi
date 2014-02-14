@@ -22,15 +22,6 @@
 		status = "ok";
 	};
 
-	qcom,mdss_mdp@fd900000 {
-        
-		mdss_fb0: qcom,mdss_fb_primary {
-		qcom,memblock-reserve = <0x7F000000 0xFA0000>;
-            qcom,mdss-mixer-swap;
-			qcom,memory-reservation-size = <0x2000000>; /* size 32MB */
-		};
-	};
-
 	qcom,hdmi_tx@fd922100 {
 		status = "disable";
 	};
@@ -264,10 +255,6 @@
                 qca,wifi-vddio-supply = <&pm8941_l10>;
         };
 
-};
-
-&mdss_mdp {
-	qcom,mdss-has-wb-ad;
 };
 
 &pm8941_l19 {
@@ -679,10 +666,6 @@
 
 &sdhc_2 {
 	qcom,pad-drv-on = <0x7 0x4 0x4>; /* 16mA, 10mA, 10mA */
-};
-
-&fb_mem {
-	reg = <0 0x2000000>;  /* size 32MB */
 };
 
 

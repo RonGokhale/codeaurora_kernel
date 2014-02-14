@@ -30,11 +30,9 @@
 #define DT_CMD_HDR 6
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
-#if 0
 #if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
 extern wait_queue_head_t panel_on_waitqueue;
 extern int lcd_panel_enabled;
-#endif
 #endif
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -260,7 +258,7 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			ctrl_pdata->ctrl_state &= ~CTRL_STATE_PANEL_INIT;
 			pr_debug("%s: Reset panel done\n", __func__);
 		}
-#if 0
+
 #if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
 
                 pr_debug("Panel enabled\n");
@@ -268,7 +266,6 @@ void mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
                 lcd_panel_enabled = 1;
                 wmb();
                 wake_up(&panel_on_waitqueue);
-#endif
 #endif
 	} else {
 #if defined(CONFIG_ARCH_MSM8974_APOLLO)
@@ -363,7 +360,7 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 	case BL_WLED:
 		led_trigger_event(bl_led_trigger, bl_level);
 #if defined(CONFIG_ARCH_MSM8974_APOLLO) || defined(CONFIG_ARCH_MSM8974_THOR)
-                //lp855x_bl_set(bl_level);
+                lp855x_bl_set(bl_level);
 #endif
 		break;
 	case BL_PWM:

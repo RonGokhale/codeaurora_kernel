@@ -1232,38 +1232,35 @@ int dsi_panel_device_register(struct device_node *pan_node,
 	}
 
         #if defined(CONFIG_ARCH_MSM8974_APOLLO)
-            ctrl_pdata->disp_lcd_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
-                                      "qcom,lcd-enable-gpio", 0);
-            if (!gpio_is_valid(ctrl_pdata->disp_lcd_en_gpio)) {
-                pr_err("%s:%d, Disp_lcd_en gpio not specified\n",
-                                __func__, __LINE__);
-            } else {
-                rc = gpio_request(ctrl_pdata->disp_lcd_en_gpio, "disp_lcd_enable");
-                if (rc) {
-                    pr_err("request power enable gpio failed, rc=%d\n",
-                           rc);
-                    gpio_free(ctrl_pdata->disp_lcd_en_gpio);
-                    return -ENODEV;
-                }
-            }
-        pr_err("request lcd enable gpio ok, = %d \n", ctrl_pdata->disp_lcd_en_gpio);
+	ctrl_pdata->disp_lcd_en_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+						"qcom,platform-lcd-enable-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->disp_lcd_en_gpio)) {
+		pr_err("%s:%d, Disp_lcd_en gpio not specified\n",
+			__func__, __LINE__);
+	} else {
+		rc = gpio_request(ctrl_pdata->disp_lcd_en_gpio, "disp_lcd_enable");
+		if (rc) {
+			pr_err("request power enable gpio failed, rc=%d\n", rc);
+			gpio_free(ctrl_pdata->disp_lcd_en_gpio);
+			return -ENODEV;
+		}
+	}
+	pr_info("request lcd enable gpio ok, = %d \n", ctrl_pdata->disp_lcd_en_gpio);
 
-            ctrl_pdata->mbist_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
-                                     "qcom,lcd-mbist-gpio", 0);
-            if (!gpio_is_valid(ctrl_pdata->mbist_gpio)) {
-                pr_err("%s:%d, mbist_gpio not specified\n",
-                               __func__, __LINE__);
-            } else {
-                rc = gpio_request(ctrl_pdata->mbist_gpio, "lcd_mbist");
-                if (rc) {
-                    pr_err("request lcd mbist gpio failed, rc=%d\n",
-                           rc);
-                    gpio_free(ctrl_pdata->mbist_gpio);
-                    return -ENODEV;
-                }
-            }
-        pr_err("request lcd enable gpio ok, = %d \n", ctrl_pdata->mbist_gpio);
-
+	ctrl_pdata->mbist_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+					"qcom,platform-lcd-mbist-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->mbist_gpio)) {
+		pr_err("%s:%d, mbist_gpio not specified\n",
+			__func__, __LINE__);
+	} else {
+		rc = gpio_request(ctrl_pdata->mbist_gpio, "lcd_mbist");
+		if (rc) {
+			pr_err("request lcd mbist gpio failed, rc=%d\n", rc);
+			gpio_free(ctrl_pdata->mbist_gpio);
+			return -ENODEV;
+		}
+	}
+	pr_info("request lcd mbist gpio ok, = %d \n", ctrl_pdata->mbist_gpio);
         #endif
 
 	if (pinfo->type == MIPI_CMD_PANEL) {
