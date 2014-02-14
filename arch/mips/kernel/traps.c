@@ -10,6 +10,7 @@
  * Kevin D. Kissell, kevink@mips.com and Carsten Langgaard, carstenl@mips.com
  * Copyright (C) 2002, 2003, 2004, 2005, 2007  Maciej W. Rozycki
  * Copyright (C) 2000, 2001, 2012 MIPS Technologies, Inc.  All rights reserved.
+ * Copyright (C) 2014, Imagination Technologies Ltd.
  */
 #include <linux/bug.h>
 #include <linux/compiler.h>
@@ -864,6 +865,11 @@ asmlinkage void do_bp(struct pt_regs *regs)
 	enum ctx_state prev_state;
 	unsigned long epc;
 	u16 instr[2];
+	mm_segment_t seg;
+
+	seg = get_fs();
+	if (!user_mode(regs))
+		set_fs(KERNEL_DS);
 
 	prev_state = exception_enter();
 	if (get_isa16_mode(regs->cp0_epc)) {
@@ -873,17 +879,19 @@ asmlinkage void do_bp(struct pt_regs *regs)
 			if ((__get_user(instr[0], (u16 __user *)msk_isa16_mode(epc)) ||
 			    (__get_user(instr[1], (u16 __user *)msk_isa16_mode(epc + 2)))))
 				goto out_sigsegv;
-		    opcode = (instr[0] << 16) | instr[1];
+			opcode = (instr[0] << 16) | instr[1];
 		} else {
-		    /* MIPS16e mode */
-		    if (__get_user(instr[0], (u16 __user *)msk_isa16_mode(epc)))
+			/* MIPS16e mode */
+			if (__get_user(instr[0],
+				       (u16 __user *)msk_isa16_mode(epc)))
 				goto out_sigsegv;
-		    bcode = (instr[0] >> 6) & 0x3f;
-		    do_trap_or_bp(regs, bcode, "Break");
-		    goto out;
+			bcode = (instr[0] >> 6) & 0x3f;
+			do_trap_or_bp(regs, bcode, "Break");
+			goto out;
 		}
 	} else {
-		if (__get_user(opcode, (unsigned int __user *) exception_epc(regs)))
+		if (__get_user(opcode,
+			       (unsigned int __user *) exception_epc(regs)))
 			goto out_sigsegv;
 	}
 
@@ -921,6 +929,7 @@ asmlinkage void do_bp(struct pt_regs *regs)
 	do_trap_or_bp(regs, bcode, "Break");
 
 out:
+	set_fs(seg);
 	exception_exit(prev_state);
 	return;
 
@@ -934,7 +943,12 @@ asmlinkage void do_tr(struct pt_regs *regs)
 	u32 opcode, tcode = 0;
 	enum ctx_state prev_state;
 	u16 instr[2];
+	mm_segment_t seg;
 	unsigned long epc = msk_isa16_mode(exception_epc(regs));
+
+	seg = get_fs();
+	if (!user_mode(regs))
+		set_fs(get_ds());
 
 	prev_state = exception_enter();
 	if (get_isa16_mode(regs->cp0_epc)) {
@@ -956,6 +970,7 @@ asmlinkage void do_tr(struct pt_regs *regs)
 	do_trap_or_bp(regs, tcode, "Trap");
 
 out:
+	set_fs(seg);
 	exception_exit(prev_state);
 	return;
 
