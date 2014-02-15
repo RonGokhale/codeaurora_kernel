@@ -91,6 +91,11 @@ int dm_pool_commit_metadata(struct dm_pool_metadata *pmd);
 int dm_pool_abort_metadata(struct dm_pool_metadata *pmd);
 
 /*
+ * Set if metadata space has been exhausted.
+ */
+void dm_pool_set_metadata_out_of_space(struct dm_pool_metadata *pmd);
+
+/*
  * Set/get userspace transaction id.
  */
 int dm_pool_set_metadata_transaction_id(struct dm_pool_metadata *pmd,
@@ -184,6 +189,8 @@ int dm_pool_get_data_block_size(struct dm_pool_metadata *pmd, sector_t *result);
 int dm_pool_get_data_dev_size(struct dm_pool_metadata *pmd, dm_block_t *result);
 
 int dm_pool_block_is_used(struct dm_pool_metadata *pmd, dm_block_t b, bool *result);
+
+bool dm_pool_is_metadata_out_of_space(struct dm_pool_metadata *pmd);
 
 /*
  * Returns -ENOSPC if the new size is too small and already allocated

@@ -1464,16 +1464,14 @@ static void out_of_data_space(struct pool *pool)
 
 static void metadata_operation_failed(struct pool *pool, const char *op, int r)
 {
-	dm_block_t free_blocks;
-
 	DMERR_LIMIT("%s: metadata operation '%s' failed: error = %d",
 		    dm_device_name(pool->pool_md), op, r);
 
-	if (r == -ENOSPC &&
-	    !dm_pool_get_free_metadata_block_count(pool->pmd, &free_blocks) &&
-	    !free_blocks)
+	if (r == -ENOSPC) {
+		dm_pool_set_metadata_out_of_space(pool->pmd);
 		DMERR_LIMIT("%s: no free metadata space available.",
 			    dm_device_name(pool->pool_md));
+	}
 
 	set_pool_mode(pool, PM_READ_ONLY);
 }
