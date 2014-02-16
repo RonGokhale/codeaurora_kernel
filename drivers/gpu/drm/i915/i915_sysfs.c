@@ -313,7 +313,7 @@ static ssize_t gt_max_freq_mhz_store(struct device *kdev,
 	struct drm_minor *minor = dev_to_drm_minor(kdev);
 	struct drm_device *dev = minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 val, hw_max, hw_min, non_oc_max;
+	u32 val;
 	ssize_t ret;
 
 	ret = kstrtou32(buf, 0, &val);
@@ -324,27 +324,19 @@ static ssize_t gt_max_freq_mhz_store(struct device *kdev,
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 
-	if (IS_VALLEYVIEW(dev_priv->dev)) {
+	if (IS_VALLEYVIEW(dev_priv->dev))
 		val = vlv_freq_opcode(dev_priv, val);
-
-		hw_max = dev_priv->rps.max_freq_hardlimit;
-		hw_min = dev_priv->rps.min_freq_hardlimit;
-		non_oc_max = hw_max;
-	} else {
+	else
 		val /= GT_FREQUENCY_MULTIPLIER;
 
-		hw_max = dev_priv->rps.max_freq_overclock;
-		non_oc_max = dev_priv->rps.max_freq_hardlimit;
-		hw_min = dev_priv->rps.min_freq_hardlimit;
-	}
-
-	if (val < hw_min || val > hw_max ||
+	if (val < dev_priv->rps.min_freq_hardlimit ||
+	    val > dev_priv->rps.max_freq_overclock ||
 	    val < dev_priv->rps.min_freq_softlimit) {
 		mutex_unlock(&dev_priv->rps.hw_lock);
 		return -EINVAL;
 	}
 
-	if (val > non_oc_max)
+	if (val > dev_priv->rps.max_freq_hardlimit)
 		DRM_DEBUG("User requested overclocking to %d\n",
 			  val * GT_FREQUENCY_MULTIPLIER);
 
@@ -393,7 +385,7 @@ static ssize_t gt_min_freq_mhz_store(struct device *kdev,
 	struct drm_minor *minor = dev_to_drm_minor(kdev);
 	struct drm_device *dev = minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 val, hw_max, hw_min;
+	u32 val;
 	ssize_t ret;
 
 	ret = kstrtou32(buf, 0, &val);
@@ -404,19 +396,14 @@ static ssize_t gt_min_freq_mhz_store(struct device *kdev,
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_VALLEYVIEW(dev))
 		val = vlv_freq_opcode(dev_priv, val);
-
-		hw_max = dev_priv->rps.max_freq_hardlimit;
-		hw_min = dev_priv->rps.min_freq_hardlimit;
-	} else {
+	else
 		val /= GT_FREQUENCY_MULTIPLIER;
 
-		hw_max = dev_priv->rps.max_freq_overclock;
-		hw_min = dev_priv->rps.min_freq_hardlimit;
-	}
-
-	if (val < hw_min || val > hw_max || val > dev_priv->rps.max_freq_softlimit) {
+	if (val < dev_priv->rps.min_freq_hardlimit ||
+	    val > dev_priv->rps.max_freq_overclock ||
+	    val > dev_priv->rps.max_freq_softlimit) {
 		mutex_unlock(&dev_priv->rps.hw_lock);
 		return -EINVAL;
 	}
