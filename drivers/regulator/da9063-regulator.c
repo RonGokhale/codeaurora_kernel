@@ -666,7 +666,7 @@ static struct da9063_regulators_pdata *da9063_parse_regulators_dt(
 	struct device_node *node;
 	int i, n, num;
 
-	node = of_find_node_by_name(pdev->dev.parent->of_node, "regulators");
+	node = of_get_child_by_name(pdev->dev.parent->of_node, "regulators");
 	if (!node) {
 		dev_err(&pdev->dev, "Regulators device node not found\n");
 		return ERR_PTR(-ENODEV);
@@ -674,6 +674,7 @@ static struct da9063_regulators_pdata *da9063_parse_regulators_dt(
 
 	num = of_regulator_match(&pdev->dev, node, da9063_matches,
 				 ARRAY_SIZE(da9063_matches));
+	of_node_put(node);
 	if (num < 0) {
 		dev_err(&pdev->dev, "Failed to match regulators\n");
 		return ERR_PTR(-EINVAL);
