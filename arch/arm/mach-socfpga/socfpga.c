@@ -283,6 +283,9 @@ static void socfpga_cyclone5_restart(enum reboot_mode mode, const char *cmd)
 {
 	u32 temp;
 
+	/* Turn on all periph PLL clocks */
+	writel(0xffff, clk_mgr_base_addr + SOCFPGA_ENABLE_PLL_REG);
+
 	temp = readl(rst_manager_base_addr + SOCFPGA_RSTMGR_CTRL);
 
 	if (mode == REBOOT_HARD)
