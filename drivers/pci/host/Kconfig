@@ -27,7 +27,7 @@ config PCI_TEGRA
 
 config PCI_RCAR_GEN2
 	bool "Renesas R-Car Gen2 Internal PCI controller"
-	depends on ARM && (ARCH_R8A7790 || ARCH_R8A7791 || COMPILE_TEST)
+	depends on ARCH_SHMOBILE || (ARM && COMPILE_TEST)
 	select GENERIC_ALLOCATOR
 	select DMABOUNCE
 	select BOUNCE if HIGHMEM
