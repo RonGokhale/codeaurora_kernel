@@ -330,7 +330,6 @@ static void compr_event_handler(uint32_t opcode,
 						& (runtime->periods - 1);
 				atomic_set(&prtd->pending_buffer, 0);
 			} else {
-				snd_pcm_period_elapsed(substream);
 				atomic_set(&prtd->start, 1);
 			}
 			break;
