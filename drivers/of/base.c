@@ -342,27 +342,43 @@ struct device_node *of_get_cpu_node(int cpu, unsigned int *thread)
 }
 EXPORT_SYMBOL(of_get_cpu_node);
 
-/** Checks if the given "compat" string matches one of the strings in
- * the device's "compatible" property
+/*
+ * Compare with the __of_device_is_compatible, this will return a score for the
+ * matching strings. The smaller value indicates the match for the more specific
+ * compatible string.
  */
-static int __of_device_is_compatible(const struct device_node *device,
-				     const char *compat)
+static int __of_device_is_compatible_score(const struct device_node *device,
+				     const char *compat, unsigned int *pscore)
 {
 	const char* cp;
 	int cplen, l;
+	unsigned int score = 0;
 
 	cp = __of_get_property(device, "compatible", &cplen);
 	if (cp == NULL)
 		return 0;
 	while (cplen > 0) {
-		if (of_compat_cmp(cp, compat, strlen(compat)) == 0)
+		score++;
+		if (of_compat_cmp(cp, compat, strlen(compat)) == 0) {
+			if (pscore)
+				*pscore = score;
 			return 1;
+		}
 		l = strlen(cp) + 1;
 		cp += l;
 		cplen -= l;
 	}
 
 	return 0;
+}
+
+/** Checks if the given "compat" string matches one of the strings in
+ * the device's "compatible" property
+ */
+static int __of_device_is_compatible(const struct device_node *device,
+				     const char *compat)
+{
+	return __of_device_is_compatible_score(device, compat, NULL);
 }
 
 /** Checks if the given "compat" string matches one of the strings in
@@ -734,25 +750,46 @@ static
 const struct of_device_id *__of_match_node(const struct of_device_id *matches,
 					   const struct device_node *node)
 {
+	const struct of_device_id *best_match = NULL;
+	unsigned int best_score = ~0;
+
 	if (!matches)
 		return NULL;
 
 	while (matches->name[0] || matches->type[0] || matches->compatible[0]) {
-		int match = 1;
-		if (matches->name[0])
-			match &= node->name
-				&& !strcmp(matches->name, node->name);
-		if (matches->type[0])
-			match &= node->type
-				&& !strcmp(matches->type, node->type);
-		if (matches->compatible[0])
-			match &= __of_device_is_compatible(node,
-							   matches->compatible);
-		if (match)
-			return matches;
+		unsigned int score = ~0;
+
+		/*
+		 * Matching compatible is better than matching type and name,
+		 * and the specific compatible is better than the general.
+		 */
+		if (matches->compatible[0] &&
+			 __of_device_is_compatible_score(node,
+						matches->compatible, &score))
+			score *= 4;
+
+		/*
+		 * Matching type is better than matching name, but matching
+		 * both is even better than that.
+		 */
+		if (matches->type[0] && node->type &&
+			!strcmp(matches->type, node->type))
+			score -= 2;
+
+		/* Matching name is a bit better than not */
+		if (matches->name[0] && node->name &&
+			!strcmp(matches->name, node->name))
+			score--;
+
+		if (score < best_score) {
+			best_match = matches;
+			best_score = score;
+		}
+
 		matches++;
 	}
-	return NULL;
+
+	return best_match;
 }
 
 /**
@@ -760,7 +797,19 @@ const struct of_device_id *__of_match_node(const struct of_device_id *matches,
  *	@matches:	array of of device match structures to search in
  *	@node:		the of device structure to match against
  *
- *	Low level utility function used by device matching.
+ *	Low level utility function used by device matching. The priority order
+ *	for the matching is:
+ *	  1. specific compatible && type && name
+ *	  2. specific compatible && type
+ *	  3. specific compatible && name
+ *	  4. specific compatible
+ *	  5. general compatible && type && name
+ *	  6. general compatible && type
+ *	  7. general compatible && name
+ *	  8. general compatible
+ *	  9. type && name
+ *	  10. type
+ *	  11. name
  */
 const struct of_device_id *of_match_node(const struct of_device_id *matches,
 					 const struct device_node *node)
