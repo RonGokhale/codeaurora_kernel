@@ -1,8 +1,9 @@
 /*
  * Lager board support
  *
- * Copyright (C) 2013  Renesas Solutions Corp.
+ * Copyright (C) 2013-2014  Renesas Solutions Corp.
  * Copyright (C) 2013  Magnus Damm
+ * Copyright (C) 2014  Cogent Embedded, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -273,6 +274,17 @@ static const struct sh_eth_plat_data ether_pdata __initconst = {
 static const struct resource ether_resources[] __initconst = {
 	DEFINE_RES_MEM(0xee700000, 0x400),
 	DEFINE_RES_IRQ(gic_spi(162)),
+};
+
+static const struct platform_device_info ether_info __initconst = {
+	.parent		= &platform_bus,
+	.name		= "r8a7790-ether",
+	.id		= -1,
+	.res		= ether_resources,
+	.num_res	= ARRAY_SIZE(ether_resources),
+	.data		= &ether_pdata,
+	.size_data	= sizeof(ether_pdata),
+	.dma_mask	= DMA_BIT_MASK(32),
 };
 
 /* SPI Flash memory (Spansion S25FL512SAGMFIG11 64Mb) */
@@ -638,6 +650,48 @@ static struct resource sdhi2_resources[] __initdata = {
 	DEFINE_RES_IRQ(gic_spi(167)),
 };
 
+/* Internal PCI1 */
+static const struct resource pci1_resources[] __initconst = {
+	DEFINE_RES_MEM(0xee0b0000, 0x10000),	/* CFG */
+	DEFINE_RES_MEM(0xee0a0000, 0x10000),	/* MEM */
+	DEFINE_RES_IRQ(gic_spi(112)),
+};
+
+static const struct platform_device_info pci1_info __initconst = {
+	.parent		= &platform_bus,
+	.name		= "pci-rcar-gen2",
+	.id		= 1,
+	.res		= pci1_resources,
+	.num_res	= ARRAY_SIZE(pci1_resources),
+	.dma_mask	= DMA_BIT_MASK(32),
+};
+
+static void __init lager_add_usb1_device(void)
+{
+	platform_device_register_full(&pci1_info);
+}
+
+/* Internal PCI2 */
+static const struct resource pci2_resources[] __initconst = {
+	DEFINE_RES_MEM(0xee0d0000, 0x10000),	/* CFG */
+	DEFINE_RES_MEM(0xee0c0000, 0x10000),	/* MEM */
+	DEFINE_RES_IRQ(gic_spi(113)),
+};
+
+static const struct platform_device_info pci2_info __initconst = {
+	.parent		= &platform_bus,
+	.name		= "pci-rcar-gen2",
+	.id		= 2,
+	.res		= pci2_resources,
+	.num_res	= ARRAY_SIZE(pci2_resources),
+	.dma_mask	= DMA_BIT_MASK(32),
+};
+
+static void __init lager_add_usb2_device(void)
+{
+	platform_device_register_full(&pci2_info);
+}
+
 static const struct pinctrl_map lager_pinctrl_map[] = {
 	/* DU (CN10: ARGB0, CN13: LVDS) */
 	PIN_MAP_MUX_GROUP_DEFAULT("rcar-du-r8a7790", "pfc-r8a7790",
@@ -716,6 +770,12 @@ static const struct pinctrl_map lager_pinctrl_map[] = {
 	/* USB0 */
 	PIN_MAP_MUX_GROUP_DEFAULT("renesas_usbhs", "pfc-r8a7790",
 				  "usb0_ovc_vbus", "usb0"),
+	/* USB1 */
+	PIN_MAP_MUX_GROUP_DEFAULT("pci-rcar-gen2.1", "pfc-r8a7790",
+				  "usb1", "usb1"),
+	/* USB2 */
+	PIN_MAP_MUX_GROUP_DEFAULT("pci-rcar-gen2.2", "pfc-r8a7790",
+				  "usb2", "usb2"),
 };
 
 static void __init lager_add_standard_devices(void)
@@ -743,10 +803,7 @@ static void __init lager_add_standard_devices(void)
 					  mmcif1_resources, ARRAY_SIZE(mmcif1_resources),
 					  &mmcif1_pdata, sizeof(mmcif1_pdata));
 
-	platform_device_register_resndata(&platform_bus, "r8a7790-ether", -1,
-					  ether_resources,
-					  ARRAY_SIZE(ether_resources),
-					  &ether_pdata, sizeof(ether_pdata));
+	platform_device_register_full(&ether_info);
 
 	lager_add_du_device();
 
@@ -776,6 +833,8 @@ static void __init lager_add_standard_devices(void)
 					  &usbhs_phy_pdata,
 					  sizeof(usbhs_phy_pdata));
 	lager_register_usbhs();
+	lager_add_usb1_device();
+	lager_add_usb2_device();
 
 	lager_add_rsnd_device();
 
