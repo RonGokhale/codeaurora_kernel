@@ -116,6 +116,29 @@ Resuming a device with a new table itself triggers an event so the
 userspace daemon can use this to detect a situation where a new table
 already exceeds the threshold.
 
+A low water mark for the metadata device is maintained in the kernel and
+will trigger a dm event if free space on the metadata device drops below
+it.
+
+Updating on-disk metadata
+-------------------------
+
+On-disk metadata is committed every time a FLUSH or FUA bio is written.
+If no such requests are made then commits will occur every second.  This
+means the thin-provisioning target behaves like a physical disk that has
+a volatile write cache.  If power is lost you may lose some recent
+writes.  The metadata should always be consistent in spite of any crash.
+
+If data space is exhausted the pool will either error or queue IO
+according to the configuration (see: error_if_no_space).  When metadata
+space is exhausted the pool will error IO, that requires new pool block
+allocation, until the pool's metadata device is resized.  When either the
+data or metadata space is exhausted the current metadata transaction
+must be aborted.  Given that the pool will cache IO whose completion may
+have already been acknowledged to the upper IO layers (e.g. fileystem)
+it is strongly suggested that those layers perform consistency checks
+if the data or metadata space is resized after having been exhausted.
+
 Thin provisioning
 -----------------
 

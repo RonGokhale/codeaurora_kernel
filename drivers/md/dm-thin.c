@@ -165,6 +165,7 @@ struct pool {
 
 	struct pool_features pf;
 	bool low_water_triggered:1;	/* A dm event has been sent */
+	bool metadata_low_water_triggered:1;
 
 	struct dm_bio_prison *prison;
 	struct dm_kcopyd_client *copier;
@@ -988,6 +989,13 @@ static void retry_on_resume(struct bio *bio)
 	spin_unlock_irqrestore(&pool->lock, flags);
 }
 
+static bool should_error_unserviceable_bio(struct pool *pool)
+{
+	return (unlikely(get_pool_mode(pool) == PM_FAIL) ||
+		pool->pf.error_if_no_space ||
+		dm_pool_is_metadata_out_of_space(pool->pmd));
+}
+
 static void handle_unserviceable_bio(struct pool *pool, struct bio *bio)
 {
 	/*
@@ -996,7 +1004,7 @@ static void handle_unserviceable_bio(struct pool *pool, struct bio *bio)
 	 */
 	WARN_ON_ONCE(get_pool_mode(pool) != PM_READ_ONLY);
 
-	if (pool->pf.error_if_no_space)
+	if (should_error_unserviceable_bio(pool))
 		bio_io_error(bio);
 	else
 		retry_on_resume(bio);
@@ -1006,6 +1014,11 @@ static void retry_bios_on_resume(struct pool *pool, struct dm_bio_prison_cell *c
 {
 	struct bio *bio;
 	struct bio_list bios;
+
+	if (should_error_unserviceable_bio(pool)) {
+		cell_error(pool, cell);
+		return;
+	}
 
 	bio_list_init(&bios);
 	cell_release(pool, cell, &bios);
@@ -1357,7 +1370,8 @@ static void process_deferred_bios(struct pool *pool)
 	bio_list_init(&pool->deferred_flush_bios);
 	spin_unlock_irqrestore(&pool->lock, flags);
 
-	if (bio_list_empty(&bios) && !need_commit_due_to_time(pool))
+	if (bio_list_empty(&bios) &&
+	    !(dm_pool_changed_this_transaction(pool->pmd) && need_commit_due_to_time(pool)))
 		return;
 
 	if (commit(pool)) {
@@ -1462,16 +1476,14 @@ static void out_of_data_space(struct pool *pool)
 
 static void metadata_operation_failed(struct pool *pool, const char *op, int r)
 {
-	dm_block_t free_blocks;
-
 	DMERR_LIMIT("%s: metadata operation '%s' failed: error = %d",
 		    dm_device_name(pool->pool_md), op, r);
 
-	if (r == -ENOSPC &&
-	    !dm_pool_get_free_metadata_block_count(pool->pmd, &free_blocks) &&
-	    !free_blocks)
+	if (r == -ENOSPC) {
+		dm_pool_set_metadata_out_of_space(pool->pmd);
 		DMERR_LIMIT("%s: no free metadata space available.",
 			    dm_device_name(pool->pool_md));
+	}
 
 	set_pool_mode(pool, PM_READ_ONLY);
 }
@@ -1823,6 +1835,7 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	INIT_LIST_HEAD(&pool->prepared_mappings);
 	INIT_LIST_HEAD(&pool->prepared_discards);
 	pool->low_water_triggered = false;
+	pool->metadata_low_water_triggered = false;
 	bio_list_init(&pool->retry_on_resume_list);
 
 	pool->shared_read_ds = dm_deferred_set_create();
@@ -1992,10 +2005,16 @@ static int parse_pool_features(struct dm_arg_set *as, struct pool_features *pf,
 static void metadata_low_callback(void *context)
 {
 	struct pool *pool = context;
+	unsigned long flags;
+
+	if (pool->metadata_low_water_triggered)
+		return;
 
 	DMWARN("%s: reached low water mark for metadata device: sending event.",
 	       dm_device_name(pool->pool_md));
-
+	spin_lock_irqsave(&pool->lock, flags);
+	pool->metadata_low_water_triggered = true;
+	spin_unlock_irqrestore(&pool->lock, flags);
 	dm_table_event(pool->ti->table);
 }
 
@@ -2349,6 +2368,7 @@ static void pool_resume(struct dm_target *ti)
 
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->low_water_triggered = false;
+	pool->metadata_low_water_triggered = false;
 	__requeue_bios(pool);
 	spin_unlock_irqrestore(&pool->lock, flags);
 
@@ -2363,6 +2383,12 @@ static void pool_postsuspend(struct dm_target *ti)
 	cancel_delayed_work(&pool->waker);
 	flush_workqueue(pool->wq);
 	(void) commit(pool);
+
+	/*
+	 * The pool mode may have changed, sync it so bind_control_target()
+	 * doesn't cause an unexpected mode transition on resume.
+	 */
+	pt->adjusted_pf.mode = get_pool_mode(pool);
 }
 
 static int check_arg_count(unsigned argc, unsigned args_required)
