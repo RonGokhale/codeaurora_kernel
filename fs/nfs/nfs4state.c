@@ -1015,6 +1015,7 @@ int nfs4_select_rw_stateid(nfs4_stateid *dst, struct nfs4_state *state,
 	if (ret == -EIO)
 		/* A lost lock - don't even consider delegations */
 		goto out;
+	ret = 0;
 	if (nfs4_copy_delegation_stateid(dst, state->inode, fmode))
 		goto out;
 	if (ret != -ENOENT)
