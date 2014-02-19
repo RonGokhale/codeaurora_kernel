@@ -84,9 +84,7 @@ config ARM_EXYNOS_CPU_FREQ_BOOST_SW
 config ARM_HIGHBANK_CPUFREQ
 	tristate "Calxeda Highbank-based"
 	depends on ARCH_HIGHBANK
-	select GENERIC_CPUFREQ_CPU0
-	select PM_OPP
-	select REGULATOR
+	depends on GENERIC_CPUFREQ_CPU0
 
 	default m
 	help
