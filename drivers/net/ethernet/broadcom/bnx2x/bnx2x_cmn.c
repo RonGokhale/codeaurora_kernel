@@ -1638,36 +1638,16 @@ int bnx2x_enable_msix(struct bnx2x *bp)
 	DP(BNX2X_MSG_SP, "about to request enable msix with %d vectors\n",
 	   msix_vec);
 
-	rc = pci_enable_msix(bp->pdev, &bp->msix_table[0], msix_vec);
-
+	rc = pci_enable_msix_range(bp->pdev, &bp->msix_table[0],
+				   BNX2X_MIN_MSIX_VEC_CNT(bp), msix_vec);
 	/*
 	 * reconfigure number of tx/rx queues according to available
 	 * MSI-X vectors
 	 */
-	if (rc >= BNX2X_MIN_MSIX_VEC_CNT(bp)) {
-		/* how less vectors we will have? */
-		int diff = msix_vec - rc;
-
-		BNX2X_DEV_INFO("Trying to use less MSI-X vectors: %d\n", rc);
-
-		rc = pci_enable_msix(bp->pdev, &bp->msix_table[0], rc);
-
-		if (rc) {
-			BNX2X_DEV_INFO("MSI-X is not attainable rc %d\n", rc);
-			goto no_msix;
-		}
-		/*
-		 * decrease number of queues by number of unallocated entries
-		 */
-		bp->num_ethernet_queues -= diff;
-		bp->num_queues = bp->num_ethernet_queues + bp->num_cnic_queues;
-
-		BNX2X_DEV_INFO("New queue configuration set: %d\n",
-			       bp->num_queues);
-	} else if (rc > 0) {
+	if (rc == -ENOSPC) {
 		/* Get by with single vector */
-		rc = pci_enable_msix(bp->pdev, &bp->msix_table[0], 1);
-		if (rc) {
+		rc = pci_enable_msix_range(bp->pdev, &bp->msix_table[0], 1, 1);
+		if (rc < 0) {
 			BNX2X_DEV_INFO("Single MSI-X is not attainable rc %d\n",
 				       rc);
 			goto no_msix;
@@ -1680,8 +1660,22 @@ int bnx2x_enable_msix(struct bnx2x *bp)
 		bp->num_ethernet_queues = 1;
 		bp->num_queues = bp->num_ethernet_queues + bp->num_cnic_queues;
 	} else if (rc < 0) {
-		BNX2X_DEV_INFO("MSI-X is not attainable  rc %d\n", rc);
+		BNX2X_DEV_INFO("MSI-X is not attainable rc %d\n", rc);
 		goto no_msix;
+	} else if (rc < msix_vec) {
+		/* how less vectors we will have? */
+		int diff = msix_vec - rc;
+
+		BNX2X_DEV_INFO("Trying to use less MSI-X vectors: %d\n", rc);
+
+		/*
+		 * decrease number of queues by number of unallocated entries
+		 */
+		bp->num_ethernet_queues -= diff;
+		bp->num_queues = bp->num_ethernet_queues + bp->num_cnic_queues;
+
+		BNX2X_DEV_INFO("New queue configuration set: %d\n",
+			       bp->num_queues);
 	}
 
 	bp->flags |= USING_MSIX_FLAG;
@@ -4773,12 +4767,8 @@ void bnx2x_tx_timeout(struct net_device *dev)
 		bnx2x_panic();
 #endif
 
-	smp_mb__before_clear_bit();
-	set_bit(BNX2X_SP_RTNL_TX_TIMEOUT, &bp->sp_rtnl_state);
-	smp_mb__after_clear_bit();
-
 	/* This allows the netif to be shutdown gracefully before resetting */
-	schedule_delayed_work(&bp->sp_rtnl_task, 0);
+	bnx2x_schedule_sp_rtnl(bp, BNX2X_SP_RTNL_TX_TIMEOUT, 0);
 }
 
 int bnx2x_suspend(struct pci_dev *pdev, pm_message_t state)
@@ -4906,3 +4896,15 @@ void bnx2x_update_coalesce_sb_index(struct bnx2x *bp, u8 fw_sb_id,
 	disable = disable ? 1 : (usec ? 0 : 1);
 	storm_memset_hc_disable(bp, port, fw_sb_id, sb_index, disable);
 }
+
+void bnx2x_schedule_sp_rtnl(struct bnx2x *bp, enum sp_rtnl_flag flag,
+			    u32 verbose)
+{
+	smp_mb__before_clear_bit();
+	set_bit(flag, &bp->sp_rtnl_state);
+	smp_mb__after_clear_bit();
+	DP((BNX2X_MSG_SP | verbose), "Scheduling sp_rtnl task [Flag: %d]\n",
+	   flag);
+	schedule_delayed_work(&bp->sp_rtnl_task, 0);
+}
+EXPORT_SYMBOL(bnx2x_schedule_sp_rtnl);
