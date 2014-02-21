@@ -182,16 +182,50 @@ static void __init imx6q_enet_phy_init(void)
 
 static void __init imx6q_1588_init(void)
 {
+	struct device_node *np;
+	struct clk *ptp_clk;
+	struct clk *enet_ref;
 	struct regmap *gpr;
+	u32 clksel;
 
+	np = of_find_compatible_node(NULL, NULL, "fsl,imx6q-fec");
+	if (!np) {
+		pr_warn("%s: failed to find fec node\n", __func__);
+		return;
+	}
+
+	ptp_clk = of_clk_get(np, 2);
+	if (IS_ERR(ptp_clk)) {
+		pr_warn("%s: failed to get ptp clock\n", __func__);
+		goto put_node;
+	}
+
+	enet_ref = clk_get_sys(NULL, "enet_ref");
+	if (IS_ERR(enet_ref)) {
+		pr_warn("%s: failed to get enet clock\n", __func__);
+		goto put_ptp_clk;
+	}
+
+	/*
+	 * If enet_ref from ANATOP/CCM is the PTP clock source, we need to
+	 * set bit IOMUXC_GPR1[21].  Or the PTP clock must be from pad
+	 * (external OSC), and we need to clear the bit.
+	 */
+	clksel = ptp_clk == enet_ref ? IMX6Q_GPR1_ENET_CLK_SEL_ANATOP :
+				       IMX6Q_GPR1_ENET_CLK_SEL_PAD;
 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6q-iomuxc-gpr");
 	if (!IS_ERR(gpr))
 		regmap_update_bits(gpr, IOMUXC_GPR1,
 				IMX6Q_GPR1_ENET_CLK_SEL_MASK,
-				IMX6Q_GPR1_ENET_CLK_SEL_ANATOP);
+				clksel);
 	else
 		pr_err("failed to find fsl,imx6q-iomux-gpr regmap\n");
 
+	clk_put(enet_ref);
+put_ptp_clk:
+	clk_put(ptp_clk);
+put_node:
+	of_node_put(np);
 }
 
 static void __init imx6q_init_machine(void)
@@ -212,15 +246,17 @@ static void __init imx6q_init_machine(void)
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, parent);
 
 	imx_anatop_init();
-	imx6q_pm_init();
+	cpu_is_imx6q() ?  imx6q_pm_init() : imx6dl_pm_init();
 	imx6q_1588_init();
 }
 
 #define OCOTP_CFG3			0x440
 #define OCOTP_CFG3_SPEED_SHIFT		16
 #define OCOTP_CFG3_SPEED_1P2GHZ		0x3
+#define OCOTP_CFG3_SPEED_996MHZ		0x2
+#define OCOTP_CFG3_SPEED_852MHZ		0x1
 
-static void __init imx6q_opp_check_1p2ghz(struct device *cpu_dev)
+static void __init imx6q_opp_check_speed_grading(struct device *cpu_dev)
 {
 	struct device_node *np;
 	void __iomem *base;
@@ -238,11 +274,29 @@ static void __init imx6q_opp_check_1p2ghz(struct device *cpu_dev)
 		goto put_node;
 	}
 
+	/*
+	 * SPEED_GRADING[1:0] defines the max speed of ARM:
+	 * 2b'11: 1200000000Hz;
+	 * 2b'10: 996000000Hz;
+	 * 2b'01: 852000000Hz; -- i.MX6Q Only, exclusive with 996MHz.
+	 * 2b'00: 792000000Hz;
+	 * We need to set the max speed of ARM according to fuse map.
+	 */
 	val = readl_relaxed(base + OCOTP_CFG3);
 	val >>= OCOTP_CFG3_SPEED_SHIFT;
-	if ((val & 0x3) != OCOTP_CFG3_SPEED_1P2GHZ)
+	val &= 0x3;
+
+	if (val != OCOTP_CFG3_SPEED_1P2GHZ)
 		if (dev_pm_opp_disable(cpu_dev, 1200000000))
 			pr_warn("failed to disable 1.2 GHz OPP\n");
+	if (val < OCOTP_CFG3_SPEED_996MHZ)
+		if (dev_pm_opp_disable(cpu_dev, 996000000))
+			pr_warn("failed to disable 996 MHz OPP\n");
+	if (cpu_is_imx6q()) {
+		if (val != OCOTP_CFG3_SPEED_852MHZ)
+			if (dev_pm_opp_disable(cpu_dev, 852000000))
+				pr_warn("failed to disable 852 MHz OPP\n");
+	}
 
 put_node:
 	of_node_put(np);
@@ -268,7 +322,7 @@ static void __init imx6q_opp_init(void)
 		goto put_node;
 	}
 
-	imx6q_opp_check_1p2ghz(cpu_dev);
+	imx6q_opp_check_speed_grading(cpu_dev);
 
 put_node:
 	of_node_put(np);
