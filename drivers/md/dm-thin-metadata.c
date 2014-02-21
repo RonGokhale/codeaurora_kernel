@@ -192,6 +192,15 @@ struct dm_pool_metadata {
 	 * operation possible in this state is the closing of the device.
 	 */
 	bool fail_io:1;
+
+	/*
+	 * Set if metadata space has been exhausted.  It is difficult for the
+	 * metadata space map to accurately account for its free space.  So
+	 * until/unless dm_pool_get_free_metadata_block_count can return a known
+	 * out of space value (either 0 or some fixed reserve threshold we create)
+	 * manually establish a flag that reflects this out of space condition.
+	 */
+	bool metadata_out_of_space:1;
 };
 
 struct dm_thin_device {
@@ -815,6 +824,7 @@ struct dm_pool_metadata *dm_pool_metadata_open(struct block_device *bdev,
 	INIT_LIST_HEAD(&pmd->thin_devices);
 	pmd->read_only = false;
 	pmd->fail_io = false;
+	pmd->metadata_out_of_space = false;
 	pmd->bdev = bdev;
 	pmd->data_block_size = data_block_size;
 
@@ -1489,6 +1499,23 @@ bool dm_thin_changed_this_transaction(struct dm_thin_device *td)
 	return r;
 }
 
+bool dm_pool_changed_this_transaction(struct dm_pool_metadata *pmd)
+{
+	bool r = false;
+	struct dm_thin_device *td, *tmp;
+
+	down_read(&pmd->root_lock);
+	list_for_each_entry_safe(td, tmp, &pmd->thin_devices, list) {
+		if (td->changed) {
+			r = td->changed;
+			break;
+		}
+	}
+	up_read(&pmd->root_lock);
+
+	return r;
+}
+
 bool dm_thin_aborted_changes(struct dm_thin_device *td)
 {
 	bool r;
@@ -1581,6 +1608,24 @@ int dm_pool_get_free_metadata_block_count(struct dm_pool_metadata *pmd,
 	down_read(&pmd->root_lock);
 	if (!pmd->fail_io)
 		r = dm_sm_get_nr_free(pmd->metadata_sm, result);
+	up_read(&pmd->root_lock);
+
+	return r;
+}
+
+void dm_pool_set_metadata_out_of_space(struct dm_pool_metadata *pmd)
+{
+	down_write(&pmd->root_lock);
+	pmd->metadata_out_of_space = true;
+	up_write(&pmd->root_lock);
+}
+
+bool dm_pool_is_metadata_out_of_space(struct dm_pool_metadata *pmd)
+{
+	bool r;
+
+	down_read(&pmd->root_lock);
+	r = pmd->metadata_out_of_space;
 	up_read(&pmd->root_lock);
 
 	return r;
@@ -1702,8 +1747,11 @@ int dm_pool_resize_metadata_dev(struct dm_pool_metadata *pmd, dm_block_t new_cou
 	int r = -EINVAL;
 
 	down_write(&pmd->root_lock);
-	if (!pmd->fail_io)
+	if (!pmd->fail_io) {
 		r = __resize_space_map(pmd->metadata_sm, new_count);
+		if (!r)
+			pmd->metadata_out_of_space = false;
+	}
 	up_write(&pmd->root_lock);
 
 	return r;
