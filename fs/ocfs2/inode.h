@@ -44,7 +44,7 @@ struct ocfs2_inode_info
 	struct rw_semaphore		ip_xattr_sem;
 
 	/* Number of outstanding AIO's which are not page aligned */
-	atomic_t			ip_unaligned_aio;
+	struct mutex			ip_unaligned_aio;
 
 	/* These fields are protected by ip_lock */
 	spinlock_t			ip_lock;
@@ -73,6 +73,13 @@ struct ocfs2_inode_info
 	u32				ip_dir_lock_gen;
 
 	struct ocfs2_alloc_reservation	ip_la_data_resv;
+
+	/*
+	 * Transactions that contain inode's metadata needed to complete
+	 * fsync and fdatasync, respectively.
+	 */
+	tid_t i_sync_tid;
+	tid_t i_datasync_tid;
 };
 
 /*
