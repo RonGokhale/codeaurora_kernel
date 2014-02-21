@@ -2884,17 +2884,19 @@ static int wm8962_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 	snd_soc_write(codec, WM8962_FLL_CONTROL_7, fll_div.lambda);
 	snd_soc_write(codec, WM8962_FLL_CONTROL_8, fll_div.n);
 
-	try_wait_for_completion(&wm8962->fll_lock);
+	reinit_completion(&wm8962->fll_lock);
 
-	pm_runtime_get_sync(codec->dev);
+	ret = pm_runtime_get_sync(codec->dev);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to resume device: %d\n", ret);
+		return ret;
+	}
 
 	snd_soc_update_bits(codec, WM8962_FLL_CONTROL_1,
 			    WM8962_FLL_FRAC | WM8962_FLL_REFCLK_SRC_MASK |
 			    WM8962_FLL_ENA, fll1 | WM8962_FLL_ENA);
 
 	dev_dbg(codec->dev, "FLL configured for %dHz->%dHz\n", Fref, Fout);
-
-	ret = 0;
 
 	/* This should be a massive overestimate but go even
 	 * higher if we'll error out
@@ -2909,14 +2911,17 @@ static int wm8962_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 
 	if (timeout == 0 && wm8962->irq) {
 		dev_err(codec->dev, "FLL lock timed out");
-		ret = -ETIMEDOUT;
+		snd_soc_update_bits(codec, WM8962_FLL_CONTROL_1,
+				    WM8962_FLL_ENA, 0);
+		pm_runtime_put(codec->dev);
+		return -ETIMEDOUT;
 	}
 
 	wm8962->fll_fref = Fref;
 	wm8962->fll_fout = Fout;
 	wm8962->fll_src = source;
 
-	return ret;
+	return 0;
 }
 
 static int wm8962_mute(struct snd_soc_dai *dai, int mute)
@@ -3003,9 +3008,16 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	unsigned int active;
 	int reg, ret;
 
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0) {
+		dev_err(dev, "Failed to resume: %d\n", ret);
+		return IRQ_NONE;
+	}
+
 	ret = regmap_read(wm8962->regmap, WM8962_INTERRUPT_STATUS_2_MASK,
 			  &mask);
 	if (ret != 0) {
+		pm_runtime_put(dev);
 		dev_err(dev, "Failed to read interrupt mask: %d\n",
 			ret);
 		return IRQ_NONE;
@@ -3013,14 +3025,17 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 
 	ret = regmap_read(wm8962->regmap, WM8962_INTERRUPT_STATUS_2, &active);
 	if (ret != 0) {
+		pm_runtime_put(dev);
 		dev_err(dev, "Failed to read interrupt: %d\n", ret);
 		return IRQ_NONE;
 	}
 
 	active &= ~mask;
 
-	if (!active)
+	if (!active) {
+		pm_runtime_put(dev);
 		return IRQ_NONE;
+	}
 
 	/* Acknowledge the interrupts */
 	ret = regmap_write(wm8962->regmap, WM8962_INTERRUPT_STATUS_2, active);
@@ -3070,6 +3085,8 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 				   msecs_to_jiffies(250));
 	}
 
+	pm_runtime_put(dev);
+
 	return IRQ_HANDLED;
 }
 
@@ -3089,6 +3106,7 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 int wm8962_mic_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack)
 {
 	struct wm8962_priv *wm8962 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int irq_mask, enable;
 
 	wm8962->jack = jack;
@@ -3109,13 +3127,17 @@ int wm8962_mic_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack)
 	snd_soc_jack_report(wm8962->jack, 0,
 			    SND_JACK_MICROPHONE | SND_JACK_BTN_0);
 
+	snd_soc_dapm_mutex_lock(dapm);
+
 	if (jack) {
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "SYSCLK");
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "MICBIAS");
+		snd_soc_dapm_force_enable_pin_unlocked(dapm, "SYSCLK");
+		snd_soc_dapm_force_enable_pin_unlocked(dapm, "MICBIAS");
 	} else {
-		snd_soc_dapm_disable_pin(&codec->dapm, "SYSCLK");
-		snd_soc_dapm_disable_pin(&codec->dapm, "MICBIAS");
+		snd_soc_dapm_disable_pin_unlocked(dapm, "SYSCLK");
+		snd_soc_dapm_disable_pin_unlocked(dapm, "MICBIAS");
 	}
+
+	snd_soc_dapm_mutex_unlock(dapm);
 
 	return 0;
 }
