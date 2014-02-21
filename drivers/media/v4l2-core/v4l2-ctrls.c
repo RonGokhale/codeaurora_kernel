@@ -1921,7 +1921,8 @@ void v4l2_ctrl_cluster(unsigned ncontrols, struct v4l2_ctrl **controls)
 	int i;
 
 	/* The first control is the master control and it must not be NULL */
-	BUG_ON(ncontrols == 0 || controls[0] == NULL);
+	if (WARN_ON(ncontrols == 0 || controls[0] == NULL))
+		return;
 
 	for (i = 0; i < ncontrols; i++) {
 		if (controls[i]) {
