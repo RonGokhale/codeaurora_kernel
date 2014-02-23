@@ -405,7 +405,7 @@ static struct of_device_id armada_375_pinctrl_of_match[] = {
 };
 
 static struct mvebu_mpp_ctrl mv88f6720_mpp_controls[] = {
-	MPP_REG_CTRL(0, 69),
+	MPP_FUNC_CTRL(0, 69, NULL, armada_375_mpp_ctrl),
 };
 
 static struct pinctrl_gpio_range mv88f6720_mpp_gpio_ranges[] = {
@@ -417,6 +417,12 @@ static struct pinctrl_gpio_range mv88f6720_mpp_gpio_ranges[] = {
 static int armada_375_pinctrl_probe(struct platform_device *pdev)
 {
 	struct mvebu_pinctrl_soc_info *soc = &armada_375_pinctrl_info;
+	struct resource *res;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	mpp_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(mpp_base))
+		return PTR_ERR(mpp_base);
 
 	soc->variant = 0; /* no variants for Armada 375 */
 	soc->controls = mv88f6720_mpp_controls;
