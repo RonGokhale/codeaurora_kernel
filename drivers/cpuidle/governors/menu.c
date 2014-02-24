@@ -302,8 +302,16 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	if (unlikely(latency_req == 0))
 		return 0;
 
-	/* determine the expected residency time, round up */
+	/*
+	 * Determine the expected residency time. If the time is negative,
+	 * a timer interrupt has probably just expired after disabling
+	 * interrupts. Return as quickly as possible in the most shallow
+	 * state possible. tv_nsec is always positive, so only check the
+	 * seconds.
+	 */
 	t = ktime_to_timespec(tick_nohz_get_sleep_length());
+	if (t.tv_sec < 0)
+		return 0;
 	data->next_timer_us =
 		t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
 
