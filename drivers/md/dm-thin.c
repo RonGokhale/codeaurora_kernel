@@ -169,6 +169,7 @@ struct pool {
 	struct dm_bio_prison *prison;
 	struct dm_kcopyd_client *copier;
 
+	struct semaphore queue_work_lock;
 	struct workqueue_struct *wq;
 	struct work_struct worker;
 	struct delayed_work waker;
@@ -236,7 +237,26 @@ struct thin_c {
  */
 static void wake_worker(struct pool *pool)
 {
-	queue_work(pool->wq, &pool->worker);
+	if (down_trylock(&pool->queue_work_lock)) {
+		queue_work(pool->wq, &pool->worker);
+		up(&pool->queue_work_lock);
+	}
+}
+
+static void resume_worker(struct pool *pool)
+{
+	up(&pool->queue_work_lock);
+
+	/*
+	 * Just in case there were any missed wakes from thin devices.
+	 */
+	wake_worker(pool);
+}
+
+static void suspend_worker(struct pool *pool)
+{
+	down(&pool->queue_work_lock);
+	drain_workqueue(pool->wq);
 }
 
 /*----------------------------------------------------------------*/
@@ -1357,7 +1377,8 @@ static void process_deferred_bios(struct pool *pool)
 	bio_list_init(&pool->deferred_flush_bios);
 	spin_unlock_irqrestore(&pool->lock, flags);
 
-	if (bio_list_empty(&bios) && !need_commit_due_to_time(pool))
+	if (bio_list_empty(&bios) &&
+	    !(dm_pool_changed_this_transaction(pool->pmd) && need_commit_due_to_time(pool)))
 		return;
 
 	if (commit(pool)) {
@@ -1757,6 +1778,8 @@ static void __pool_destroy(struct pool *pool)
 
 static struct kmem_cache *_new_mapping_cache;
 
+static dm_block_t get_metadata_dev_size_in_blocks(struct block_device *);
+
 static struct pool *pool_create(struct mapped_device *pool_md,
 				struct block_device *metadata_dev,
 				unsigned long block_size,
@@ -1767,8 +1790,10 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	struct pool *pool;
 	struct dm_pool_metadata *pmd;
 	bool format_device = read_only ? false : true;
+	dm_block_t nr_blocks = get_metadata_dev_size_in_blocks(metadata_dev);
 
-	pmd = dm_pool_metadata_open(metadata_dev, block_size, format_device);
+	pmd = dm_pool_metadata_open(metadata_dev, block_size, format_device,
+				    nr_blocks);
 	if (IS_ERR(pmd)) {
 		*error = "Error creating metadata object";
 		return (struct pool *)pmd;
@@ -1808,6 +1833,7 @@ static struct pool *pool_create(struct mapped_device *pool_md,
 	 * Create singlethreaded workqueue that will service all devices
 	 * that use this metadata.
 	 */
+	sema_init(&pool->queue_work_lock, 0);
 	pool->wq = alloc_ordered_workqueue("dm-" DM_MSG_PREFIX, WQ_MEM_RECLAIM);
 	if (!pool->wq) {
 		*error = "Error creating pool's workqueue";
@@ -1999,16 +2025,27 @@ static void metadata_low_callback(void *context)
 	dm_table_event(pool->ti->table);
 }
 
-static sector_t get_metadata_dev_size(struct block_device *bdev)
+static sector_t get_dev_size(struct block_device *bdev)
 {
-	sector_t metadata_dev_size = i_size_read(bdev->bd_inode) >> SECTOR_SHIFT;
+	return i_size_read(bdev->bd_inode) >> SECTOR_SHIFT;
+}
+
+static void warn_if_metadata_device_too_big(struct block_device *bdev)
+{
+	sector_t metadata_dev_size = get_dev_size(bdev);
 	char buffer[BDEVNAME_SIZE];
 
-	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS_WARNING) {
+	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS_WARNING)
 		DMWARN("Metadata device %s is larger than %u sectors: excess space will not be used.",
 		       bdevname(bdev, buffer), THIN_METADATA_MAX_SECTORS);
-		metadata_dev_size = THIN_METADATA_MAX_SECTORS_WARNING;
-	}
+}
+
+static sector_t get_metadata_dev_size(struct block_device *bdev)
+{
+	sector_t metadata_dev_size = get_dev_size(bdev);
+
+	if (metadata_dev_size > THIN_METADATA_MAX_SECTORS)
+		metadata_dev_size = THIN_METADATA_MAX_SECTORS;
 
 	return metadata_dev_size;
 }
@@ -2095,12 +2132,7 @@ static int pool_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		ti->error = "Error opening metadata block device";
 		goto out_unlock;
 	}
-
-	/*
-	 * Run for the side-effect of possibly issuing a warning if the
-	 * device is too big.
-	 */
-	(void) get_metadata_dev_size(metadata_dev->bdev);
+	warn_if_metadata_device_too_big(metadata_dev->bdev);
 
 	r = dm_get_device(ti, argv[1], FMODE_READ | FMODE_WRITE, &data_dev);
 	if (r) {
@@ -2287,6 +2319,7 @@ static int maybe_resize_metadata_dev(struct dm_target *ti, bool *need_commit)
 		return -EINVAL;
 
 	} else if (metadata_dev_size > sb_metadata_dev_size) {
+		warn_if_metadata_device_too_big(pool->md_dev);
 		DMINFO("%s: growing the metadata device from %llu to %llu blocks",
 		       dm_device_name(pool->pool_md),
 		       sb_metadata_dev_size, metadata_dev_size);
@@ -2352,6 +2385,7 @@ static void pool_resume(struct dm_target *ti)
 	__requeue_bios(pool);
 	spin_unlock_irqrestore(&pool->lock, flags);
 
+	resume_worker(pool);
 	do_waker(&pool->waker.work);
 }
 
@@ -2360,9 +2394,15 @@ static void pool_postsuspend(struct dm_target *ti)
 	struct pool_c *pt = ti->private;
 	struct pool *pool = pt->pool;
 
+	suspend_worker(pool);
 	cancel_delayed_work(&pool->waker);
-	flush_workqueue(pool->wq);
 	(void) commit(pool);
+
+	/*
+	 * The pool mode may have changed, sync it so bind_control_target()
+	 * doesn't cause an unexpected mode transition on resume.
+	 */
+	pt->adjusted_pf.mode = get_pool_mode(pool);
 }
 
 static int check_arg_count(unsigned argc, unsigned args_required)
@@ -2894,6 +2934,7 @@ static int thin_ctr(struct dm_target *ti, unsigned argc, char **argv)
 
 	if (get_pool_mode(tc->pool) == PM_FAIL) {
 		ti->error = "Couldn't open thin device, Pool is in fail mode";
+		r = -EINVAL;
 		goto bad_thin_open;
 	}
 
@@ -2905,7 +2946,7 @@ static int thin_ctr(struct dm_target *ti, unsigned argc, char **argv)
 
 	r = dm_set_target_max_io_len(ti, tc->pool->sectors_per_block);
 	if (r)
-		goto bad_thin_open;
+		goto bad_target_max_io_len;
 
 	ti->num_flush_bios = 1;
 	ti->flush_supported = true;
@@ -2926,6 +2967,8 @@ static int thin_ctr(struct dm_target *ti, unsigned argc, char **argv)
 
 	return 0;
 
+bad_target_max_io_len:
+	dm_pool_close_thin_device(tc->td);
 bad_thin_open:
 	__pool_dec(tc->pool);
 bad_pool_lookup:

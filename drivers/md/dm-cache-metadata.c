@@ -323,7 +323,7 @@ static int __format_metadata(struct dm_cache_metadata *cmd)
 {
 	int r;
 
-	r = dm_tm_create_with_sm(cmd->bm, CACHE_SUPERBLOCK_LOCATION,
+	r = dm_tm_create_with_sm(cmd->bm, CACHE_SUPERBLOCK_LOCATION, 0,
 				 &cmd->tm, &cmd->metadata_sm);
 	if (r < 0) {
 		DMERR("tm_create_with_sm failed");

@@ -18,7 +18,7 @@
  * We have one block of index, which can hold 255 index entries.  Each
  * index entry contains allocation info about 16k metadata blocks.
  */
-#define THIN_METADATA_MAX_SECTORS (255 * (1 << 14) * (THIN_METADATA_BLOCK_SIZE / (1 << SECTOR_SHIFT)))
+#define THIN_METADATA_MAX_SECTORS (255 * ((1 << 14) - 64) * (THIN_METADATA_BLOCK_SIZE / (1 << SECTOR_SHIFT)))
 
 /*
  * A metadata device larger than 16GB triggers a warning.
@@ -40,7 +40,8 @@ typedef uint64_t dm_thin_id;
  */
 struct dm_pool_metadata *dm_pool_metadata_open(struct block_device *bdev,
 					       sector_t data_block_size,
-					       bool format_device);
+					       bool format_device,
+					       dm_block_t nr_blocks);
 
 int dm_pool_metadata_close(struct dm_pool_metadata *pmd);
 
@@ -160,6 +161,8 @@ int dm_thin_remove_block(struct dm_thin_device *td, dm_block_t block);
  * Queries.
  */
 bool dm_thin_changed_this_transaction(struct dm_thin_device *td);
+
+bool dm_pool_changed_this_transaction(struct dm_pool_metadata *pmd);
 
 bool dm_thin_aborted_changes(struct dm_thin_device *td);
 
