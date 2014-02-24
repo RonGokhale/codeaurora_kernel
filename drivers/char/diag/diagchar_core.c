@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -757,6 +757,8 @@ long diagchar_ioctl(struct file *filp,
 		for (i = 0; i < MAX_DCI_CLIENTS; i++) {
 			if (driver->dci_client_tbl[i].client == NULL) {
 				driver->dci_client_tbl[i].client = current;
+				driver->dci_client_tbl[i].client_id =
+							driver->dci_client_id;
 				driver->dci_client_tbl[i].list =
 							 dci_params->list;
 				driver->dci_client_tbl[i].signal_type =
@@ -817,7 +819,8 @@ long diagchar_ioctl(struct file *filp,
 		for (i = 0; i < MAX_DCI_CLIENTS; i++) {
 			dci_params = &(driver->dci_client_tbl[i]);
 			if (dci_params->client &&
-				dci_params->client->tgid == current->tgid) {
+				driver->dci_client_tbl[i].client_id ==
+						stats.client_id) {
 				stats.dropped_logs = dci_params->dropped_logs;
 				stats.dropped_events =
 						 dci_params->dropped_events;
