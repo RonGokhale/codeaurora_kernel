@@ -616,6 +616,8 @@
 			reg = <0x40>;
 			interrupts = <0 86 IRQ_TYPE_LEVEL_HIGH>;
 
+			ams,system-power-controller;
+
 			#interrupt-cells = <2>;
 			interrupt-controller;
 
@@ -909,6 +911,16 @@
 					MATRIX_KEY(0x07, 0x0c, KEY_LEFT)
 				>;
 			};
+		};
+	};
+
+	spi@7000da00 {
+		status = "okay";
+		spi-max-frequency = <25000000>;
+		spi-flash@0 {
+			compatible = "winbond,w25q32dw";
+			reg = <0>;
+			spi-max-frequency = <20000000>;
 		};
 	};
 
