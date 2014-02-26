@@ -794,7 +794,7 @@
 		};
 
 		timer0: timer0@ffc08000 {
-			compatible = "snps,dw-apb-timer";
+			compatible = "snps,dw-apb-timer", "snps,dw-apb-timer-sp";
 			interrupts = <0 167 4>;
 			reg = <0xffc08000 0x1000>;
 			clocks = <&l4_sp_clk>;
@@ -802,7 +802,7 @@
 		};
 
 		timer1: timer1@ffc09000 {
-			compatible = "snps,dw-apb-timer";
+			compatible = "snps,dw-apb-timer", "snps,dw-apb-timer-sp";
 			interrupts = <0 168 4>;
 			reg = <0xffc09000 0x1000>;
 			clocks = <&l4_sp_clk>;
@@ -810,7 +810,7 @@
 		};
 
 		timer2: timer2@ffd00000 {
-			compatible = "snps,dw-apb-timer";
+			compatible = "snps,dw-apb-timer", "snps,dw-apb-timer-osc";
 			interrupts = <0 169 4>;
 			reg = <0xffd00000 0x1000>;
 			clocks = <&osc1>;
@@ -818,7 +818,7 @@
 		};
 
 		timer3: timer3@ffd01000 {
-			compatible = "snps,dw-apb-timer";
+			compatible = "snps,dw-apb-timer", "snps,dw-apb-timer-osc";
 			interrupts = <0 170 4>;
 			reg = <0xffd01000 0x1000>;
 			clocks = <&osc1>;
