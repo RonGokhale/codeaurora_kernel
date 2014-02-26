@@ -136,16 +136,20 @@ acpi_ds_init_one_object(acpi_handle obj_handle,
 			break;
 		}
 
-		/* Parse/scan method and serialize it if necessary */
+		if (acpi_gbl_auto_serialize_methods) {
 
-		acpi_ds_auto_serialize_method(node, obj_desc);
-		if (obj_desc->method.info_flags & ACPI_METHOD_SERIALIZED) {
+			/* Parse/scan method and serialize it if necessary */
 
-			/* Method was just converted to Serialized */
+			acpi_ds_auto_serialize_method(node, obj_desc);
+			if (obj_desc->method.
+			    info_flags & ACPI_METHOD_SERIALIZED) {
 
-			info->serial_method_count++;
-			info->serialized_method_count++;
-			break;
+				/* Method was just converted to Serialized */
+
+				info->serial_method_count++;
+				info->serialized_method_count++;
+				break;
+			}
 		}
 
 		info->non_serial_method_count++;
