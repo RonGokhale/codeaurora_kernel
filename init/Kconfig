@@ -1476,7 +1476,6 @@ config PCI_QUIRKS
 
 config EMBEDDED
 	bool "Embedded system"
-	option allnoconfig_y
 	select EXPERT
 	help
 	  This option should be enabled if compiling the kernel for
