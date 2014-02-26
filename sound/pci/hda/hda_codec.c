@@ -23,7 +23,6 @@
 #include <linux/init.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-#include <linux/pci.h>
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/async.h>
@@ -68,6 +67,7 @@ static struct hda_vendor_id hda_vendor_ids[] = {
 	{ 0x17e8, "Chrontel" },
 	{ 0x1854, "LG" },
 	{ 0x1aec, "Wolfson Microelectronics" },
+	{ 0x1af4, "QEMU" },
 	{ 0x434d, "C-Media" },
 	{ 0x8086, "Intel" },
 	{ 0x8384, "SigmaTel" },
