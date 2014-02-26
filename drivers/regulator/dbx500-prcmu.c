@@ -97,10 +97,10 @@ static int ux500_regulator_power_state_cnt_print(struct seq_file *s, void *p)
 	int err;
 
 	/* print power state count */
-	err = seq_printf(s, "ux500-regulator power state count: %i\n",
-		power_state_active_get());
+	err = seq_puts(s, "ux500-regulator power state count: %i\n",
+			power_state_active_get());
 	if (err < 0)
-		dev_err(dev, "seq_printf overflow\n");
+		dev_err(dev, "seq_puts overflow\n");
 
 	return 0;
 }
@@ -127,9 +127,9 @@ static int ux500_regulator_status_print(struct seq_file *s, void *p)
 	int i;
 
 	/* print dump header */
-	err = seq_printf(s, "ux500-regulator status:\n");
+	err = seq_puts(s, "ux500-regulator status:\n");
 	if (err < 0)
-		dev_err(dev, "seq_printf overflow\n");
+		dev_err(dev, "seq_puts overflow\n");
 
 	err = seq_printf(s, "%31s : %8s : %8s\n", "current",
 		"before", "after");
