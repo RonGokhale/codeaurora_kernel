@@ -4701,9 +4701,12 @@ static void gen8_init_clock_gating(struct drm_device *dev)
 
 	WARN(!i915_preliminary_hw_support,
 	     "GEN8_CENTROID_PIXEL_OPT_DIS not be needed for production\n");
+
 	/* WaDisablePartialInstShootdown:bdw */
+	/* WaDisableThreadStallDopClockGating:bdw */
 	I915_WRITE(GEN8_ROW_CHICKEN,
-		   _MASKED_BIT_ENABLE(PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE));
+		   _MASKED_BIT_ENABLE(PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE |
+				      STALL_DOP_GATING_DISABLE));
 
 	I915_WRITE(HALF_SLICE_CHICKEN3,
 		   _MASKED_BIT_ENABLE(GEN8_CENTROID_PIXEL_OPT_DIS));
