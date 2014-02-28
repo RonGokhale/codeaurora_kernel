@@ -34,11 +34,12 @@ MACHINE_START(LEGACY_FPGA, "legacy_fpga")
 #endif
 MACHINE_END
 
-static const char *nsimosci_compat[] __initconst = {
+static const char *simulation_compat[] __initconst = {
+	"snps,nsim",
 	"snps,nsimosci",
 	NULL,
 };
 
-MACHINE_START(NSIMOSCI, "nsimosci")
-	.dt_compat	= nsimosci_compat,
+MACHINE_START(SIMULATION, "simulation")
+	.dt_compat	= simulation_compat,
 MACHINE_END
