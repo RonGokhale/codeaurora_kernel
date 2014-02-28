@@ -3179,6 +3179,11 @@ static void s3c_hsotg_initep(struct s3c_hsotg *hsotg,
 	hs_ep->parent = hsotg;
 	hs_ep->ep.name = hs_ep->name;
 	usb_ep_set_maxpacket_limit(&hs_ep->ep, epnum ? 1024 : EP0_MPS_LIMIT);
+	hs_ep->ep.has_dir_in = true;
+	hs_ep->ep.has_dir_out = true;
+	hs_ep->ep.has_bulk = true;
+	hs_ep->ep.has_interrupt = true;
+	hs_ep->ep.has_isochronous = true;
 	hs_ep->ep.ops = &s3c_hsotg_ep_ops;
 
 	/*
