@@ -70,10 +70,6 @@ static unsigned debug;
 module_param(debug, uint, 0644);
 MODULE_PARM_DESC(debug, "activates debug info");
 
-static unsigned int vid_limit = 16;
-module_param(vid_limit, uint, 0644);
-MODULE_PARM_DESC(vid_limit, "capture memory limit in megabytes");
-
 /* Global font descriptor */
 static const u8 *font8x16;
 
@@ -191,7 +187,6 @@ struct vivi_buffer {
 	/* common v4l buffer stuff -- must be first */
 	struct vb2_buffer	vb;
 	struct list_head	list;
-	const struct vivi_fmt  *fmt;
 };
 
 struct vivi_dmaqueue {
@@ -254,7 +249,7 @@ struct vivi_dev {
 	struct v4l2_fract          timeperframe;
 	unsigned int               width, height;
 	struct vb2_queue	   vb_vidq;
-	unsigned int		   field_count;
+	unsigned int		   seq_count;
 
 	u8			   bars[9][3];
 	u8			   line[MAX_WIDTH * 8] __attribute__((__aligned__(4)));
@@ -675,8 +670,7 @@ static void vivi_fillbuff(struct vivi_dev *dev, struct vivi_buffer *buf)
 	dev->mv_count += 2;
 
 	buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED;
-	dev->field_count++;
-	buf->vb.v4l2_buf.sequence = dev->field_count >> 1;
+	buf->vb.v4l2_buf.sequence = dev->seq_count++;
 	v4l2_get_timestamp(&buf->vb.v4l2_buf.timestamp);
 }
 
@@ -818,19 +812,15 @@ static int queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
 	struct vivi_dev *dev = vb2_get_drv_priv(vq);
 	unsigned long size;
 
-	if (fmt)
+	size = dev->width * dev->height * dev->pixelsize;
+	if (fmt) {
+		if (fmt->fmt.pix.sizeimage < size)
+			return -EINVAL;
 		size = fmt->fmt.pix.sizeimage;
-	else
-		size = dev->width * dev->height * dev->pixelsize;
-
-	if (size == 0)
-		return -EINVAL;
-
-	if (0 == *nbuffers)
-		*nbuffers = 32;
-
-	while (size * *nbuffers > vid_limit * 1024 * 1024)
-		(*nbuffers)--;
+		/* check against insane over 8K resolution buffers */
+		if (size > 7680 * 4320 * dev->pixelsize)
+			return -EINVAL;
+	}
 
 	*nplanes = 1;
 
@@ -876,8 +866,6 @@ static int buffer_prepare(struct vb2_buffer *vb)
 
 	vb2_set_plane_payload(&buf->vb, 0, size);
 
-	buf->fmt = dev->fmt;
-
 	precalculate_bars(dev);
 	precalculate_line(dev);
 
@@ -901,7 +889,9 @@ static void buffer_queue(struct vb2_buffer *vb)
 static int start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct vivi_dev *dev = vb2_get_drv_priv(vq);
+
 	dprintk(dev, 1, "%s\n", __func__);
+	dev->seq_count = 0;
 	return vivi_start_generating(dev);
 }
 

@@ -1918,13 +1918,13 @@ static int em28xx_v4l2_fini(struct em28xx *dev)
 		video_unregister_device(dev->vdev);
 	}
 
+	v4l2_ctrl_handler_free(&dev->ctrl_handler);
+	v4l2_device_unregister(&dev->v4l2_dev);
+
 	if (dev->clk) {
 		v4l2_clk_unregister_fixed(dev->clk);
 		dev->clk = NULL;
 	}
-
-	v4l2_ctrl_handler_free(&dev->ctrl_handler);
-	v4l2_device_unregister(&dev->v4l2_dev);
 
 	if (dev->users)
 		em28xx_warn("Device is open ! Memory deallocation is deferred on last close.\n");
@@ -2273,7 +2273,8 @@ static int em28xx_v4l2_init(struct em28xx *dev)
 	}
 
 	em28xx_tuner_setup(dev);
-	em28xx_init_camera(dev);
+	if (dev->em28xx_sensor != EM28XX_NOSENSOR)
+		em28xx_init_camera(dev);
 
 	/* Configure audio */
 	ret = em28xx_audio_setup(dev);

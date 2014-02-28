@@ -48,12 +48,14 @@ static int uvc_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
 	struct uvc_streaming *stream =
 			container_of(queue, struct uvc_streaming, queue);
 
-	if (*nbuffers > UVC_MAX_VIDEO_BUFFERS)
-		*nbuffers = UVC_MAX_VIDEO_BUFFERS;
+	/* Make sure the image size is large enough. */
+	if (fmt && fmt->fmt.pix.sizeimage < stream->ctrl.dwMaxVideoFrameSize)
+		return -EINVAL;
 
 	*nplanes = 1;
 
-	sizes[0] = stream->ctrl.dwMaxVideoFrameSize;
+	sizes[0] = fmt ? fmt->fmt.pix.sizeimage
+		 : stream->ctrl.dwMaxVideoFrameSize;
 
 	return 0;
 }
@@ -191,6 +193,18 @@ int uvc_query_buffer(struct uvc_video_queue *queue, struct v4l2_buffer *buf)
 
 	mutex_lock(&queue->mutex);
 	ret = vb2_querybuf(&queue->queue, buf);
+	mutex_unlock(&queue->mutex);
+
+	return ret;
+}
+
+int uvc_create_buffers(struct uvc_video_queue *queue,
+		       struct v4l2_create_buffers *cb)
+{
+	int ret;
+
+	mutex_lock(&queue->mutex);
+	ret = vb2_create_bufs(&queue->queue, cb);
 	mutex_unlock(&queue->mutex);
 
 	return ret;
