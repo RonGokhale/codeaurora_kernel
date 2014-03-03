@@ -567,6 +567,7 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 {
 	int ret = 0;
 	int count = 0;
+	int size = 0;
 	struct voip_buf_node *buf_node = NULL;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct voip_drv_info *prtd = runtime->private_data;
@@ -587,14 +588,19 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 			buf_node = list_first_entry(&prtd->out_queue,
 					struct voip_buf_node, list);
 			list_del(&buf_node->list);
-			if (prtd->mode == MODE_PCM)
+			if (prtd->mode == MODE_PCM) {
 				ret = copy_to_user(buf,
 						   &buf_node->frame.voc_pkt,
-						   count);
-			else
+						   buf_node->frame.pktlen);
+			} else {
+				size = sizeof(buf_node->frame.frm_hdr) +
+				       sizeof(buf_node->frame.pktlen) +
+				       buf_node->frame.pktlen;
+
 				ret = copy_to_user(buf,
 						   &buf_node->frame,
-						   count);
+						   size);
+			}
 			if (ret) {
 				pr_err("%s: Copy to user retuned %d\n",
 					__func__, ret);
