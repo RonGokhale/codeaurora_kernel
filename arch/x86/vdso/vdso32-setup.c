@@ -276,29 +276,30 @@ static void map_compat_vdso(int map)
 
 int __init sysenter_setup(void)
 {
-	void *syscall_page = (void *)get_zeroed_page(GFP_ATOMIC);
-	const void *vsyscall;
-	size_t vsyscall_len;
+	void *vdso_page = (void *)get_zeroed_page(GFP_ATOMIC);
+	const void *vdso;
+	size_t vdso_len;
 
-	vdso32_pages[0] = virt_to_page(syscall_page);
+	vdso32_pages[0] = virt_to_page(vdso_page);
 
 #ifdef CONFIG_X86_32
 	gate_vma_init();
 #endif
 
 	if (vdso32_syscall()) {
-		vsyscall = &vdso32_syscall_start;
-		vsyscall_len = &vdso32_syscall_end - &vdso32_syscall_start;
+		vdso = &vdso32_syscall_start;
+		vdso_len = &vdso32_syscall_end - &vdso32_syscall_start;
 	} else if (vdso32_sysenter()){
-		vsyscall = &vdso32_sysenter_start;
-		vsyscall_len = &vdso32_sysenter_end - &vdso32_sysenter_start;
+		vdso = &vdso32_sysenter_start;
+		vdso_len = &vdso32_sysenter_end - &vdso32_sysenter_start;
 	} else {
-		vsyscall = &vdso32_int80_start;
-		vsyscall_len = &vdso32_int80_end - &vdso32_int80_start;
+		vdso = &vdso32_int80_start;
+		vdso_len = &vdso32_int80_end - &vdso32_int80_start;
 	}
 
-	memcpy(syscall_page, vsyscall, vsyscall_len);
-	relocate_vdso(syscall_page);
+	memcpy(vdso_page, vdso, vdso_len);
+	patch_vdso32(vdso_page, vdso_len);
+	relocate_vdso(vdso_page);
 
 	return 0;
 }
