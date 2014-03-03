@@ -15,6 +15,7 @@
 #include <asm/fixmap.h>
 #include <asm/hpet.h>
 #include <asm/time.h>
+#include <asm/elf.h>
 
 #define HPET_MASK			CLOCKSOURCE_MASK(32)
 
@@ -74,6 +75,10 @@ static inline void hpet_writel(unsigned int d, unsigned int a)
 static inline void hpet_set_mapping(void)
 {
 	hpet_virt_address = ioremap_nocache(hpet_address, HPET_MMAP_SIZE);
+#ifdef CONFIG_X86_32
+	if (vdso_enabled != VDSO_COMPAT)
+		return;
+#endif
 	__set_fixmap(VSYSCALL_HPET, hpet_address, PAGE_KERNEL_VVAR_NOCACHE);
 }
 

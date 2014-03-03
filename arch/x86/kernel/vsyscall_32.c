@@ -13,8 +13,12 @@
 #include <asm/vsyscall.h>
 #include <asm/pgtable.h>
 #include <asm/fixmap.h>
+#include <asm/elf.h>
 
 void __init map_vsyscall(void)
 {
+	if (vdso_enabled != VDSO_COMPAT)
+		return;
+
 	__set_fixmap(VVAR_PAGE, __pa_symbol(&__vvar_page), PAGE_KERNEL_VVAR);
 }
