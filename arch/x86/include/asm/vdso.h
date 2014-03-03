@@ -2,6 +2,9 @@
 #define _ASM_X86_VDSO_H
 
 #if defined CONFIG_X86_32 || defined CONFIG_COMPAT
+
+#include <asm/vdso32.h>
+
 extern const char VDSO32_PRELINK[];
 
 /*
