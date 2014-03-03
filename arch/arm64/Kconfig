@@ -26,6 +26,7 @@ config ARM64
 	select GENERIC_TIME_VSYSCALL
 	select HARDIRQS_SW_RESEND
 	select HAVE_ARCH_JUMP_LABEL
+	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_DEBUG_BUGVERBOSE
 	select HAVE_DEBUG_KMEMLEAK
@@ -85,7 +86,7 @@ config GENERIC_CSUM
 config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
-config ZONE_DMA32
+config ZONE_DMA
 	def_bool y
 
 config ARCH_DMA_ADDR_T_64BIT
@@ -300,6 +301,14 @@ endmenu
 menu "CPU Power Management"
 
 source "drivers/cpuidle/Kconfig"
+
+endmenu
+
+menu "Power management options"
+
+source "kernel/power/Kconfig"
+
+source "drivers/cpufreq/Kconfig"
 
 endmenu
 
