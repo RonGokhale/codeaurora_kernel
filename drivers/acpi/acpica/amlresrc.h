@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,6 +45,8 @@
 
 #ifndef __AMLRESRC_H
 #define __AMLRESRC_H
+
+#pragma pack(push)		/* Set default struct packing */
 
 /*
  * Resource descriptor tags, as defined in the ACPI specification.
@@ -448,5 +450,7 @@ union aml_resource {
 	u16 word_item;
 	u8 byte_item;
 };
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif

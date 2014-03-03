@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACPARSER_H__
 #define __ACPARSER_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 #define OP_HAS_RETURN_VALUE             1
 
@@ -250,5 +252,7 @@ acpi_ps_sprint_op(char *buffer_start,
 		  u32 buffer_size, union acpi_parse_object *op);
 
 void acpi_ps_show(union acpi_parse_object *op);
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __ACPARSER_H__ */

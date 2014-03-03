@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACDEBUG_H__
 #define __ACDEBUG_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 #define ACPI_DEBUG_BUFFER_SIZE  0x4000	/* 16K buffer for return objects */
 
@@ -114,6 +116,8 @@ ACPI_HW_DEPENDENT_RETURN_VOID(void
 			      acpi_db_generate_gpe(char *gpe_arg,
 						   char *block_arg))
 ACPI_HW_DEPENDENT_RETURN_VOID(void acpi_db_generate_sci(void))
+
+void acpi_db_execute_test(char *type_arg);
 
 /*
  * dbconvert - miscellaneous conversion routines
@@ -279,5 +283,7 @@ void acpi_db_prep_namestring(char *name);
 struct acpi_namespace_node *acpi_db_local_ns_lookup(char *name);
 
 void acpi_db_uint32_to_hex_string(u32 value, char *buffer);
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __ACDEBUG_H__ */

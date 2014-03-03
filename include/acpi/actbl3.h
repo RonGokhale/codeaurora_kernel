@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACTBL3_H__
 #define __ACTBL3_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 /*******************************************************************************
  *
@@ -622,8 +624,6 @@ struct acpi_tpm2_control {
 	u64 response_address;
 };
 
-/* Reset to default packing */
-
-#pragma pack()
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __ACTBL3_H__ */

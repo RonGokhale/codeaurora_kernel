@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACEVENTS_H__
 #define __ACEVENTS_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 /*
  * evevent
@@ -251,4 +253,5 @@ u32 acpi_ev_install_sci_handler(void);
 acpi_status acpi_ev_remove_all_sci_handlers(void);
 
 ACPI_HW_DEPENDENT_RETURN_VOID(void acpi_ev_terminate(void))
+#pragma pack(pop)		/* Restore original struct packing */
 #endif				/* __ACEVENTS_H__  */
