@@ -662,7 +662,7 @@ int afe_short_silence(u32 duration)
 	dai_data.channels = 2;
 	dai_data.port_config.hdmi_multi_ch_v2.bit_width = bit_width;
 	dai_data.port_config.hdmi_multi_ch_v2.channel_allocation = 0;
-
+	dai_data.port_config.hdmi_multi_ch_v2.data_type = 0;
 	hdmi_msm_audio_sample_rate_reset(sample_rate);
 
 	hdmi_msm_audio_info_setup(1, MSM_HDMI_AUDIO_CHANNEL_2,
