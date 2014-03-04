@@ -39,7 +39,6 @@ static struct dentry *befs_lookup(struct inode *, struct dentry *, unsigned int)
 static struct inode *befs_iget(struct super_block *, unsigned long);
 static struct inode *befs_alloc_inode(struct super_block *sb);
 static void befs_destroy_inode(struct inode *inode);
-static int befs_init_inodecache(void);
 static void befs_destroy_inodecache(void);
 static void *befs_follow_link(struct dentry *, struct nameidata *);
 static void *befs_fast_follow_link(struct dentry *, struct nameidata *);
@@ -445,7 +444,7 @@ static struct inode *befs_iget(struct super_block *sb, unsigned long ino)
  *
  * Taken from NFS implementation by Al Viro.
  */
-static int
+static int __init
 befs_init_inodecache(void)
 {
 	befs_inode_cachep = kmem_cache_create("befs_inode_cache",
@@ -791,7 +790,7 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 
 	save_mount_options(sb, data);
 
-	sb->s_fs_info = kmalloc(sizeof (*befs_sb), GFP_KERNEL);
+	sb->s_fs_info = kzalloc(sizeof(*befs_sb), GFP_KERNEL);
 	if (sb->s_fs_info == NULL) {
 		printk(KERN_ERR
 		       "BeFS(%s): Unable to allocate memory for private "
@@ -799,7 +798,6 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 		goto unacquire_none;
 	}
 	befs_sb = BEFS_SB(sb);
-	memset(befs_sb, 0, sizeof(befs_sb_info));
 
 	if (!parse_options((char *) data, &befs_sb->mount_opts)) {
 		befs_error(sb, "cannot parse mount options");
