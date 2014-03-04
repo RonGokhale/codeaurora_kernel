@@ -88,31 +88,12 @@ int snd_soc_codec_set_cache_io(struct snd_soc_codec *codec,
 			       int addr_bits, int data_bits,
 			       enum snd_soc_control_type control)
 {
-	struct regmap_config config;
 	int ret;
 
-	memset(&config, 0, sizeof(config));
 	codec->write = hw_write;
 	codec->read = hw_read;
 
-	config.reg_bits = addr_bits;
-	config.val_bits = data_bits;
-
 	switch (control) {
-#if IS_ENABLED(CONFIG_REGMAP_I2C)
-	case SND_SOC_I2C:
-		codec->control_data = regmap_init_i2c(to_i2c_client(codec->dev),
-						      &config);
-		break;
-#endif
-
-#if IS_ENABLED(CONFIG_REGMAP_SPI)
-	case SND_SOC_SPI:
-		codec->control_data = regmap_init_spi(to_spi_device(codec->dev),
-						      &config);
-		break;
-#endif
-
 	case SND_SOC_REGMAP:
 		/* Device has made its own regmap arrangements */
 		codec->using_regmap = true;
