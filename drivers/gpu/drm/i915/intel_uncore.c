@@ -988,9 +988,10 @@ static int gen6_do_reset(struct drm_device *dev)
 		dev_priv->uncore.funcs.force_wake_get(dev_priv, fw_engine);
 
 	if (IS_GEN6(dev) || IS_GEN7(dev))
-		dev_priv->uncore.fifo_count =
-			__raw_i915_read32(dev_priv, GTFIFOCTL) &
-			GT_FIFO_FREE_ENTRIES_MASK;
+		WARN_ON((__raw_i915_read32(dev_priv, GTFIFOCTL) &
+			 GT_FIFO_FREE_ENTRIES_MASK) != 0);
+
+	dev_priv->uncore.fifo_count = 0;
 
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
 	return ret;
