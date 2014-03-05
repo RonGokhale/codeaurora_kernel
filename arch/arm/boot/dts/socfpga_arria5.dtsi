@@ -1,8 +1,8 @@
 /*
- *  Copyright (C) 2013 Altera Corporation <www.altera.com>
+ * Copyright Altera Corporation (C) 2013-2014. All rights reserved.
  *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
  *
  * This program is distributed in the hope it will be useful, but WITHOUT
@@ -19,40 +19,53 @@
 
 / {
 	soc {
-		clkmgr@ffd04000 {
-			clocks {
-				osc1 {
-					clock-frequency = <25000000>;
-				};
+		dwmmc0@ff704000 {
+			num-slots = <1>;
+			supports-highspeed;
+			broken-cd;
+			altr,dw-mshc-ciu-div = <3>;
+			altr,dw-mshc-sdr-timing = <0 3>;
+
+			slot@0 {
+				reg = <0>;
+				bus-width = <4>;
 			};
 		};
 
-		serial0@ffc02000 {
-			clock-frequency = <100000000>;
+		i2c0: i2c@ffc04000 {
+			speed-mode = <0>;
+			status = "okay";
 		};
 
-		serial1@ffc03000 {
-			clock-frequency = <100000000>;
+		qspi: spi@ff705000 {
+			compatible = "cadence,qspi";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0xff705000 0x1000>,
+				<0xffa00000 0x1000>;
+			interrupts = <0 151 4>;
+			master-ref-clk = <370000000>;
+			ext-decoder = <0>;  /* external decoder */
+			num-chipselect = <4>;
+			fifo-depth = <128>;
+			bus-num = <2>;
+		};
+
+		serial0@ffc02000 {
+			status = "okay";
 		};
 
 		sysmgr@ffd08000 {
 			cpu1-start-addr = <0xffd080c4>;
 		};
 
-		timer0@ffc08000 {
-			clock-frequency = <100000000>;
+		usb1: usb@ffb40000 {
+			status = "okay";
 		};
 
-		timer1@ffc09000 {
-			clock-frequency = <100000000>;
+		watchdog0: wd@ffd02000 {
+			status = "okay";
 		};
 
-		timer2@ffd00000 {
-			clock-frequency = <25000000>;
-		};
-
-		timer3@ffd01000 {
-			clock-frequency = <25000000>;
-		};
 	};
 };
