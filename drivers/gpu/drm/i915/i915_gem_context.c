@@ -99,6 +99,50 @@
 static int do_switch(struct intel_ring_buffer *ring,
 		     struct i915_hw_context *to);
 
+static void do_ppgtt_cleanup(struct i915_hw_ppgtt *ppgtt)
+{
+	struct drm_device *dev = ppgtt->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_address_space *vm = &ppgtt->base;
+
+	if (ppgtt == dev_priv->mm.aliasing_ppgtt ||
+	    (list_empty(&vm->active_list) && list_empty(&vm->inactive_list))) {
+		ppgtt->base.cleanup(&ppgtt->base);
+		return;
+	}
+
+	/*
+	 * Make sure vmas are unbound before we take down the drm_mm
+	 *
+	 * FIXME: Proper refcounting should take care of this, this shouldn't be
+	 * needed at all.
+	 */
+	if (!list_empty(&vm->active_list)) {
+		struct i915_vma *vma;
+
+		list_for_each_entry(vma, &vm->active_list, mm_list)
+			if (WARN_ON(list_empty(&vma->vma_link) ||
+				    list_is_singular(&vma->vma_link)))
+				break;
+
+		i915_gem_evict_vm(&ppgtt->base, true);
+	} else {
+		i915_gem_retire_requests(dev);
+		i915_gem_evict_vm(&ppgtt->base, false);
+	}
+
+	ppgtt->base.cleanup(&ppgtt->base);
+}
+
+static void ppgtt_release(struct kref *kref)
+{
+	struct i915_hw_ppgtt *ppgtt =
+		container_of(kref, struct i915_hw_ppgtt, ref);
+
+	do_ppgtt_cleanup(ppgtt);
+	kfree(ppgtt);
+}
+
 static size_t get_context_alignment(struct drm_device *dev)
 {
 	if (IS_GEN6(dev))
@@ -258,8 +302,7 @@ i915_gem_create_context(struct drm_device *dev,
 		 * context.
 		 */
 		ret = i915_gem_obj_ggtt_pin(ctx->obj,
-					    get_context_alignment(dev),
-					    false, false);
+					    get_context_alignment(dev), 0);
 		if (ret) {
 			DRM_DEBUG_DRIVER("Couldn't pin %d\n", ret);
 			goto err_destroy;
@@ -335,8 +378,7 @@ void i915_gem_context_reset(struct drm_device *dev)
 
 		if (i == RCS) {
 			WARN_ON(i915_gem_obj_ggtt_pin(dctx->obj,
-						      get_context_alignment(dev),
-						      false, false));
+						      get_context_alignment(dev), 0));
 			/* Fake a finish/inactive */
 			dctx->obj->base.write_domain = 0;
 			dctx->obj->active = 0;
@@ -612,8 +654,7 @@ static int do_switch(struct intel_ring_buffer *ring,
 	/* Trying to pin first makes error handling easier. */
 	if (ring == &dev_priv->ring[RCS]) {
 		ret = i915_gem_obj_ggtt_pin(to->obj,
-					    get_context_alignment(ring->dev),
-					    false, false);
+					    get_context_alignment(ring->dev), 0);
 		if (ret)
 			return ret;
 	}
@@ -749,9 +790,6 @@ int i915_gem_context_create_ioctl(struct drm_device *dev, void *data,
 	struct i915_hw_context *ctx;
 	int ret;
 
-	if (!(dev->driver->driver_features & DRIVER_GEM))
-		return -ENODEV;
-
 	if (!HAS_HW_CONTEXTS(dev))
 		return -ENODEV;
 
@@ -777,9 +815,6 @@ int i915_gem_context_destroy_ioctl(struct drm_device *dev, void *data,
 	struct drm_i915_file_private *file_priv = file->driver_priv;
 	struct i915_hw_context *ctx;
 	int ret;
-
-	if (!(dev->driver->driver_features & DRIVER_GEM))
-		return -ENODEV;
 
 	if (args->ctx_id == DEFAULT_CONTEXT_ID)
 		return -ENOENT;

@@ -1076,7 +1076,7 @@ int intel_overlay_put_image(struct drm_device *dev, void *data,
 	mutex_lock(&dev->struct_mutex);
 
 	if (new_bo->tiling_mode) {
-		DRM_ERROR("buffer used for overlay image can not be tiled\n");
+		DRM_DEBUG_KMS("buffer used for overlay image can not be tiled\n");
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -1349,7 +1349,7 @@ void intel_setup_overlay(struct drm_device *dev)
 		}
 		overlay->flip_addr = reg_bo->phys_obj->handle->busaddr;
 	} else {
-		ret = i915_gem_obj_ggtt_pin(reg_bo, PAGE_SIZE, true, false);
+		ret = i915_gem_obj_ggtt_pin(reg_bo, PAGE_SIZE, PIN_MAPPABLE);
 		if (ret) {
 			DRM_ERROR("failed to pin overlay register bo\n");
 			goto out_free_bo;
