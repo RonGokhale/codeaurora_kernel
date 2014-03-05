@@ -9,7 +9,6 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/init.h>
 #include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -993,13 +992,6 @@ static int atmel_spi_setup(struct spi_device *spi)
 
 	as = spi_master_get_devdata(spi->master);
 
-	if (spi->chip_select > spi->master->num_chipselect) {
-		dev_dbg(&spi->dev,
-				"setup: invalid chipselect %u (%u defined)\n",
-				spi->chip_select, spi->master->num_chipselect);
-		return -EINVAL;
-	}
-
 	/* see notes above re chipselect */
 	if (!atmel_spi_is_v2(as)
 			&& spi->chip_select == 0
@@ -1084,14 +1076,6 @@ static int atmel_spi_one_transfer(struct spi_master *master,
 			dev_dbg(&spi->dev,
 			"you can't yet change bits_per_word in transfers\n");
 			return -ENOPROTOOPT;
-		}
-	}
-
-	if (xfer->bits_per_word > 8) {
-		if (xfer->len % 2) {
-			dev_dbg(&spi->dev,
-			"buffer len should be 16 bits aligned\n");
-			return -EINVAL;
 		}
 	}
 
@@ -1220,9 +1204,6 @@ static int atmel_spi_transfer_one_message(struct spi_master *master,
 
 	dev_dbg(&spi->dev, "new message %p submitted for %s\n",
 					msg, dev_name(&spi->dev));
-
-	if (unlikely(list_empty(&msg->transfers)))
-		return -EINVAL;
 
 	atmel_spi_lock(as);
 	cs_activate(as, spi);
