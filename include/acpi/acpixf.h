@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20131218
+#define ACPI_CA_VERSION                 0x20140214
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -54,6 +54,8 @@
 #include <acpi/acbuffer.h>
 
 extern u8 acpi_gbl_permanent_mmap;
+
+#pragma pack(push)		/* Set default struct packing */
 
 /*
  * Globals that are publically available
@@ -71,7 +73,7 @@ extern u32 acpi_dbg_layer;
 
 /* ACPICA runtime options */
 
-extern u8 acpi_gbl_all_methods_serialized;
+extern u8 acpi_gbl_auto_serialize_methods;
 extern u8 acpi_gbl_copy_dsdt_locally;
 extern u8 acpi_gbl_create_osi_method;
 extern u8 acpi_gbl_disable_auto_repair;
@@ -228,6 +230,10 @@ acpi_status
 acpi_attach_data(acpi_handle object, acpi_object_handler handler, void *data);
 
 acpi_status acpi_detach_data(acpi_handle object, acpi_object_handler handler);
+
+acpi_status
+acpi_get_data_full(acpi_handle object, acpi_object_handler handler, void **data,
+		   void (*callback)(void *));
 
 acpi_status
 acpi_get_data(acpi_handle object, acpi_object_handler handler, void **data);
@@ -579,5 +585,7 @@ acpi_debug_print_raw(u32 requested_debug_level,
 		     const char *module_name,
 		     u32 component_id, const char *format, ...);
 #endif
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __ACXFACE_H__ */

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACRESTYP_H__
 #define __ACRESTYP_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 /*
  * Definitions for Resource Attributes
@@ -609,5 +611,7 @@ struct acpi_pci_routing_table {
 	u32 source_index;
 	char source[4];		/* pad to 64 bits so sizeof() works in all cases */
 };
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __ACRESTYP_H__ */
