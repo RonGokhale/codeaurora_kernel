@@ -1540,26 +1540,20 @@ static int __init osi_setup(char *str)
 __setup("acpi_osi=", osi_setup);
 
 /*
- * Configure the auto-serialization of named objects creation methods.
+ * Disable the auto-serialization of named objects creation methods.
  *
  * This feature is enabled by default.  It marks the AML control methods
  * that contain the opcodes to create named objects as "Serialized".
  */
-static int __init acpi_serialize_setup(char *str)
+static int __init acpi_no_auto_serialize_setup(char *str)
 {
-
-	if (str && !strcmp("on", str)) {
-		acpi_gbl_auto_serialize_methods = TRUE;
-		pr_info("ACPI: auto-serialization enabled\n");
-	} else if (str && !strcmp("off", str)) {
-		acpi_gbl_auto_serialize_methods = FALSE;
-		pr_info("ACPI: auto-serialization disabled\n");
-	}
+	acpi_gbl_auto_serialize_methods = FALSE;
+	pr_info("ACPI: auto-serialization disabled\n");
 
 	return 1;
 }
 
-__setup("acpi_serialize=", acpi_serialize_setup);
+__setup("acpi_no_auto_serialize", acpi_no_auto_serialize_setup);
 
 /* Check of resource interference between native drivers and ACPI
  * OperationRegions (SystemIO and System Memory only).
