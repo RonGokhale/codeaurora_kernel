@@ -317,6 +317,8 @@ struct regmap *regmap_init(struct device *dev,
 			   const struct regmap_bus *bus,
 			   void *bus_context,
 			   const struct regmap_config *config);
+int regmap_attach_dev(struct device *dev, struct regmap *map,
+				 const struct regmap_config *config);
 struct regmap *regmap_init_i2c(struct i2c_client *i2c,
 			       const struct regmap_config *config);
 struct regmap *regmap_init_spi(struct spi_device *dev,
@@ -386,8 +388,11 @@ int regmap_raw_write(struct regmap *map, unsigned int reg,
 		     const void *val, size_t val_len);
 int regmap_bulk_write(struct regmap *map, unsigned int reg, const void *val,
 			size_t val_count);
-int regmap_multi_reg_write(struct regmap *map, struct reg_default *regs,
+int regmap_multi_reg_write(struct regmap *map, const struct reg_default *regs,
 			int num_regs);
+int regmap_multi_reg_write_bypassed(struct regmap *map,
+				    const struct reg_default *regs,
+				    int num_regs);
 int regmap_raw_write_async(struct regmap *map, unsigned int reg,
 			   const void *val, size_t val_len);
 int regmap_read(struct regmap *map, unsigned int reg, unsigned int *val);
@@ -423,6 +428,8 @@ bool regmap_check_range_table(struct regmap *map, unsigned int reg,
 
 int regmap_register_patch(struct regmap *map, const struct reg_default *regs,
 			  int num_regs);
+int regmap_parse_val(struct regmap *map, const void *buf,
+				unsigned int *val);
 
 static inline bool regmap_reg_in_range(unsigned int reg,
 				       const struct regmap_range *range)
@@ -690,6 +697,13 @@ static inline void regmap_async_complete(struct regmap *map)
 static inline int regmap_register_patch(struct regmap *map,
 					const struct reg_default *regs,
 					int num_regs)
+{
+	WARN_ONCE(1, "regmap API is disabled");
+	return -EINVAL;
+}
+
+static inline int regmap_parse_val(struct regmap *map, const void *buf,
+				unsigned int *val)
 {
 	WARN_ONCE(1, "regmap API is disabled");
 	return -EINVAL;
