@@ -40,6 +40,12 @@ static bool vmacache_valid(struct mm_struct *mm)
 {
 	struct task_struct *curr = current;
 
+	/*
+	 * This task may be accessing a foreign mm via (for example)
+	 * get_user_pages()->find_vma().  The vmacache is task-local and this
+	 * task's vmacache pertains to a different mm (ie, its own).  There is
+	 * nothing we can do here.
+	 */
 	if (mm != curr->mm)
 		return false;
 
