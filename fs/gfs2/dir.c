@@ -507,7 +507,7 @@ static int gfs2_check_dirent(struct gfs2_dirent *dent, unsigned int offset,
 		goto error;
 	return 0;
 error:
-	printk(KERN_WARNING "gfs2_check_dirent: %s (%s)\n", msg,
+	pr_warn("gfs2_check_dirent: %s (%s)\n", msg,
 	       first ? "first in block" : "not first in block");
 	return -EIO;
 }
@@ -531,8 +531,8 @@ static int gfs2_dirent_offset(const void *buf)
 	}
 	return offset;
 wrong_type:
-	printk(KERN_WARNING "gfs2_scan_dirent: wrong block type %u\n",
-	       be32_to_cpu(h->mh_type));
+	pr_warn("gfs2_scan_dirent: wrong block type %u\n",
+	        be32_to_cpu(h->mh_type));
 	return -1;
 }
 
@@ -1006,7 +1006,7 @@ static int dir_split_leaf(struct inode *inode, const struct qstr *name)
 	len = 1 << (dip->i_depth - be16_to_cpu(oleaf->lf_depth));
 	half_len = len >> 1;
 	if (!half_len) {
-		printk(KERN_WARNING "i_depth %u lf_depth %u index %u\n", dip->i_depth, be16_to_cpu(oleaf->lf_depth), index);
+		pr_warn("i_depth %u lf_depth %u index %u\n", dip->i_depth, be16_to_cpu(oleaf->lf_depth), index);
 		gfs2_consist_inode(dip);
 		error = -EIO;
 		goto fail_brelse;
@@ -1684,6 +1684,14 @@ static int dir_new_leaf(struct inode *inode, const struct qstr *name)
 	return 0;
 }
 
+static u16 gfs2_inode_ra_len(const struct gfs2_inode *ip)
+{
+	u64 where = ip->i_no_addr + 1;
+	if (ip->i_eattr == where)
+		return 1;
+	return 0;
+}
+
 /**
  * gfs2_dir_add - Add new filename into directory
  * @inode: The directory inode
@@ -1721,6 +1729,7 @@ int gfs2_dir_add(struct inode *inode, const struct qstr *name,
 			dent = gfs2_init_dirent(inode, dent, name, bh);
 			gfs2_inum_out(nip, dent);
 			dent->de_type = cpu_to_be16(IF2DT(nip->i_inode.i_mode));
+			dent->de_rahead = cpu_to_be16(gfs2_inode_ra_len(nip));
 			tv = CURRENT_TIME;
 			if (ip->i_diskflags & GFS2_DIF_EXHASH) {
 				leaf = (struct gfs2_leaf *)bh->b_data;
