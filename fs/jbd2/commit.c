@@ -554,7 +554,7 @@ void jbd2_journal_commit_transaction(journal_t *journal)
 
 	blk_start_plug(&plug);
 	jbd2_journal_write_revoke_records(journal, commit_transaction,
-					  &log_bufs, WRITE_SYNC);
+					  &log_bufs, WRITE);
 	blk_finish_plug(&plug);
 
 	jbd_debug(3, "JBD2: commit phase 2b\n");
@@ -739,7 +739,7 @@ start_journal_io:
 				clear_buffer_dirty(bh);
 				set_buffer_uptodate(bh);
 				bh->b_end_io = journal_end_buffer_io_sync;
-				submit_bh(WRITE_SYNC, bh);
+				submit_bh(WRITE, bh);
 			}
 			cond_resched();
 			stats.run.rs_blocks_logged += bufs;
