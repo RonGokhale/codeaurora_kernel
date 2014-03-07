@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2012, 2014 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -335,14 +335,14 @@ static ssize_t diag_dbgfs_read_status(struct file *file, char __user *ubuf,
 {
 	char *buf;
 	int ret;
-
+	unsigned int buf_size;
 	buf = kzalloc(sizeof(char) * DEBUG_BUF_SIZE, GFP_KERNEL);
 	if (!buf) {
 		pr_err("diag: %s, Error allocating memory\n", __func__);
 		return -ENOMEM;
 	}
-
-	ret = scnprintf(buf, DEBUG_BUF_SIZE,
+	buf_size = ksize(buf);
+	ret = scnprintf(buf, buf_size,
 		"modem ch: 0x%x\n"
 		"lpass ch: 0x%x\n"
 		"riva ch: 0x%x\n"
@@ -385,7 +385,7 @@ static ssize_t diag_dbgfs_read_status(struct file *file, char __user *ubuf,
 		driver->in_busy_dci);
 
 #ifdef CONFIG_DIAG_OVER_USB
-	ret += scnprintf(buf+ret, DEBUG_BUF_SIZE,
+	ret += scnprintf(buf+ret, buf_size-ret,
 		"usb_connected: %d\n",
 		driver->usb_connected);
 #endif
@@ -400,6 +400,7 @@ static ssize_t diag_dbgfs_read_workpending(struct file *file,
 {
 	char *buf;
 	int ret;
+	unsigned int buf_size;
 
 	buf = kzalloc(sizeof(char) * DEBUG_BUF_SIZE, GFP_KERNEL);
 	if (!buf) {
@@ -407,7 +408,8 @@ static ssize_t diag_dbgfs_read_workpending(struct file *file,
 		return -ENOMEM;
 	}
 
-	ret = scnprintf(buf, DEBUG_BUF_SIZE,
+	buf_size = ksize(buf);
+	ret = scnprintf(buf, buf_size,
 		"Pending status for work_stucts:\n"
 		"diag_drain_work: %d\n"
 		"diag_read_smd_work: %d\n"
@@ -433,7 +435,7 @@ static ssize_t diag_dbgfs_read_workpending(struct file *file,
 		work_pending(&(driver->diag_read_smd_dci_work)));
 
 #ifdef CONFIG_DIAG_OVER_USB
-	ret += scnprintf(buf+ret, DEBUG_BUF_SIZE,
+	ret += scnprintf(buf+ret, buf_size-ret,
 		"diag_proc_hdlc_work: %d\n"
 		"diag_read_work: %d\n",
 		work_pending(&(driver->diag_proc_hdlc_work)),
