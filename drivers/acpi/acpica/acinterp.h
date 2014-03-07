@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef __ACINTERP_H__
 #define __ACINTERP_H__
+
+#pragma pack(push)		/* Set default struct packing */
 
 #define ACPI_WALK_OPERANDS          (&(walk_state->operands [walk_state->num_operands -1]))
 
@@ -87,6 +89,10 @@ typedef const struct acpi_exdump_info {
 #define ACPI_EXD_PACKAGE                11
 #define ACPI_EXD_FIELD                  12
 #define ACPI_EXD_REFERENCE              13
+#define ACPI_EXD_LIST                   14	/* Operand object list */
+#define ACPI_EXD_HDLR_LIST              15	/* Address Handler list */
+#define ACPI_EXD_RGN_LIST               16	/* Region list */
+#define ACPI_EXD_NODE                   17	/* Namespace Node */
 
 /* restore default alignment */
 
@@ -454,10 +460,6 @@ void acpi_ex_enter_interpreter(void);
 
 void acpi_ex_exit_interpreter(void);
 
-void acpi_ex_reacquire_interpreter(void);
-
-void acpi_ex_relinquish_interpreter(void);
-
 u8 acpi_ex_truncate_for32bit_table(union acpi_operand_object *obj_desc);
 
 void acpi_ex_acquire_global_lock(u32 rule);
@@ -530,5 +532,7 @@ acpi_ex_data_table_space_handler(u32 function,
 				 u32 bit_width,
 				 u64 *value,
 				 void *handler_context, void *region_context);
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* __INTERP_H__ */

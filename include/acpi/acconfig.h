@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@
 
 #ifndef _ACCONFIG_H
 #define _ACCONFIG_H
+
+#pragma pack(push)		/* Set default struct packing */
 
 /******************************************************************************
  *
@@ -228,5 +230,7 @@
 
 #define ACPI_DEBUGGER_COMMAND_PROMPT    '-'
 #define ACPI_DEBUGGER_EXECUTE_PROMPT    '%'
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* _ACCONFIG_H */

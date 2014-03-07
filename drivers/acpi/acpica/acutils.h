@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -44,12 +44,14 @@
 #ifndef _ACUTILS_H
 #define _ACUTILS_H
 
+#pragma pack(push)		/* Set default struct packing */
+
 extern const u8 acpi_gbl_resource_aml_sizes[];
 extern const u8 acpi_gbl_resource_aml_serial_bus_sizes[];
 
 /* Strings used by the disassembler and debugger resource dump routines */
 
-#if defined(ACPI_DISASSEMBLER) || defined (ACPI_DEBUGGER)
+#if defined(ACPI_DEBUG_OUTPUT) || defined (ACPI_DISASSEMBLER) || defined (ACPI_DEBUGGER)
 
 extern const char *acpi_gbl_bm_decode[];
 extern const char *acpi_gbl_config_decode[];
@@ -736,5 +738,7 @@ acpi_ut_method_error(const char *module_name,
 		     const char *message,
 		     struct acpi_namespace_node *node,
 		     const char *path, acpi_status lookup_status);
+
+#pragma pack(pop)		/* Restore original struct packing */
 
 #endif				/* _ACUTILS_H */
