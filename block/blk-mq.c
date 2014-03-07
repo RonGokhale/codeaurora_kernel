@@ -309,7 +309,7 @@ void blk_mq_end_io(struct request *rq, int error)
 	struct bio *bio = rq->bio;
 	unsigned int bytes = 0;
 
-	trace_block_rq_complete(rq->q, rq);
+	trace_block_rq_complete(rq->q, rq, blk_rq_bytes(rq));
 
 	while (bio) {
 		struct bio *next = bio->bi_next;
@@ -353,7 +353,7 @@ void __blk_mq_complete_request(struct request *rq)
 		rq->csd.func = __blk_mq_complete_request_remote;
 		rq->csd.info = rq;
 		rq->csd.flags = 0;
-		__smp_call_function_single(ctx->cpu, &rq->csd, 0);
+		smp_call_function_single_async(ctx->cpu, &rq->csd);
 	} else {
 		rq->q->softirq_done_fn(rq);
 	}
