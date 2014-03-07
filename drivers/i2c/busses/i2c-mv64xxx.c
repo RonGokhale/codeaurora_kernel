@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/mv643xx_i2c.h>
 #include <linux/platform_device.h>
+#include <linux/reset.h>
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -148,6 +149,8 @@ struct mv64xxx_i2c_data {
 	bool			offload_enabled;
 /* 5us delay in order to avoid repeated start timing violation */
 	bool			errata_delay;
+	struct reset_control	*rstc;
+	bool			irq_clear_inverted;
 };
 
 static struct mv64xxx_i2c_regs mv64xxx_i2c_regs_mv64xxx = {
@@ -566,6 +569,11 @@ mv64xxx_i2c_intr(int irq, void *dev_id)
 		status = readl(drv_data->reg_base + drv_data->reg_offsets.status);
 		mv64xxx_i2c_fsm(drv_data, status);
 		mv64xxx_i2c_do_action(drv_data);
+
+		if (drv_data->irq_clear_inverted)
+			writel(drv_data->cntl_bits | MV64XXX_I2C_REG_CONTROL_IFLG,
+			       drv_data->reg_base + drv_data->reg_offsets.control);
+
 		rc = IRQ_HANDLED;
 	}
 	spin_unlock_irqrestore(&drv_data->lock, flags);
@@ -685,6 +693,7 @@ static const struct i2c_algorithm mv64xxx_i2c_algo = {
  */
 static const struct of_device_id mv64xxx_i2c_of_match_table[] = {
 	{ .compatible = "allwinner,sun4i-i2c", .data = &mv64xxx_i2c_regs_sun4i},
+	{ .compatible = "allwinner,sun6i-a31-i2c", .data = &mv64xxx_i2c_regs_sun4i},
 	{ .compatible = "marvell,mv64xxx-i2c", .data = &mv64xxx_i2c_regs_mv64xxx},
 	{ .compatible = "marvell,mv78230-i2c", .data = &mv64xxx_i2c_regs_mv64xxx},
 	{ .compatible = "marvell,mv78230-a0-i2c", .data = &mv64xxx_i2c_regs_mv64xxx},
@@ -759,6 +768,16 @@ mv64xxx_of_config(struct mv64xxx_i2c_data *drv_data,
 	}
 	drv_data->irq = irq_of_parse_and_map(np, 0);
 
+	drv_data->rstc = devm_reset_control_get(dev, NULL);
+	if (IS_ERR(drv_data->rstc)) {
+		if (PTR_ERR(drv_data->rstc) == -EPROBE_DEFER) {
+			rc = -EPROBE_DEFER;
+			goto out;
+		}
+	} else {
+		reset_control_deassert(drv_data->rstc);
+	}
+
 	/* Its not yet defined how timeouts will be specified in device tree.
 	 * So hard code the value to 1 second.
 	 */
@@ -783,6 +802,10 @@ mv64xxx_of_config(struct mv64xxx_i2c_data *drv_data,
 		drv_data->offload_enabled = false;
 		drv_data->errata_delay = true;
 	}
+
+	if (of_device_is_compatible(np, "allwinner,sun6i-a31-i2c"))
+		drv_data->irq_clear_inverted = true;
+
 out:
 	return rc;
 #endif
@@ -845,7 +868,7 @@ mv64xxx_i2c_probe(struct platform_device *pd)
 	}
 	if (drv_data->irq < 0) {
 		rc = -ENXIO;
-		goto exit_clk;
+		goto exit_reset;
 	}
 
 	drv_data->adapter.dev.parent = &pd->dev;
@@ -865,7 +888,7 @@ mv64xxx_i2c_probe(struct platform_device *pd)
 		dev_err(&drv_data->adapter.dev,
 			"mv64xxx: Can't register intr handler irq%d: %d\n",
 			drv_data->irq, rc);
-		goto exit_clk;
+		goto exit_reset;
 	} else if ((rc = i2c_add_numbered_adapter(&drv_data->adapter)) != 0) {
 		dev_err(&drv_data->adapter.dev,
 			"mv64xxx: Can't add i2c adapter, rc: %d\n", -rc);
@@ -876,6 +899,9 @@ mv64xxx_i2c_probe(struct platform_device *pd)
 
 exit_free_irq:
 	free_irq(drv_data->irq, drv_data);
+exit_reset:
+	if (pd->dev.of_node && !IS_ERR(drv_data->rstc))
+		reset_control_assert(drv_data->rstc);
 exit_clk:
 #if defined(CONFIG_HAVE_CLK)
 	/* Not all platforms have a clk */
@@ -894,6 +920,8 @@ mv64xxx_i2c_remove(struct platform_device *dev)
 
 	i2c_del_adapter(&drv_data->adapter);
 	free_irq(drv_data->irq, drv_data);
+	if (dev->dev.of_node && !IS_ERR(drv_data->rstc))
+		reset_control_assert(drv_data->rstc);
 #if defined(CONFIG_HAVE_CLK)
 	/* Not all platforms have a clk */
 	if (!IS_ERR(drv_data->clk)) {
