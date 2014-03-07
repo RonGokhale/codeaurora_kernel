@@ -1808,8 +1808,6 @@ void l2tp_session_free(struct l2tp_session *session)
 	}
 
 	kfree(session);
-
-	return;
 }
 EXPORT_SYMBOL_GPL(l2tp_session_free);
 
