@@ -1029,7 +1029,7 @@ static int em28xx_vb2_setup(struct em28xx *dev)
 	q = &dev->vb_vidq;
 	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	q->io_modes = VB2_READ | VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
-	q->timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->drv_priv = dev;
 	q->buf_struct_size = sizeof(struct em28xx_buffer);
 	q->ops = &em28xx_video_qops;
@@ -1043,7 +1043,7 @@ static int em28xx_vb2_setup(struct em28xx *dev)
 	q = &dev->vb_vbiq;
 	q->type = V4L2_BUF_TYPE_VBI_CAPTURE;
 	q->io_modes = VB2_READ | VB2_MMAP | VB2_USERPTR;
-	q->timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->drv_priv = dev;
 	q->buf_struct_size = sizeof(struct em28xx_buffer);
 	q->ops = &em28xx_vbi_qops;
@@ -1933,6 +1933,32 @@ static int em28xx_v4l2_fini(struct em28xx *dev)
 	return 0;
 }
 
+static int em28xx_v4l2_suspend(struct em28xx *dev)
+{
+	if (dev->is_audio_only)
+		return 0;
+
+	if (!dev->has_video)
+		return 0;
+
+	em28xx_info("Suspending video extension");
+	em28xx_stop_urbs(dev);
+	return 0;
+}
+
+static int em28xx_v4l2_resume(struct em28xx *dev)
+{
+	if (dev->is_audio_only)
+		return 0;
+
+	if (!dev->has_video)
+		return 0;
+
+	em28xx_info("Resuming video extension");
+	/* what do we do here */
+	return 0;
+}
+
 /*
  * em28xx_v4l2_close()
  * stops streaming and deallocates all resources allocated by the v4l2
@@ -2505,6 +2531,8 @@ static struct em28xx_ops v4l2_ops = {
 	.name = "Em28xx v4l2 Extension",
 	.init = em28xx_v4l2_init,
 	.fini = em28xx_v4l2_fini,
+	.suspend = em28xx_v4l2_suspend,
+	.resume = em28xx_v4l2_resume,
 };
 
 static int __init em28xx_video_register(void)

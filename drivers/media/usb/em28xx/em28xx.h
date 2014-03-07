@@ -104,6 +104,7 @@
 #define EM2882_BOARD_PINNACLE_HYBRID_PRO_330E	  56
 #define EM2883_BOARD_KWORLD_HYBRID_330U		  57
 #define EM2820_BOARD_COMPRO_VIDEOMATE_FORYOU	  58
+#define EM2874_BOARD_PCTV_HD_MINI_80E		  59
 #define EM2883_BOARD_HAUPPAUGE_WINTV_HVR_850	  60
 #define EM2820_BOARD_PROLINK_PLAYTV_BOX4_USB2	  61
 #define EM2820_BOARD_GADMEI_TVR200		  62
@@ -137,6 +138,7 @@
 #define EM2874_BOARD_KWORLD_UB435Q_V2		  90
 #define EM2765_BOARD_SPEEDLINK_VAD_LAPLACE	  91
 #define EM28178_BOARD_PCTV_461E                   92
+#define EM2874_BOARD_KWORLD_UB435Q_V3		  93
 
 /* Limits minimum and default number of buffers */
 #define EM28XX_MIN_BUF 4
@@ -399,6 +401,7 @@ enum em28xx_adecoder {
 
 enum em28xx_led_role {
 	EM28XX_LED_ANALOG_CAPTURING = 0,
+	EM28XX_LED_DIGITAL_CAPTURING,
 	EM28XX_LED_ILLUMINATION,
 	EM28XX_NUM_LED_ROLES, /* must be the last */
 };
@@ -713,6 +716,8 @@ struct em28xx_ops {
 	int id;
 	int (*init)(struct em28xx *);
 	int (*fini)(struct em28xx *);
+	int (*suspend)(struct em28xx *);
+	int (*resume)(struct em28xx *);
 };
 
 /* Provided by em28xx-i2c.c */
@@ -758,6 +763,8 @@ int em28xx_register_extension(struct em28xx_ops *dev);
 void em28xx_unregister_extension(struct em28xx_ops *dev);
 void em28xx_init_extension(struct em28xx *dev);
 void em28xx_close_extension(struct em28xx *dev);
+int em28xx_suspend_extension(struct em28xx *dev);
+int em28xx_resume_extension(struct em28xx *dev);
 
 /* Provided by em28xx-cards.c */
 extern struct em28xx_board em28xx_boards[];
