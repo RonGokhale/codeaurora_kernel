@@ -453,10 +453,11 @@ static ssize_t diag_dbgfs_read_table(struct file *file, char __user *ubuf,
 	char *buf;
 	int ret = 0;
 	int i;
-	int bytes_remaining;
-	int bytes_in_buffer = 0;
-	int bytes_written;
-	int buf_size = (DEBUG_BUF_SIZE < count) ? DEBUG_BUF_SIZE : count;
+	unsigned int bytes_remaining;
+	unsigned int bytes_in_buffer = 0;
+	unsigned int bytes_written;
+	unsigned int buf_size;
+	buf_size = (DEBUG_BUF_SIZE < count) ? DEBUG_BUF_SIZE : count;
 
 	if (diag_dbgfs_table_index >= diag_max_reg) {
 		/* Done. Reset to prepare for future requests */
