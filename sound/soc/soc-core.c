@@ -1137,6 +1137,10 @@ static int soc_probe_codec(struct snd_soc_card *card,
 
 	codec->dapm.idle_bias_off = driver->idle_bias_off;
 
+	/* Set the default I/O up try regmap */
+	if (dev_get_regmap(codec->dev, NULL))
+		snd_soc_codec_set_cache_io(codec, 0, 0, SND_SOC_REGMAP);
+
 	if (driver->probe) {
 		ret = driver->probe(codec);
 		if (ret < 0) {
@@ -1149,10 +1153,6 @@ static int soc_probe_codec(struct snd_soc_card *card,
 			"codec %s can not start from non-off bias with idle_bias_off==1\n",
 			codec->name);
 	}
-
-	/* If the driver didn't set I/O up try regmap */
-	if (!codec->write && dev_get_regmap(codec->dev, NULL))
-		snd_soc_codec_set_cache_io(codec, 0, 0, SND_SOC_REGMAP);
 
 	if (driver->controls)
 		snd_soc_add_codec_controls(codec, driver->controls,
@@ -2570,10 +2570,10 @@ int snd_soc_info_enum_double(struct snd_kcontrol *kcontrol,
 
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_ENUMERATED;
 	uinfo->count = e->shift_l == e->shift_r ? 1 : 2;
-	uinfo->value.enumerated.items = e->max;
+	uinfo->value.enumerated.items = e->items;
 
-	if (uinfo->value.enumerated.item > e->max - 1)
-		uinfo->value.enumerated.item = e->max - 1;
+	if (uinfo->value.enumerated.item >= e->items)
+		uinfo->value.enumerated.item = e->items - 1;
 	strlcpy(uinfo->value.enumerated.name,
 		e->texts[uinfo->value.enumerated.item],
 		sizeof(uinfo->value.enumerated.name));
@@ -2595,14 +2595,18 @@ int snd_soc_get_enum_double(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	unsigned int val;
+	unsigned int val, item;
+	unsigned int reg_val;
 
-	val = snd_soc_read(codec, e->reg);
-	ucontrol->value.enumerated.item[0]
-		= (val >> e->shift_l) & e->mask;
-	if (e->shift_l != e->shift_r)
-		ucontrol->value.enumerated.item[1] =
-			(val >> e->shift_r) & e->mask;
+	reg_val = snd_soc_read(codec, e->reg);
+	val = (reg_val >> e->shift_l) & e->mask;
+	item = snd_soc_enum_val_to_item(e, val);
+	ucontrol->value.enumerated.item[0] = item;
+	if (e->shift_l != e->shift_r) {
+		val = (reg_val >> e->shift_l) & e->mask;
+		item = snd_soc_enum_val_to_item(e, val);
+		ucontrol->value.enumerated.item[1] = item;
+	}
 
 	return 0;
 }
@@ -2622,17 +2626,18 @@ int snd_soc_put_enum_double(struct snd_kcontrol *kcontrol,
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
+	unsigned int *item = ucontrol->value.enumerated.item;
 	unsigned int val;
 	unsigned int mask;
 
-	if (ucontrol->value.enumerated.item[0] > e->max - 1)
+	if (item[0] >= e->items)
 		return -EINVAL;
-	val = ucontrol->value.enumerated.item[0] << e->shift_l;
+	val = snd_soc_enum_item_to_val(e, item[0]) << e->shift_l;
 	mask = e->mask << e->shift_l;
 	if (e->shift_l != e->shift_r) {
-		if (ucontrol->value.enumerated.item[1] > e->max - 1)
+		if (item[1] >= e->items)
 			return -EINVAL;
-		val |= ucontrol->value.enumerated.item[1] << e->shift_r;
+		val |= snd_soc_enum_item_to_val(e, item[1]) << e->shift_r;
 		mask |= e->mask << e->shift_r;
 	}
 
@@ -2641,78 +2646,46 @@ int snd_soc_put_enum_double(struct snd_kcontrol *kcontrol,
 EXPORT_SYMBOL_GPL(snd_soc_put_enum_double);
 
 /**
- * snd_soc_get_value_enum_double - semi enumerated double mixer get callback
- * @kcontrol: mixer control
- * @ucontrol: control element information
+ * snd_soc_read_signed - Read a codec register and interprete as signed value
+ * @codec: codec
+ * @reg: Register to read
+ * @mask: Mask to use after shifting the register value
+ * @shift: Right shift of register value
+ * @sign_bit: Bit that describes if a number is negative or not.
  *
- * Callback to get the value of a double semi enumerated mixer.
+ * This functions reads a codec register. The register value is shifted right
+ * by 'shift' bits and masked with the given 'mask'. Afterwards it translates
+ * the given registervalue into a signed integer if sign_bit is non-zero.
  *
- * Semi enumerated mixer: the enumerated items are referred as values. Can be
- * used for handling bitfield coded enumeration for example.
- *
- * Returns 0 for success.
+ * Returns the register value as signed int.
  */
-int snd_soc_get_value_enum_double(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
+static int snd_soc_read_signed(struct snd_soc_codec *codec, unsigned int reg,
+		unsigned int mask, unsigned int shift, unsigned int sign_bit)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	unsigned int reg_val, val, mux;
-
-	reg_val = snd_soc_read(codec, e->reg);
-	val = (reg_val >> e->shift_l) & e->mask;
-	for (mux = 0; mux < e->max; mux++) {
-		if (val == e->values[mux])
-			break;
-	}
-	ucontrol->value.enumerated.item[0] = mux;
-	if (e->shift_l != e->shift_r) {
-		val = (reg_val >> e->shift_r) & e->mask;
-		for (mux = 0; mux < e->max; mux++) {
-			if (val == e->values[mux])
-				break;
-		}
-		ucontrol->value.enumerated.item[1] = mux;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(snd_soc_get_value_enum_double);
-
-/**
- * snd_soc_put_value_enum_double - semi enumerated double mixer put callback
- * @kcontrol: mixer control
- * @ucontrol: control element information
- *
- * Callback to set the value of a double semi enumerated mixer.
- *
- * Semi enumerated mixer: the enumerated items are referred as values. Can be
- * used for handling bitfield coded enumeration for example.
- *
- * Returns 0 for success.
- */
-int snd_soc_put_value_enum_double(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
+	int ret;
 	unsigned int val;
-	unsigned int mask;
 
-	if (ucontrol->value.enumerated.item[0] > e->max - 1)
-		return -EINVAL;
-	val = e->values[ucontrol->value.enumerated.item[0]] << e->shift_l;
-	mask = e->mask << e->shift_l;
-	if (e->shift_l != e->shift_r) {
-		if (ucontrol->value.enumerated.item[1] > e->max - 1)
-			return -EINVAL;
-		val |= e->values[ucontrol->value.enumerated.item[1]] << e->shift_r;
-		mask |= e->mask << e->shift_r;
-	}
+	val = (snd_soc_read(codec, reg) >> shift) & mask;
 
-	return snd_soc_update_bits_locked(codec, e->reg, mask, val);
+	if (!sign_bit)
+		return val;
+
+	/* non-negative number */
+	if (!(val & BIT(sign_bit)))
+		return val;
+
+	ret = val;
+
+	/*
+	 * The register most probably does not contain a full-sized int.
+	 * Instead we have an arbitrary number of bits in a signed
+	 * representation which has to be translated into a full-sized int.
+	 * This is done by filling up all bits above the sign-bit.
+	 */
+	ret |= ~((int)(BIT(sign_bit) - 1));
+
+	return ret;
 }
-EXPORT_SYMBOL_GPL(snd_soc_put_value_enum_double);
 
 /**
  * snd_soc_info_volsw - single mixer info callback
@@ -2742,7 +2715,7 @@ int snd_soc_info_volsw(struct snd_kcontrol *kcontrol,
 
 	uinfo->count = snd_soc_volsw_is_stereo(mc) ? 2 : 1;
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = platform_max;
+	uinfo->value.integer.max = platform_max - mc->min;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_info_volsw);
@@ -2768,11 +2741,16 @@ int snd_soc_get_volsw(struct snd_kcontrol *kcontrol,
 	unsigned int shift = mc->shift;
 	unsigned int rshift = mc->rshift;
 	int max = mc->max;
+	int min = mc->min;
+	int sign_bit = mc->sign_bit;
 	unsigned int mask = (1 << fls(max)) - 1;
 	unsigned int invert = mc->invert;
 
-	ucontrol->value.integer.value[0] =
-		(snd_soc_read(codec, reg) >> shift) & mask;
+	if (sign_bit)
+		mask = BIT(sign_bit + 1) - 1;
+
+	ucontrol->value.integer.value[0] = snd_soc_read_signed(codec, reg, mask,
+			shift, sign_bit) - min;
 	if (invert)
 		ucontrol->value.integer.value[0] =
 			max - ucontrol->value.integer.value[0];
@@ -2780,10 +2758,12 @@ int snd_soc_get_volsw(struct snd_kcontrol *kcontrol,
 	if (snd_soc_volsw_is_stereo(mc)) {
 		if (reg == reg2)
 			ucontrol->value.integer.value[1] =
-				(snd_soc_read(codec, reg) >> rshift) & mask;
+				snd_soc_read_signed(codec, reg, mask, rshift,
+						sign_bit) - min;
 		else
 			ucontrol->value.integer.value[1] =
-				(snd_soc_read(codec, reg2) >> shift) & mask;
+				snd_soc_read_signed(codec, reg2, mask, shift,
+						sign_bit) - min;
 		if (invert)
 			ucontrol->value.integer.value[1] =
 				max - ucontrol->value.integer.value[1];
@@ -2814,20 +2794,25 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 	unsigned int shift = mc->shift;
 	unsigned int rshift = mc->rshift;
 	int max = mc->max;
+	int min = mc->min;
+	unsigned int sign_bit = mc->sign_bit;
 	unsigned int mask = (1 << fls(max)) - 1;
 	unsigned int invert = mc->invert;
 	int err;
-	bool type_2r = 0;
+	bool type_2r = false;
 	unsigned int val2 = 0;
 	unsigned int val, val_mask;
 
-	val = (ucontrol->value.integer.value[0] & mask);
+	if (sign_bit)
+		mask = BIT(sign_bit + 1) - 1;
+
+	val = ((ucontrol->value.integer.value[0] + min) & mask);
 	if (invert)
 		val = max - val;
 	val_mask = mask << shift;
 	val = val << shift;
 	if (snd_soc_volsw_is_stereo(mc)) {
-		val2 = (ucontrol->value.integer.value[1] & mask);
+		val2 = ((ucontrol->value.integer.value[1] + min) & mask);
 		if (invert)
 			val2 = max - val2;
 		if (reg == reg2) {
@@ -2835,7 +2820,7 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 			val |= val2 << rshift;
 		} else {
 			val2 = val2 << shift;
-			type_2r = 1;
+			type_2r = true;
 		}
 	}
 	err = snd_soc_update_bits_locked(codec, reg, val_mask, val);
@@ -3608,6 +3593,30 @@ int snd_soc_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 EXPORT_SYMBOL_GPL(snd_soc_dai_set_fmt);
 
 /**
+ * snd_soc_of_xlate_tdm_slot - generate tx/rx slot mask.
+ * @slots: Number of slots in use.
+ * @tx_mask: bitmask representing active TX slots.
+ * @rx_mask: bitmask representing active RX slots.
+ *
+ * Generates the TDM tx and rx slot default masks for DAI.
+ */
+static int snd_soc_of_xlate_tdm_slot_mask(unsigned int slots,
+					  unsigned int *tx_mask,
+					  unsigned int *rx_mask)
+{
+	if (*tx_mask || *rx_mask)
+		return 0;
+
+	if (!slots)
+		return -EINVAL;
+
+	*tx_mask = (1 << slots) - 1;
+	*rx_mask = (1 << slots) - 1;
+
+	return 0;
+}
+
+/**
  * snd_soc_dai_set_tdm_slot - configure DAI TDM.
  * @dai: DAI
  * @tx_mask: bitmask representing active TX slots.
@@ -3621,11 +3630,17 @@ EXPORT_SYMBOL_GPL(snd_soc_dai_set_fmt);
 int snd_soc_dai_set_tdm_slot(struct snd_soc_dai *dai,
 	unsigned int tx_mask, unsigned int rx_mask, int slots, int slot_width)
 {
+	if (dai->driver && dai->driver->ops->of_xlate_tdm_slot_mask)
+		dai->driver->ops->of_xlate_tdm_slot_mask(slots,
+						&tx_mask, &rx_mask);
+	else
+		snd_soc_of_xlate_tdm_slot_mask(slots, &tx_mask, &rx_mask);
+
 	if (dai->driver && dai->driver->ops->set_tdm_slot)
 		return dai->driver->ops->set_tdm_slot(dai, tx_mask, rx_mask,
 				slots, slot_width);
 	else
-		return -EINVAL;
+		return -ENOTSUPP;
 }
 EXPORT_SYMBOL_GPL(snd_soc_dai_set_tdm_slot);
 
@@ -3883,11 +3898,13 @@ static inline char *fmt_multiple_name(struct device *dev,
 /**
  * snd_soc_register_dai - Register a DAI with the ASoC core
  *
- * @dai: DAI to register
+ * @component: The component the DAIs are registered for
+ * @dai_drv: DAI driver to use for the DAIs
  */
-static int snd_soc_register_dai(struct device *dev,
+static int snd_soc_register_dai(struct snd_soc_component *component,
 		struct snd_soc_dai_driver *dai_drv)
 {
+	struct device *dev = component->dev;
 	struct snd_soc_codec *codec;
 	struct snd_soc_dai *dai;
 
@@ -3904,6 +3921,7 @@ static int snd_soc_register_dai(struct device *dev,
 		return -ENOMEM;
 	}
 
+	dai->component = component;
 	dai->dev = dev;
 	dai->driver = dai_drv;
 	dai->dapm.dev = dev;
@@ -3961,12 +3979,14 @@ found:
 /**
  * snd_soc_register_dais - Register multiple DAIs with the ASoC core
  *
- * @dai: Array of DAIs to register
+ * @component: The component the DAIs are registered for
+ * @dai_drv: DAI driver to use for the DAIs
  * @count: Number of DAIs
  */
-static int snd_soc_register_dais(struct device *dev,
+static int snd_soc_register_dais(struct snd_soc_component *component,
 		struct snd_soc_dai_driver *dai_drv, size_t count)
 {
+	struct device *dev = component->dev;
 	struct snd_soc_codec *codec;
 	struct snd_soc_dai *dai;
 	int i, ret = 0;
@@ -3989,6 +4009,7 @@ static int snd_soc_register_dais(struct device *dev,
 			goto err;
 		}
 
+		dai->component = component;
 		dai->dev = dev;
 		dai->driver = &dai_drv[i];
 		if (dai->driver->id)
@@ -4085,9 +4106,9 @@ __snd_soc_register_component(struct device *dev,
 	 * since it had been used snd_soc_register_dais(),
 	 */
 	if ((1 == num_dai) && allow_single_dai)
-		ret = snd_soc_register_dai(dev, dai_drv);
+		ret = snd_soc_register_dai(cmpnt, dai_drv);
 	else
-		ret = snd_soc_register_dais(dev, dai_drv, num_dai);
+		ret = snd_soc_register_dais(cmpnt, dai_drv, num_dai);
 	if (ret < 0) {
 		dev_err(dev, "ASoC: Failed to regster DAIs: %d\n", ret);
 		goto error_component_name;
@@ -4119,6 +4140,8 @@ int snd_soc_register_component(struct device *dev,
 		dev_err(dev, "ASoC: Failed to allocate memory\n");
 		return -ENOMEM;
 	}
+
+	cmpnt->ignore_pmdown_time = true;
 
 	return __snd_soc_register_component(dev, cmpnt, cmpnt_drv,
 					    dai_drv, num_dai, true);
@@ -4318,7 +4341,7 @@ int snd_soc_register_codec(struct device *dev,
 	codec->volatile_register = codec_drv->volatile_register;
 	codec->readable_register = codec_drv->readable_register;
 	codec->writable_register = codec_drv->writable_register;
-	codec->ignore_pmdown_time = codec_drv->ignore_pmdown_time;
+	codec->component.ignore_pmdown_time = codec_drv->ignore_pmdown_time;
 	codec->dapm.bias_level = SND_SOC_BIAS_OFF;
 	codec->dapm.dev = dev;
 	codec->dapm.codec = codec;
@@ -4415,6 +4438,122 @@ int snd_soc_of_parse_card_name(struct snd_soc_card *card,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_of_parse_card_name);
+
+static const struct snd_soc_dapm_widget simple_widgets[] = {
+	SND_SOC_DAPM_MIC("Microphone", NULL),
+	SND_SOC_DAPM_LINE("Line", NULL),
+	SND_SOC_DAPM_HP("Headphone", NULL),
+	SND_SOC_DAPM_SPK("Speaker", NULL),
+};
+
+int snd_soc_of_parse_audio_simple_widgets(struct snd_soc_card *card,
+					  const char *propname)
+{
+	struct device_node *np = card->dev->of_node;
+	struct snd_soc_dapm_widget *widgets;
+	const char *template, *wname;
+	int i, j, num_widgets, ret;
+
+	num_widgets = of_property_count_strings(np, propname);
+	if (num_widgets < 0) {
+		dev_err(card->dev,
+			"ASoC: Property '%s' does not exist\n",	propname);
+		return -EINVAL;
+	}
+	if (num_widgets & 1) {
+		dev_err(card->dev,
+			"ASoC: Property '%s' length is not even\n", propname);
+		return -EINVAL;
+	}
+
+	num_widgets /= 2;
+	if (!num_widgets) {
+		dev_err(card->dev, "ASoC: Property '%s's length is zero\n",
+			propname);
+		return -EINVAL;
+	}
+
+	widgets = devm_kcalloc(card->dev, num_widgets, sizeof(*widgets),
+			       GFP_KERNEL);
+	if (!widgets) {
+		dev_err(card->dev,
+			"ASoC: Could not allocate memory for widgets\n");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < num_widgets; i++) {
+		ret = of_property_read_string_index(np, propname,
+			2 * i, &template);
+		if (ret) {
+			dev_err(card->dev,
+				"ASoC: Property '%s' index %d read error:%d\n",
+				propname, 2 * i, ret);
+			return -EINVAL;
+		}
+
+		for (j = 0; j < ARRAY_SIZE(simple_widgets); j++) {
+			if (!strncmp(template, simple_widgets[j].name,
+				     strlen(simple_widgets[j].name))) {
+				widgets[i] = simple_widgets[j];
+				break;
+			}
+		}
+
+		if (j >= ARRAY_SIZE(simple_widgets)) {
+			dev_err(card->dev,
+				"ASoC: DAPM widget '%s' is not supported\n",
+				template);
+			return -EINVAL;
+		}
+
+		ret = of_property_read_string_index(np, propname,
+						    (2 * i) + 1,
+						    &wname);
+		if (ret) {
+			dev_err(card->dev,
+				"ASoC: Property '%s' index %d read error:%d\n",
+				propname, (2 * i) + 1, ret);
+			return -EINVAL;
+		}
+
+		widgets[i].name = wname;
+	}
+
+	card->dapm_widgets = widgets;
+	card->num_dapm_widgets = num_widgets;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_of_parse_audio_simple_widgets);
+
+int snd_soc_of_parse_tdm_slot(struct device_node *np,
+			      unsigned int *slots,
+			      unsigned int *slot_width)
+{
+	u32 val;
+	int ret;
+
+	if (of_property_read_bool(np, "dai-tdm-slot-num")) {
+		ret = of_property_read_u32(np, "dai-tdm-slot-num", &val);
+		if (ret)
+			return ret;
+
+		if (slots)
+			*slots = val;
+	}
+
+	if (of_property_read_bool(np, "dai-tdm-slot-width")) {
+		ret = of_property_read_u32(np, "dai-tdm-slot-width", &val);
+		if (ret)
+			return ret;
+
+		if (slot_width)
+			*slot_width = val;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_of_parse_tdm_slot);
 
 int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 				   const char *propname)
