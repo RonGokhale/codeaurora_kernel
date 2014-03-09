@@ -3362,7 +3362,14 @@ static int iris_vidioc_s_ctrl(struct file *file, void *priv,
 		radio->riva_data_req.cmd_params.start_addr = ctrl->value;
 		break;
 	case V4L2_CID_PRIVATE_IRIS_RIVA_ACCS_LEN:
-		radio->riva_data_req.cmd_params.length = ctrl->value;
+		if ((ctrl->value > 0) &&
+			(ctrl->value <= MAX_RIVA_PEEK_RSP_SIZE)) {
+			radio->riva_data_req.cmd_params.length = ctrl->value;
+		} else {
+			FMDERR("Length %d is more than the buffer size %d\n",
+			ctrl->value, MAX_RIVA_PEEK_RSP_SIZE);
+			retval = -EINVAL;
+		}
 		break;
 	case V4L2_CID_PRIVATE_IRIS_RIVA_POKE:
 		if (radio->riva_data_req.cmd_params.length <= MAX_RIVA_PEEK_RSP_SIZE) {
