@@ -1748,6 +1748,9 @@ static int qcedev_vbuf_ablk_cipher(struct qcedev_async_req *areq,
 static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 						struct qcedev_control *podev)
 {
+	uint32_t total = 0;
+	uint32_t i;
+
 	if ((req->entries == 0) || (req->data_len == 0))
 		goto error;
 	if ((req->alg >= QCEDEV_ALG_LAST) ||
@@ -1814,7 +1817,22 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 				(req->mode != QCEDEV_DES_MODE_ECB))
 			goto error;
 	}
-
+	/* Check for sum of all dst length is equal to data_len  */
+	for (i = 0; (i < QCEDEV_MAX_BUFFERS) && (total < req->data_len); i++)
+		total += req->vbuf.dst[i].len;
+	if (total != req->data_len) {
+		pr_err("%s: Total (i=%d) dst(%d) buf size != data_len (%d)\n",
+			__func__, i, total, req->data_len);
+		goto error;
+	}
+	/* Check for sum of all src length is equal to data_len  */
+	for (i = 0, total = 0; i < req->entries; i++)
+		total += req->vbuf.src[i].len;
+	if (total != req->data_len) {
+		pr_err("%s: Total src(%d) buf size != data_len (%d)\n",
+			__func__, total, req->data_len);
+		goto error;
+	}
 	return 0;
 error:
 	return -EINVAL;
