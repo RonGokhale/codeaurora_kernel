@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -43,6 +43,7 @@ struct dci_pkt_req_tracking_tbl {
 };
 
 struct diag_dci_client_tbl {
+	int client_id;
 	struct task_struct *client;
 	uint16_t list; /* bit mask */
 	int signal_type;
@@ -59,6 +60,7 @@ struct diag_dci_client_tbl {
 
 /* This is used for DCI health stats */
 struct diag_dci_health_stats {
+	int client_id;
 	int dropped_logs;
 	int dropped_events;
 	int received_logs;
