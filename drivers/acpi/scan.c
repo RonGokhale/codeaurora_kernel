@@ -660,6 +660,16 @@ static ssize_t description_show(struct device *dev,
 }
 static DEVICE_ATTR(description, 0444, description_show, NULL);
 
+/* sysfs file that shows DOS device name text from the ACPI _DDN method */
+static ssize_t ddn_show(struct device *dev, struct device_attribute *attr,
+			char *buf) {
+	struct acpi_device *acpi_dev = to_acpi_device(dev);
+
+	return acpi_dev->pnp.ddn ?
+	       snprintf(buf, PAGE_SIZE, "%s\n", acpi_dev->pnp.ddn) : 0;
+}
+static DEVICE_ATTR(ddn, 0444, ddn_show, NULL);
+
 static ssize_t
 acpi_device_sun_show(struct device *dev, struct device_attribute *attr,
 		     char *buf) {
@@ -685,10 +695,11 @@ static DEVICE_ATTR_RO(status);
 
 static int acpi_device_setup_files(struct acpi_device *dev)
 {
-	struct acpi_buffer buffer = {ACPI_ALLOCATE_BUFFER, NULL};
+	struct acpi_buffer buffer;
 	acpi_status status;
 	unsigned long long sun;
 	int result = 0;
+	union acpi_object *object;
 
 	/*
 	 * Devices gotten from FADT don't have a "path" attribute
@@ -713,12 +724,36 @@ static int acpi_device_setup_files(struct acpi_device *dev)
 	 * If device has _STR, 'description' file is created
 	 */
 	if (acpi_has_method(dev->handle, "_STR")) {
+		buffer.length = ACPI_ALLOCATE_BUFFER;
+		buffer.pointer = NULL;
 		status = acpi_evaluate_object(dev->handle, "_STR",
 					NULL, &buffer);
 		if (ACPI_FAILURE(status))
 			buffer.pointer = NULL;
 		dev->pnp.str_obj = buffer.pointer;
 		result = device_create_file(&dev->dev, &dev_attr_description);
+		if (result)
+			goto end;
+	}
+
+	/*
+	 * If device has _DDN, 'ddn' file is created
+	 */
+	if (acpi_has_method(dev->handle, "_DDN")) {
+		buffer.length = ACPI_ALLOCATE_BUFFER;
+		buffer.pointer = NULL;
+		status = acpi_evaluate_object_typed(dev->handle, "_DDN",
+						    NULL, &buffer,
+						    ACPI_TYPE_STRING);
+		if (ACPI_FAILURE(status))
+			buffer.pointer = NULL;
+		object = buffer.pointer;
+		if (object) {
+			dev->pnp.ddn = kstrdup(object->string.pointer,
+					       GFP_KERNEL);
+			kfree(object);
+		}
+		result = device_create_file(&dev->dev, &dev_attr_ddn);
 		if (result)
 			goto end;
 	}
@@ -783,6 +818,13 @@ static void acpi_device_remove_files(struct acpi_device *dev)
 	if (acpi_has_method(dev->handle, "_STR")) {
 		kfree(dev->pnp.str_obj);
 		device_remove_file(&dev->dev, &dev_attr_description);
+	}
+	/*
+	 * If device has _DDN, remove 'ddn' file
+	 */
+	if (acpi_has_method(dev->handle, "_DDN")) {
+		device_remove_file(&dev->dev, &dev_attr_ddn);
+		kfree(dev->pnp.ddn);
 	}
 	/*
 	 * If device has _EJ0, remove 'eject' file.
