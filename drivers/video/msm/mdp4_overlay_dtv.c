@@ -733,6 +733,9 @@ int mdp4_dtv_on(struct platform_device *pdev)
 		mfd->edid_fail_status = 0;
 		mfd->cont_splash_done = 1;
 		mfd->vfmt_lk = 0;
+		/* Clks are enabled in probe.Disabling
+		clocks now to maintain ref count*/
+		mdp_clk_ctrl(0);
 	}
 	mdp4_overlay_panel_mode(MDP4_MIXER1, MDP4_PANEL_DTV);
 
