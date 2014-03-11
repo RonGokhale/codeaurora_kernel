@@ -151,7 +151,7 @@ void extract_dci_events(unsigned char *buf)
 {
 	uint16_t event_id, event_id_packet;
 	uint8_t *event_mask_ptr, byte_mask, payload_len;
-	uint8_t event_data[MAX_EVENT_SIZE], timestamp[8];
+	uint8_t event_data[MAX_EVENT_SIZE], timestamp[8] = {0};
 	unsigned int byte_index;
 	int i, bit_index, length, temp_len;
 	int total_event_len, payload_len_field, timestamp_len;
