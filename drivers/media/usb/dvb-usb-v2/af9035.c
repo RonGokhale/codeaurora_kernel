@@ -575,6 +575,10 @@ static int af9035_download_firmware(struct dvb_usb_device *d,
 		if (ret < 0)
 			goto err;
 
+		/* use default I2C address if eeprom has no address set */
+		if (!tmp)
+			tmp = 0x3a;
+
 		if (state->chip_type == 0x9135) {
 			ret = af9035_wr_reg(d, 0x004bfb, tmp);
 			if (ret < 0)
@@ -637,6 +641,7 @@ static int af9035_read_config(struct dvb_usb_device *d)
 
 	/* demod I2C "address" */
 	state->af9033_config[0].i2c_addr = 0x38;
+	state->af9033_config[1].i2c_addr = 0x3a;
 	state->af9033_config[0].adc_multiplier = AF9033_ADC_MULTIPLIER_2X;
 	state->af9033_config[1].adc_multiplier = AF9033_ADC_MULTIPLIER_2X;
 	state->af9033_config[0].ts_mode = AF9033_TS_MODE_USB;
@@ -684,7 +689,9 @@ static int af9035_read_config(struct dvb_usb_device *d)
 		if (ret < 0)
 			goto err;
 
-		state->af9033_config[1].i2c_addr = tmp;
+		if (tmp)
+			state->af9033_config[1].i2c_addr = tmp;
+
 		dev_dbg(&d->udev->dev, "%s: 2nd demod I2C addr=%02x\n",
 				__func__, tmp);
 	}
@@ -1528,12 +1535,30 @@ static const struct usb_device_id af9035_id_table[] = {
 	{ DVB_USB_DEVICE(USB_VID_TERRATEC, 0x00aa,
 		&af9035_props, "TerraTec Cinergy T Stick (rev. 2)", NULL) },
 	/* IT9135 devices */
-#if 0
-	{ DVB_USB_DEVICE(0x048d, 0x9135,
-		&af9035_props, "IT9135 reference design", NULL) },
-	{ DVB_USB_DEVICE(0x048d, 0x9006,
-		&af9035_props, "IT9135 reference design", NULL) },
-#endif
+	{ DVB_USB_DEVICE(USB_VID_ITETECH, USB_PID_ITETECH_IT9135,
+		&af9035_props, "ITE 9135 Generic", RC_MAP_IT913X_V1) },
+	{ DVB_USB_DEVICE(USB_VID_ITETECH, USB_PID_ITETECH_IT9135_9005,
+		&af9035_props, "ITE 9135(9005) Generic", RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_ITETECH, USB_PID_ITETECH_IT9135_9006,
+		&af9035_props, "ITE 9135(9006) Generic", RC_MAP_IT913X_V1) },
+	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A835B_1835,
+		&af9035_props, "Avermedia A835B(1835)", RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A835B_2835,
+		&af9035_props, "Avermedia A835B(2835)", RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A835B_3835,
+		&af9035_props, "Avermedia A835B(3835)", RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_A835B_4835,
+		&af9035_props, "Avermedia A835B(4835)",	RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_AVERMEDIA, USB_PID_AVERMEDIA_H335,
+		&af9035_props, "Avermedia H335", RC_MAP_IT913X_V2) },
+	{ DVB_USB_DEVICE(USB_VID_KWORLD_2, USB_PID_KWORLD_UB499_2T_T09,
+		&af9035_props, "Kworld UB499-2T T09", RC_MAP_IT913X_V1) },
+	{ DVB_USB_DEVICE(USB_VID_KWORLD_2, USB_PID_SVEON_STV22_IT9137,
+		&af9035_props, "Sveon STV22 Dual DVB-T HDTV",
+							RC_MAP_IT913X_V1) },
+	{ DVB_USB_DEVICE(USB_VID_KWORLD_2, USB_PID_CTVDIGDUAL_V2,
+		&af9035_props, "Digital Dual TV Receiver CTVDIGDUAL_V2",
+							RC_MAP_IT913X_V1) },
 	/* XXX: that same ID [0ccd:0099] is used by af9015 driver too */
 	{ DVB_USB_DEVICE(USB_VID_TERRATEC, 0x0099,
 		&af9035_props, "TerraTec Cinergy T Stick Dual RC (rev. 2)", NULL) },

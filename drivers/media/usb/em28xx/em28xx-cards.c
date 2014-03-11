@@ -66,7 +66,7 @@ MODULE_PARM_DESC(usb_xfer_mode,
 
 
 /* Bitmask marking allocated devices from 0 to EM28XX_MAXBOARDS - 1 */
-DECLARE_BITMAP(em28xx_devused, EM28XX_MAXBOARDS);
+static DECLARE_BITMAP(em28xx_devused, EM28XX_MAXBOARDS);
 
 struct em28xx_hash_table {
 	unsigned long hash;
@@ -189,6 +189,14 @@ static struct em28xx_reg_seq kworld_a340_digital[] = {
 	{	-1,		-1,	-1,		-1},
 };
 
+static struct em28xx_reg_seq kworld_ub435q_v3_digital[] = {
+	{EM2874_R80_GPIO_P0_CTRL,	0xff, 	0xff,	100},
+	{EM2874_R80_GPIO_P0_CTRL,	0xfe, 	0xff,	100},
+	{EM2874_R80_GPIO_P0_CTRL,	0xbe,	0xff,	100},
+	{EM2874_R80_GPIO_P0_CTRL,	0xfe,	0xff,	100},
+	{	-1,			-1,	-1,	-1},
+};
+
 /* Pinnacle Hybrid Pro eb1a:2881 */
 static struct em28xx_reg_seq pinnacle_hybrid_pro_analog[] = {
 	{EM2820_R08_GPIO_CTRL,	0xfd,   ~EM_GPIO_4,	10},
@@ -212,6 +220,17 @@ static struct em28xx_reg_seq terratec_cinergy_USB_XS_FR_digital[] = {
 	{EM2820_R08_GPIO_CTRL,	0x6e,	~EM_GPIO_4,	10},
 	{EM2880_R04_GPO,	0x08,	0xff,		10},
 	{	-1,		-1,	-1,		-1},
+};
+
+/* PCTV HD Mini (80e) GPIOs
+   0-5: not used
+   6:   demod reset, active low
+   7:   LED on, active high */
+static struct em28xx_reg_seq em2874_pctv_80e_digital[] = {
+	{EM28XX_R06_I2C_CLK,    0x45,   0xff,		  10}, /*400 KHz*/
+	{EM2874_R80_GPIO_P0_CTRL, 0x80,   0xff,		  100},/*Demod reset*/
+	{EM2874_R80_GPIO_P0_CTRL, 0xc0,   0xff,		  10},
+	{  -1,			-1,	-1,		  -1},
 };
 
 /* eb1a:2868 Reddo DVB-C USB TV Box
@@ -496,6 +515,17 @@ static struct em28xx_led speedlink_vad_laplace_leds[] = {
 	},
 	{-1, 0, 0, 0},
 };
+
+static struct em28xx_led kworld_ub435q_v3_leds[] = {
+	{
+		.role      = EM28XX_LED_DIGITAL_CAPTURING,
+		.gpio_reg  = EM2874_R80_GPIO_P0_CTRL,
+		.gpio_mask = 0x80,
+		.inverted  = 1,
+	},
+	{-1, 0, 0, 0},
+};
+
 
 /*
  *  Board definitions
@@ -2128,6 +2158,28 @@ struct em28xx_board em28xx_boards[] = {
 		.tuner_gpio	= default_tuner_gpio,
 		.def_i2c_bus	= 1,
 	},
+	/*
+	 * 1b80:e34c KWorld USB ATSC TV Stick UB435-Q V3
+	 * Empia EM2874B + LG DT3305 + NXP TDA18271HDC2
+	 */
+	[EM2874_BOARD_KWORLD_UB435Q_V3] = {
+		.name		= "KWorld USB ATSC TV Stick UB435-Q V3",
+		.tuner_type	= TUNER_ABSENT,
+		.has_dvb	= 1,
+		.tuner_gpio	= kworld_ub435q_v3_digital,
+		.def_i2c_bus	= 1,
+		.i2c_speed      = EM28XX_I2C_CLK_WAIT_ENABLE |
+				  EM28XX_I2C_FREQ_100_KHZ,
+		.leds = kworld_ub435q_v3_leds,
+	},
+	[EM2874_BOARD_PCTV_HD_MINI_80E] = {
+		.name         = "Pinnacle PCTV HD Mini",
+		.tuner_type   = TUNER_ABSENT,
+		.has_dvb      = 1,
+		.dvb_gpio     = em2874_pctv_80e_digital,
+		.decoder      = EM28XX_NODECODER,
+		.ir_codes     = RC_MAP_PINNACLE_PCTV_HD,
+	},
 	/* 1ae7:9003/9004 SpeedLink Vicious And Devine Laplace webcam
 	 * Empia EM2765 + OmniVision OV2640 */
 	[EM2765_BOARD_SPEEDLINK_VAD_LAPLACE] = {
@@ -2290,6 +2342,8 @@ struct usb_device_id em28xx_id_table[] = {
 			.driver_info = EM2882_BOARD_PINNACLE_HYBRID_PRO_330E },
 	{ USB_DEVICE(0x2304, 0x0227),
 			.driver_info = EM2880_BOARD_PINNACLE_PCTV_HD_PRO },
+	{ USB_DEVICE(0x2304, 0x023f),
+			.driver_info = EM2874_BOARD_PCTV_HD_MINI_80E },
 	{ USB_DEVICE(0x0413, 0x6023),
 			.driver_info = EM2800_BOARD_LEADTEK_WINFAST_USBII },
 	{ USB_DEVICE(0x093b, 0xa003),
@@ -2304,6 +2358,8 @@ struct usb_device_id em28xx_id_table[] = {
 			.driver_info = EM2870_BOARD_KWORLD_A340 },
 	{ USB_DEVICE(0x1b80, 0xe346),
 			.driver_info = EM2874_BOARD_KWORLD_UB435Q_V2 },
+	{ USB_DEVICE(0x1b80, 0xe34c),
+			.driver_info = EM2874_BOARD_KWORLD_UB435Q_V3 },
 	{ USB_DEVICE(0x2013, 0x024f),
 			.driver_info = EM28174_BOARD_PCTV_290E },
 	{ USB_DEVICE(0x2013, 0x024c),
@@ -3393,10 +3449,36 @@ static void em28xx_usb_disconnect(struct usb_interface *interface)
 	}
 }
 
+static int em28xx_usb_suspend(struct usb_interface *interface,
+				pm_message_t message)
+{
+	struct em28xx *dev;
+
+	dev = usb_get_intfdata(interface);
+	if (!dev)
+		return 0;
+	em28xx_suspend_extension(dev);
+	return 0;
+}
+
+static int em28xx_usb_resume(struct usb_interface *interface)
+{
+	struct em28xx *dev;
+
+	dev = usb_get_intfdata(interface);
+	if (!dev)
+		return 0;
+	em28xx_resume_extension(dev);
+	return 0;
+}
+
 static struct usb_driver em28xx_usb_driver = {
 	.name = "em28xx",
 	.probe = em28xx_usb_probe,
 	.disconnect = em28xx_usb_disconnect,
+	.suspend = em28xx_usb_suspend,
+	.resume = em28xx_usb_resume,
+	.reset_resume = em28xx_usb_resume,
 	.id_table = em28xx_id_table,
 };
 
