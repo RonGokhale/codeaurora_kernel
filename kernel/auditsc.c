@@ -42,6 +42,8 @@
  * and <dustin.kirkland@us.ibm.com> for LSPP certification compliance.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/init.h>
 #include <asm/types.h>
 #include <linux/atomic.h>
@@ -68,6 +70,7 @@
 #include <linux/capability.h>
 #include <linux/fs_struct.h>
 #include <linux/compat.h>
+#include <linux/ctype.h>
 
 #include "audit.h"
 
@@ -78,6 +81,9 @@
 
 /* no execve audit message should be longer than this (userspace limits) */
 #define MAX_EXECVE_AUDIT_LEN 7500
+
+/* max length to print of cmdline/proctitle value during audit */
+#define MAX_PROCTITLE_AUDIT_LEN 128
 
 /* number of audit rules */
 int audit_n_rules;
@@ -842,6 +848,13 @@ static inline struct audit_context *audit_get_context(struct task_struct *tsk,
 	return context;
 }
 
+static inline void audit_proctitle_free(struct audit_context *context)
+{
+	kfree(context->proctitle.value);
+	context->proctitle.value = NULL;
+	context->proctitle.len = 0;
+}
+
 static inline void audit_free_names(struct audit_context *context)
 {
 	struct audit_names *n, *next;
@@ -850,16 +863,15 @@ static inline void audit_free_names(struct audit_context *context)
 	if (context->put_count + context->ino_count != context->name_count) {
 		int i = 0;
 
-		printk(KERN_ERR "%s:%d(:%d): major=%d in_syscall=%d"
-		       " name_count=%d put_count=%d"
-		       " ino_count=%d [NOT freeing]\n",
-		       __FILE__, __LINE__,
+		pr_err("%s:%d(:%d): major=%d in_syscall=%d"
+		       " name_count=%d put_count=%d ino_count=%d"
+		       " [NOT freeing]\n", __FILE__, __LINE__,
 		       context->serial, context->major, context->in_syscall,
 		       context->name_count, context->put_count,
 		       context->ino_count);
 		list_for_each_entry(n, &context->names_list, list) {
-			printk(KERN_ERR "names[%d] = %p = %s\n", i++,
-			       n->name, n->name->name ?: "(null)");
+			pr_err("names[%d] = %p = %s\n", i++, n->name,
+			       n->name->name ?: "(null)");
 		}
 		dump_stack();
 		return;
@@ -955,6 +967,7 @@ static inline void audit_free_context(struct audit_context *context)
 	audit_free_aux(context);
 	kfree(context->filterkey);
 	kfree(context->sockaddr);
+	audit_proctitle_free(context);
 	kfree(context);
 }
 
@@ -1271,6 +1284,59 @@ static void show_special(struct audit_context *context, int *call_panic)
 	audit_log_end(ab);
 }
 
+static inline int audit_proctitle_rtrim(char *proctitle, int len)
+{
+	char *end = proctitle + len - 1;
+	while (end > proctitle && !isprint(*end))
+		end--;
+
+	/* catch the case where proctitle is only 1 non-print character */
+	len = end - proctitle + 1;
+	len -= isprint(proctitle[len-1]) == 0;
+	return len;
+}
+
+static void audit_log_proctitle(struct task_struct *tsk,
+			 struct audit_context *context)
+{
+	int res;
+	char *buf;
+	char *msg = "(null)";
+	int len = strlen(msg);
+	struct audit_buffer *ab;
+
+	ab = audit_log_start(context, GFP_KERNEL, AUDIT_PROCTITLE);
+	if (!ab)
+		return;	/* audit_panic or being filtered */
+
+	audit_log_format(ab, "proctitle=");
+
+	/* Not  cached */
+	if (!context->proctitle.value) {
+		buf = kmalloc(MAX_PROCTITLE_AUDIT_LEN, GFP_KERNEL);
+		if (!buf)
+			goto out;
+		/* Historically called this from procfs naming */
+		res = get_cmdline(tsk, buf, MAX_PROCTITLE_AUDIT_LEN);
+		if (res == 0) {
+			kfree(buf);
+			goto out;
+		}
+		res = audit_proctitle_rtrim(buf, res);
+		if (res == 0) {
+			kfree(buf);
+			goto out;
+		}
+		context->proctitle.value = buf;
+		context->proctitle.len = res;
+	}
+	msg = context->proctitle.value;
+	len = context->proctitle.len;
+out:
+	audit_log_n_untrustedstring(ab, msg, len);
+	audit_log_end(ab);
+}
+
 static void audit_log_exit(struct audit_context *context, struct task_struct *tsk)
 {
 	int i, call_panic = 0;
@@ -1387,6 +1453,8 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 			continue;
 		audit_log_name(context, n, NULL, i++, &call_panic);
 	}
+
+	audit_log_proctitle(tsk, context);
 
 	/* Send end of event record to help user space know we are finished */
 	ab = audit_log_start(context, GFP_KERNEL, AUDIT_EOE);
@@ -1550,7 +1618,7 @@ static inline void handle_one(const struct inode *inode)
 	if (likely(put_tree_ref(context, chunk)))
 		return;
 	if (unlikely(!grow_tree_refs(context))) {
-		printk(KERN_WARNING "out of memory, audit has lost a tree reference\n");
+		pr_warn("out of memory, audit has lost a tree reference\n");
 		audit_set_auditable(context);
 		audit_put_chunk(chunk);
 		unroll_tree_refs(context, p, count);
@@ -1609,8 +1677,7 @@ retry:
 			goto retry;
 		}
 		/* too bad */
-		printk(KERN_WARNING
-			"out of memory, audit has lost a tree reference\n");
+		pr_warn("out of memory, audit has lost a tree reference\n");
 		unroll_tree_refs(context, p, count);
 		audit_set_auditable(context);
 		return;
@@ -1682,7 +1749,7 @@ void __audit_getname(struct filename *name)
 
 	if (!context->in_syscall) {
 #if AUDIT_DEBUG == 2
-		printk(KERN_ERR "%s:%d(:%d): ignoring getname(%p)\n",
+		pr_err("%s:%d(:%d): ignoring getname(%p)\n",
 		       __FILE__, __LINE__, context->serial, name);
 		dump_stack();
 #endif
@@ -1721,15 +1788,15 @@ void audit_putname(struct filename *name)
 	BUG_ON(!context);
 	if (!name->aname || !context->in_syscall) {
 #if AUDIT_DEBUG == 2
-		printk(KERN_ERR "%s:%d(:%d): final_putname(%p)\n",
+		pr_err("%s:%d(:%d): final_putname(%p)\n",
 		       __FILE__, __LINE__, context->serial, name);
 		if (context->name_count) {
 			struct audit_names *n;
 			int i = 0;
 
 			list_for_each_entry(n, &context->names_list, list)
-				printk(KERN_ERR "name[%d] = %p = %s\n", i++,
-				       n->name, n->name->name ?: "(null)");
+				pr_err("name[%d] = %p = %s\n", i++, n->name,
+				       n->name->name ?: "(null)");
 			}
 #endif
 		final_putname(name);
@@ -1738,9 +1805,8 @@ void audit_putname(struct filename *name)
 	else {
 		++context->put_count;
 		if (context->put_count > context->name_count) {
-			printk(KERN_ERR "%s:%d(:%d): major=%d"
-			       " in_syscall=%d putname(%p) name_count=%d"
-			       " put_count=%d\n",
+			pr_err("%s:%d(:%d): major=%d in_syscall=%d putname(%p)"
+			       " name_count=%d put_count=%d\n",
 			       __FILE__, __LINE__,
 			       context->serial, context->major,
 			       context->in_syscall, name->name,
