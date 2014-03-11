@@ -81,20 +81,28 @@ xfs_calc_buf_res(
  * on disk. Hence we need an inode reservation function that calculates all this
  * correctly. So, we log:
  *
- * - log op headers for object
+ * - 4 log op headers for object
+ *	- for the ilf, the inode core and 2 forks
  * - inode log format object
- * - the entire inode contents (core + 2 forks)
- * - two bmap btree block headers
+ * - the inode core
+ * - two inode forks containing bmap btree root blocks.
+ *	- the btree data contained by both forks will fit into the inode size,
+ *	  hence when combined with the inode core above, we have a total of the
+ *	  actual inode size.
+ *	- the BMBT headers need to be accounted separately, as they are
+ *	  additional to the records and pointers that fit inside the inode
+ *	  forks.
  */
 STATIC uint
 xfs_calc_inode_res(
 	struct xfs_mount	*mp,
 	uint			ninodes)
 {
-	return ninodes * (sizeof(struct xlog_op_header) +
-			  sizeof(struct xfs_inode_log_format) +
-			  mp->m_sb.sb_inodesize +
-			  2 * XFS_BMBT_BLOCK_LEN(mp));
+	return ninodes *
+		(4 * sizeof(struct xlog_op_header) +
+		 sizeof(struct xfs_inode_log_format) +
+		 mp->m_sb.sb_inodesize +
+		 2 * XFS_BMBT_BLOCK_LEN(mp));
 }
 
 /*
@@ -644,15 +652,14 @@ xfs_calc_qm_setqlim_reservation(
 
 /*
  * Allocating quota on disk if needed.
- *	the write transaction log space: M_RES(mp)->tr_write.tr_logres
+ *	the write transaction log space for quota file extent allocation
  *	the unit of quota allocation: one system block size
  */
 STATIC uint
 xfs_calc_qm_dqalloc_reservation(
 	struct xfs_mount	*mp)
 {
-	ASSERT(M_RES(mp)->tr_write.tr_logres);
-	return M_RES(mp)->tr_write.tr_logres +
+	return xfs_calc_write_reservation(mp) +
 		xfs_calc_buf_res(1,
 			XFS_FSB_TO_B(mp, XFS_DQUOT_CLUSTER_SIZE_FSB) - 1);
 }
@@ -784,7 +791,6 @@ xfs_trans_resv_calc(
 	/* The following transaction are logged in logical format */
 	resp->tr_ichange.tr_logres = xfs_calc_ichange_reservation(mp);
 	resp->tr_growdata.tr_logres = xfs_calc_growdata_reservation(mp);
-	resp->tr_swrite.tr_logres = xfs_calc_swrite_reservation(mp);
 	resp->tr_fsyncts.tr_logres = xfs_calc_swrite_reservation(mp);
 	resp->tr_writeid.tr_logres = xfs_calc_writeid_reservation(mp);
 	resp->tr_attrsetrt.tr_logres = xfs_calc_attrsetrt_reservation(mp);
