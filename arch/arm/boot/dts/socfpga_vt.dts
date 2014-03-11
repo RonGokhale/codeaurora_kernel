@@ -59,18 +59,7 @@
 		};
 
 		qspi: spi@ff705000 {
-			compatible = "cadence,qspi";
-			#address-cells = <1>;
-			#size-cells = <0>;
-			reg = <0xff705000 0x1000>,
-				<0xffa00000 0x1000>;
-			interrupts = <0 151 4>;
-			master-ref-clk = <400000000>;
-			ext-decoder = <0>;  /* external decoder */
-			num-chipselect = <4>;
-			fifo-depth = <128>;
-			bus-num = <2>;
-
+			status = "okay";
 			flash0: n25q128@0 {
 				#address-cells = <1>;
 				#size-cells = <1>;
