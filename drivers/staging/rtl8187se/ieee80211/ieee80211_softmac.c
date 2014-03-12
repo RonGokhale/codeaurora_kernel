@@ -24,7 +24,7 @@
 #include <linux/etherdevice.h>
 
 #include "dot11d.h"
-u8 rsn_authen_cipher_suite[16][4] = {
+static u8 rsn_authen_cipher_suite[16][4] = {
 	{0x00, 0x0F, 0xAC, 0x00}, //Use group key, //Reserved
 	{0x00, 0x0F, 0xAC, 0x01}, //WEP-40         //RSNA default
 	{0x00, 0x0F, 0xAC, 0x02}, //TKIP           //NONE		//{used just as default}
@@ -349,7 +349,7 @@ inline struct sk_buff *ieee80211_probe_req(struct ieee80211_device *ieee)
 
 struct sk_buff *ieee80211_get_beacon_(struct ieee80211_device *ieee);
 
-void ext_ieee80211_send_beacon_wq(struct ieee80211_device *ieee)
+static void ext_ieee80211_send_beacon_wq(struct ieee80211_device *ieee)
 {
 	struct sk_buff *skb;
 
@@ -1809,7 +1809,8 @@ inline int ieee80211_rx_frame_softmac(struct ieee80211_device *ieee,
 			if ((ieee->softmac_features & IEEE_SOFTMAC_ASSOCIATE) &&
 				ieee->state == IEEE80211_ASSOCIATING_AUTHENTICATED &&
 				ieee->iw_mode == IW_MODE_INFRA){
-				if (0 == (errcode=assoc_parse(skb, &aid))){
+				errcode = assoc_parse(skb, &aid);
+				if (0 == errcode) {
 					u16 left;
 
 					ieee->state=IEEE80211_LINKED;
@@ -1900,7 +1901,8 @@ associate_complete:
 
 						IEEE80211_DEBUG_MGMT("Received authentication response");
 
-						if (0 == (errcode=auth_parse(skb, &challenge, &chlen))){
+						errcode = auth_parse(skb, &challenge, &chlen);
+						if (0 == errcode) {
 							if(ieee->open_wep || !challenge){
 								ieee->state = IEEE80211_ASSOCIATING_AUTHENTICATED;
 								ieee->softmac_stats.rx_auth_rs_ok++;
