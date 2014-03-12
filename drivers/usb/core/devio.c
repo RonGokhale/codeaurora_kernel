@@ -778,7 +778,7 @@ static struct usb_host_endpoint *ep_to_host_endpoint(struct usb_device *dev,
 		return dev->ep_out[ep & USB_ENDPOINT_NUMBER_MASK];
 }
 
-static int parse_usbdevfs_streams(struct dev_state *ps,
+static int parse_usbdevfs_streams(struct usb_dev_state *ps,
 				  struct usbdevfs_streams __user *streams,
 				  unsigned int *num_streams_ret,
 				  unsigned int *num_eps_ret,
@@ -2082,7 +2082,7 @@ static int proc_disconnect_claim(struct usb_dev_state *ps, void __user *arg)
 	return claimintf(ps, dc.interface);
 }
 
-static int proc_alloc_streams(struct dev_state *ps, void __user *arg)
+static int proc_alloc_streams(struct usb_dev_state *ps, void __user *arg)
 {
 	unsigned num_streams, num_eps;
 	struct usb_host_endpoint **eps;
@@ -2102,7 +2102,7 @@ static int proc_alloc_streams(struct dev_state *ps, void __user *arg)
 	return r;
 }
 
-static int proc_free_streams(struct dev_state *ps, void __user *arg)
+static int proc_free_streams(struct usb_dev_state *ps, void __user *arg)
 {
 	unsigned num_eps;
 	struct usb_host_endpoint **eps;
