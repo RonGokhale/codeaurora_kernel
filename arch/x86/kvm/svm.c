@@ -2842,6 +2842,7 @@ static int iret_interception(struct vcpu_svm *svm)
 	clr_intercept(svm, INTERCEPT_IRET);
 	svm->vcpu.arch.hflags |= HF_IRET_MASK;
 	svm->nmi_iret_rip = kvm_rip_read(&svm->vcpu);
+	kvm_make_request(KVM_REQ_EVENT, &svm->vcpu);
 	return 1;
 }
 
@@ -3649,7 +3650,7 @@ static int svm_interrupt_allowed(struct kvm_vcpu *vcpu)
 	return ret;
 }
 
-static int enable_irq_window(struct kvm_vcpu *vcpu)
+static void enable_irq_window(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 
@@ -3663,16 +3664,15 @@ static int enable_irq_window(struct kvm_vcpu *vcpu)
 		svm_set_vintr(svm);
 		svm_inject_irq(svm, 0x0);
 	}
-	return 0;
 }
 
-static int enable_nmi_window(struct kvm_vcpu *vcpu)
+static void enable_nmi_window(struct kvm_vcpu *vcpu)
 {
 	struct vcpu_svm *svm = to_svm(vcpu);
 
 	if ((svm->vcpu.arch.hflags & (HF_NMI_MASK | HF_IRET_MASK))
 	    == HF_NMI_MASK)
-		return 0; /* IRET will cause a vm exit */
+		return; /* IRET will cause a vm exit */
 
 	/*
 	 * Something prevents NMI from been injected. Single step over possible
@@ -3681,7 +3681,6 @@ static int enable_nmi_window(struct kvm_vcpu *vcpu)
 	svm->nmi_singlestep = true;
 	svm->vmcb->save.rflags |= (X86_EFLAGS_TF | X86_EFLAGS_RF);
 	update_db_bp_intercept(vcpu);
-	return 0;
 }
 
 static int svm_set_tss_addr(struct kvm *kvm, unsigned int addr)

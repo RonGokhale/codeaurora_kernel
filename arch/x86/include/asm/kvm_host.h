@@ -444,7 +444,6 @@ struct kvm_vcpu_arch {
 	} st;
 
 	u64 last_guest_tsc;
-	u64 last_kernel_ns;
 	u64 last_host_tsc;
 	u64 tsc_offset_adjustment;
 	u64 this_tsc_nsec;
@@ -599,6 +598,8 @@ struct kvm_arch {
 	bool use_master_clock;
 	u64 master_kernel_ns;
 	cycle_t master_cycle_now;
+	struct delayed_work kvmclock_update_work;
+	struct delayed_work kvmclock_sync_work;
 
 	struct kvm_xen_hvm_config xen_hvm_config;
 
@@ -728,8 +729,8 @@ struct kvm_x86_ops {
 	int (*nmi_allowed)(struct kvm_vcpu *vcpu);
 	bool (*get_nmi_mask)(struct kvm_vcpu *vcpu);
 	void (*set_nmi_mask)(struct kvm_vcpu *vcpu, bool masked);
-	int (*enable_nmi_window)(struct kvm_vcpu *vcpu);
-	int (*enable_irq_window)(struct kvm_vcpu *vcpu);
+	void (*enable_nmi_window)(struct kvm_vcpu *vcpu);
+	void (*enable_irq_window)(struct kvm_vcpu *vcpu);
 	void (*update_cr8_intercept)(struct kvm_vcpu *vcpu, int tpr, int irr);
 	int (*vm_has_apicv)(struct kvm *kvm);
 	void (*hwapic_irr_update)(struct kvm_vcpu *vcpu, int max_irr);
@@ -765,6 +766,9 @@ struct kvm_x86_ops {
 			       struct x86_instruction_info *info,
 			       enum x86_intercept_stage stage);
 	void (*handle_external_intr)(struct kvm_vcpu *vcpu);
+	bool (*mpx_supported)(void);
+
+	int (*check_nested_events)(struct kvm_vcpu *vcpu, bool external_intr);
 };
 
 struct kvm_arch_async_pf {
