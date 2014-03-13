@@ -1318,7 +1318,8 @@ static void rtl8192_tx_isr(struct urb *tx_urb)
 		/* Don't send data frame during scanning.*/
 		if ((skb_queue_len(&priv->ieee80211->skb_waitQ[queue_index]) != 0) &&
 		    (!(priv->ieee80211->queue_stop))) {
-			if (NULL != (skb = skb_dequeue(&(priv->ieee80211->skb_waitQ[queue_index]))))
+			skb = skb_dequeue(&(priv->ieee80211->skb_waitQ[queue_index]));
+			if (skb)
 				priv->ieee80211->softmac_hard_start_xmit(skb, dev);
 
 			return; //modified by david to avoid further processing AMSDU
@@ -3536,7 +3537,7 @@ void rtl819x_update_rxcounts(struct r8192_priv *priv, u32 *TotalRxBcnNum,
 }
 
 
-extern void rtl819x_watchdog_wqcallback(struct work_struct *work)
+void rtl819x_watchdog_wqcallback(struct work_struct *work)
 {
 	struct delayed_work *dwork = container_of(work, struct delayed_work, work);
 	struct r8192_priv *priv = container_of(dwork, struct r8192_priv, watch_dog_wq);
