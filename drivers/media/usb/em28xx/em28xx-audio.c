@@ -252,7 +252,7 @@ static int snd_em28xx_capture_open(struct snd_pcm_substream *substream)
 {
 	struct em28xx *dev = snd_pcm_substream_chip(substream);
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	int ret = 0;
+	int nonblock, ret = 0;
 
 	if (!dev) {
 		em28xx_err("BUG: em28xx can't find device struct."
@@ -265,15 +265,15 @@ static int snd_em28xx_capture_open(struct snd_pcm_substream *substream)
 
 	dprintk("opening device and trying to acquire exclusive lock\n");
 
+	nonblock = !!(substream->f_flags & O_NONBLOCK);
+	if (nonblock) {
+		if (!mutex_trylock(&dev->lock))
+		return -EAGAIN;
+	} else
+		mutex_lock(&dev->lock);
+
 	runtime->hw = snd_em28xx_hw_capture;
 	if ((dev->alt == 0 || dev->is_audio_only) && dev->adev.users == 0) {
-		int nonblock = !!(substream->f_flags & O_NONBLOCK);
-
-		if (nonblock) {
-			if (!mutex_trylock(&dev->lock))
-				return -EAGAIN;
-		} else
-			mutex_lock(&dev->lock);
 		if (dev->is_audio_only)
 			/* vendor audio is on a separate interface */
 			dev->alt = 1;
@@ -299,10 +299,11 @@ static int snd_em28xx_capture_open(struct snd_pcm_substream *substream)
 		ret = em28xx_audio_analog_set(dev);
 		if (ret < 0)
 			goto err;
-
-		dev->adev.users++;
-		mutex_unlock(&dev->lock);
 	}
+
+	kref_get(&dev->ref);
+	dev->adev.users++;
+	mutex_unlock(&dev->lock);
 
 	/* Dynamically adjust the period size */
 	snd_pcm_hw_constraint_integer(runtime, SNDRV_PCM_HW_PARAM_PERIODS);
@@ -341,6 +342,7 @@ static int snd_em28xx_pcm_close(struct snd_pcm_substream *substream)
 		substream->runtime->dma_area = NULL;
 	}
 	mutex_unlock(&dev->lock);
+	kref_put(&dev->ref, em28xx_free_device);
 
 	return 0;
 }
@@ -895,6 +897,8 @@ static int em28xx_audio_init(struct em28xx *dev)
 
 	em28xx_info("Binding audio extension\n");
 
+	kref_get(&dev->ref);
+
 	printk(KERN_INFO "em28xx-audio.c: Copyright (C) 2006 Markus "
 			 "Rechberger\n");
 	printk(KERN_INFO
@@ -967,7 +971,7 @@ static int em28xx_audio_fini(struct em28xx *dev)
 	if (dev == NULL)
 		return 0;
 
-	if (dev->has_alsa_audio != 1) {
+	if (!dev->has_alsa_audio) {
 		/* This device does not support the extension (in this case
 		   the device is expecting the snd-usb-audio module or
 		   doesn't have analog audio support at all) */
@@ -986,6 +990,35 @@ static int em28xx_audio_fini(struct em28xx *dev)
 		dev->adev.sndcard = NULL;
 	}
 
+	kref_put(&dev->ref, em28xx_free_device);
+	return 0;
+}
+
+static int em28xx_audio_suspend(struct em28xx *dev)
+{
+	if (dev == NULL)
+		return 0;
+
+	if (!dev->has_alsa_audio)
+		return 0;
+
+	em28xx_info("Suspending audio extension");
+	em28xx_deinit_isoc_audio(dev);
+	atomic_set(&dev->stream_started, 0);
+	return 0;
+}
+
+static int em28xx_audio_resume(struct em28xx *dev)
+{
+	if (dev == NULL)
+		return 0;
+
+	if (!dev->has_alsa_audio)
+		return 0;
+
+	em28xx_info("Resuming audio extension");
+	/* Nothing to do other than schedule_work() ?? */
+	schedule_work(&dev->wq_trigger);
 	return 0;
 }
 
@@ -994,6 +1027,8 @@ static struct em28xx_ops audio_ops = {
 	.name = "Em28xx Audio Extension",
 	.init = em28xx_audio_init,
 	.fini = em28xx_audio_fini,
+	.suspend = em28xx_audio_suspend,
+	.resume = em28xx_audio_resume,
 };
 
 static int __init em28xx_alsa_register(void)
@@ -1008,7 +1043,7 @@ static void __exit em28xx_alsa_unregister(void)
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Markus Rechberger <mrechberger@gmail.com>");
-MODULE_AUTHOR("Mauro Carvalho Chehab <mchehab@redhat.com>");
+MODULE_AUTHOR("Mauro Carvalho Chehab");
 MODULE_DESCRIPTION(DRIVER_DESC " - audio interface");
 MODULE_VERSION(EM28XX_VERSION);
 
