@@ -25,12 +25,9 @@
 #include <asm/tlbflush.h>
 #include <asm/vdso.h>
 #include <asm/proto.h>
-
-enum {
-	VDSO_DISABLED = 0,
-	VDSO_ENABLED = 1,
-	VDSO_COMPAT = 2,
-};
+#include <asm/fixmap.h>
+#include <asm/hpet.h>
+#include <asm/vvar.h>
 
 #ifdef CONFIG_COMPAT_VDSO
 #define VDSO_DEFAULT	VDSO_COMPAT
@@ -193,7 +190,7 @@ static __init void relocate_vdso(Elf32_Ehdr *ehdr)
 	}
 }
 
-static struct page *vdso32_pages[1];
+static struct page *vdso32_pages[VDSO_PAGES];
 
 #ifdef CONFIG_X86_64
 
@@ -276,29 +273,30 @@ static void map_compat_vdso(int map)
 
 int __init sysenter_setup(void)
 {
-	void *syscall_page = (void *)get_zeroed_page(GFP_ATOMIC);
-	const void *vsyscall;
-	size_t vsyscall_len;
+	void *vdso_page = (void *)get_zeroed_page(GFP_ATOMIC);
+	const void *vdso;
+	size_t vdso_len;
 
-	vdso32_pages[0] = virt_to_page(syscall_page);
+	vdso32_pages[0] = virt_to_page(vdso_page);
 
 #ifdef CONFIG_X86_32
 	gate_vma_init();
 #endif
 
 	if (vdso32_syscall()) {
-		vsyscall = &vdso32_syscall_start;
-		vsyscall_len = &vdso32_syscall_end - &vdso32_syscall_start;
+		vdso = &vdso32_syscall_start;
+		vdso_len = &vdso32_syscall_end - &vdso32_syscall_start;
 	} else if (vdso32_sysenter()){
-		vsyscall = &vdso32_sysenter_start;
-		vsyscall_len = &vdso32_sysenter_end - &vdso32_sysenter_start;
+		vdso = &vdso32_sysenter_start;
+		vdso_len = &vdso32_sysenter_end - &vdso32_sysenter_start;
 	} else {
-		vsyscall = &vdso32_int80_start;
-		vsyscall_len = &vdso32_int80_end - &vdso32_int80_start;
+		vdso = &vdso32_int80_start;
+		vdso_len = &vdso32_int80_end - &vdso32_int80_start;
 	}
 
-	memcpy(syscall_page, vsyscall, vsyscall_len);
-	relocate_vdso(syscall_page);
+	memcpy(vdso_page, vdso, vdso_len);
+	patch_vdso32(vdso_page, vdso_len);
+	relocate_vdso(vdso_page);
 
 	return 0;
 }
@@ -310,6 +308,7 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	unsigned long addr;
 	int ret = 0;
 	bool compat;
+	struct vm_area_struct *vma;
 
 #ifdef CONFIG_X86_X32_ABI
 	if (test_thread_flag(TIF_X32))
@@ -330,11 +329,13 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 	if (compat)
 		addr = VDSO_HIGH_BASE;
 	else {
-		addr = get_unmapped_area(NULL, 0, PAGE_SIZE, 0, 0);
+		addr = get_unmapped_area(NULL, 0, VDSO_OFFSET(VDSO_PAGES), 0, 0);
 		if (IS_ERR_VALUE(addr)) {
 			ret = addr;
 			goto up_fail;
 		}
+
+		addr += VDSO_OFFSET(VDSO_PREV_PAGES);
 	}
 
 	current->mm->context.vdso = (void *)addr;
@@ -343,13 +344,48 @@ int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp)
 		/*
 		 * MAYWRITE to allow gdb to COW and set breakpoints
 		 */
-		ret = install_special_mapping(mm, addr, PAGE_SIZE,
-					      VM_READ|VM_EXEC|
-					      VM_MAYREAD|VM_MAYWRITE|VM_MAYEXEC,
-					      vdso32_pages);
+		ret = install_special_mapping(mm,
+				addr,
+				VDSO_OFFSET(VDSO_PAGES - VDSO_PREV_PAGES),
+				VM_READ|VM_EXEC|
+				VM_MAYREAD|VM_MAYWRITE|VM_MAYEXEC,
+				vdso32_pages);
 
 		if (ret)
 			goto up_fail;
+
+		vma = _install_special_mapping(mm,
+				addr -  VDSO_OFFSET(VDSO_PREV_PAGES),
+				VDSO_OFFSET(VDSO_PREV_PAGES),
+				VM_READ,
+				NULL);
+
+		if (IS_ERR(vma)) {
+			ret = PTR_ERR(vma);
+			goto up_fail;
+		}
+
+		ret = remap_pfn_range(vma,
+			addr - VDSO_OFFSET(VDSO_VVAR_PAGE),
+			__pa_symbol(&__vvar_page) >> PAGE_SHIFT,
+			PAGE_SIZE,
+			PAGE_READONLY);
+
+		if (ret)
+			goto up_fail;
+
+#ifdef CONFIG_HPET_TIMER
+		if (hpet_address) {
+			ret = io_remap_pfn_range(vma,
+				addr - VDSO_OFFSET(VDSO_HPET_PAGE),
+				hpet_address >> PAGE_SHIFT,
+				PAGE_SIZE,
+				pgprot_noncached(PAGE_READONLY));
+
+			if (ret)
+				goto up_fail;
+		}
+#endif
 	}
 
 	current_thread_info()->sysenter_return =
