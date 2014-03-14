@@ -26,6 +26,7 @@ config ARM64
 	select GENERIC_TIME_VSYSCALL
 	select HARDIRQS_SW_RESEND
 	select HAVE_ARCH_JUMP_LABEL
+	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_DEBUG_BUGVERBOSE
 	select HAVE_DEBUG_KMEMLEAK
@@ -38,6 +39,8 @@ config ARM64
 	select HAVE_MEMBLOCK
 	select HAVE_PATA_PLATFORM
 	select HAVE_PERF_EVENTS
+	select HAVE_PERF_REGS
+	select HAVE_PERF_USER_STACK_DUMP
 	select IRQ_DOMAIN
 	select MODULES_USE_ELF_RELA
 	select NO_BOOTMEM
@@ -85,7 +88,7 @@ config GENERIC_CSUM
 config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
-config ZONE_DMA32
+config ZONE_DMA
 	def_bool y
 
 config ARCH_DMA_ADDR_T_64BIT
@@ -163,6 +166,22 @@ config SMP
 	  here.
 
 	  If you don't know what to do here, say N.
+
+config SCHED_MC
+	bool "Multi-core scheduler support"
+	depends on SMP
+	help
+	  Multi-core scheduler support improves the CPU scheduler's decision
+	  making when dealing with multi-core CPU chips at a cost of slightly
+	  increased overhead in some places. If unsure say N here.
+
+config SCHED_SMT
+	bool "SMT scheduler support"
+	depends on SMP
+	help
+	  Improves the CPU scheduler's decision making when dealing with
+	  MultiThreading at a cost of slightly increased overhead in some
+	  places. If unsure say N here.
 
 config NR_CPUS
 	int "Maximum number of CPUs (2-32)"
@@ -300,6 +319,14 @@ endmenu
 menu "CPU Power Management"
 
 source "drivers/cpuidle/Kconfig"
+
+endmenu
+
+menu "Power management options"
+
+source "kernel/power/Kconfig"
+
+source "drivers/cpufreq/Kconfig"
 
 endmenu
 
