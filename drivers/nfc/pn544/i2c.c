@@ -909,20 +909,21 @@ static int pn544_hci_i2c_probe(struct i2c_client *client,
 
 	pn544_hci_i2c_platform_init(phy);
 
-	r = request_threaded_irq(client->irq, NULL, pn544_hci_i2c_irq_thread_fn,
-				 IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-				 PN544_HCI_I2C_DRIVER_NAME, phy);
-	if (r < 0) {
-		nfc_err(&client->dev, "Unable to register IRQ handler\n");
-		goto err_rti;
-	}
-
 	r = pn544_hci_probe(phy, &i2c_phy_ops, LLC_SHDLC_NAME,
 			    PN544_I2C_FRAME_HEADROOM, PN544_I2C_FRAME_TAILROOM,
 			    PN544_HCI_I2C_LLC_MAX_PAYLOAD,
 			    pn544_hci_i2c_fw_download, &phy->hdev);
 	if (r < 0)
+		goto err_rti;
+
+
+	r = request_threaded_irq(client->irq, NULL, pn544_hci_i2c_irq_thread_fn,
+				 IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				 PN544_HCI_I2C_DRIVER_NAME, phy);
+	if (r < 0) {
+		nfc_err(&client->dev, "Unable to register IRQ handler\n");
 		goto err_hci;
+	}
 
 	return 0;
 
