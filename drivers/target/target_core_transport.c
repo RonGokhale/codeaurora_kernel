@@ -1365,6 +1365,13 @@ int target_submit_cmd_map_sgls(struct se_cmd *se_cmd, struct se_session *se_sess
 		target_put_sess_cmd(se_sess, se_cmd);
 		return 0;
 	}
+
+	rc = target_setup_cmd_from_cdb(se_cmd, cdb);
+	if (rc != 0) {
+		transport_generic_request_failure(se_cmd, rc);
+		return 0;
+	}
+
 	/*
 	 * Save pointers for SGLs containing protection information,
 	 * if present.
@@ -1374,11 +1381,19 @@ int target_submit_cmd_map_sgls(struct se_cmd *se_cmd, struct se_session *se_sess
 		se_cmd->t_prot_nents = sgl_prot_count;
 	}
 
-	rc = target_setup_cmd_from_cdb(se_cmd, cdb);
-	if (rc != 0) {
-		transport_generic_request_failure(se_cmd, rc);
+	/*
+	 * Fail if protection operation requiers protection
+	 * information buffers but None are provided!
+	 */
+	if ((!se_cmd->t_prot_sg || !se_cmd->t_prot_nents) &&
+	    (se_cmd->prot_op != TARGET_PROT_NORMAL)) {
+		pr_err("ERROR: protection information was requested but "
+		       "protection buffers weren't provided.\n");
+		transport_generic_request_failure(se_cmd,
+						  TCM_INVALID_CDB_FIELD);
 		return 0;
 	}
+
 	/*
 	 * When a non zero sgl_count has been passed perform SGL passthrough
 	 * mapping for pre-allocated fabric memory instead of having target
@@ -2039,6 +2054,10 @@ static inline void transport_free_pages(struct se_cmd *cmd)
 	transport_free_sgl(cmd->t_bidi_data_sg, cmd->t_bidi_data_nents);
 	cmd->t_bidi_data_sg = NULL;
 	cmd->t_bidi_data_nents = 0;
+
+	transport_free_sgl(cmd->t_prot_sg, cmd->t_prot_nents);
+	cmd->t_prot_sg = NULL;
+	cmd->t_prot_nents = 0;
 }
 
 /**
@@ -2198,6 +2217,14 @@ transport_generic_new_cmd(struct se_cmd *cmd)
 			ret = target_alloc_sgl(&cmd->t_bidi_data_sg,
 					       &cmd->t_bidi_data_nents,
 					       bidi_length, zero_flag);
+			if (ret < 0)
+				return TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
+		}
+
+		if (cmd->prot_op != TARGET_PROT_NORMAL) {
+			ret = target_alloc_sgl(&cmd->t_prot_sg,
+					       &cmd->t_prot_nents,
+					       cmd->prot_length, true);
 			if (ret < 0)
 				return TCM_LOGICAL_UNIT_COMMUNICATION_FAILURE;
 		}
