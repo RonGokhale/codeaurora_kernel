@@ -695,6 +695,13 @@ config INTEL_IPS
 	  along with the CPU frequency and i915 drivers, provides that
 	  functionality.  If in doubt, say Y here; it will only load on
 	  supported platforms.
+config ACPI_CHROMEOS
+	bool "ChromeOS specific ACPI extensions"
+	depends on ACPI
+	select CHROMEOS
+	---help---
+	  This driver provides the firmware interface for the services exported
+	  through the CHROMEOS interfaces when using ChromeOS ACPI firmware.
 
 config IBM_RTL
 	tristate "Device driver to enable PRTL support"
@@ -826,5 +833,7 @@ config INTEL_BAYTRAIL_MBI
 	  Needed on Baytrail platforms for access to the IOSF Sideband Mailbox
 	  Interface. This is a requirement for systems that need to configure
 	  the PUNIT for power management features such as RAPL.
+
+source "drivers/platform/x86/intel_dptf/Kconfig"
 
 endif # X86_PLATFORM_DEVICES
