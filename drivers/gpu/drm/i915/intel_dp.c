@@ -537,6 +537,7 @@ intel_dp_aux_native_write(struct intel_dp *intel_dp,
 	uint8_t	msg[20];
 	int msg_bytes;
 	uint8_t	ack;
+	int try;
 
 	if (WARN_ON(send_bytes > 16))
 		return -E2BIG;
@@ -548,7 +549,7 @@ intel_dp_aux_native_write(struct intel_dp *intel_dp,
 	msg[3] = send_bytes - 1;
 	memcpy(&msg[4], send, send_bytes);
 	msg_bytes = send_bytes + 4;
-	for (;;) {
+	for (try = 0; try < 100; try++) {
 		ret = intel_dp_aux_ch(intel_dp, msg, msg_bytes, &ack, 1);
 		if (ret < 0)
 			return ret;
@@ -559,6 +560,10 @@ intel_dp_aux_native_write(struct intel_dp *intel_dp,
 			udelay(100);
 		else
 			return -EIO;
+	}
+	if (try == 100) {
+		DRM_ERROR("too many retries, giving up\n");
+		return -EREMOTEIO;
 	}
 	return send_bytes;
 }
@@ -582,6 +587,7 @@ intel_dp_aux_native_read(struct intel_dp *intel_dp,
 	int reply_bytes;
 	uint8_t ack;
 	int ret;
+	int try;
 
 	if (WARN_ON(recv_bytes > 19))
 		return -E2BIG;
@@ -595,7 +601,7 @@ intel_dp_aux_native_read(struct intel_dp *intel_dp,
 	msg_bytes = 4;
 	reply_bytes = recv_bytes + 1;
 
-	for (;;) {
+	for (try = 0; try < 100; try++) {
 		ret = intel_dp_aux_ch(intel_dp, msg, msg_bytes,
 				      reply, reply_bytes);
 		if (ret == 0)
@@ -612,6 +618,9 @@ intel_dp_aux_native_read(struct intel_dp *intel_dp,
 		else
 			return -EIO;
 	}
+
+	DRM_ERROR("too many retries, giving up\n");
+	return -EREMOTEIO;
 }
 
 static int
@@ -1267,6 +1276,10 @@ void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 		return;
 
 	DRM_DEBUG_KMS("\n");
+	pp = ironlake_get_pp_control(intel_dp);
+	if (pp & EDP_BLC_ENABLE)
+		return;
+
 	/*
 	 * If we enable the backlight right away following a panel power
 	 * on, we may see slight flicker as the panel syncs with the eDP
@@ -1274,7 +1287,6 @@ void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 	 * allowing it to appear.
 	 */
 	msleep(intel_dp->backlight_on_delay);
-	pp = ironlake_get_pp_control(intel_dp);
 	pp |= EDP_BLC_ENABLE;
 
 	pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
@@ -1299,6 +1311,8 @@ void ironlake_edp_backlight_off(struct intel_dp *intel_dp)
 
 	DRM_DEBUG_KMS("\n");
 	pp = ironlake_get_pp_control(intel_dp);
+	if (!(pp & EDP_BLC_ENABLE))
+		return;
 	pp &= ~EDP_BLC_ENABLE;
 
 	pp_ctrl_reg = _pp_ctrl_reg(intel_dp);
@@ -1360,13 +1374,9 @@ static void ironlake_edp_pll_off(struct intel_dp *intel_dp)
 }
 
 /* If the sink supports it, try to set the power state appropriately */
-void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
+static void intel_dp_do_sink_dpms(struct intel_dp *intel_dp, int mode)
 {
 	int ret, i;
-
-	/* Should have a valid DPCD by this point */
-	if (intel_dp->dpcd[DP_DPCD_REV] < 0x11)
-		return;
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		ret = intel_dp_aux_native_write_1(intel_dp, DP_SET_POWER,
@@ -1387,6 +1397,16 @@ void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
 			msleep(1);
 		}
 	}
+}
+
+/* If we have a valid DPCD, set the power state. */
+void intel_dp_sink_dpms(struct intel_dp *intel_dp, int mode)
+{
+	/* Should have a valid DPCD by this point */
+	if (intel_dp->dpcd[DP_DPCD_REV] < 0x11)
+		return;
+
+	intel_dp_do_sink_dpms(intel_dp, mode);
 }
 
 static bool intel_dp_get_hw_state(struct intel_encoder *encoder,
@@ -3100,6 +3120,12 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 
 	intel_dp->has_audio = false;
 
+	/* Ensure the sink is awake for DPCD/EDID reads. */
+	if (!is_edp(intel_dp) && connector->dpms != DRM_MODE_DPMS_ON) {
+		/* Bypass DPCD check, since we obtain it during detection. */
+		intel_dp_do_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
+	}
+
 	if (HAS_PCH_SPLIT(dev))
 		status = ironlake_dp_detect(intel_dp);
 	else
@@ -3125,6 +3151,10 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 	status = connector_status_connected;
 
 out:
+	/* Restore the sink state */
+	if (!is_edp(intel_dp) && connector->dpms != DRM_MODE_DPMS_ON)
+		intel_dp_do_sink_dpms(intel_dp, connector->dpms);
+
 	intel_runtime_pm_put(dev_priv);
 	return status;
 }

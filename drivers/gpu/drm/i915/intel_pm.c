@@ -203,8 +203,6 @@ static void sandybridge_blit_fbc_update(struct drm_device *dev)
 	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_MEDIA);
 
 	blt_ecoskpd = I915_READ(GEN6_BLITTER_ECOSKPD);
-	blt_ecoskpd |= GEN6_BLITTER_FBC_NOTIFY <<
-		GEN6_BLITTER_LOCK_SHIFT;
 	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
 	blt_ecoskpd |= GEN6_BLITTER_FBC_NOTIFY;
 	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
@@ -441,7 +439,7 @@ static bool set_no_fbc_reason(struct drm_i915_private *dev_priv,
  *   - no pixel mulitply/line duplication
  *   - no alpha buffer discard
  *   - no dual wide
- *   - framebuffer <= max_hdisplay in width, max_vdisplay in height
+ *   - framebuffer <= 2048 in width, 1536 in height
  *
  * We can't assume that any compression will take place (worst case),
  * so the compressed buffer has to be the same size as the uncompressed
@@ -459,7 +457,6 @@ void intel_update_fbc(struct drm_device *dev)
 	struct intel_framebuffer *intel_fb;
 	struct drm_i915_gem_object *obj;
 	const struct drm_display_mode *adjusted_mode;
-	unsigned int max_width, max_height;
 
 	if (!HAS_FBC(dev)) {
 		set_no_fbc_reason(dev_priv, FBC_UNSUPPORTED);
@@ -524,15 +521,8 @@ void intel_update_fbc(struct drm_device *dev)
 		goto out_disable;
 	}
 
-	if (IS_G4X(dev) || INTEL_INFO(dev)->gen >= 5) {
-		max_width = 4096;
-		max_height = 2048;
-	} else {
-		max_width = 2048;
-		max_height = 1536;
-	}
-	if (intel_crtc->config.pipe_src_w > max_width ||
-	    intel_crtc->config.pipe_src_h > max_height) {
+	if ((intel_crtc->config.pipe_src_w > 2048) ||
+	    (intel_crtc->config.pipe_src_h > 1536)) {
 		if (set_no_fbc_reason(dev_priv, FBC_MODE_TOO_LARGE))
 			DRM_DEBUG_KMS("mode too large for compression, disabling\n");
 		goto out_disable;
@@ -3317,7 +3307,7 @@ static void gen6_enable_rps(struct drm_device *dev)
 
 	I915_WRITE(GEN6_RC_SLEEP, 0);
 	I915_WRITE(GEN6_RC1e_THRESHOLD, 1000);
-	if (IS_IVYBRIDGE(dev))
+	if (INTEL_INFO(dev)->gen <= 6 || IS_IVYBRIDGE(dev))
 		I915_WRITE(GEN6_RC6_THRESHOLD, 125000);
 	else
 		I915_WRITE(GEN6_RC6_THRESHOLD, 50000);
