@@ -599,8 +599,6 @@ int radio_hci_register_dev(struct radio_hci_dev *hdev)
 	skb_queue_head_init(&hdev->cmd_q);
 	skb_queue_head_init(&hdev->raw_q);
 
-	if (!radio)
-		FMDERR(":radio is null");
 
 	radio->fm_hdev = hdev;
 
@@ -5199,6 +5197,10 @@ static int __devexit iris_remove(struct platform_device *pdev)
 	int i;
 	struct iris_device *radio = platform_get_drvdata(pdev);
 
+	if (unlikely(radio == NULL)) {
+		FMDERR(":radio is null");
+		return -EINVAL;
+	}
 	video_unregister_device(radio->videodev);
 
 	for (i = 0; i < IRIS_BUF_MAX; i++)
