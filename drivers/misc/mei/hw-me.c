@@ -240,11 +240,11 @@ static int mei_me_hw_ready_wait(struct mei_device *dev)
 	mutex_unlock(&dev->device_lock);
 	err = wait_event_interruptible_timeout(dev->wait_hw_ready,
 			dev->recvd_hw_ready,
-			mei_secs_to_jiffies(MEI_INTEROP_TIMEOUT));
+			mei_secs_to_jiffies(MEI_HW_READY_TIMEOUT));
 	mutex_lock(&dev->device_lock);
 	if (!err && !dev->recvd_hw_ready) {
 		if (!err)
-			err = -ETIMEDOUT;
+			err = -ETIME;
 		dev_err(&dev->pdev->dev,
 			"wait hw ready failed. status = %d\n", err);
 		return err;
@@ -303,7 +303,7 @@ static bool mei_me_hbuf_is_empty(struct mei_device *dev)
  *
  * @dev: the device structure
  *
- * returns -1(ESLOTS_OVERFLOW) if overflow, otherwise empty slots count
+ * returns -EOVERFLOW if overflow, otherwise empty slots count
  */
 static int mei_me_hbuf_empty_slots(struct mei_device *dev)
 {
@@ -326,7 +326,7 @@ static size_t mei_me_hbuf_max_len(const struct mei_device *dev)
 
 
 /**
- * mei_write_message - writes a message to mei device.
+ * mei_me_write_message - writes a message to mei device.
  *
  * @dev: the device structure
  * @header: mei HECI header of message
@@ -354,7 +354,7 @@ static int mei_me_write_message(struct mei_device *dev,
 
 	dw_cnt = mei_data2slots(length);
 	if (empty_slots < 0 || dw_cnt > empty_slots)
-		return -EIO;
+		return -EMSGSIZE;
 
 	mei_me_reg_write(hw, H_CB_WW, *((u32 *) header));
 
@@ -381,7 +381,7 @@ static int mei_me_write_message(struct mei_device *dev,
  *
  * @dev: the device structure
  *
- * returns -1(ESLOTS_OVERFLOW) if overflow, otherwise filled slots count
+ * returns -EOVERFLOW if overflow, otherwise filled slots count
  */
 static int mei_me_count_full_read_slots(struct mei_device *dev)
 {
@@ -505,9 +505,6 @@ irqreturn_t mei_me_irq_thread_handler(int irq, void *dev_id)
 	/* check slots available for reading */
 	slots = mei_count_full_read_slots(dev);
 	while (slots > 0) {
-		/* we have urgent data to send so break the read */
-		if (dev->wr_ext_msg.hdr.length)
-			break;
 		dev_dbg(&dev->pdev->dev, "slots to read = %08x\n", slots);
 		rets = mei_irq_read_handler(dev, &complete_list, &slots);
 		if (rets && dev->dev_state != MEI_DEV_RESETTING) {
@@ -515,6 +512,8 @@ irqreturn_t mei_me_irq_thread_handler(int irq, void *dev_id)
 			goto end;
 		}
 	}
+
+	dev->hbuf_is_ready = mei_hbuf_is_ready(dev);
 
 	rets = mei_irq_write_handler(dev, &complete_list);
 
