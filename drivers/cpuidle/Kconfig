@@ -40,6 +40,11 @@ depends on PPC
 source "drivers/cpuidle/Kconfig.powerpc"
 endmenu
 
+config KVM_CPUIDLE
+	bool "CPU Idle Driver for KVM guests"
+	depends on KVM_GUEST
+	help
+	  Select this to enable cpuidle on KVM guests.
 endif
 
 config ARCH_NEEDS_CPU_IDLE_COUPLED
