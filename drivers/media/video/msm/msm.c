@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2435,6 +2435,16 @@ static long msm_ioctl_server(struct file *file, void *fh,
 			return rc;
 		}
 		mutex_lock(&g_server_dev.server_queue_lock);
+		if (u_isp_event.isp_data.ctrl.queue_idx < 0 ||
+			u_isp_event.isp_data.ctrl.queue_idx >=
+			MAX_NUM_ACTIVE_CAMERA) {
+			pr_err("%s: Invalid index %d\n", __func__,
+				u_isp_event.isp_data.ctrl.queue_idx);
+			mutex_unlock(&g_server_dev.server_queue_lock);
+			rc = -EINVAL;
+			return rc;
+		}
+
 		if (!g_server_dev.server_queue
 			[u_isp_event.isp_data.ctrl.queue_idx].queue_active) {
 			pr_err("%s: Invalid queue\n", __func__);
