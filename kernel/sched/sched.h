@@ -1225,7 +1225,7 @@ static inline void inc_nr_running(struct rq *rq)
 		if (tick_nohz_full_cpu(rq->cpu)) {
 			/* Order rq->nr_running write against the IPI */
 			smp_wmb();
-			smp_send_reschedule(rq->cpu);
+			tick_nohz_full_kick_cpu(rq->cpu);
 		}
        }
 #endif
