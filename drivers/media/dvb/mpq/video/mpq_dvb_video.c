@@ -332,8 +332,7 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 					&& (pkt_hdr.raw_data_len >= 8))
 					mpq_mpeg2_getframerate(
 						dev_inst,
-						(u32)(streambuff->raw_data.data)
-						+ pkt_hdr.raw_data_offset);
+						(u32)(input_vaddr + size));
 				mpq_streambuffer_pkt_dispose(
 					streambuff, indx, 0);
 				size +=	pkt_hdr.raw_data_len;
