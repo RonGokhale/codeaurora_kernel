@@ -2,6 +2,9 @@
 #define _ASM_X86_VDSO_H
 
 #if defined CONFIG_X86_32 || defined CONFIG_COMPAT
+
+#include <asm/vdso32.h>
+
 extern const char VDSO32_PRELINK[];
 
 /*
@@ -11,8 +14,7 @@ extern const char VDSO32_PRELINK[];
 #define VDSO32_SYMBOL(base, name)					\
 ({									\
 	extern const char VDSO32_##name[];				\
-	(void __user *)(VDSO32_##name - VDSO32_PRELINK +		\
-			(unsigned long)(base));				\
+	(void __user *)(VDSO32_##name + (unsigned long)(base));		\
 })
 #endif
 
@@ -30,5 +32,7 @@ extern void __user __kernel_rt_sigreturn;
 extern const char vdso32_int80_start, vdso32_int80_end;
 extern const char vdso32_syscall_start, vdso32_syscall_end;
 extern const char vdso32_sysenter_start, vdso32_sysenter_end;
+
+void __init patch_vdso32(void *vdso, size_t len);
 
 #endif /* _ASM_X86_VDSO_H */
