@@ -722,9 +722,9 @@ inode_lru_isolate(struct list_head *item, spinlock_t *lru_lock, void *arg)
 			unsigned long reap;
 			reap = invalidate_mapping_pages(&inode->i_data, 0, -1);
 			if (current_is_kswapd())
-				__count_vm_events(KSWAPD_INODESTEAL, reap);
+				count_vm_events(KSWAPD_INODESTEAL, reap);
 			else
-				__count_vm_events(PGINODESTEAL, reap);
+				count_vm_events(PGINODESTEAL, reap);
 			if (current->reclaim_state)
 				current->reclaim_state->reclaimed_slab += reap;
 		}
