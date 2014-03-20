@@ -130,6 +130,9 @@
 #define ADV7180_REG_VPP_SLAVE_ADDR	0xFD
 #define ADV7180_REG_CSI_SLAVE_ADDR	0xFE
 
+#define ADV7180_REG_FLCONTROL 0x40e0
+#define ADV7180_FLCONTROL_FL_ENABLE 0x1
+
 #define ADV7180_CSI_REG_PWRDN	0x00
 #define ADV7180_CSI_PWRDN	0x80
 
@@ -174,6 +177,7 @@
 #define V4L2_CID_ADV_FREE_RUN_COLOR	(V4L2_CID_DV_CLASS_BASE + 0x1002)
 #define V4L2_CID_ADV_FREE_RUN_MODE	(V4L2_CID_DV_CLASS_BASE + 0x1003)
 #define V4L2_CID_ADV_FREE_RUN_PATTERN	(V4L2_CID_DV_CLASS_BASE + 0x1004)
+#define V4L2_CID_ADV_FAST_SWITCH	(V4L2_CID_DV_CLASS_BASE + 0x1010)
 
 #define ADV7180_INPUT_DISABLED (~0x00)
 
@@ -565,6 +569,18 @@ static int adv7180_s_ctrl(struct v4l2_ctrl *ctrl)
 		adv7180_write(state, ADV7180_REG_DEF_VAL_C, (cr << 4) | cb);
 		break;	
 	}
+	case V4L2_CID_ADV_FAST_SWITCH:
+		if (ctrl->val) {
+			/* ADI required write */
+			adv7180_write(state, 0x80d9, 0x44);
+			adv7180_write(state, ADV7180_REG_FLCONTROL,
+				ADV7180_FLCONTROL_FL_ENABLE);
+		} else {
+			/* ADI required write */
+			adv7180_write(state, 0x80d9, 0xc4);
+			adv7180_write(state, ADV7180_REG_FLCONTROL, 0x00);
+		}
+		break;
 	default:
 		ret = -EINVAL;
 	}
@@ -624,6 +640,16 @@ static const struct v4l2_ctrl_config adv7180_ctrl_free_run_pattern = {
 	.qmenu = adv7180_free_run_pattern_strings,
 };
 
+static const struct v4l2_ctrl_config adv7180_ctrl_fast_switch = {
+	.ops = &adv7180_ctrl_ops,
+	.id = V4L2_CID_ADV_FAST_SWITCH,
+	.name = "Fast switching",
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.min = 0,
+	.max = 1,
+	.step = 1,
+};
+
 static int adv7180_init_controls(struct adv7180_state *state)
 {
 	v4l2_ctrl_handler_init(&state->ctrl_hdl, 4);
@@ -646,6 +672,7 @@ static int adv7180_init_controls(struct adv7180_state *state)
 		NULL);
 	v4l2_ctrl_new_custom(&state->ctrl_hdl, &adv7180_ctrl_free_run_pattern,
 		NULL);
+	v4l2_ctrl_new_custom(&state->ctrl_hdl, &adv7180_ctrl_fast_switch, NULL);
 
 	state->sd.ctrl_handler = &state->ctrl_hdl;
 	if (state->ctrl_hdl.error) {
