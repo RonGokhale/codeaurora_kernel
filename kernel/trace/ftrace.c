@@ -237,11 +237,6 @@ static int control_ops_alloc(struct ftrace_ops *ops)
 	return 0;
 }
 
-static void control_ops_free(struct ftrace_ops *ops)
-{
-	free_percpu(ops->disabled);
-}
-
 static void update_global_ops(void)
 {
 	ftrace_func_t func = ftrace_global_list_func;
@@ -1560,7 +1555,7 @@ unsigned long ftrace_location(unsigned long ip)
  * the function tracer. It checks the ftrace internal tables to
  * determine if the address belongs or not.
  */
-int ftrace_text_reserved(void *start, void *end)
+int ftrace_text_reserved(const void *start, const void *end)
 {
 	unsigned long ret;
 
@@ -2099,6 +2094,11 @@ static void ftrace_run_update_code(int command)
 static ftrace_func_t saved_ftrace_func;
 static int ftrace_start_up;
 static int global_start_up;
+
+static void control_ops_free(struct ftrace_ops *ops)
+{
+	free_percpu(ops->disabled);
+}
 
 static void ftrace_startup_enable(int command)
 {
