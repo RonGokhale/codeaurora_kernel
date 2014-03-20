@@ -2085,7 +2085,7 @@ static void intel_print_wm_latency(struct drm_device *dev,
 	}
 }
 
-static void intel_setup_wm_latency(struct drm_device *dev)
+static void ilk_setup_wm_latency(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
@@ -5345,8 +5345,6 @@ static void hsw_set_power_well(struct drm_i915_private *dev_priv,
 	bool is_enabled, enable_requested;
 	uint32_t tmp;
 
-	WARN_ON(dev_priv->pc8.enabled);
-
 	tmp = I915_READ(HSW_PWR_WELL_DRIVER);
 	is_enabled = tmp & HSW_PWR_WELL_STATE_ENABLED;
 	enable_requested = tmp & HSW_PWR_WELL_ENABLE_REQUEST;
@@ -5391,7 +5389,6 @@ static void hsw_power_well_sync_hw(struct drm_i915_private *dev_priv,
 static void hsw_power_well_enable(struct drm_i915_private *dev_priv,
 				  struct i915_power_well *power_well)
 {
-	hsw_disable_package_c8(dev_priv);
 	hsw_set_power_well(dev_priv, power_well, true);
 }
 
@@ -5399,7 +5396,6 @@ static void hsw_power_well_disable(struct drm_i915_private *dev_priv,
 				   struct i915_power_well *power_well)
 {
 	hsw_set_power_well(dev_priv, power_well, false);
-	hsw_enable_package_c8(dev_priv);
 }
 
 static void i9xx_always_on_power_well_noop(struct drm_i915_private *dev_priv,
@@ -5577,6 +5573,8 @@ void intel_display_power_get(struct drm_i915_private *dev_priv,
 	struct i915_power_well *power_well;
 	int i;
 
+	intel_runtime_pm_get(dev_priv);
+
 	power_domains = &dev_priv->power_domains;
 
 	mutex_lock(&power_domains->lock);
@@ -5621,6 +5619,8 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	}
 
 	mutex_unlock(&power_domains->lock);
+
+	intel_runtime_pm_put(dev_priv);
 }
 
 static struct i915_power_domains *hsw_pwr;
@@ -5884,15 +5884,14 @@ void intel_power_domains_init_hw(struct drm_i915_private *dev_priv)
 	intel_power_domains_resume(dev_priv);
 }
 
-/* Disables PC8 so we can use the GMBUS and DP AUX interrupts. */
 void intel_aux_display_runtime_get(struct drm_i915_private *dev_priv)
 {
-	hsw_disable_package_c8(dev_priv);
+	intel_runtime_pm_get(dev_priv);
 }
 
 void intel_aux_display_runtime_put(struct drm_i915_private *dev_priv)
 {
-	hsw_enable_package_c8(dev_priv);
+	intel_runtime_pm_put(dev_priv);
 }
 
 void intel_runtime_pm_get(struct drm_i915_private *dev_priv)
@@ -5924,8 +5923,6 @@ void intel_init_runtime_pm(struct drm_i915_private *dev_priv)
 	struct drm_device *dev = dev_priv->dev;
 	struct device *device = &dev->pdev->dev;
 
-	dev_priv->pm.suspended = false;
-
 	if (!HAS_RUNTIME_PM(dev))
 		return;
 
@@ -5934,6 +5931,8 @@ void intel_init_runtime_pm(struct drm_i915_private *dev_priv)
 	pm_runtime_set_autosuspend_delay(device, 10000); /* 10s */
 	pm_runtime_mark_last_busy(device);
 	pm_runtime_use_autosuspend(device);
+
+	pm_runtime_put_autosuspend(device);
 }
 
 void intel_fini_runtime_pm(struct drm_i915_private *dev_priv)
@@ -5985,7 +5984,7 @@ void intel_init_pm(struct drm_device *dev)
 
 	/* For FIFO watermark updates */
 	if (HAS_PCH_SPLIT(dev)) {
-		intel_setup_wm_latency(dev);
+		ilk_setup_wm_latency(dev);
 
 		if ((IS_GEN5(dev) && dev_priv->wm.pri_latency[1] &&
 		     dev_priv->wm.spr_latency[1] && dev_priv->wm.cur_latency[1]) ||
@@ -6156,12 +6155,9 @@ void intel_pm_setup(struct drm_device *dev)
 
 	mutex_init(&dev_priv->rps.hw_lock);
 
-	mutex_init(&dev_priv->pc8.lock);
-	dev_priv->pc8.requirements_met = false;
-	dev_priv->pc8.irqs_disabled = false;
-	dev_priv->pc8.enabled = false;
-	dev_priv->pc8.disable_count = 1; /* requirements_met */
-	INIT_DELAYED_WORK(&dev_priv->pc8.enable_work, hsw_enable_pc8_work);
 	INIT_DELAYED_WORK(&dev_priv->rps.delayed_resume_work,
 			  intel_gen6_powersave_work);
+
+	dev_priv->pm.suspended = false;
+	dev_priv->pm.irqs_disabled = false;
 }

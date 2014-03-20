@@ -2012,15 +2012,9 @@ static int i915_pc8_status(struct seq_file *m, void *unused)
 		return 0;
 	}
 
-	mutex_lock(&dev_priv->pc8.lock);
-	seq_printf(m, "Requirements met: %s\n",
-		   yesno(dev_priv->pc8.requirements_met));
 	seq_printf(m, "GPU idle: %s\n", yesno(!dev_priv->mm.busy));
-	seq_printf(m, "Disable count: %d\n", dev_priv->pc8.disable_count);
 	seq_printf(m, "IRQs disabled: %s\n",
-		   yesno(dev_priv->pc8.irqs_disabled));
-	seq_printf(m, "Enabled: %s\n", yesno(dev_priv->pc8.enabled));
-	mutex_unlock(&dev_priv->pc8.lock);
+		   yesno(dev_priv->pm.irqs_disabled));
 
 	return 0;
 }
@@ -2248,24 +2242,67 @@ static void intel_connector_info(struct seq_file *m,
 		intel_seq_print_mode(m, 2, mode);
 }
 
+static bool cursor_active(struct drm_device *dev, int pipe)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 state;
+
+	if (IS_845G(dev) || IS_I865G(dev))
+		state = I915_READ(_CURACNTR) & CURSOR_ENABLE;
+	else if (INTEL_INFO(dev)->gen <= 6 || IS_VALLEYVIEW(dev))
+		state = I915_READ(CURCNTR(pipe)) & CURSOR_MODE;
+	else
+		state = I915_READ(CURCNTR_IVB(pipe)) & CURSOR_MODE;
+
+	return state;
+}
+
+static bool cursor_position(struct drm_device *dev, int pipe, int *x, int *y)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 pos;
+
+	if (IS_IVYBRIDGE(dev) || IS_HASWELL(dev) || IS_BROADWELL(dev))
+		pos = I915_READ(CURPOS_IVB(pipe));
+	else
+		pos = I915_READ(CURPOS(pipe));
+
+	*x = (pos >> CURSOR_X_SHIFT) & CURSOR_POS_MASK;
+	if (pos & (CURSOR_POS_SIGN << CURSOR_X_SHIFT))
+		*x = -*x;
+
+	*y = (pos >> CURSOR_Y_SHIFT) & CURSOR_POS_MASK;
+	if (pos & (CURSOR_POS_SIGN << CURSOR_Y_SHIFT))
+		*y = -*y;
+
+	return cursor_active(dev, pipe);
+}
+
 static int i915_display_info(struct seq_file *m, void *unused)
 {
 	struct drm_info_node *node = (struct drm_info_node *) m->private;
 	struct drm_device *dev = node->minor->dev;
-	struct drm_crtc *crtc;
+	struct intel_crtc *crtc;
 	struct drm_connector *connector;
 
 	drm_modeset_lock_all(dev);
 	seq_printf(m, "CRTC info\n");
 	seq_printf(m, "---------\n");
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, base.head) {
+		bool active;
+		int x, y;
 
 		seq_printf(m, "CRTC %d: pipe: %c, active: %s\n",
-			   crtc->base.id, pipe_name(intel_crtc->pipe),
-			   intel_crtc->active ? "yes" : "no");
-		if (intel_crtc->active)
-			intel_crtc_info(m, intel_crtc);
+			   crtc->base.base.id, pipe_name(crtc->pipe),
+			   yesno(crtc->active));
+		if (crtc->active)
+			intel_crtc_info(m, crtc);
+
+		active = cursor_position(dev, crtc->pipe, &x, &y);
+		seq_printf(m, "\tcursor visible? %s, position (%d, %d), addr 0x%08x, active? %s\n",
+			   yesno(crtc->cursor_visible),
+			   x, y, crtc->cursor_addr,
+			   yesno(active));
 	}
 
 	seq_printf(m, "\n");
@@ -2602,8 +2639,6 @@ static int vlv_pipe_crc_ctl_reg(struct drm_device *dev,
 	 */
 	if (need_stable_symbols) {
 		uint32_t tmp = I915_READ(PORT_DFT2_G4X);
-
-		WARN_ON(!IS_G4X(dev));
 
 		tmp |= DC_BALANCE_RESET_VLV;
 		if (pipe == PIPE_A)

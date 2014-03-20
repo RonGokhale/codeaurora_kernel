@@ -510,12 +510,10 @@ i915_gem_shmem_pread(struct drm_device *dev,
 
 		mutex_lock(&dev->struct_mutex);
 
-next_page:
-		mark_page_accessed(page);
-
 		if (ret)
 			goto out;
 
+next_page:
 		remain -= page_length;
 		user_data += page_length;
 		offset += page_length;
@@ -695,9 +693,8 @@ shmem_pwrite_fast(struct page *page, int shmem_page_offset, int page_length,
 	if (needs_clflush_before)
 		drm_clflush_virt_range(vaddr + shmem_page_offset,
 				       page_length);
-	ret = __copy_from_user_inatomic_nocache(vaddr + shmem_page_offset,
-						user_data,
-						page_length);
+	ret = __copy_from_user_inatomic(vaddr + shmem_page_offset,
+					user_data, page_length);
 	if (needs_clflush_after)
 		drm_clflush_virt_range(vaddr + shmem_page_offset,
 				       page_length);
@@ -831,13 +828,10 @@ i915_gem_shmem_pwrite(struct drm_device *dev,
 
 		mutex_lock(&dev->struct_mutex);
 
-next_page:
-		set_page_dirty(page);
-		mark_page_accessed(page);
-
 		if (ret)
 			goto out;
 
+next_page:
 		remain -= page_length;
 		user_data += page_length;
 		offset += page_length;
@@ -1041,7 +1035,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 	unsigned long timeout_expire;
 	int ret;
 
-	WARN(dev_priv->pc8.irqs_disabled, "IRQs disabled\n");
+	WARN(dev_priv->pm.irqs_disabled, "IRQs disabled\n");
 
 	if (i915_seqno_passed(ring->get_seqno(ring, true), seqno))
 		return 0;
@@ -3489,8 +3483,6 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 			ret = i915_vma_unbind(vma);
 			if (ret)
 				return ret;
-
-			break;
 		}
 	}
 
