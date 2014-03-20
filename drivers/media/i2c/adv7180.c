@@ -124,6 +124,7 @@
 struct adv7180_state {
 	struct v4l2_ctrl_handler ctrl_hdl;
 	struct v4l2_subdev	sd;
+	struct media_pad	pad;
 	struct mutex		mutex; /* mutual excl. when accessing chip */
 	int			irq;
 	v4l2_std_id		curr_norm;
@@ -633,9 +634,16 @@ static int adv7180_probe(struct i2c_client *client,
 	ret = adv7180_init_controls(state);
 	if (ret)
 		goto err_unreg_subdev;
-	ret = init_device(state);
+
+	state->pad.flags = MEDIA_PAD_FL_SOURCE;
+	state->sd.entity.flags |= MEDIA_ENT_T_V4L2_SUBDEV_DECODER;
+	ret = media_entity_init(&state->sd.entity, 1, &state->pad, 0);
 	if (ret)
 		goto err_free_ctrl;
+
+	ret = init_device(state);
+	if (ret)
+		goto err_media_entity_cleanup;
 
 	if (state->irq) {
 		ret = request_threaded_irq(client->irq, NULL, adv7180_irq,
@@ -651,6 +659,8 @@ static int adv7180_probe(struct i2c_client *client,
 
 	return 0;
 
+err_media_entity_cleanup:
+	media_entity_cleanup(&sd->entity);
 err_free_irq:
 	if (state->irq > 0)
 		free_irq(client->irq, state);
@@ -673,8 +683,10 @@ static int adv7180_remove(struct i2c_client *client)
 		free_irq(client->irq, state);
 
 	v4l2_device_unregister_subdev(sd);
+	media_entity_cleanup(&sd->entity);
 	adv7180_exit_controls(state);
 	mutex_destroy(&state->mutex);
+
 	return 0;
 }
 
