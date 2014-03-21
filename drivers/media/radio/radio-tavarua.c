@@ -3383,8 +3383,6 @@ static int tavarua_vidioc_s_ctrl(struct file *file, void *priv,
 	unsigned char xfr_buf[XFR_REG_NUM];
 	unsigned char tx_data[XFR_REG_NUM];
 	unsigned char dis_buf[XFR_REG_NUM];
-	unsigned int freq = 0, mpx_dcc = 0;
-	unsigned long curr = 0, prev = 0;
 
 	if (unlikely(radio == NULL)) {
 		FMDERR("%s:radio is null", __func__);
