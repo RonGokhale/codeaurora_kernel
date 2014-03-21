@@ -154,6 +154,9 @@
 #define ADV7182_INPUT_DIFF_CVBS_AIN3_AIN4 0x0f
 #define ADV7182_INPUT_DIFF_CVBS_AIN5_AIN6 0x10
 #define ADV7182_INPUT_DIFF_CVBS_AIN7_AIN8 0x11
+
+#define ADV7180_FLAG_V2			BIT(0)
+
 struct adv7180_state;
 
 struct adv7180_chip_info {
@@ -161,6 +164,7 @@ struct adv7180_chip_info {
 	int (*set_std)(struct adv7180_state *st, unsigned int std);
 	int (*select_input)(struct adv7180_state *st, unsigned int input);
 	int (*init)(struct adv7180_state *state);
+	unsigned int flags;
 };
 
 struct adv7180_state {
@@ -634,8 +638,17 @@ static int adv7180_select_input(struct adv7180_state *state, unsigned int input)
 
 static int adv7182_init(struct adv7180_state *state)
 {
+	if (state->chip_info->flags & ADV7180_FLAG_V2) {
+		/* ADI recommanded writes for improved video quality */
+		adv7180_write(state, 0x0080, 0x51);
+		adv7180_write(state, 0x0081, 0x51);
+		adv7180_write(state, 0x0082, 0x68);
+		adv7180_write(state, 0x0004, 0x17);
+	} else {
+		adv7180_write(state, 0x0004, 0x07);
+	}
+
 	adv7180_write(state, 0x0003, 0x0c);
-	adv7180_write(state, 0x0004, 0x07);
 	adv7180_write(state, 0x0013, 0x00);
 	adv7180_write(state, 0x001d, 0x40);
 
@@ -692,6 +705,13 @@ static unsigned int adv7182_lbias_settings[][3] = {
 	[ADV7182_INPUT_TYPE_YPBPR] = { 0x0B, 0x4E, 0xC0 },
 };
 
+static unsigned int adv7280_lbias_settings[][3] = {
+	[ADV7182_INPUT_TYPE_CVBS] = { 0xCD, 0x4E, 0x80 },
+	[ADV7182_INPUT_TYPE_DIFF_CVBS] = { 0xC0, 0x4E, 0x80 },
+	[ADV7182_INPUT_TYPE_SVIDEO] = { 0x0B, 0xCE, 0x80 },
+	[ADV7182_INPUT_TYPE_YPBPR] = { 0x0B, 0x4E, 0xC0 },
+};
+
 static int adv7182_select_input(struct adv7180_state *state, unsigned int input)
 {
 	enum adv7182_input_type input_type;
@@ -720,7 +740,10 @@ static int adv7182_select_input(struct adv7180_state *state, unsigned int input)
 		break;
 	}
 
-	lbias = adv7182_lbias_settings[input_type];
+	if (state->chip_info->flags & ADV7180_FLAG_V2)
+		lbias = adv7280_lbias_settings[input_type];
+	else
+		lbias = adv7182_lbias_settings[input_type];
 
 	for (i = 0; i < ARRAY_SIZE(adv7182_lbias_settings[0]); i++)
 		adv7180_write(state, 0x0052 + i, lbias[i]);
@@ -776,6 +799,35 @@ static const struct adv7180_chip_info adv7182_info = {
 	.init = adv7182_init,
 	.set_std = adv7182_set_std,
 	.select_input = adv7182_select_input,
+};
+
+static const struct adv7180_chip_info adv7280_info = {
+	.valid_input_mask = BIT(ADV7182_INPUT_CVBS_AIN1) |
+		BIT(ADV7182_INPUT_CVBS_AIN2) |
+		BIT(ADV7182_INPUT_CVBS_AIN3) |
+		BIT(ADV7182_INPUT_CVBS_AIN4) |
+		BIT(ADV7182_INPUT_SVIDEO_AIN1_AIN2) |
+		BIT(ADV7182_INPUT_SVIDEO_AIN3_AIN4) |
+		BIT(ADV7182_INPUT_YPRPB_AIN1_AIN2_AIN3),
+	.init = adv7182_init,
+	.set_std = adv7182_set_std,
+	.select_input = adv7182_select_input,
+	.flags = ADV7180_FLAG_V2,
+};
+
+static const struct adv7180_chip_info adv7281_info = {
+	.valid_input_mask = BIT(ADV7182_INPUT_CVBS_AIN1) |
+		BIT(ADV7182_INPUT_CVBS_AIN2) |
+		BIT(ADV7182_INPUT_CVBS_AIN7) |
+		BIT(ADV7182_INPUT_CVBS_AIN8) |
+		BIT(ADV7182_INPUT_SVIDEO_AIN1_AIN2) |
+		BIT(ADV7182_INPUT_SVIDEO_AIN7_AIN8) |
+		BIT(ADV7182_INPUT_DIFF_CVBS_AIN1_AIN2) |
+		BIT(ADV7182_INPUT_DIFF_CVBS_AIN7_AIN8),
+	.init = adv7182_init,
+	.set_std = adv7182_set_std,
+	.select_input = adv7182_select_input,
+	.flags = ADV7180_FLAG_V2,
 };
 
 static int init_device(struct adv7180_state *state)
@@ -855,7 +907,10 @@ static int adv7180_probe(struct i2c_client *client,
 	state->irq = client->irq;
 	mutex_init(&state->mutex);
 	state->autodetect = true;
-	state->powered = true;
+	if (state->chip_info->flags & ADV7180_FLAG_V2)
+		state->powered = false;
+	else
+		state->powered = true;
 	state->input = 0;
 	sd = &state->sd;
 	v4l2_i2c_subdev_init(sd, client, &adv7180_ops);
@@ -922,6 +977,9 @@ static int adv7180_remove(struct i2c_client *client)
 static const struct i2c_device_id adv7180_id[] = {
 	{ "adv7180", (kernel_ulong_t)&adv7180_info },
 	{ "adv7182", (kernel_ulong_t)&adv7182_info },
+	{ "adv7280", (kernel_ulong_t)&adv7280_info },
+	{ "adv7281", (kernel_ulong_t)&adv7281_info },
+	{ "adv7282", (kernel_ulong_t)&adv7281_info },
 	{},
 };
 MODULE_DEVICE_TABLE(i2c, adv7180_id);
