@@ -284,27 +284,19 @@ EXPORT_SYMBOL_GPL(__scsi_get_command);
  */
 struct scsi_cmnd *scsi_get_command(struct scsi_device *dev, gfp_t gfp_mask)
 {
-	struct scsi_cmnd *cmd;
+	struct scsi_cmnd *cmd = __scsi_get_command(dev->host, gfp_mask);
+	unsigned long flags;
 
-	/* Bail if we can't get a reference to the device */
-	if (!get_device(&dev->sdev_gendev))
+	if (unlikely(cmd == NULL))
 		return NULL;
 
-	cmd = __scsi_get_command(dev->host, gfp_mask);
-
-	if (likely(cmd != NULL)) {
-		unsigned long flags;
-
-		cmd->device = dev;
-		INIT_LIST_HEAD(&cmd->list);
-		INIT_DELAYED_WORK(&cmd->abort_work, scmd_eh_abort_handler);
-		spin_lock_irqsave(&dev->list_lock, flags);
-		list_add_tail(&cmd->list, &dev->cmd_list);
-		spin_unlock_irqrestore(&dev->list_lock, flags);
-		cmd->jiffies_at_alloc = jiffies;
-	} else
-		put_device(&dev->sdev_gendev);
-
+	cmd->device = dev;
+	INIT_LIST_HEAD(&cmd->list);
+	INIT_DELAYED_WORK(&cmd->abort_work, scmd_eh_abort_handler);
+	spin_lock_irqsave(&dev->list_lock, flags);
+	list_add_tail(&cmd->list, &dev->cmd_list);
+	spin_unlock_irqrestore(&dev->list_lock, flags);
+	cmd->jiffies_at_alloc = jiffies;
 	return cmd;
 }
 EXPORT_SYMBOL(scsi_get_command);
@@ -313,25 +305,22 @@ EXPORT_SYMBOL(scsi_get_command);
  * __scsi_put_command - Free a struct scsi_cmnd
  * @shost: dev->host
  * @cmd: Command to free
- * @dev: parent scsi device
  */
-void __scsi_put_command(struct Scsi_Host *shost, struct scsi_cmnd *cmd,
-			struct device *dev)
+void __scsi_put_command(struct Scsi_Host *shost, struct scsi_cmnd *cmd)
 {
 	unsigned long flags;
 
-	/* changing locks here, don't need to restore the irq state */
-	spin_lock_irqsave(&shost->free_list_lock, flags);
 	if (unlikely(list_empty(&shost->free_list))) {
-		list_add(&cmd->list, &shost->free_list);
-		cmd = NULL;
+		spin_lock_irqsave(&shost->free_list_lock, flags);
+		if (list_empty(&shost->free_list)) {
+			list_add(&cmd->list, &shost->free_list);
+			cmd = NULL;
+		}
+		spin_unlock_irqrestore(&shost->free_list_lock, flags);
 	}
-	spin_unlock_irqrestore(&shost->free_list_lock, flags);
 
 	if (likely(cmd != NULL))
 		scsi_pool_free_command(shost->cmd_pool, cmd);
-
-	put_device(dev);
 }
 EXPORT_SYMBOL(__scsi_put_command);
 
@@ -345,7 +334,6 @@ EXPORT_SYMBOL(__scsi_put_command);
  */
 void scsi_put_command(struct scsi_cmnd *cmd)
 {
-	struct scsi_device *sdev = cmd->device;
 	unsigned long flags;
 
 	/* serious error if the command hasn't come from a device list */
@@ -356,7 +344,7 @@ void scsi_put_command(struct scsi_cmnd *cmd)
 
 	cancel_delayed_work(&cmd->abort_work);
 
-	__scsi_put_command(cmd->device->host, cmd, &sdev->sdev_gendev);
+	__scsi_put_command(cmd->device->host, cmd);
 }
 EXPORT_SYMBOL(scsi_put_command);
 
@@ -954,13 +942,16 @@ EXPORT_SYMBOL(scsi_track_queue_full);
  * This is an internal helper function.  You probably want to use
  * scsi_get_vpd_page instead.
  *
- * Returns 0 on success or a negative error number.
+ * Returns size of the vpd page on success or a negative error number.
  */
 static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
 							u8 page, unsigned len)
 {
 	int result;
 	unsigned char cmd[16];
+
+	if (len < 4)
+		return -EINVAL;
 
 	cmd[0] = INQUIRY;
 	cmd[1] = 1;		/* EVPD */
@@ -982,7 +973,7 @@ static int scsi_vpd_inquiry(struct scsi_device *sdev, unsigned char *buffer,
 	if (buffer[1] != page)
 		return -EIO;
 
-	return 0;
+	return get_unaligned_be16(&buffer[2]) + 4;
 }
 
 /**
@@ -1009,18 +1000,18 @@ int scsi_get_vpd_page(struct scsi_device *sdev, u8 page, unsigned char *buf,
 
 	/* Ask for all the pages supported by this device */
 	result = scsi_vpd_inquiry(sdev, buf, 0, buf_len);
-	if (result)
+	if (result < 4)
 		goto fail;
 
 	/* If the user actually wanted this page, we can skip the rest */
 	if (page == 0)
 		return 0;
 
-	for (i = 0; i < min((int)buf[3], buf_len - 4); i++)
-		if (buf[i + 4] == page)
+	for (i = 4; i < min(result, buf_len); i++)
+		if (buf[i] == page)
 			goto found;
 
-	if (i < buf[3] && i >= buf_len - 4)
+	if (i < result && i >= buf_len)
 		/* ran off the end of the buffer, give us benefit of doubt */
 		goto found;
 	/* The device claims it doesn't support the requested page */
@@ -1028,7 +1019,7 @@ int scsi_get_vpd_page(struct scsi_device *sdev, u8 page, unsigned char *buf,
 
  found:
 	result = scsi_vpd_inquiry(sdev, buf, page, buf_len);
-	if (result)
+	if (result < 0)
 		goto fail;
 
 	return 0;
@@ -1037,6 +1028,93 @@ int scsi_get_vpd_page(struct scsi_device *sdev, u8 page, unsigned char *buf,
 	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(scsi_get_vpd_page);
+
+/**
+ * scsi_attach_vpd - Attach Vital Product Data to a SCSI device structure
+ * @sdev: The device to ask
+ *
+ * Attach the 'Device Identification' VPD page (0x83) and the
+ * 'Unit Serial Number' VPD page (0x80) to a SCSI device
+ * structure. This information can be used to identify the device
+ * uniquely.
+ */
+void scsi_attach_vpd(struct scsi_device *sdev)
+{
+	int result, i;
+	int vpd_len = SCSI_VPD_PG_LEN;
+	int pg80_supported = 0;
+	int pg83_supported = 0;
+	unsigned char *vpd_buf;
+
+	if (sdev->skip_vpd_pages)
+		return;
+retry_pg0:
+	vpd_buf = kmalloc(vpd_len, GFP_KERNEL);
+	if (!vpd_buf)
+		return;
+
+	/* Ask for all the pages supported by this device */
+	result = scsi_vpd_inquiry(sdev, vpd_buf, 0, vpd_len);
+	if (result < 0) {
+		kfree(vpd_buf);
+		return;
+	}
+	if (result > vpd_len) {
+		vpd_len = result;
+		kfree(vpd_buf);
+		goto retry_pg0;
+	}
+
+	for (i = 4; i < result; i++) {
+		if (vpd_buf[i] == 0x80)
+			pg80_supported = 1;
+		if (vpd_buf[i] == 0x83)
+			pg83_supported = 1;
+	}
+	kfree(vpd_buf);
+	vpd_len = SCSI_VPD_PG_LEN;
+
+	if (pg80_supported) {
+retry_pg80:
+		vpd_buf = kmalloc(vpd_len, GFP_KERNEL);
+		if (!vpd_buf)
+			return;
+
+		result = scsi_vpd_inquiry(sdev, vpd_buf, 0x80, vpd_len);
+		if (result < 0) {
+			kfree(vpd_buf);
+			return;
+		}
+		if (result > vpd_len) {
+			vpd_len = result;
+			kfree(vpd_buf);
+			goto retry_pg80;
+		}
+		sdev->vpd_pg80_len = result;
+		sdev->vpd_pg80 = vpd_buf;
+		vpd_len = SCSI_VPD_PG_LEN;
+	}
+
+	if (pg83_supported) {
+retry_pg83:
+		vpd_buf = kmalloc(vpd_len, GFP_KERNEL);
+		if (!vpd_buf)
+			return;
+
+		result = scsi_vpd_inquiry(sdev, vpd_buf, 0x83, vpd_len);
+		if (result < 0) {
+			kfree(vpd_buf);
+			return;
+		}
+		if (result > vpd_len) {
+			vpd_len = result;
+			kfree(vpd_buf);
+			goto retry_pg83;
+		}
+		sdev->vpd_pg83_len = result;
+		sdev->vpd_pg83 = vpd_buf;
+	}
+}
 
 /**
  * scsi_report_opcode - Find out if a given command opcode is supported
