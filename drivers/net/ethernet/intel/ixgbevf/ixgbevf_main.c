@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 82599 Virtual Function driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -516,7 +516,8 @@ static int ixgbevf_clean_rx_irq(struct ixgbevf_q_vector *q_vector,
 		/* Workaround hardware that can't do proper VEPA multicast
 		 * source pruning.
 		 */
-		if ((skb->pkt_type & (PACKET_BROADCAST | PACKET_MULTICAST)) &&
+		if ((skb->pkt_type == PACKET_BROADCAST ||
+		    skb->pkt_type == PACKET_MULTICAST) &&
 		    ether_addr_equal(rx_ring->netdev->dev_addr,
 				     eth_hdr(skb)->h_source)) {
 			dev_kfree_skb_irq(skb);
@@ -607,7 +608,8 @@ static int ixgbevf_poll(struct napi_struct *napi, int budget)
 	napi_complete(napi);
 	if (adapter->rx_itr_setting & 1)
 		ixgbevf_set_itr(q_vector);
-	if (!test_bit(__IXGBEVF_DOWN, &adapter->state))
+	if (!test_bit(__IXGBEVF_DOWN, &adapter->state) &&
+	    !test_bit(__IXGBEVF_REMOVING, &adapter->state))
 		ixgbevf_irq_enable_queues(adapter,
 					  1 << q_vector->v_idx);
 
@@ -832,7 +834,8 @@ static irqreturn_t ixgbevf_msix_other(int irq, void *data)
 
 	hw->mac.get_link_status = 1;
 
-	if (!test_bit(__IXGBEVF_DOWN, &adapter->state))
+	if (!test_bit(__IXGBEVF_DOWN, &adapter->state) &&
+	    !test_bit(__IXGBEVF_REMOVING, &adapter->state))
 		mod_timer(&adapter->watchdog_timer, jiffies);
 
 	IXGBE_WRITE_REG(hw, IXGBE_VTEIMS, adapter->eims_other);
@@ -1617,6 +1620,7 @@ static void ixgbevf_up_complete(struct ixgbevf_adapter *adapter)
 
 	spin_unlock_bh(&adapter->mbx_lock);
 
+	smp_mb__before_clear_bit();
 	clear_bit(__IXGBEVF_DOWN, &adapter->state);
 	ixgbevf_napi_enable_all(adapter);
 
@@ -1741,7 +1745,8 @@ void ixgbevf_down(struct ixgbevf_adapter *adapter)
 	int i;
 
 	/* signal that we are down to the interrupt handler */
-	set_bit(__IXGBEVF_DOWN, &adapter->state);
+	if (test_and_set_bit(__IXGBEVF_DOWN, &adapter->state))
+		return; /* do nothing if already down */
 
 	/* disable all enabled rx queues */
 	for (i = 0; i < adapter->num_rx_queues; i++)
@@ -1817,7 +1822,6 @@ void ixgbevf_reset(struct ixgbevf_adapter *adapter)
 static int ixgbevf_acquire_msix_vectors(struct ixgbevf_adapter *adapter,
 					int vectors)
 {
-	int err = 0;
 	int vector_threshold;
 
 	/* We'll want at least 2 (vector_threshold):
@@ -1831,33 +1835,24 @@ static int ixgbevf_acquire_msix_vectors(struct ixgbevf_adapter *adapter,
 	 * Right now, we simply care about how many we'll get; we'll
 	 * set them up later while requesting irq's.
 	 */
-	while (vectors >= vector_threshold) {
-		err = pci_enable_msix(adapter->pdev, adapter->msix_entries,
-				      vectors);
-		if (!err || err < 0) /* Success or a nasty failure. */
-			break;
-		else /* err == number of vectors we should try again with */
-			vectors = err;
-	}
+	vectors = pci_enable_msix_range(adapter->pdev, adapter->msix_entries,
+					vector_threshold, vectors);
 
-	if (vectors < vector_threshold)
-		err = -ENOMEM;
-
-	if (err) {
+	if (vectors < 0) {
 		dev_err(&adapter->pdev->dev,
 			"Unable to allocate MSI-X interrupts\n");
 		kfree(adapter->msix_entries);
 		adapter->msix_entries = NULL;
-	} else {
-		/*
-		 * Adjust for only the vectors we'll use, which is minimum
-		 * of max_msix_q_vectors + NON_Q_VECTORS, or the number of
-		 * vectors we were allocated.
-		 */
-		adapter->num_msix_vectors = vectors;
+		return vectors;
 	}
 
-	return err;
+	/* Adjust for only the vectors we'll use, which is minimum
+	 * of max_msix_q_vectors + NON_Q_VECTORS, or the number of
+	 * vectors we were allocated.
+	 */
+	adapter->num_msix_vectors = vectors;
+
+	return 0;
 }
 
 /**
@@ -2338,6 +2333,7 @@ static void ixgbevf_reset_task(struct work_struct *work)
 
 	/* If we're already down or resetting, just bail */
 	if (test_bit(__IXGBEVF_DOWN, &adapter->state) ||
+	    test_bit(__IXGBEVF_REMOVING, &adapter->state) ||
 	    test_bit(__IXGBEVF_RESETTING, &adapter->state))
 		return;
 
@@ -2422,7 +2418,8 @@ static void ixgbevf_watchdog_task(struct work_struct *work)
 
 pf_has_reset:
 	/* Reset the timer */
-	if (!test_bit(__IXGBEVF_DOWN, &adapter->state))
+	if (!test_bit(__IXGBEVF_DOWN, &adapter->state) &&
+	    !test_bit(__IXGBEVF_REMOVING, &adapter->state))
 		mod_timer(&adapter->watchdog_timer,
 			  round_jiffies(jiffies + (2 * HZ)));
 
@@ -2787,6 +2784,9 @@ static int ixgbevf_tso(struct ixgbevf_ring *tx_ring,
 	u32 vlan_macip_lens, type_tucmd;
 	u32 mss_l4len_idx, l4len;
 
+	if (skb->ip_summed != CHECKSUM_PARTIAL)
+		return 0;
+
 	if (!skb_is_gso(skb))
 		return 0;
 
@@ -2857,12 +2857,12 @@ static void ixgbevf_tx_csum(struct ixgbevf_ring *tx_ring,
 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
 		u8 l4_hdr = 0;
 		switch (skb->protocol) {
-		case __constant_htons(ETH_P_IP):
+		case htons(ETH_P_IP):
 			vlan_macip_lens |= skb_network_header_len(skb);
 			type_tucmd |= IXGBE_ADVTXD_TUCMD_IPV4;
 			l4_hdr = ip_hdr(skb)->protocol;
 			break;
-		case __constant_htons(ETH_P_IPV6):
+		case htons(ETH_P_IPV6):
 			vlan_macip_lens |= skb_network_header_len(skb);
 			l4_hdr = ipv6_hdr(skb)->nexthdr;
 			break;
@@ -3165,7 +3165,7 @@ static int ixgbevf_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 	tso = ixgbevf_tso(tx_ring, first, &hdr_len);
 	if (tso < 0)
 		goto out_drop;
-	else
+	else if (!tso)
 		ixgbevf_tx_csum(tx_ring, first);
 
 	ixgbevf_tx_map(tx_ring, first, hdr_len);
@@ -3286,7 +3286,6 @@ static int ixgbevf_resume(struct pci_dev *pdev)
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
 	u32 err;
 
-	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
 	/*
 	 * pci_restore_state clears dev->state_saved so call
@@ -3344,10 +3343,10 @@ static struct rtnl_link_stats64 *ixgbevf_get_stats(struct net_device *netdev,
 	for (i = 0; i < adapter->num_rx_queues; i++) {
 		ring = adapter->rx_ring[i];
 		do {
-			start = u64_stats_fetch_begin_bh(&ring->syncp);
+			start = u64_stats_fetch_begin_irq(&ring->syncp);
 			bytes = ring->stats.bytes;
 			packets = ring->stats.packets;
-		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		stats->rx_bytes += bytes;
 		stats->rx_packets += packets;
 	}
@@ -3355,10 +3354,10 @@ static struct rtnl_link_stats64 *ixgbevf_get_stats(struct net_device *netdev,
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 		ring = adapter->tx_ring[i];
 		do {
-			start = u64_stats_fetch_begin_bh(&ring->syncp);
+			start = u64_stats_fetch_begin_irq(&ring->syncp);
 			bytes = ring->stats.bytes;
 			packets = ring->stats.packets;
-		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		stats->tx_bytes += bytes;
 		stats->tx_packets += packets;
 	}
@@ -3570,7 +3569,7 @@ static void ixgbevf_remove(struct pci_dev *pdev)
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
 
-	set_bit(__IXGBEVF_DOWN, &adapter->state);
+	set_bit(__IXGBEVF_REMOVING, &adapter->state);
 
 	del_timer_sync(&adapter->watchdog_timer);
 
