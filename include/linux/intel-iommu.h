@@ -322,6 +322,7 @@ struct intel_iommu {
 	unsigned char 	name[13];    /* Device Name */
 
 #ifdef CONFIG_INTEL_IOMMU
+	u16		segment;	/* PCI segment# */
 	unsigned long 	*domain_ids; /* bitmap of domains */
 	struct dmar_domain **domains; /* ptr to domains */
 	spinlock_t	lock; /* protect context, domain ids */
