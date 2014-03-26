@@ -29,9 +29,8 @@
 #include <linux/export.h>
 #include <linux/gpio.h>
 #include <linux/cpu.h>
-#include <linux/sched_clock.h>
 #include <linux/pci.h>
-
+#include <linux/sched_clock.h>
 #include <mach/udc.h>
 #include <mach/hardware.h>
 #include <mach/io.h>
@@ -40,7 +39,6 @@
 #include <asm/page.h>
 #include <asm/irq.h>
 #include <asm/system_misc.h>
-
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
@@ -110,7 +108,7 @@ void __init ixp4xx_map_io(void)
 #define IXP4XX_GPIO_CLK_0		14
 #define IXP4XX_GPIO_CLK_1		15
 
-void gpio_line_config(u8 line, u32 direction)
+static void gpio_line_config(u8 line, u32 direction)
 {
 	if (direction == IXP4XX_GPIO_IN)
 		*IXP4XX_GPIO_GPOER |= (1 << line);
@@ -118,12 +116,12 @@ void gpio_line_config(u8 line, u32 direction)
 		*IXP4XX_GPIO_GPOER &= ~(1 << line);
 }
 
-void gpio_line_get(u8 line, int *value)
+static void gpio_line_get(u8 line, int *value)
 {
 	*value = (*IXP4XX_GPIO_GPINR >> line) & 0x1;
 }
 
-void gpio_line_set(u8 line, int value)
+static void gpio_line_set(u8 line, int value)
 {
 	if (value == IXP4XX_GPIO_HIGH)
 	    *IXP4XX_GPIO_GPOUTR |= (1 << line);
@@ -589,14 +587,51 @@ void ixp4xx_restart(enum reboot_mode mode, const char *cmd)
 	}
 }
 
-int dma_set_coherent_mask(struct device *dev, u64 mask)
+#ifdef CONFIG_PCI
+static int ixp4xx_needs_bounce(struct device *dev, dma_addr_t dma_addr, size_t size)
 {
-	if (dev_is_pci(dev) && mask >= SZ_64M)
-		return -EIO;
+	return (dma_addr + size) > SZ_64M;
+}
 
-	dev->coherent_dma_mask = mask;
+static int ixp4xx_platform_notify_remove(struct device *dev)
+{
+	if (dev_is_pci(dev))
+		dmabounce_unregister_dev(dev);
 
 	return 0;
+}
+#endif
+
+/*
+ * Setup DMA mask to 64MB on PCI devices and 4 GB on all other things.
+ */
+static int ixp4xx_platform_notify(struct device *dev)
+{
+	dev->dma_mask = &dev->coherent_dma_mask;
+
+#ifdef CONFIG_PCI
+	if (dev_is_pci(dev)) {
+		dev->coherent_dma_mask = DMA_BIT_MASK(28); /* 64 MB */
+		dmabounce_register_dev(dev, 2048, 4096, ixp4xx_needs_bounce);
+		return 0;
+	}
+#endif
+
+	dev->coherent_dma_mask = DMA_BIT_MASK(32);
+	return 0;
+}
+
+int dma_set_coherent_mask(struct device *dev, u64 mask)
+{
+	if (dev_is_pci(dev))
+		mask &= DMA_BIT_MASK(28); /* 64 MB */
+
+	if ((mask & DMA_BIT_MASK(28)) == DMA_BIT_MASK(28)) {
+		dev->coherent_dma_mask = mask;
+		return 0;
+	}
+
+	return -EIO;		/* device wanted sub-64MB mask */
 }
 EXPORT_SYMBOL(dma_set_coherent_mask);
 
@@ -622,12 +657,16 @@ static void ixp4xx_iounmap(void __iomem *addr)
 	if (!is_pci_memory((__force u32)addr))
 		__iounmap(addr);
 }
+#endif
 
 void __init ixp4xx_init_early(void)
 {
+	platform_notify = ixp4xx_platform_notify;
+#ifdef CONFIG_PCI
+	platform_notify_remove = ixp4xx_platform_notify_remove;
+#endif
+#ifdef CONFIG_IXP4XX_INDIRECT_PCI
 	arch_ioremap_caller = ixp4xx_ioremap_caller;
 	arch_iounmap = ixp4xx_iounmap;
-}
-#else
-void __init ixp4xx_init_early(void) {}
 #endif
+}
