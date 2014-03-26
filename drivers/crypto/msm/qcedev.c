@@ -1791,7 +1791,7 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 						struct qcedev_control *podev)
 {
 	uint32_t total = 0;
-	uint32_t i = 0;
+	uint32_t i;
 
 	if ((req->entries == 0) || (req->data_len == 0))
 		goto error;
@@ -1865,31 +1865,16 @@ static int qcedev_check_cipher_params(struct qcedev_cipher_op_req *req,
 	}
 
 	/* Check for sum of all dst length is equal to data_len  */
-	for (i = 0; (i < QCEDEV_MAX_BUFFERS) && (total < req->data_len); i++) {
-		if (req->vbuf.dst[i].len > ULONG_MAX - total) {
-			pr_err("%s: Integer overflow on total req dst vbuf length\n",
-				__func__);
-			goto error;
-		}
+	for (i = 0; (i < QCEDEV_MAX_BUFFERS) && (total < req->data_len); i++)
 		total += req->vbuf.dst[i].len;
-	}
-
 	if (total != req->data_len) {
 		pr_err("%s: Total (i=%d) dst(%d) buf size != data_len (%d)\n",
 			__func__, i, total, req->data_len);
 		goto error;
 	}
-
 	/* Check for sum of all src length is equal to data_len  */
-	for (i = 0, total = 0; i < req->entries; i++) {
-		if (req->vbuf.src[i].len > ULONG_MAX - total) {
-			pr_err("%s: Integer overflow on total req src vbuf length\n",
-				__func__);
-			goto error;
-		}
+	for (i = 0, total = 0; i < req->entries; i++)
 		total += req->vbuf.src[i].len;
-	}
-
 	if (total != req->data_len) {
 		pr_err("%s: Total src(%d) buf size != data_len (%d)\n",
 			__func__, total, req->data_len);
