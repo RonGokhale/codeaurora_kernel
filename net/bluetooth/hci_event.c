@@ -199,6 +199,8 @@ static void hci_cc_reset(struct hci_dev *hdev, struct sk_buff *skb)
 	memset(hdev->scan_rsp_data, 0, sizeof(hdev->scan_rsp_data));
 	hdev->scan_rsp_data_len = 0;
 
+	hdev->le_scan_type = LE_SCAN_PASSIVE;
+
 	hdev->ssp_debug_mode = 0;
 }
 
@@ -989,12 +991,73 @@ static void hci_cc_le_set_adv_enable(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!sent)
 		return;
 
+	if (status)
+		return;
+
+	hci_dev_lock(hdev);
+
+	/* If we're doing connection initation as peripheral. Set a
+	 * timeout in case something goes wrong.
+	 */
+	if (*sent) {
+		struct hci_conn *conn;
+
+		conn = hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT);
+		if (conn)
+			queue_delayed_work(hdev->workqueue,
+					   &conn->le_conn_timeout,
+					   HCI_LE_CONN_TIMEOUT);
+	}
+
+	mgmt_advertising(hdev, *sent);
+
+	hci_dev_unlock(hdev);
+}
+
+static void hci_cc_le_set_scan_param(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	struct hci_cp_le_set_scan_param *cp;
+	__u8 status = *((__u8 *) skb->data);
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_LE_SET_SCAN_PARAM);
+	if (!cp)
+		return;
+
 	hci_dev_lock(hdev);
 
 	if (!status)
-		mgmt_advertising(hdev, *sent);
+		hdev->le_scan_type = cp->type;
 
 	hci_dev_unlock(hdev);
+}
+
+static bool has_pending_adv_report(struct hci_dev *hdev)
+{
+	struct discovery_state *d = &hdev->discovery;
+
+	return bacmp(&d->last_adv_addr, BDADDR_ANY);
+}
+
+static void clear_pending_adv_report(struct hci_dev *hdev)
+{
+	struct discovery_state *d = &hdev->discovery;
+
+	bacpy(&d->last_adv_addr, BDADDR_ANY);
+	d->last_adv_data_len = 0;
+}
+
+static void store_pending_adv_report(struct hci_dev *hdev, bdaddr_t *bdaddr,
+				     u8 bdaddr_type, s8 rssi, u8 *data, u8 len)
+{
+	struct discovery_state *d = &hdev->discovery;
+
+	bacpy(&d->last_adv_addr, bdaddr);
+	d->last_adv_addr_type = bdaddr_type;
+	d->last_adv_rssi = rssi;
+	memcpy(d->last_adv_data, data, len);
+	d->last_adv_data_len = len;
 }
 
 static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
@@ -1015,9 +1078,24 @@ static void hci_cc_le_set_scan_enable(struct hci_dev *hdev,
 	switch (cp->enable) {
 	case LE_SCAN_ENABLE:
 		set_bit(HCI_LE_SCAN, &hdev->dev_flags);
+		if (hdev->le_scan_type == LE_SCAN_ACTIVE)
+			clear_pending_adv_report(hdev);
 		break;
 
 	case LE_SCAN_DISABLE:
+		/* We do this here instead of when setting DISCOVERY_STOPPED
+		 * since the latter would potentially require waiting for
+		 * inquiry to stop too.
+		 */
+		if (has_pending_adv_report(hdev)) {
+			struct discovery_state *d = &hdev->discovery;
+
+			mgmt_device_found(hdev, &d->last_adv_addr, LE_LINK,
+					  d->last_adv_addr_type, NULL, 0, 0,
+					  1, d->last_adv_data,
+					  d->last_adv_data_len, NULL, 0);
+		}
+
 		/* Cancel this timer so that we don't try to disable scanning
 		 * when it's already disabled.
 		 */
@@ -1704,6 +1782,36 @@ unlock:
 	hci_dev_unlock(hdev);
 }
 
+static void hci_cs_le_start_enc(struct hci_dev *hdev, u8 status)
+{
+	struct hci_cp_le_start_enc *cp;
+	struct hci_conn *conn;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, status);
+
+	if (!status)
+		return;
+
+	hci_dev_lock(hdev);
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_LE_START_ENC);
+	if (!cp)
+		goto unlock;
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
+	if (!conn)
+		goto unlock;
+
+	if (conn->state != BT_CONNECTED)
+		goto unlock;
+
+	hci_disconnect(conn, HCI_ERROR_AUTH_FAILURE);
+	hci_conn_drop(conn);
+
+unlock:
+	hci_dev_unlock(hdev);
+}
+
 static void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	__u8 status = *((__u8 *) skb->data);
@@ -1776,7 +1884,7 @@ static void hci_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		name_known = hci_inquiry_cache_update(hdev, &data, false, &ssp);
 		mgmt_device_found(hdev, &info->bdaddr, ACL_LINK, 0x00,
 				  info->dev_class, 0, !name_known, ssp, NULL,
-				  0);
+				  0, NULL, 0);
 	}
 
 	hci_dev_unlock(hdev);
@@ -2488,6 +2596,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_cc_le_set_adv_enable(hdev, skb);
 		break;
 
+	case HCI_OP_LE_SET_SCAN_PARAM:
+		hci_cc_le_set_scan_param(hdev, skb);
+		break;
+
 	case HCI_OP_LE_SET_SCAN_ENABLE:
 		hci_cc_le_set_scan_enable(hdev, skb);
 		break;
@@ -2609,6 +2721,10 @@ static void hci_cmd_status_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_OP_LE_CREATE_CONN:
 		hci_cs_le_create_conn(hdev, ev->status);
+		break;
+
+	case HCI_OP_LE_START_ENC:
+		hci_cs_le_start_enc(hdev, ev->status);
 		break;
 
 	default:
@@ -3043,7 +3159,7 @@ static void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev,
 							      false, &ssp);
 			mgmt_device_found(hdev, &info->bdaddr, ACL_LINK, 0x00,
 					  info->dev_class, info->rssi,
-					  !name_known, ssp, NULL, 0);
+					  !name_known, ssp, NULL, 0, NULL, 0);
 		}
 	} else {
 		struct inquiry_info_with_rssi *info = (void *) (skb->data + 1);
@@ -3061,7 +3177,7 @@ static void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev,
 							      false, &ssp);
 			mgmt_device_found(hdev, &info->bdaddr, ACL_LINK, 0x00,
 					  info->dev_class, info->rssi,
-					  !name_known, ssp, NULL, 0);
+					  !name_known, ssp, NULL, 0, NULL, 0);
 		}
 	}
 
@@ -3250,7 +3366,7 @@ static void hci_extended_inquiry_result_evt(struct hci_dev *hdev,
 		eir_len = eir_get_length(info->data, sizeof(info->data));
 		mgmt_device_found(hdev, &info->bdaddr, ACL_LINK, 0x00,
 				  info->dev_class, info->rssi, !name_known,
-				  ssp, info->data, eir_len);
+				  ssp, info->data, eir_len, NULL, 0);
 	}
 
 	hci_dev_unlock(hdev);
@@ -3459,8 +3575,8 @@ static void hci_user_confirm_request_evt(struct hci_dev *hdev,
 	}
 
 confirm:
-	mgmt_user_confirm_request(hdev, &ev->bdaddr, ACL_LINK, 0, ev->passkey,
-				  confirm_hint);
+	mgmt_user_confirm_request(hdev, &ev->bdaddr, ACL_LINK, 0,
+				  le32_to_cpu(ev->passkey), confirm_hint);
 
 unlock:
 	hci_dev_unlock(hdev);
@@ -3781,17 +3897,6 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		conn->dst_type = ev->bdaddr_type;
 
-		/* The advertising parameters for own address type
-		 * define which source address and source address
-		 * type this connections has.
-		 */
-		if (bacmp(&conn->src, BDADDR_ANY)) {
-			conn->src_type = ADDR_LE_DEV_PUBLIC;
-		} else {
-			bacpy(&conn->src, &hdev->static_addr);
-			conn->src_type = ADDR_LE_DEV_RANDOM;
-		}
-
 		if (ev->role == LE_CONN_ROLE_MASTER) {
 			conn->out = true;
 			conn->link_mode |= HCI_LM_MASTER;
@@ -3816,27 +3921,24 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 							  &conn->init_addr,
 							  &conn->init_addr_type);
 			}
-		} else {
-			/* Set the responder (our side) address type based on
-			 * the advertising address type.
-			 */
-			conn->resp_addr_type = hdev->adv_addr_type;
-			if (hdev->adv_addr_type == ADDR_LE_DEV_RANDOM)
-				bacpy(&conn->resp_addr, &hdev->random_addr);
-			else
-				bacpy(&conn->resp_addr, &hdev->bdaddr);
-
-			conn->init_addr_type = ev->bdaddr_type;
-			bacpy(&conn->init_addr, &ev->bdaddr);
 		}
 	} else {
 		cancel_delayed_work(&conn->le_conn_timeout);
 	}
 
-	/* Ensure that the hci_conn contains the identity address type
-	 * regardless of which address the connection was made with.
-	 */
-	hci_copy_identity_address(hdev, &conn->src, &conn->src_type);
+	if (!conn->out) {
+		/* Set the responder (our side) address type based on
+		 * the advertising address type.
+		 */
+		conn->resp_addr_type = hdev->adv_addr_type;
+		if (hdev->adv_addr_type == ADDR_LE_DEV_RANDOM)
+			bacpy(&conn->resp_addr, &hdev->random_addr);
+		else
+			bacpy(&conn->resp_addr, &hdev->bdaddr);
+
+		conn->init_addr_type = ev->bdaddr_type;
+		bacpy(&conn->init_addr, &ev->bdaddr);
+	}
 
 	/* Lookup the identity address from the stored connection
 	 * address and address type.
@@ -3916,25 +4018,98 @@ static void check_pending_le_conn(struct hci_dev *hdev, bdaddr_t *addr,
 	}
 }
 
+static void process_adv_report(struct hci_dev *hdev, u8 type, bdaddr_t *bdaddr,
+			       u8 bdaddr_type, s8 rssi, u8 *data, u8 len)
+{
+	struct discovery_state *d = &hdev->discovery;
+	bool match;
+
+	/* Passive scanning shouldn't trigger any device found events */
+	if (hdev->le_scan_type == LE_SCAN_PASSIVE) {
+		if (type == LE_ADV_IND || type == LE_ADV_DIRECT_IND)
+			check_pending_le_conn(hdev, bdaddr, bdaddr_type);
+		return;
+	}
+
+	/* If there's nothing pending either store the data from this
+	 * event or send an immediate device found event if the data
+	 * should not be stored for later.
+	 */
+	if (!has_pending_adv_report(hdev)) {
+		/* If the report will trigger a SCAN_REQ store it for
+		 * later merging.
+		 */
+		if (type == LE_ADV_IND || type == LE_ADV_SCAN_IND) {
+			store_pending_adv_report(hdev, bdaddr, bdaddr_type,
+						 rssi, data, len);
+			return;
+		}
+
+		mgmt_device_found(hdev, bdaddr, LE_LINK, bdaddr_type, NULL,
+				  rssi, 0, 1, data, len, NULL, 0);
+		return;
+	}
+
+	/* Check if the pending report is for the same device as the new one */
+	match = (!bacmp(bdaddr, &d->last_adv_addr) &&
+		 bdaddr_type == d->last_adv_addr_type);
+
+	/* If the pending data doesn't match this report or this isn't a
+	 * scan response (e.g. we got a duplicate ADV_IND) then force
+	 * sending of the pending data.
+	 */
+	if (type != LE_ADV_SCAN_RSP || !match) {
+		/* Send out whatever is in the cache, but skip duplicates */
+		if (!match)
+			mgmt_device_found(hdev, &d->last_adv_addr, LE_LINK,
+					  d->last_adv_addr_type, NULL,
+					  d->last_adv_rssi, 0, 1,
+					  d->last_adv_data,
+					  d->last_adv_data_len, NULL, 0);
+
+		/* If the new report will trigger a SCAN_REQ store it for
+		 * later merging.
+		 */
+		if (type == LE_ADV_IND || type == LE_ADV_SCAN_IND) {
+			store_pending_adv_report(hdev, bdaddr, bdaddr_type,
+						 rssi, data, len);
+			return;
+		}
+
+		/* The advertising reports cannot be merged, so clear
+		 * the pending report and send out a device found event.
+		 */
+		clear_pending_adv_report(hdev);
+		mgmt_device_found(hdev, &d->last_adv_addr, LE_LINK,
+				  d->last_adv_addr_type, NULL, rssi, 0, 1,
+				  data, len, NULL, 0);
+		return;
+	}
+
+	/* If we get here we've got a pending ADV_IND or ADV_SCAN_IND and
+	 * the new event is a SCAN_RSP. We can therefore proceed with
+	 * sending a merged device found event.
+	 */
+	mgmt_device_found(hdev, &d->last_adv_addr, LE_LINK,
+			  d->last_adv_addr_type, NULL, rssi, 0, 1, data, len,
+			  d->last_adv_data, d->last_adv_data_len);
+	clear_pending_adv_report(hdev);
+}
+
 static void hci_le_adv_report_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	u8 num_reports = skb->data[0];
 	void *ptr = &skb->data[1];
-	s8 rssi;
 
 	hci_dev_lock(hdev);
 
 	while (num_reports--) {
 		struct hci_ev_le_advertising_info *ev = ptr;
-
-		if (ev->evt_type == LE_ADV_IND ||
-		    ev->evt_type == LE_ADV_DIRECT_IND)
-			check_pending_le_conn(hdev, &ev->bdaddr,
-					      ev->bdaddr_type);
+		s8 rssi;
 
 		rssi = ev->data[ev->length];
-		mgmt_device_found(hdev, &ev->bdaddr, LE_LINK, ev->bdaddr_type,
-				  NULL, rssi, 0, 1, ev->data, ev->length);
+		process_adv_report(hdev, ev->evt_type, &ev->bdaddr,
+				   ev->bdaddr_type, rssi, ev->data, ev->length);
 
 		ptr += sizeof(*ev) + ev->length + 1;
 	}
