@@ -15,6 +15,14 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes
 	randconfig-fixes
 		git://git.kernel.org/pub/scm/linux/kernel/git/arm/arm-soc.git randconfig-fixes
+	patches
+		ARM: tegra: fix board DT pinmux setup
+		ARM: nspire: Fix compiler warning
+		IXP4xx: Fix DMA masks.
+		Revert "ARM: ixp4xx: Make dma_set_coherent_mask common, correct implementation"
+		IXP4xx: Fix Goramo Multilink GPIO conversion.
+		Revert "ARM: ixp4xx: fix gpio rework"
+
 
 next/cleanup
 	cleanup/timex-removal
@@ -219,6 +227,10 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.15-dt
 	patch
 		ARM: tegra: fix Dalmore pinctrl configuration
+	patches
+		ARM: enable fhandle in multi_v7_defconfig
+		ARM: tegra: enable fhandle in tegra_defconfig
+		ARM: update multi_v7_defconfig for Tegra
 
 next/drivers
 	renesas/soc
