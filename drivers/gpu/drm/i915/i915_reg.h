@@ -335,6 +335,85 @@
 #define   PIPE_CONTROL_DEPTH_CACHE_FLUSH		(1<<0)
 #define   PIPE_CONTROL_GLOBAL_GTT (1<<2) /* in addr dword */
 
+/*
+ * Commands used only by the command parser
+ */
+#define MI_SET_PREDICATE        MI_INSTR(0x01, 0)
+#define MI_ARB_CHECK            MI_INSTR(0x05, 0)
+#define MI_RS_CONTROL           MI_INSTR(0x06, 0)
+#define MI_URB_ATOMIC_ALLOC     MI_INSTR(0x09, 0)
+#define MI_PREDICATE            MI_INSTR(0x0C, 0)
+#define MI_RS_CONTEXT           MI_INSTR(0x0F, 0)
+#define MI_TOPOLOGY_FILTER      MI_INSTR(0x0D, 0)
+#define MI_LOAD_SCAN_LINES_EXCL MI_INSTR(0x13, 0)
+#define MI_URB_CLEAR            MI_INSTR(0x19, 0)
+#define MI_UPDATE_GTT           MI_INSTR(0x23, 0)
+#define MI_CLFLUSH              MI_INSTR(0x27, 0)
+#define MI_REPORT_PERF_COUNT    MI_INSTR(0x28, 0)
+#define   MI_REPORT_PERF_COUNT_GGTT (1<<0)
+#define MI_LOAD_REGISTER_MEM    MI_INSTR(0x29, 0)
+#define MI_LOAD_REGISTER_REG    MI_INSTR(0x2A, 0)
+#define MI_RS_STORE_DATA_IMM    MI_INSTR(0x2B, 0)
+#define MI_LOAD_URB_MEM         MI_INSTR(0x2C, 0)
+#define MI_STORE_URB_MEM        MI_INSTR(0x2D, 0)
+#define MI_CONDITIONAL_BATCH_BUFFER_END MI_INSTR(0x36, 0)
+
+#define PIPELINE_SELECT                ((0x3<<29)|(0x1<<27)|(0x1<<24)|(0x4<<16))
+#define GFX_OP_3DSTATE_VF_STATISTICS   ((0x3<<29)|(0x1<<27)|(0x0<<24)|(0xB<<16))
+#define MEDIA_VFE_STATE                ((0x3<<29)|(0x2<<27)|(0x0<<24)|(0x0<<16))
+#define  MEDIA_VFE_STATE_MMIO_ACCESS_MASK (0x18)
+#define GPGPU_OBJECT                   ((0x3<<29)|(0x2<<27)|(0x1<<24)|(0x4<<16))
+#define GPGPU_WALKER                   ((0x3<<29)|(0x2<<27)|(0x1<<24)|(0x5<<16))
+#define GFX_OP_3DSTATE_DX9_CONSTANTF_VS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x39<<16))
+#define GFX_OP_3DSTATE_DX9_CONSTANTF_PS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x3A<<16))
+#define GFX_OP_3DSTATE_SO_DECL_LIST \
+	((0x3<<29)|(0x3<<27)|(0x1<<24)|(0x17<<16))
+
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_VS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x43<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_GS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x44<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_HS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x45<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_DS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x46<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_PS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x47<<16))
+
+#define MFX_WAIT  ((0x3<<29)|(0x1<<27)|(0x0<<16))
+
+#define COLOR_BLT     ((0x2<<29)|(0x40<<22))
+#define SRC_COPY_BLT  ((0x2<<29)|(0x43<<22))
+
+/*
+ * Registers used only by the command parser
+ */
+#define BCS_SWCTRL 0x22200
+
+#define HS_INVOCATION_COUNT 0x2300
+#define DS_INVOCATION_COUNT 0x2308
+#define IA_VERTICES_COUNT   0x2310
+#define IA_PRIMITIVES_COUNT 0x2318
+#define VS_INVOCATION_COUNT 0x2320
+#define GS_INVOCATION_COUNT 0x2328
+#define GS_PRIMITIVES_COUNT 0x2330
+#define CL_INVOCATION_COUNT 0x2338
+#define CL_PRIMITIVES_COUNT 0x2340
+#define PS_INVOCATION_COUNT 0x2348
+#define PS_DEPTH_COUNT      0x2350
+
+/* There are the 4 64-bit counter registers, one for each stream output */
+#define GEN7_SO_NUM_PRIMS_WRITTEN(n) (0x5200 + (n) * 8)
+
+#define OACONTROL 0x2360
+
+#define _GEN7_PIPEA_DE_LOAD_SL	0x70068
+#define _GEN7_PIPEB_DE_LOAD_SL	0x71068
+#define GEN7_PIPE_DE_LOAD_SL(pipe) _PIPE(pipe, \
+					 _GEN7_PIPEA_DE_LOAD_SL, \
+					 _GEN7_PIPEB_DE_LOAD_SL)
 
 /*
  * Reset registers
