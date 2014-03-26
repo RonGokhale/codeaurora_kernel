@@ -1017,6 +1017,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_EXEC_HANDLE_LUT:
 		value = 1;
 		break;
+	case I915_PARAM_CMD_PARSER_VERSION:
+		value = i915_cmd_parser_get_version();
+		break;
 	default:
 		DRM_DEBUG("Unknown parameter %d\n", param->param);
 		return -EINVAL;
@@ -1186,6 +1189,9 @@ intel_setup_mchbar(struct drm_device *dev)
 	int mchbar_reg = INTEL_INFO(dev)->gen >= 4 ? MCHBAR_I965 : MCHBAR_I915;
 	u32 temp;
 	bool enabled;
+
+	if (IS_VALLEYVIEW(dev))
+		return;
 
 	dev_priv->mchbar_need_disable = false;
 
@@ -1608,8 +1614,6 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto put_bridge;
 	}
 
-	intel_uncore_early_sanitize(dev);
-
 	/* This must be called before any calls to HAS_PCH_* */
 	intel_detect_pch(dev);
 
@@ -1821,8 +1825,6 @@ int i915_driver_unload(struct drm_device *dev)
 	del_timer_sync(&dev_priv->gpu_error.hangcheck_timer);
 	cancel_work_sync(&dev_priv->gpu_error.work);
 	i915_destroy_error_state(dev);
-
-	cancel_delayed_work_sync(&dev_priv->pc8.enable_work);
 
 	if (dev->pdev->msi_enabled)
 		pci_disable_msi(dev->pdev);
