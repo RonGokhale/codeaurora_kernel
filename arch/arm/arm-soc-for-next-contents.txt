@@ -22,7 +22,7 @@ next/fixes-non-critical
 		Revert "ARM: ixp4xx: Make dma_set_coherent_mask common, correct implementation"
 		IXP4xx: Fix Goramo Multilink GPIO conversion.
 		Revert "ARM: ixp4xx: fix gpio rework"
-
+		ARM: moxart: fix CPU selection
 
 next/cleanup
 	cleanup/timex-removal
@@ -116,6 +116,8 @@ next/soc
 		ARM: mvebu: don't select CONFIG_NEON
 	davinci/soc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.15/soc-2
+	patch
+		ARM: cache-tauros2: remove ARMv6 code
 
 next/boards
 	renesas/boards
