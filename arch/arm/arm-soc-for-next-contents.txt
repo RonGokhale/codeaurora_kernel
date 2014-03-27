@@ -227,10 +227,13 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.15-dt
 	patch
 		ARM: tegra: fix Dalmore pinctrl configuration
-	patches
 		ARM: enable fhandle in multi_v7_defconfig
 		ARM: tegra: enable fhandle in tegra_defconfig
 		ARM: update multi_v7_defconfig for Tegra
+		ARM: STi: stih41x: Add support for the FSM Serial Flash Controller
+		ARM: STi: stih416: Add support for the FSM Serial Flash Controller
+	keystone/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git tags/keystone-dts-fixes
 
 next/drivers
 	renesas/soc
