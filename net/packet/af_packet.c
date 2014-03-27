@@ -1277,7 +1277,7 @@ static unsigned int fanout_demux_hash(struct packet_fanout *f,
 				      struct sk_buff *skb,
 				      unsigned int num)
 {
-	return reciprocal_scale(skb->rxhash, num);
+	return reciprocal_scale(skb_get_hash(skb), num);
 }
 
 static unsigned int fanout_demux_lb(struct packet_fanout *f,
@@ -1362,7 +1362,6 @@ static int packet_rcv_fanout(struct sk_buff *skb, struct net_device *dev,
 			if (!skb)
 				return 0;
 		}
-		skb_get_hash(skb);
 		idx = fanout_demux_hash(f, skb, num);
 		break;
 	case PACKET_FANOUT_LB:
@@ -2257,8 +2256,7 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 	if (unlikely(!(dev->flags & IFF_UP)))
 		goto out_put;
 
-	reserve = dev->hard_header_len;
-
+	reserve = dev->hard_header_len + VLAN_HLEN;
 	size_max = po->tx_ring.frame_size
 		- (po->tp_hdrlen - sizeof(struct sockaddr_ll));
 
@@ -2285,8 +2283,19 @@ static int tpacket_snd(struct packet_sock *po, struct msghdr *msg)
 			goto out_status;
 
 		tp_len = tpacket_fill_skb(po, skb, ph, dev, size_max, proto,
-				addr, hlen);
+					  addr, hlen);
+		if (tp_len > dev->mtu + dev->hard_header_len) {
+			struct ethhdr *ehdr;
+			/* Earlier code assumed this would be a VLAN pkt,
+			 * double-check this now that we have the actual
+			 * packet in hand.
+			 */
 
+			skb_reset_mac_header(skb);
+			ehdr = eth_hdr(skb);
+			if (ehdr->h_proto != htons(ETH_P_8021Q))
+				tp_len = -EMSGSIZE;
+		}
 		if (unlikely(tp_len < 0)) {
 			if (po->tp_loss) {
 				__packet_set_status(po, ph,
