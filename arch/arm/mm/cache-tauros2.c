@@ -33,7 +33,7 @@
  * outer cache operations into the kernel image if the kernel has been
  * configured to support a pre-v7 CPU.
  */
-#if __LINUX_ARM_ARCH__ < 7
+#ifdef CONFIG_CPU_32v5
 /*
  * Low-level cache maintenance operations.
  */
