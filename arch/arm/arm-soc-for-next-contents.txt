@@ -122,6 +122,7 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.15/soc-2
 	patch
 		ARM: cache-tauros2: remove ARMv6 code
+		ARM: sunxi: Select HAVE_ARM_ARCH_TIMER
 
 next/boards
 	renesas/boards
