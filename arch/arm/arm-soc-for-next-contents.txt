@@ -114,6 +114,8 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.15-soc
 	patch
 		ARM: mvebu: don't select CONFIG_NEON
+	davinci/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.15/soc-2
 
 next/boards
 	renesas/boards
@@ -296,6 +298,8 @@ next/cleanup2
 		Merge branch 'integrator/multiplatform-base' into next/cleanup2
 	integrator/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-for-v3.15-2
+	zynq/cleanup
+		git://git.xilinx.com/linux-xlnx.git tags/zynq-cleanup-for-3.15-v2
 
 fixes
 	patch
