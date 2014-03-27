@@ -278,6 +278,11 @@ next/drivers
 		Merge branch 'cleanup/kconfig' into next/drivers
 	tegra/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.15-drivers
+	patch
+		Revert "dts: socfpga: Add DTS entry for adding the stmmac glue layer for stmmac."
+		Revert "net: stmmac: Add SOCFPGA glue driver"
+	reset/driver
+		git://git.pengutronix.de/git/pza/linux reset/for_v3.15
 
 next/sh
 	renesas/sh-intc
