@@ -955,14 +955,9 @@ static ssize_t le_auto_conn_write(struct file *file, const char __user *data,
 	if (count < 3)
 		return -EINVAL;
 
-	buf = kzalloc(count, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	if (copy_from_user(buf, data, count)) {
-		err = -EFAULT;
-		goto done;
-	}
+	buf = memdup_user(data, count);
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
 
 	if (memcmp(buf, "add", 3) == 0) {
 		n = sscanf(&buf[4], "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx %hhu %hhu",
@@ -2033,12 +2028,11 @@ bool hci_inquiry_cache_update(struct hci_dev *hdev, struct inquiry_data *data,
 
 	hci_remove_remote_oob_data(hdev, &data->bdaddr);
 
-	if (ssp)
-		*ssp = data->ssp_mode;
+	*ssp = data->ssp_mode;
 
 	ie = hci_inquiry_cache_lookup(hdev, &data->bdaddr);
 	if (ie) {
-		if (ie->data.ssp_mode && ssp)
+		if (ie->data.ssp_mode)
 			*ssp = true;
 
 		if (ie->name_state == NAME_NEEDED &&
