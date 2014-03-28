@@ -410,13 +410,20 @@ static void ring_write_tail(struct intel_ring_buffer *ring,
 	I915_WRITE_TAIL(ring, value);
 }
 
-u32 intel_ring_get_active_head(struct intel_ring_buffer *ring)
+u64 intel_ring_get_active_head(struct intel_ring_buffer *ring)
 {
 	drm_i915_private_t *dev_priv = ring->dev->dev_private;
-	u32 acthd_reg = INTEL_INFO(ring->dev)->gen >= 4 ?
-			RING_ACTHD(ring->mmio_base) : ACTHD;
+	u64 acthd;
 
-	return I915_READ(acthd_reg);
+	if (INTEL_INFO(ring->dev)->gen >= 8)
+		acthd = I915_READ64_2x32(RING_ACTHD(ring->mmio_base),
+					 RING_ACTHD_UDW(ring->mmio_base));
+	else if (INTEL_INFO(ring->dev)->gen >= 4)
+		acthd = I915_READ(RING_ACTHD(ring->mmio_base));
+	else
+		acthd = I915_READ(ACTHD);
+
+	return acthd;
 }
 
 static void ring_setup_phys_status_page(struct intel_ring_buffer *ring)
@@ -440,15 +447,17 @@ static int init_ring_common(struct intel_ring_buffer *ring)
 
 	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
-	if (I915_NEED_GFX_HWS(dev))
-		intel_ring_setup_status_page(ring);
-	else
-		ring_setup_phys_status_page(ring);
-
 	/* Stop the ring if it's running. */
 	I915_WRITE_CTL(ring, 0);
 	I915_WRITE_HEAD(ring, 0);
 	ring->write_tail(ring, 0);
+	if (wait_for_atomic((I915_READ_MODE(ring) & MODE_IDLE) != 0, 1000))
+		DRM_ERROR("%s :timed out trying to stop ring\n", ring->name);
+
+	if (I915_NEED_GFX_HWS(dev))
+		intel_ring_setup_status_page(ring);
+	else
+		ring_setup_phys_status_page(ring);
 
 	head = I915_READ_HEAD(ring) & HEAD_ADDR;
 
@@ -564,7 +573,8 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret = init_ring_common(ring);
 
-	if (INTEL_INFO(dev)->gen > 3)
+	/* WaTimedSingleVertexDispatch:cl,bw,ctg,elk,ilk,snb */
+	if (INTEL_INFO(dev)->gen >= 4 && INTEL_INFO(dev)->gen < 7)
 		I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(VS_TIMER_DISPATCH));
 
 	/* We need to disable the AsyncFlip performance optimisations in order
@@ -579,11 +589,11 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	/* Required for the hardware to program scanline values for waiting */
 	if (INTEL_INFO(dev)->gen == 6)
 		I915_WRITE(GFX_MODE,
-			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_ALWAYS));
+			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_EXPLICIT));
 
 	if (IS_GEN7(dev))
 		I915_WRITE(GFX_MODE_GEN7,
-			   _MASKED_BIT_DISABLE(GFX_TLB_INVALIDATE_ALWAYS) |
+			   _MASKED_BIT_DISABLE(GFX_TLB_INVALIDATE_EXPLICIT) |
 			   _MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
 
 	if (INTEL_INFO(dev)->gen >= 5) {
@@ -606,7 +616,7 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 		 * TODO: consider explicitly setting the bit for GEN5
 		 */
 		ring->itlb_before_ctx_switch =
-			!!(I915_READ(GFX_MODE) & GFX_TLB_INVALIDATE_ALWAYS);
+			!!(I915_READ(GFX_MODE) & GFX_TLB_INVALIDATE_EXPLICIT);
 	}
 
 	if (INTEL_INFO(dev)->gen >= 6)
@@ -811,8 +821,11 @@ gen6_ring_get_seqno(struct intel_ring_buffer *ring, bool lazy_coherency)
 	/* Workaround to force correct ordering between irq and seqno writes on
 	 * ivb (and maybe also on snb) by reading from a CS register (like
 	 * ACTHD) before reading the status page. */
-	if (!lazy_coherency)
-		intel_ring_get_active_head(ring);
+	if (!lazy_coherency) {
+		struct drm_i915_private *dev_priv = ring->dev->dev_private;
+		POSTING_READ(RING_ACTHD(ring->mmio_base));
+	}
+
 	return intel_read_status_page(ring, I915_GEM_HWS_INDEX);
 }
 
@@ -979,9 +992,19 @@ void intel_ring_setup_status_page(struct intel_ring_buffer *ring)
 	I915_WRITE(mmio, (u32)ring->status_page.gfx_addr);
 	POSTING_READ(mmio);
 
-	/* Flush the TLB for this page */
-	if (INTEL_INFO(dev)->gen >= 6) {
+	/*
+	 * Flush the TLB for this page
+	 *
+	 * FIXME: These two bits have disappeared on gen8, so a question
+	 * arises: do we still need this and if so how should we go about
+	 * invalidating the TLB?
+	 */
+	if (INTEL_INFO(dev)->gen >= 6 && INTEL_INFO(dev)->gen < 8) {
 		u32 reg = RING_INSTPM(ring->mmio_base);
+
+		/* ring should be idle before issuing a sync flush*/
+		WARN_ON((I915_READ_MODE(ring) & MODE_IDLE) == 0);
+
 		I915_WRITE(reg,
 			   _MASKED_BIT_ENABLE(INSTPM_TLB_INVALIDATE |
 					      INSTPM_SYNC_FLUSH));

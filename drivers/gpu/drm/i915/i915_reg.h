@@ -190,6 +190,8 @@
  * Memory interface instructions used by the kernel
  */
 #define MI_INSTR(opcode, flags) (((opcode) << 23) | (flags))
+/* Many MI commands use bit 22 of the header dword for GGTT vs PPGTT */
+#define  MI_GLOBAL_GTT    (1<<22)
 
 #define MI_NOOP			MI_INSTR(0, 0)
 #define MI_USER_INTERRUPT	MI_INSTR(0x02, 0)
@@ -244,7 +246,8 @@
 #define   MI_SEMAPHORE_SYNC_BVE	    (0<<16) /* VECS wait for BCS  (VEBSYNC) */
 #define   MI_SEMAPHORE_SYNC_VVE	    (1<<16) /* VECS wait for VCS  (VEVSYNC) */
 #define   MI_SEMAPHORE_SYNC_RVE	    (2<<16) /* VECS wait for RCS  (VERSYNC) */
-#define   MI_SEMAPHORE_SYNC_INVALID  (3<<16)
+#define   MI_SEMAPHORE_SYNC_INVALID (3<<16)
+#define   MI_SEMAPHORE_SYNC_MASK    (3<<16)
 #define MI_SET_CONTEXT		MI_INSTR(0x18, 0)
 #define   MI_MM_SPACE_GTT		(1<<8)
 #define   MI_MM_SPACE_PHYSICAL		(0<<8)
@@ -269,6 +272,8 @@
 #define   MI_FLUSH_DW_STORE_INDEX	(1<<21)
 #define   MI_INVALIDATE_TLB		(1<<18)
 #define   MI_FLUSH_DW_OP_STOREDW	(1<<14)
+#define   MI_FLUSH_DW_OP_MASK		(3<<14)
+#define   MI_FLUSH_DW_NOTIFY		(1<<8)
 #define   MI_INVALIDATE_BSD		(1<<7)
 #define   MI_FLUSH_DW_USE_GTT		(1<<2)
 #define   MI_FLUSH_DW_USE_PPGTT		(0<<2)
@@ -330,9 +335,12 @@
 #define   DISPLAY_PLANE_B           (1<<20)
 #define GFX_OP_PIPE_CONTROL(len)	((0x3<<29)|(0x3<<27)|(0x2<<24)|(len-2))
 #define   PIPE_CONTROL_GLOBAL_GTT_IVB			(1<<24) /* gen7+ */
+#define   PIPE_CONTROL_MMIO_WRITE			(1<<23)
+#define   PIPE_CONTROL_STORE_DATA_INDEX			(1<<21)
 #define   PIPE_CONTROL_CS_STALL				(1<<20)
 #define   PIPE_CONTROL_TLB_INVALIDATE			(1<<18)
 #define   PIPE_CONTROL_QW_WRITE				(1<<14)
+#define   PIPE_CONTROL_POST_SYNC_OP_MASK                (3<<14)
 #define   PIPE_CONTROL_DEPTH_STALL			(1<<13)
 #define   PIPE_CONTROL_WRITE_FLUSH			(1<<12)
 #define   PIPE_CONTROL_RENDER_TARGET_CACHE_FLUSH	(1<<12) /* gen6+ */
@@ -347,6 +355,85 @@
 #define   PIPE_CONTROL_DEPTH_CACHE_FLUSH		(1<<0)
 #define   PIPE_CONTROL_GLOBAL_GTT (1<<2) /* in addr dword */
 
+/*
+ * Commands used only by the command parser
+ */
+#define MI_SET_PREDICATE        MI_INSTR(0x01, 0)
+#define MI_ARB_CHECK            MI_INSTR(0x05, 0)
+#define MI_RS_CONTROL           MI_INSTR(0x06, 0)
+#define MI_URB_ATOMIC_ALLOC     MI_INSTR(0x09, 0)
+#define MI_PREDICATE            MI_INSTR(0x0C, 0)
+#define MI_RS_CONTEXT           MI_INSTR(0x0F, 0)
+#define MI_TOPOLOGY_FILTER      MI_INSTR(0x0D, 0)
+#define MI_LOAD_SCAN_LINES_EXCL MI_INSTR(0x13, 0)
+#define MI_URB_CLEAR            MI_INSTR(0x19, 0)
+#define MI_UPDATE_GTT           MI_INSTR(0x23, 0)
+#define MI_CLFLUSH              MI_INSTR(0x27, 0)
+#define MI_REPORT_PERF_COUNT    MI_INSTR(0x28, 0)
+#define   MI_REPORT_PERF_COUNT_GGTT (1<<0)
+#define MI_LOAD_REGISTER_MEM    MI_INSTR(0x29, 0)
+#define MI_LOAD_REGISTER_REG    MI_INSTR(0x2A, 0)
+#define MI_RS_STORE_DATA_IMM    MI_INSTR(0x2B, 0)
+#define MI_LOAD_URB_MEM         MI_INSTR(0x2C, 0)
+#define MI_STORE_URB_MEM        MI_INSTR(0x2D, 0)
+#define MI_CONDITIONAL_BATCH_BUFFER_END MI_INSTR(0x36, 0)
+
+#define PIPELINE_SELECT                ((0x3<<29)|(0x1<<27)|(0x1<<24)|(0x4<<16))
+#define GFX_OP_3DSTATE_VF_STATISTICS   ((0x3<<29)|(0x1<<27)|(0x0<<24)|(0xB<<16))
+#define MEDIA_VFE_STATE                ((0x3<<29)|(0x2<<27)|(0x0<<24)|(0x0<<16))
+#define  MEDIA_VFE_STATE_MMIO_ACCESS_MASK (0x18)
+#define GPGPU_OBJECT                   ((0x3<<29)|(0x2<<27)|(0x1<<24)|(0x4<<16))
+#define GPGPU_WALKER                   ((0x3<<29)|(0x2<<27)|(0x1<<24)|(0x5<<16))
+#define GFX_OP_3DSTATE_DX9_CONSTANTF_VS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x39<<16))
+#define GFX_OP_3DSTATE_DX9_CONSTANTF_PS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x3A<<16))
+#define GFX_OP_3DSTATE_SO_DECL_LIST \
+	((0x3<<29)|(0x3<<27)|(0x1<<24)|(0x17<<16))
+
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_VS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x43<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_GS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x44<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_HS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x45<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_DS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x46<<16))
+#define GFX_OP_3DSTATE_BINDING_TABLE_EDIT_PS \
+	((0x3<<29)|(0x3<<27)|(0x0<<24)|(0x47<<16))
+
+#define MFX_WAIT  ((0x3<<29)|(0x1<<27)|(0x0<<16))
+
+#define COLOR_BLT     ((0x2<<29)|(0x40<<22))
+#define SRC_COPY_BLT  ((0x2<<29)|(0x43<<22))
+
+/*
+ * Registers used only by the command parser
+ */
+#define BCS_SWCTRL 0x22200
+
+#define HS_INVOCATION_COUNT 0x2300
+#define DS_INVOCATION_COUNT 0x2308
+#define IA_VERTICES_COUNT   0x2310
+#define IA_PRIMITIVES_COUNT 0x2318
+#define VS_INVOCATION_COUNT 0x2320
+#define GS_INVOCATION_COUNT 0x2328
+#define GS_PRIMITIVES_COUNT 0x2330
+#define CL_INVOCATION_COUNT 0x2338
+#define CL_PRIMITIVES_COUNT 0x2340
+#define PS_INVOCATION_COUNT 0x2348
+#define PS_DEPTH_COUNT      0x2350
+
+/* There are the 4 64-bit counter registers, one for each stream output */
+#define GEN7_SO_NUM_PRIMS_WRITTEN(n) (0x5200 + (n) * 8)
+
+#define OACONTROL 0x2360
+
+#define _GEN7_PIPEA_DE_LOAD_SL	0x70068
+#define _GEN7_PIPEB_DE_LOAD_SL	0x71068
+#define GEN7_PIPE_DE_LOAD_SL(pipe) _PIPE(pipe, \
+					 _GEN7_PIPEA_DE_LOAD_SL, \
+					 _GEN7_PIPEB_DE_LOAD_SL)
 
 /*
  * Reset registers
@@ -706,6 +793,7 @@ enum punit_power_well {
 #define BLT_HWS_PGA_GEN7	(0x04280)
 #define VEBOX_HWS_PGA_GEN7	(0x04380)
 #define RING_ACTHD(base)	((base)+0x74)
+#define RING_ACTHD_UDW(base)	((base)+0x5c)
 #define RING_NOPID(base)	((base)+0x94)
 #define RING_IMR(base)		((base)+0xa8)
 #define RING_TIMESTAMP(base)	((base)+0x358)
@@ -748,6 +836,7 @@ enum punit_power_well {
 #define RING_INSTPS(base)	((base)+0x70)
 #define RING_DMA_FADD(base)	((base)+0x78)
 #define RING_INSTPM(base)	((base)+0xc0)
+#define RING_MI_MODE(base)	((base)+0x9c)
 #define INSTPS		0x02070 /* 965+ only */
 #define INSTDONE1	0x0207c /* 965+ only */
 #define ACTHD_I965	0x02074
@@ -824,6 +913,7 @@ enum punit_power_well {
 # define VS_TIMER_DISPATCH				(1 << 6)
 # define MI_FLUSH_ENABLE				(1 << 12)
 # define ASYNC_FLIP_PERF_DISABLE			(1 << 14)
+# define MODE_IDLE					(1 << 9)
 
 #define GEN6_GT_MODE	0x20d0
 #define GEN7_GT_MODE	0x7008
@@ -838,7 +928,7 @@ enum punit_power_well {
 #define GFX_MODE_GEN7	0x0229c
 #define RING_MODE_GEN7(ring)	((ring)->mmio_base+0x29c)
 #define   GFX_RUN_LIST_ENABLE		(1<<15)
-#define   GFX_TLB_INVALIDATE_ALWAYS	(1<<13)
+#define   GFX_TLB_INVALIDATE_EXPLICIT	(1<<13)
 #define   GFX_SURFACE_FAULT_ENABLE	(1<<12)
 #define   GFX_REPLAY_MODE		(1<<11)
 #define   GFX_PSMI_GRANULARITY		(1<<10)
@@ -971,7 +1061,8 @@ enum punit_power_well {
 #define CACHE_MODE_0_GEN7	0x7000 /* IVB+ */
 #define   HIZ_RAW_STALL_OPT_DISABLE (1<<2)
 #define CACHE_MODE_1		0x7004 /* IVB+ */
-#define   PIXEL_SUBSPAN_COLLECT_OPT_DISABLE (1<<6)
+#define   PIXEL_SUBSPAN_COLLECT_OPT_DISABLE	(1<<6)
+#define   GEN8_4x4_STC_OPTIMIZATION_DISABLE	(1<<6)
 
 #define GEN6_BLITTER_ECOSKPD	0x221d0
 #define   GEN6_BLITTER_LOCK_SHIFT			16
@@ -3551,7 +3642,11 @@ enum punit_power_well {
 /* New style CUR*CNTR flags */
 #define   CURSOR_MODE		0x27
 #define   CURSOR_MODE_DISABLE   0x00
+#define   CURSOR_MODE_128_32B_AX 0x02
+#define   CURSOR_MODE_256_32B_AX 0x03
 #define   CURSOR_MODE_64_32B_AX 0x07
+#define   CURSOR_MODE_128_ARGB_AX ((1 << 5) | CURSOR_MODE_128_32B_AX)
+#define   CURSOR_MODE_256_ARGB_AX ((1 << 5) | CURSOR_MODE_256_32B_AX)
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
 #define   MCURSOR_PIPE_SELECT	(1 << 28)
 #define   MCURSOR_PIPE_A	0x00
