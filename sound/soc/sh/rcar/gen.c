@@ -66,6 +66,7 @@ static int rsnd_regmap_read32(void *context,
 }
 
 static struct regmap_bus rsnd_regmap_bus = {
+	.fast_io			= true,
 	.write				= rsnd_regmap_write32,
 	.read				= rsnd_regmap_read32,
 	.reg_format_endian_default	= REGMAP_ENDIAN_NATIVE,
