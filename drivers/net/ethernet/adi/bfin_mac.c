@@ -1040,6 +1040,7 @@ static struct ptp_clock_info bfin_ptp_caps = {
 	.n_alarm	= 0,
 	.n_ext_ts	= 0,
 	.n_per_out	= 0,
+	.n_pins		= 0,
 	.pps		= 0,
 	.adjfreq	= bfin_ptp_adjfreq,
 	.adjtime	= bfin_ptp_adjtime,
@@ -1086,7 +1087,7 @@ static inline void _tx_reclaim_skb(void)
 		tx_list_head->desc_a.config &= ~DMAEN;
 		tx_list_head->status.status_word = 0;
 		if (tx_list_head->skb) {
-			dev_kfree_skb(tx_list_head->skb);
+			dev_consume_skb_any(tx_list_head->skb);
 			tx_list_head->skb = NULL;
 		}
 		tx_list_head = tx_list_head->next;
