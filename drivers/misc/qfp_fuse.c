@@ -28,12 +28,7 @@
 /*
  * Time QFPROM requires to reliably burn a fuse.
  */
-#define QFPROM_BLOW_TIMEOUT_US      20
-#define QFPROM_BLOW_TIMER_OFFSET    0x2038
-/*
- * Denotes number of cycles required to blow the fuse.
- */
-#define QFPROM_BLOW_TIMER_VALUE     (QFPROM_BLOW_TIMEOUT_US * 83)
+#define QFPROM_BLOW_TIMEOUT_US      10
 
 #define QFPROM_BLOW_STATUS_OFFSET   0x204C
 #define QFPROM_BLOW_STATUS_BUSY     0x01
@@ -136,9 +131,6 @@ static int qfp_fuse_write_word(u32 *addr, u32 data)
 	u32 read_data;
 	int err;
 
-	/* Set QFPROM  blow timer register */
-	writel_relaxed(QFPROM_BLOW_TIMER_VALUE,
-			qfp_priv->base + QFPROM_BLOW_TIMER_OFFSET);
 	mb();
 
 	/* Enable LVS0 regulator */
