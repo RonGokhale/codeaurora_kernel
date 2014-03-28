@@ -26,9 +26,31 @@
 
 struct regmap_mmio_context {
 	void __iomem *regs;
+	unsigned reg_bytes;
 	unsigned val_bytes;
+	unsigned pad_bytes;
 	struct clk *clk;
 };
+
+static inline void regmap_mmio_regsize_check(size_t reg_size)
+{
+	switch (reg_size) {
+	case 1:
+	case 2:
+	case 4:
+#ifdef CONFIG_64BIT
+	case 8:
+#endif
+		break;
+	default:
+		BUG();
+	}
+}
+
+static inline void regmap_mmio_count_check(size_t count)
+{
+	BUG_ON(count % 2 != 0);
+}
 
 static int regmap_mmio_gather_write(void *context,
 				    const void *reg, size_t reg_size,
@@ -38,7 +60,7 @@ static int regmap_mmio_gather_write(void *context,
 	u32 offset;
 	int ret;
 
-	BUG_ON(reg_size != 4);
+	regmap_mmio_regsize_check(reg_size);
 
 	if (!IS_ERR(ctx->clk)) {
 		ret = clk_enable(ctx->clk);
@@ -81,9 +103,13 @@ static int regmap_mmio_gather_write(void *context,
 
 static int regmap_mmio_write(void *context, const void *data, size_t count)
 {
-	BUG_ON(count < 4);
+	struct regmap_mmio_context *ctx = context;
+	u32 offset = ctx->reg_bytes + ctx->pad_bytes;
 
-	return regmap_mmio_gather_write(context, data, 4, data + 4, count - 4);
+	regmap_mmio_count_check(count);
+
+	return regmap_mmio_gather_write(context, data, ctx->reg_bytes,
+					data + offset, count - offset);
 }
 
 static int regmap_mmio_read(void *context,
@@ -94,7 +120,7 @@ static int regmap_mmio_read(void *context,
 	u32 offset;
 	int ret;
 
-	BUG_ON(reg_size != 4);
+	regmap_mmio_regsize_check(reg_size);
 
 	if (!IS_ERR(ctx->clk)) {
 		ret = clk_enable(ctx->clk);
@@ -209,6 +235,8 @@ static struct regmap_mmio_context *regmap_mmio_gen_context(struct device *dev,
 
 	ctx->regs = regs;
 	ctx->val_bytes = config->val_bits / 8;
+	ctx->reg_bytes = config->reg_bits / 8;
+	ctx->pad_bytes = config->pad_bits / 8;
 	ctx->clk = ERR_PTR(-ENODEV);
 
 	if (clk_id == NULL)
