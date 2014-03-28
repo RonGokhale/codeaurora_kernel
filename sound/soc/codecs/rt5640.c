@@ -1622,16 +1622,16 @@ static int rt5640_hw_params(struct snd_pcm_substream *substream,
 	dev_dbg(dai->dev, "bclk_ms is %d and pre_div is %d for iis %d\n",
 				bclk_ms, pre_div, dai->id);
 
-	switch (params_format(params)) {
-	case SNDRV_PCM_FORMAT_S16_LE:
+	switch (params_width(params)) {
+	case 16:
 		break;
-	case SNDRV_PCM_FORMAT_S20_3LE:
+	case 20:
 		val_len |= RT5640_I2S_DL_20;
 		break;
-	case SNDRV_PCM_FORMAT_S24_LE:
+	case 24:
 		val_len |= RT5640_I2S_DL_24;
 		break;
-	case SNDRV_PCM_FORMAT_S8:
+	case 8:
 		val_len |= RT5640_I2S_DL_8;
 		break;
 	default:
@@ -1890,11 +1890,9 @@ static int rt5640_set_dai_pll(struct snd_soc_dai *dai, int pll_id, int source,
 static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 			enum snd_soc_bias_level level)
 {
-	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	switch (level) {
 	case SND_SOC_BIAS_STANDBY:
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
-			regcache_cache_only(rt5640->regmap, false);
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 				RT5640_PWR_VREF1 | RT5640_PWR_MB |
 				RT5640_PWR_BG | RT5640_PWR_VREF2,
@@ -1904,7 +1902,6 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 				RT5640_PWR_FV1 | RT5640_PWR_FV2,
 				RT5640_PWR_FV1 | RT5640_PWR_FV2);
-			regcache_sync(rt5640->regmap);
 			snd_soc_update_bits(codec, RT5640_DUMMY1,
 						0x0301, 0x0301);
 			snd_soc_update_bits(codec, RT5640_MICBIAS,
@@ -1978,6 +1975,9 @@ static int rt5640_resume(struct snd_soc_codec *codec)
 		gpio_set_value_cansleep(rt5640->pdata.ldo1_en, 1);
 		msleep(400);
 	}
+
+	regcache_cache_only(rt5640->regmap, false);
+	regcache_sync(rt5640->regmap);
 
 	return 0;
 }
