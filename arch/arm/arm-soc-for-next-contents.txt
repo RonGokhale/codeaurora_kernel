@@ -298,6 +298,8 @@ next/drivers
 		Revert "net: stmmac: Add SOCFPGA glue driver"
 	reset/driver
 		git://git.pengutronix.de/git/pza/linux reset/for_v3.15
+	samsung/exynos-clk2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-pm-1
 
 next/sh
 	renesas/sh-intc
@@ -310,6 +312,24 @@ next/cleanup2
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-for-v3.15-2
 	zynq/cleanup
 		git://git.xilinx.com/linux-xlnx.git tags/zynq-cleanup-for-3.15-v2
+
+next/cleanup3
+	# based on next/cleanup2, let's pick one of the two
+	# pulls in samsung/cleanup, samsung/exynos-clk, and samsung/exynos-clk2
+	samsung/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-cleanup-2
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-2
+	samsung/cleanup3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-cleanup-3
+	samsung/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-dt-3
+	samsung/pm2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/samsung-pm-2
+	samsung/cleanup4
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung.git tags/exynos-cleanup
+	patch
+		devicetree: fix newly added exynos sata bindings
 
 fixes
 	patch
