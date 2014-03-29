@@ -12,3 +12,7 @@ config SND_SOC_SIRF_AUDIO
 config SND_SOC_SIRF_AUDIO_PORT
 	select REGMAP_MMIO
 	tristate
+
+config SND_SOC_SIRF_I2S
+	select REGMAP_MMIO
+	tristate
