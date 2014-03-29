@@ -452,6 +452,7 @@
 
 		gmac0: ethernet@ff700000 {
 			compatible = "altr,socfpga-stmmac", "snps,dwmac-3.70a", "snps,dwmac";
+			altr,sysmgr-syscon = <&sysmgr 0x60 0>;
 			reg = <0xff700000 0x2000>;
 			interrupts = <0 115 4>;
 			interrupt-names = "macirq";
@@ -463,6 +464,7 @@
 
 		gmac1: ethernet@ff702000 {
 			compatible = "altr,socfpga-stmmac", "snps,dwmac-3.70a", "snps,dwmac";
+			altr,sysmgr-syscon = <&sysmgr 0x60 2>;
 			reg = <0xff702000 0x2000>;
 			interrupts = <0 120 4>;
 			interrupt-names = "macirq";

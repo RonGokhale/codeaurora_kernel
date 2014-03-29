@@ -86,3 +86,8 @@
 		};
 	};
 };
+
+&gmac0 {
+	status = "okay";
+	phy-mode = "gmii";
+};
