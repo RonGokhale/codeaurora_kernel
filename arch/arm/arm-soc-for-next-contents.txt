@@ -243,6 +243,9 @@ next/dt
 		ARM: STi: stih416: Add support for the FSM Serial Flash Controller
 	keystone/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone.git tags/keystone-dts-fixes
+	patch
+		dts: stmmac: Document the clocks property in the stmmac base document
+		dts: socfpga: Add DTS entry for adding the stmmac glue layer for stmmac.
 
 next/drivers
 	renesas/soc
