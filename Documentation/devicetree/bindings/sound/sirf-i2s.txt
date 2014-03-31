@@ -1,0 +1,27 @@
+* SiRF SoC I2S module
+
+Required properties:
+- compatible: "sirf,prima2-i2s"
+- reg: Base address and size entries:
+- dmas: List of DMA controller phandle and DMA request line ordered pairs.
+- dma-names: Identifier string for each DMA request line in the dmas property.
+  These strings correspond 1:1 with the ordered pairs in dmas.
+
+  One of the DMA channels will be responsible for transmission (should be
+  named "tx") and one for reception (should be named "rx").
+
+- clocks: A phandle of I2S controller clock source
+- pinctrl-names: Must contain a "default" entry.
+- pinctrl-NNN: One property must exist for each entry in pinctrl-names.
+
+Example:
+
+i2s: i2s@b0040000 {
+	compatible = "sirf,prima2-i2s";
+	reg = <0xb0040000 0x10000>;
+	dmas = <&dmac1 6>, <&dmac1 12>;
+	dma-names = "rx", "tx";
+	clocks = <&clks 27>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_pins_a>;
+};
