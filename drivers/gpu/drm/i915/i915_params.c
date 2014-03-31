@@ -42,13 +42,11 @@ struct i915_params i915 __read_mostly = {
 	.disable_power_well = 1,
 	.enable_ips = 1,
 	.fastboot = 0,
-	.enable_pc8 = 1,
-	.pc8_timeout = 5000,
 	.prefault_disable = 0,
 	.reset = true,
 	.invert_brightness = 0,
 	.disable_display = 0,
-	.enable_cmd_parser = 0,
+	.enable_cmd_parser = 1,
 };
 
 module_param_named(modeset, i915.modeset, int, 0400);
@@ -135,14 +133,6 @@ module_param_named(fastboot, i915.fastboot, bool, 0600);
 MODULE_PARM_DESC(fastboot,
 	"Try to skip unnecessary mode sets at boot time (default: false)");
 
-module_param_named(enable_pc8, i915.enable_pc8, int, 0600);
-MODULE_PARM_DESC(enable_pc8,
-	"Enable support for low power package C states (PC8+) (default: true)");
-
-module_param_named(pc8_timeout, i915.pc8_timeout, int, 0600);
-MODULE_PARM_DESC(pc8_timeout,
-	"Number of msecs of idleness required to enter PC8+ (default: 5000)");
-
 module_param_named(prefault_disable, i915.prefault_disable, bool, 0600);
 MODULE_PARM_DESC(prefault_disable,
 	"Disable page prefaulting for pread/pwrite/reloc (default:false). "
@@ -161,4 +151,4 @@ MODULE_PARM_DESC(disable_display, "Disable display (default: false)");
 
 module_param_named(enable_cmd_parser, i915.enable_cmd_parser, int, 0600);
 MODULE_PARM_DESC(enable_cmd_parser,
-		 "Enable command parsing (1=enabled, 0=disabled [default])");
+		 "Enable command parsing (1=enabled [default], 0=disabled)");
