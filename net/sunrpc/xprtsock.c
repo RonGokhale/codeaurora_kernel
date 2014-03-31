@@ -909,6 +909,12 @@ static void xs_tcp_close(struct rpc_xprt *xprt)
 		xs_tcp_shutdown(xprt);
 }
 
+static void xs_xprt_free(struct rpc_xprt *xprt)
+{
+	xs_free_peer_addresses(xprt);
+	xprt_free(xprt);
+}
+
 /**
  * xs_destroy - prepare to shutdown a transport
  * @xprt: doomed transport
@@ -919,8 +925,7 @@ static void xs_destroy(struct rpc_xprt *xprt)
 	dprintk("RPC:       xs_destroy xprt %p\n", xprt);
 
 	xs_close(xprt);
-	xs_free_peer_addresses(xprt);
-	xprt_free(xprt);
+	xs_xprt_free(xprt);
 	module_put(THIS_MODULE);
 }
 
@@ -2732,7 +2737,7 @@ static struct rpc_xprt *xs_setup_local(struct xprt_create *args)
 		return xprt;
 	ret = ERR_PTR(-EINVAL);
 out_err:
-	xprt_free(xprt);
+	xs_xprt_free(xprt);
 	return ret;
 }
 
@@ -2810,7 +2815,7 @@ static struct rpc_xprt *xs_setup_udp(struct xprt_create *args)
 		return xprt;
 	ret = ERR_PTR(-EINVAL);
 out_err:
-	xprt_free(xprt);
+	xs_xprt_free(xprt);
 	return ret;
 }
 
@@ -2885,12 +2890,11 @@ static struct rpc_xprt *xs_setup_tcp(struct xprt_create *args)
 				xprt->address_strings[RPC_DISPLAY_ADDR],
 				xprt->address_strings[RPC_DISPLAY_PROTO]);
 
-
 	if (try_module_get(THIS_MODULE))
 		return xprt;
 	ret = ERR_PTR(-EINVAL);
 out_err:
-	xprt_free(xprt);
+	xs_xprt_free(xprt);
 	return ret;
 }
 
@@ -2973,13 +2977,12 @@ static struct rpc_xprt *xs_setup_bc_tcp(struct xprt_create *args)
 	 */
 	xprt_set_connected(xprt);
 
-
 	if (try_module_get(THIS_MODULE))
 		return xprt;
 	xprt_put(xprt);
 	ret = ERR_PTR(-EINVAL);
 out_err:
-	xprt_free(xprt);
+	xs_xprt_free(xprt);
 	return ret;
 }
 
