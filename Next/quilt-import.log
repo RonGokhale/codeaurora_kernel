@@ -1,0 +1,47 @@
+Importing jdelvare-hwmon based on 3.14-rc8
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard b098d6726bbfb94c06d6e1097466187afddae61f
+HEAD is now at b098d6726bbf Linux 3.14-rc8
+$ git am ../quilt/jdelvare-hwmon/hwmon-f71805f-fix-author-address.patch
+Applying: hwmon: (f71805f) Fix author's address
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-01-fix-8603e-define-name.patch
+Applying: hwmon: (it87) Fix IT8603E define name
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-01-add-additional-sysfs-group-for-temp2_type-attribute.patch
+Applying: hwmon: (lm63) Add additional sysfs group for temp2_type attribute
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-02-introduce-dev-variable-to-point-to-client-dev.patch
+Applying: hwmon: (lm63) Introduce 'dev' variable to point to client->dev
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-03-create-all-sysfs-groups-in-one-call.patch
+Applying: hwmon: (lm63) Create all sysfs groups in one call
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-04-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm63) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm63-05-avoid-double-initialization.patch
+Applying: hwmon: (lm63) Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-adm1021-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (adm1021) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm80-convert-to-use-devm_hwmon_device_register_with_groups.patch
+Applying: hwmon: (lm80) Convert to use devm_hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-pc87360-avoid-double-initializations.patch
+Applying: hwmon: (pc87360) Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-avoid-double-initializations.patch
+Applying: hwmon: Avoid initializing the same field twice
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-01-create-most-optional.patch
+Applying: hwmon: (lm90) Create most optional attributes with sysfs_create_group
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-02-always-use-the-dev.patch
+Applying: hwmon: (lm90) Always use the dev variable in the probe function
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-03-create-all-sysfs-groups.patch
+Applying: hwmon: (lm90) Create all sysfs groups in one call
+$ git am ../quilt/jdelvare-hwmon/hwmon-lm90-04-convert-to-use.patch
+Applying: hwmon: (lm90) Convert to use hwmon_device_register_with_groups
+$ git am ../quilt/jdelvare-hwmon/hwmon-it87-02-add-support-for-it8623e.patch
+Applying: hwmon: (it87) Add support for IT8623E
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + c6cb4e3be013...a1261382eab0 master     -> jdelvare-hwmon/master  (forced update)
+Importing jdelvare-hwmon based on 3.14-rc8
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on origin/master
+$ git branch rd-docs/master 981e893ed537cbaa08f8089d480db4165e6d71c0
+	quilt series is empty
+$ git branch -f rd-docs/master 981e893ed537cbaa08f8089d480db4165e6d71c0
