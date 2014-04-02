@@ -141,6 +141,9 @@ config VF_PIT_TIMER
 	help
 	  Support for Period Interrupt Timer on Freescale Vybrid Family SoCs.
 
+config CLKSRC_QCOM
+	bool
+
 config SYS_SUPPORTS_SH_CMT
         bool
 
