@@ -950,12 +950,6 @@ static int exynos_dp_get_modes(struct drm_connector *connector)
 	return 1;
 }
 
-static int exynos_dp_mode_valid(struct drm_connector *connector,
-			struct drm_display_mode *mode)
-{
-	return MODE_OK;
-}
-
 static struct drm_encoder *exynos_dp_best_encoder(
 			struct drm_connector *connector)
 {
@@ -966,7 +960,6 @@ static struct drm_encoder *exynos_dp_best_encoder(
 
 static struct drm_connector_helper_funcs exynos_dp_connector_helper_funcs = {
 	.get_modes = exynos_dp_get_modes,
-	.mode_valid = exynos_dp_mode_valid,
 	.best_encoder = exynos_dp_best_encoder,
 };
 
