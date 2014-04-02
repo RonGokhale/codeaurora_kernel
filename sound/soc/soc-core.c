@@ -1137,6 +1137,16 @@ static int soc_probe_codec(struct snd_soc_card *card,
 
 	codec->dapm.idle_bias_off = driver->idle_bias_off;
 
+	if (!codec->write && dev_get_regmap(codec->dev, NULL)) {
+		/* Set the default I/O up try regmap */
+		ret = snd_soc_codec_set_cache_io(codec, NULL);
+		if (ret < 0) {
+			dev_err(codec->dev,
+				"Failed to set cache I/O: %d\n", ret);
+			goto err_probe;
+		}
+	}
+
 	if (driver->probe) {
 		ret = driver->probe(codec);
 		if (ret < 0) {
@@ -1149,10 +1159,6 @@ static int soc_probe_codec(struct snd_soc_card *card,
 			"codec %s can not start from non-off bias with idle_bias_off==1\n",
 			codec->name);
 	}
-
-	/* If the driver didn't set I/O up try regmap */
-	if (!codec->write && dev_get_regmap(codec->dev, NULL))
-		snd_soc_codec_set_cache_io(codec, 0, 0, SND_SOC_REGMAP);
 
 	if (driver->controls)
 		snd_soc_add_codec_controls(codec, driver->controls,
@@ -1247,7 +1253,7 @@ static int soc_post_component_init(struct snd_soc_card *card,
 	struct snd_soc_dai_link *dai_link = NULL;
 	struct snd_soc_aux_dev *aux_dev = NULL;
 	struct snd_soc_pcm_runtime *rtd;
-	const char *temp, *name;
+	const char *name;
 	int ret = 0;
 
 	if (!dailess) {
@@ -1261,10 +1267,6 @@ static int soc_post_component_init(struct snd_soc_card *card,
 	}
 	rtd->card = card;
 
-	/* machine controls, routes and widgets are not prefixed */
-	temp = codec->name_prefix;
-	codec->name_prefix = NULL;
-
 	/* do machine specific initialization */
 	if (!dailess && dai_link->init)
 		ret = dai_link->init(rtd);
@@ -1274,7 +1276,6 @@ static int soc_post_component_init(struct snd_soc_card *card,
 		dev_err(card->dev, "ASoC: failed to init %s: %d\n", name, ret);
 		return ret;
 	}
-	codec->name_prefix = temp;
 
 	/* register the rtd device */
 	rtd->codec = codec;
@@ -3619,14 +3620,14 @@ int snd_soc_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 EXPORT_SYMBOL_GPL(snd_soc_dai_set_fmt);
 
 /**
- * snd_soc_of_xlate_tdm_slot - generate tx/rx slot mask.
+ * snd_soc_xlate_tdm_slot - generate tx/rx slot mask.
  * @slots: Number of slots in use.
  * @tx_mask: bitmask representing active TX slots.
  * @rx_mask: bitmask representing active RX slots.
  *
  * Generates the TDM tx and rx slot default masks for DAI.
  */
-static int snd_soc_of_xlate_tdm_slot_mask(unsigned int slots,
+static int snd_soc_xlate_tdm_slot_mask(unsigned int slots,
 					  unsigned int *tx_mask,
 					  unsigned int *rx_mask)
 {
@@ -3656,11 +3657,11 @@ static int snd_soc_of_xlate_tdm_slot_mask(unsigned int slots,
 int snd_soc_dai_set_tdm_slot(struct snd_soc_dai *dai,
 	unsigned int tx_mask, unsigned int rx_mask, int slots, int slot_width)
 {
-	if (dai->driver && dai->driver->ops->of_xlate_tdm_slot_mask)
-		dai->driver->ops->of_xlate_tdm_slot_mask(slots,
+	if (dai->driver && dai->driver->ops->xlate_tdm_slot_mask)
+		dai->driver->ops->xlate_tdm_slot_mask(slots,
 						&tx_mask, &rx_mask);
 	else
-		snd_soc_of_xlate_tdm_slot_mask(slots, &tx_mask, &rx_mask);
+		snd_soc_xlate_tdm_slot_mask(slots, &tx_mask, &rx_mask);
 
 	if (dai->driver && dai->driver->ops->set_tdm_slot)
 		return dai->driver->ops->set_tdm_slot(dai, tx_mask, rx_mask,
