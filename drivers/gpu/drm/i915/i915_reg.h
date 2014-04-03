@@ -706,6 +706,7 @@ enum punit_power_well {
 #define BLT_HWS_PGA_GEN7	(0x04280)
 #define VEBOX_HWS_PGA_GEN7	(0x04380)
 #define RING_ACTHD(base)	((base)+0x74)
+#define RING_ACTHD_UDW(base)	((base)+0x5c)
 #define RING_NOPID(base)	((base)+0x94)
 #define RING_IMR(base)		((base)+0xa8)
 #define RING_TIMESTAMP(base)	((base)+0x358)
@@ -748,6 +749,7 @@ enum punit_power_well {
 #define RING_INSTPS(base)	((base)+0x70)
 #define RING_DMA_FADD(base)	((base)+0x78)
 #define RING_INSTPM(base)	((base)+0xc0)
+#define RING_MI_MODE(base)	((base)+0x9c)
 #define INSTPS		0x02070 /* 965+ only */
 #define INSTDONE1	0x0207c /* 965+ only */
 #define ACTHD_I965	0x02074
@@ -824,6 +826,7 @@ enum punit_power_well {
 # define VS_TIMER_DISPATCH				(1 << 6)
 # define MI_FLUSH_ENABLE				(1 << 12)
 # define ASYNC_FLIP_PERF_DISABLE			(1 << 14)
+# define MODE_IDLE					(1 << 9)
 
 #define GEN6_GT_MODE	0x20d0
 #define GEN7_GT_MODE	0x7008
@@ -971,7 +974,8 @@ enum punit_power_well {
 #define CACHE_MODE_0_GEN7	0x7000 /* IVB+ */
 #define   HIZ_RAW_STALL_OPT_DISABLE (1<<2)
 #define CACHE_MODE_1		0x7004 /* IVB+ */
-#define   PIXEL_SUBSPAN_COLLECT_OPT_DISABLE (1<<6)
+#define   PIXEL_SUBSPAN_COLLECT_OPT_DISABLE	(1<<6)
+#define   GEN8_4x4_STC_OPTIMIZATION_DISABLE	(1<<6)
 
 #define GEN6_BLITTER_ECOSKPD	0x221d0
 #define   GEN6_BLITTER_LOCK_SHIFT			16
@@ -3551,7 +3555,11 @@ enum punit_power_well {
 /* New style CUR*CNTR flags */
 #define   CURSOR_MODE		0x27
 #define   CURSOR_MODE_DISABLE   0x00
+#define   CURSOR_MODE_128_32B_AX 0x02
+#define   CURSOR_MODE_256_32B_AX 0x03
 #define   CURSOR_MODE_64_32B_AX 0x07
+#define   CURSOR_MODE_128_ARGB_AX ((1 << 5) | CURSOR_MODE_128_32B_AX)
+#define   CURSOR_MODE_256_ARGB_AX ((1 << 5) | CURSOR_MODE_256_32B_AX)
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
 #define   MCURSOR_PIPE_SELECT	(1 << 28)
 #define   MCURSOR_PIPE_A	0x00
