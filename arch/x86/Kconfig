@@ -444,6 +444,7 @@ config X86_INTEL_MID
 	bool "Intel MID platform support"
 	depends on X86_32
 	depends on X86_EXTENDED_PLATFORM
+	depends on X86_PLATFORM_DEVICES
 	depends on PCI
 	depends on PCI_GOANY
 	depends on X86_IO_APIC
@@ -576,7 +577,7 @@ config X86_32_IRIS
 
 config SCHED_OMIT_FRAME_POINTER
 	def_bool y
-	prompt "Single-depth WCHAN output"
+	prompt "Single-depth WCHAN output" if !LTO && !FRAME_POINTER
 	depends on X86
 	---help---
 	  Calculate simpler /proc/<PID>/wchan values. If this option
@@ -1051,9 +1052,9 @@ config MICROCODE_INTEL
 	  This options enables microcode patch loading support for Intel
 	  processors.
 
-	  For latest news and information on obtaining all the required
-	  Intel ingredients for this driver, check:
-	  <http://www.urbanmyth.org/microcode/>.
+	  For the current Intel microcode data package go to
+	  <https://downloadcenter.intel.com> and search for
+	  'Linux Processor Microcode Data File'.
 
 config MICROCODE_AMD
 	bool "AMD microcode loading support"
@@ -1583,6 +1584,20 @@ config EFI_STUB
 	  by EFI firmware without the use of a bootloader.
 
 	  See Documentation/efi-stub.txt for more information.
+
+config EFI_MIXED
+	bool "EFI mixed-mode support"
+	depends on EFI_STUB && X86_64
+	---help---
+	   Enabling this feature allows a 64-bit kernel to be booted
+	   on a 32-bit firmware, provided that your CPU supports 64-bit
+	   mode.
+
+	   Note that it is not possible to boot a mixed-mode enabled
+	   kernel via the EFI boot stub - a bootloader that supports
+	   the EFI handover protocol must be used.
+
+	   If unsure, say N.
 
 config SECCOMP
 	def_bool y

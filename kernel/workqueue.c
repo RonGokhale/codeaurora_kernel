@@ -1851,6 +1851,12 @@ static void destroy_worker(struct worker *worker)
 	if (worker->flags & WORKER_IDLE)
 		pool->nr_idle--;
 
+	/*
+	 * Once WORKER_DIE is set, the kworker may destroy itself at any
+	 * point.  Pin to ensure the task stays until we're done with it.
+	 */
+	get_task_struct(worker->task);
+
 	list_del_init(&worker->entry);
 	worker->flags |= WORKER_DIE;
 
@@ -1859,6 +1865,7 @@ static void destroy_worker(struct worker *worker)
 	spin_unlock_irq(&pool->lock);
 
 	kthread_stop(worker->task);
+	put_task_struct(worker->task);
 	kfree(worker);
 
 	spin_lock_irq(&pool->lock);
@@ -3218,7 +3225,7 @@ static ssize_t wq_nice_store(struct device *dev, struct device_attribute *attr,
 		return -ENOMEM;
 
 	if (sscanf(buf, "%d", &attrs->nice) == 1 &&
-	    attrs->nice >= -20 && attrs->nice <= 19)
+	    attrs->nice >= MIN_NICE && attrs->nice <= MAX_NICE)
 		ret = apply_workqueue_attrs(wq, attrs);
 	else
 		ret = -EINVAL;

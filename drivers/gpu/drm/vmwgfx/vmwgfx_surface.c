@@ -830,6 +830,24 @@ int vmw_surface_define_ioctl(struct drm_device *dev, void *data,
 	if (unlikely(ret != 0))
 		goto out_unlock;
 
+	/*
+	 * A gb-aware client referencing a shared surface will
+	 * expect a backup buffer to be present.
+	 */
+	if (dev_priv->has_mob && req->shareable) {
+		uint32_t backup_handle;
+
+		ret = vmw_user_dmabuf_alloc(dev_priv, tfile,
+					    res->backup_size,
+					    true,
+					    &backup_handle,
+					    &res->backup);
+		if (unlikely(ret != 0)) {
+			vmw_resource_unreference(&res);
+			goto out_unlock;
+		}
+	}
+
 	tmp = vmw_resource_reference(&srf->res);
 	ret = ttm_prime_object_init(tfile, res->backup_size, &user_srf->prime,
 				    req->shareable, VMW_RES_SURFACE,
@@ -908,8 +926,8 @@ int vmw_surface_reference_ioctl(struct drm_device *dev, void *data,
 	    rep->size_addr;
 
 	if (user_sizes)
-		ret = copy_to_user(user_sizes, srf->sizes,
-				   srf->num_sizes * sizeof(*srf->sizes));
+		ret = copy_to_user(user_sizes, &srf->base_size,
+				   sizeof(srf->base_size));
 	if (unlikely(ret != 0)) {
 		DRM_ERROR("copy_to_user failed %p %u\n",
 			  user_sizes, srf->num_sizes);
@@ -1111,7 +1129,7 @@ static int vmw_gb_surface_destroy(struct vmw_resource *res)
 		return 0;
 
 	mutex_lock(&dev_priv->binding_mutex);
-	vmw_context_binding_res_list_kill(&res->binding_head);
+	vmw_context_binding_res_list_scrub(&res->binding_head);
 
 	cmd = vmw_fifo_reserve(dev_priv, sizeof(*cmd));
 	if (unlikely(cmd == NULL)) {

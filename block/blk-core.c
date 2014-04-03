@@ -708,8 +708,12 @@ blk_init_allocated_queue(struct request_queue *q, request_fn_proc *rfn,
 	if (!q)
 		return NULL;
 
-	if (blk_init_rl(&q->root_rl, q, GFP_KERNEL))
+	q->flush_rq = kzalloc(sizeof(struct request), GFP_KERNEL);
+	if (!q->flush_rq)
 		return NULL;
+
+	if (blk_init_rl(&q->root_rl, q, GFP_KERNEL))
+		goto fail;
 
 	q->request_fn		= rfn;
 	q->prep_rq_fn		= NULL;
@@ -733,12 +737,16 @@ blk_init_allocated_queue(struct request_queue *q, request_fn_proc *rfn,
 	/* init elevator */
 	if (elevator_init(q, NULL)) {
 		mutex_unlock(&q->sysfs_lock);
-		return NULL;
+		goto fail;
 	}
 
 	mutex_unlock(&q->sysfs_lock);
 
 	return q;
+
+fail:
+	kfree(q->flush_rq);
+	return NULL;
 }
 EXPORT_SYMBOL(blk_init_allocated_queue);
 
@@ -1127,7 +1135,7 @@ static struct request *blk_old_get_request(struct request_queue *q, int rw,
 struct request *blk_get_request(struct request_queue *q, int rw, gfp_t gfp_mask)
 {
 	if (q->mq_ops)
-		return blk_mq_alloc_request(q, rw, gfp_mask, false);
+		return blk_mq_alloc_request(q, rw, gfp_mask);
 	else
 		return blk_old_get_request(q, rw, gfp_mask);
 }
@@ -1277,6 +1285,11 @@ void __blk_put_request(struct request_queue *q, struct request *req)
 {
 	if (unlikely(!q))
 		return;
+
+	if (q->mq_ops) {
+		blk_mq_free_request(req);
+		return;
+	}
 
 	blk_pm_put_request(req);
 
