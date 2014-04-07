@@ -330,6 +330,16 @@ config SYSVIPC_COMPAT
 config KEYS_COMPAT
 	def_bool y if COMPAT && KEYS
 
+config S390_TICKET_SPINLOCK
+	bool "Use ticket spinlocks"
+	depends on S390 && SMP
+	default n
+	help
+	  This enables support for ticket spinlocks. Ticket spinlocks
+	  are more fair by means that waiting CPUs will get the lock
+	  in the order they tried to obtain it.
+	  The tradeoff is more complex code that could impact performance.
+
 config SMP
 	def_bool y
 	prompt "Symmetric multi-processing support"
