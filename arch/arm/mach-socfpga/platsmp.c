@@ -2,7 +2,7 @@
  * Copyright 2010-2011 Calxeda, Inc.
  * Copyright 2012 Pavel Machek <pavel@denx.de>
  * Based on platsmp.c, Copyright (C) 2002 ARM Ltd.
- * Copyright (C) 2012 Altera Corporation
+ * Copyright (C) 2012-2013 Altera Corporation
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -86,6 +86,12 @@ static void __init socfpga_smp_prepare_cpus(unsigned int max_cpus)
  */
 static void socfpga_cpu_die(unsigned int cpu)
 {
+	/* Flush the L1 data cache. */
+	flush_cache_all();
+
+	/* This will put CPU #1 into reset.*/
+	__raw_writel(RSTMGR_MPUMODRST_CPU1, rst_manager_base_addr + 0x10);
+
 	cpu_do_idle();
 
 	/* We should have never returned from idle */

@@ -119,9 +119,11 @@ static inline int dw_i2c_acpi_configure(struct platform_device *pdev)
 static int dw_i2c_probe(struct platform_device *pdev)
 {
 	struct dw_i2c_dev *dev;
+	struct device_node *np = pdev->dev.of_node;
 	struct i2c_adapter *adap;
 	struct resource *mem;
 	int irq, r;
+	int speed, speed_prop, ret;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
@@ -159,6 +161,13 @@ static int dw_i2c_probe(struct platform_device *pdev)
 					"i2c-sda-hold-time-ns", &ht);
 		dev->sda_hold_time = div_u64((u64)ic_clk * ht + 500000,
 					     1000000);
+
+		of_property_read_u32(pdev->dev.of_node,
+				     "i2c-sda-falling-time-ns",
+				     &dev->sda_falling_time);
+		of_property_read_u32(pdev->dev.of_node,
+				     "i2c-scl-falling-time-ns",
+				     &dev->scl_falling_time);
 	}
 
 	dev->functionality =
@@ -168,8 +177,16 @@ static int dw_i2c_probe(struct platform_device *pdev)
 		I2C_FUNC_SMBUS_BYTE_DATA |
 		I2C_FUNC_SMBUS_WORD_DATA |
 		I2C_FUNC_SMBUS_I2C_BLOCK;
+
+	/* Get speed from device tree.  Default to fast speed. */
+	speed = DW_IC_CON_SPEED_FAST;
+	if (np) {
+		ret = of_property_read_u32(np, "speed-mode", &speed_prop);
+		if (!ret && (speed_prop == 0))
+			speed = DW_IC_CON_SPEED_STD;
+	}
 	dev->master_cfg =  DW_IC_CON_MASTER | DW_IC_CON_SLAVE_DISABLE |
-		DW_IC_CON_RESTART_EN | DW_IC_CON_SPEED_FAST;
+		DW_IC_CON_RESTART_EN | speed;
 
 	/* Try first if we can configure the device from ACPI */
 	r = dw_i2c_acpi_configure(pdev);

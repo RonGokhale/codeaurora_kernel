@@ -22,12 +22,21 @@
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 
 /* Clock Manager offsets */
 #define CLKMGR_CTRL	0x0
 #define CLKMGR_BYPASS	0x4
 #define CLKMGR_L4SRC	0x70
+#define CLKMGR_PERIP_VCO	0x80
 #define CLKMGR_PERPLL_SRC	0xAC
+#define CLKMGR_SDRAM_VCO	0xC0
+
+#define CLK_MGR_PERIP_PLL_CLK_SRC_SHIFT	22
+#define CLK_MGR_PERIP_PLL_CLK_SRC_MASK	0x3
+
+#define CLK_MGR_SDRAM_CLK_SRC_SHIFT	22
+#define CLK_MGR_SDRAM_CLK_SRC_MASK	0x3
 
 /* Clock bypass bits */
 #define MAINPLL_BYPASS		(1<<0)
@@ -51,6 +60,8 @@
 #define SOCFPGA_NAND_X_CLK		"nand_x_clk"
 #define SOCFPGA_MMC_CLK			"sdmmc_clk"
 #define SOCFPGA_DB_CLK			"gpio_db_clk"
+#define SOCFPGA_PERIP_PLL_CLK		"periph_pll"
+#define SOCFPGA_SDRAM_PLL_CLK		"sdram_pll"
 
 #define div_mask(width)	((1 << (width)) - 1)
 #define streq(a, b) (strcmp((a), (b)) == 0)
@@ -72,7 +83,8 @@ static unsigned long clk_pll_recalc_rate(struct clk_hw *hwclk,
 					 unsigned long parent_rate)
 {
 	struct socfpga_clk *socfpgaclk = to_socfpga_clk(hwclk);
-	unsigned long divf, divq, vco_freq, reg;
+	unsigned long divf, divq, reg;
+	unsigned long long vco_freq;
 	unsigned long bypass;
 
 	reg = readl(socfpgaclk->hw.reg);
@@ -82,13 +94,31 @@ static unsigned long clk_pll_recalc_rate(struct clk_hw *hwclk,
 
 	divf = (reg & SOCFPGA_PLL_DIVF_MASK) >> SOCFPGA_PLL_DIVF_SHIFT;
 	divq = (reg & SOCFPGA_PLL_DIVQ_MASK) >> SOCFPGA_PLL_DIVQ_SHIFT;
-	vco_freq = parent_rate * (divf + 1);
-	return vco_freq / (1 + divq);
+	vco_freq = (unsigned long long)parent_rate * (divf + 1);
+	do_div(vco_freq, (1 + divq));
+	return (unsigned long)vco_freq;
+}
+
+static u8 clk_pll_get_parent(struct clk_hw *hwclk)
+{
+	u32 pll_src;
+
+	if (streq(hwclk->init->name, SOCFPGA_PERIP_PLL_CLK)) {
+		pll_src = readl(clk_mgr_base_addr + CLKMGR_PERIP_VCO);
+		return (pll_src >> CLK_MGR_PERIP_PLL_CLK_SRC_SHIFT) &
+				CLK_MGR_PERIP_PLL_CLK_SRC_MASK;
+	} else if (streq(hwclk->init->name, SOCFPGA_SDRAM_PLL_CLK)) {
+		pll_src = readl(clk_mgr_base_addr + CLKMGR_SDRAM_VCO);
+		return (pll_src >> CLK_MGR_SDRAM_CLK_SRC_SHIFT) &
+				CLK_MGR_SDRAM_CLK_SRC_MASK;
+	}
+	return 0;
 }
 
 
 static struct clk_ops clk_pll_ops = {
 	.recalc_rate = clk_pll_recalc_rate,
+	.get_parent = clk_pll_get_parent,
 };
 
 static unsigned long clk_periclk_recalc_rate(struct clk_hw *hwclk,
@@ -116,20 +146,20 @@ static __init struct clk *socfpga_clk_init(struct device_node *node,
 	struct clk *clk;
 	struct socfpga_clk *socfpga_clk;
 	const char *clk_name = node->name;
-	const char *parent_name;
+	const char *parent_name[SOCFGPA_MAX_PARENTS];
 	struct clk_init_data init;
 	int rc;
 	u32 fixed_div;
+	int i = 0;
 
-	rc = of_property_read_u32(node, "reg", &reg);
-	if (WARN_ON(rc))
-		return NULL;
+	of_property_read_u32(node, "reg", &reg);
 
 	socfpga_clk = kzalloc(sizeof(*socfpga_clk), GFP_KERNEL);
 	if (WARN_ON(!socfpga_clk))
 		return NULL;
 
-	socfpga_clk->hw.reg = clk_mgr_base_addr + reg;
+	if (reg)
+		socfpga_clk->hw.reg = clk_mgr_base_addr + reg;
 
 	rc = of_property_read_u32(node, "fixed-divider", &fixed_div);
 	if (rc)
@@ -142,10 +172,12 @@ static __init struct clk *socfpga_clk_init(struct device_node *node,
 	init.name = clk_name;
 	init.ops = ops;
 	init.flags = 0;
-	parent_name = of_clk_get_parent_name(node, 0);
-	init.parent_names = &parent_name;
-	init.num_parents = 1;
 
+	while (i < SOCFGPA_MAX_PARENTS && (parent_name[i] =
+			of_clk_get_parent_name(node, i)) != NULL)
+		i++;
+	init.num_parents = i;
+	init.parent_names = parent_name;
 	socfpga_clk->hw.hw.init = &init;
 
 	if (streq(clk_name, "main_pll") ||
@@ -335,14 +367,3 @@ static void __init socfpga_gate_init(struct device_node *node)
 	socfpga_gate_clk_init(node, &gateclk_ops);
 }
 CLK_OF_DECLARE(socfpga_gate, "altr,socfpga-gate-clk", socfpga_gate_init);
-
-void __init socfpga_init_clocks(void)
-{
-	struct clk *clk;
-	int ret;
-
-	clk = clk_register_fixed_factor(NULL, "smp_twd", "mpuclk", 0, 1, 4);
-	ret = clk_register_clkdev(clk, NULL, "smp_twd");
-	if (ret)
-		pr_err("smp_twd alias not registered\n");
-}

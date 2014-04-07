@@ -1,24 +1,43 @@
 /*
- *  Copyright (C) 2012 Altera Corporation <www.altera.com>
+ * Copyright Altera Corporation (C) 2012,2014. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * it under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 /dts-v1/;
 /include/ "socfpga.dtsi"
 
 / {
+	model = "Altera SOCFPGA Cyclone V";
+	compatible = "altr,socfpga-cyclone5", "altr,socfpga";
+
+	chosen {
+		bootargs = "console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait";
+	};
+
+	memory {
+		name = "memory";
+		device_type = "memory";
+		reg = <0x0 0x40000000>; /* 1 GB */
+	};
+
+	aliases {
+		/* this allow the ethaddr uboot environmnet variable contents
+		 * to be added to the gmac1 device tree blob.
+		 */
+		ethernet0 = &gmac1;
+	};
+
 	soc {
 		clkmgr@ffd04000 {
 			clocks {
@@ -28,38 +47,106 @@
 			};
 		};
 
-		ethernet@ff702000 {
-			phy-mode = "rgmii";
-			phy-addr = <0xffffffff>; /* probe for phy addr */
+		dcan0: d_can@ffc00000 {
 			status = "okay";
 		};
 
-		timer0@ffc08000 {
-			clock-frequency = <100000000>;
+		dwmmc0@ff704000 {
+			num-slots = <1>;
+			supports-highspeed;
+			broken-cd;
+			altr,dw-mshc-ciu-div = <3>;
+			altr,dw-mshc-sdr-timing = <0 3>;
+
+			slot@0 {
+				reg = <0>;
+				bus-width = <4>;
+			};
 		};
 
-		timer1@ffc09000 {
-			clock-frequency = <100000000>;
+		i2c0: i2c@ffc04000 {
+			speed-mode = <0>;
+			status = "okay";
 		};
 
-		timer2@ffd00000 {
-			clock-frequency = <25000000>;
-		};
-
-		timer3@ffd01000 {
-			clock-frequency = <25000000>;
+		qspi: spi@ff705000 {
+			status = "okay";
 		};
 
 		serial0@ffc02000 {
-			clock-frequency = <100000000>;
-		};
-
-		serial1@ffc03000 {
-			clock-frequency = <100000000>;
+			status = "okay";
 		};
 
 		sysmgr@ffd08000 {
 			cpu1-start-addr = <0xffd080c4>;
 		};
+
+		usb1: usb@ffb40000 {
+			status = "okay";
+		};
+
+		watchdog0: wd@ffd02000 {
+			status = "okay";
+		};
+
+		leds {
+			compatible = "gpio-leds";
+			hps0 {
+				label = "hps_led0";
+				gpios = <&gpio1 15 1>;
+			};
+
+			hps1 {
+				label = "hps_led1";
+				gpios = <&gpio1 14 1>;
+			};
+
+			hps2 {
+				label = "hps_led2";
+				gpios = <&gpio1 13 1>;
+			};
+
+			hps3 {
+				label = "hps_led3";
+				gpios = <&gpio1 12 1>;
+			};
+		};
 	};
+};
+
+&i2c0 {
+	lcd: lcd@28 {
+		compatible = "newhaven,nhd-0216k3z-nsw-bbw";
+		reg = <0x28>;
+		height = <2>;
+		width = <16>;
+		brightness = <8>;
+	};
+
+	eeprom@51 {
+		compatible = "atmel,24c32";
+		reg = <0x51>;
+		pagesize = <32>;
+	};
+
+	rtc@68 {
+		compatible = "dallas,ds1339";
+		reg = <0x68>;
+	};
+};
+
+&gmac1 {
+	phy-mode = "rgmii";
+	snps,phy-addr = <0xffffffff>; /* probe for phy addr */
+	rxd0-skew-ps = <0>;
+	rxd0-skew-ps = <0>;
+	rxd1-skew-ps = <0>;
+	rxd2-skew-ps = <0>;
+	rxd3-skew-ps = <0>;
+	txen-skew-ps = <0>;
+	txc-skew-ps = <2600>;
+	rxdv-skew-ps = <0>;
+	rxc-skew-ps = <2000>;
+	max-frame-size = <3800>;
+	status = "okay";
 };

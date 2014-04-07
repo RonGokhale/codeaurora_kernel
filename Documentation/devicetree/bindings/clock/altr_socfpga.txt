@@ -23,3 +23,4 @@ Optional properties:
         and the bit index.
 - div-reg : For "socfpga-gate-clk", div-reg contains the divider register, bit shift,
         and width.
+

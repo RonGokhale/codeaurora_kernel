@@ -2,6 +2,7 @@ Synopsys Designware Watchdog Timer
 
 Required Properties:
 
+<<<<<<< HEAD
 - compatible	: Should contain "snps,dw-wdt"
 - reg		: Base address and size of the watchdog timer registers.
 - clocks	: phandle + clock-specifier for the clock that drives the
@@ -10,6 +11,10 @@ Required Properties:
 Optional Properties:
 
 - interrupts	: The interrupt used for the watchdog timeout warning.
+=======
+- Compatiblity	: "snps,dw-wdt"
+- reg		: Base address of the watchdog timer register.
+>>>>>>> FogBugz #136585: Add watchdog timer support
 
 Example:
 
@@ -18,4 +23,8 @@ Example:
 		reg = <0xffd02000 0x1000>;
 		interrupts = <0 171 4>;
 		clocks = <&per_base_clk>;
+<<<<<<< HEAD
+=======
+		status = "okay";
+>>>>>>> FogBugz #136585: Add watchdog timer support
 	};

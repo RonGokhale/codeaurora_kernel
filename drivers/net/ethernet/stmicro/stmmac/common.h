@@ -206,6 +206,15 @@ struct stmmac_extra_stats {
 #define STMMAC_TX_MAX_FRAMES	256
 #define STMMAC_TX_FRAMES	64
 
+/*
+ *   Define maximum MTU to be the maximum packet size defined by
+ *   the Synopsys IP with 802.3as packet expansion enabled
+ *   minus 14 bytes Ethernet header, minus 4 bytes CRC,
+ *   minus an additional 8 bytes for VLAN plus a stacked
+ *   VLAN.
+ */
+#define STMMAC_2KPACKET_MTU (2000 - 14 - 4 - 8)
+
 /* Rx IPC status */
 enum rx_frame_status {
 	good_frame = 0,
@@ -293,6 +302,8 @@ struct dma_features {
 #define STMMAC_CHAIN_MODE	0x1
 #define STMMAC_RING_MODE	0x2
 
+#define JUMBO_LEN		9000
+
 struct stmmac_desc_ops {
 	/* DMA RX descriptor ring initialization */
 	void (*init_rx_desc) (struct dma_desc *p, int disable_rx_ic, int mode,
@@ -369,7 +380,7 @@ struct stmmac_dma_ops {
 
 struct stmmac_ops {
 	/* MAC core initialization */
-	void (*core_init) (void __iomem *ioaddr);
+	void (*core_init) (void __iomem *ioaddr, int mtu);
 	/* Enable and verify that the IPC module is supported */
 	int (*rx_ipc) (void __iomem *ioaddr);
 	/* Dump MAC registers */

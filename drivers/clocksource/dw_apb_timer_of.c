@@ -102,13 +102,13 @@ static void __init add_clocksource(struct device_node *source_timer)
 	 * timer is found. sched_io_base then points to the current_value
 	 * register of the clocksource timer.
 	 */
-	sched_io_base = iobase + 0x04;
+	sched_io_base = iobase;
 	sched_rate = rate;
 }
 
 static u64 read_sched_clock(void)
 {
-	return ~__raw_readl(sched_io_base);
+	return ~__raw_readl(sched_io_base + APBTMR_N_CURRENT_VALUE);
 }
 
 static const struct of_device_id sptimer_ids[] __initconst = {

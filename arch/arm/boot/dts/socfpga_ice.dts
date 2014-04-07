@@ -1,0 +1,105 @@
+/*
+ * Copyright Altera Corporation (C) 2012-2014. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/dts-v1/;
+/include/ "socfpga.dtsi"
+
+/ {
+	model = "Altera SOCFPGA Emulator";
+	compatible = "altr,socfpga-ice", "altr,socfpga";
+
+	chosen {
+		bootargs = "console=ttyS0,4800";
+	};
+
+	memory {
+		name = "memory";
+		device_type = "memory";
+		reg = <0x0 0x4000000>; /* 64MB */
+	};
+
+	soc {
+		clkmgr@ffd04000 {
+			clocks {
+				osc1 {
+					clock-frequency = <10000000>;
+				};
+			};
+		};
+
+		qspi: spi@ff705000 {
+			status = "okay";
+			flash0: n25q128@0 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "n25q128";
+				reg = <0>;	/* chip select */
+				spi-max-frequency = <100000000>;
+				page-size = <256>;
+				block-size = <16>; /* 2^16, 64KB */
+				quad = <1>;	   /* 1-support quad */
+				tshsl-ns = <200>;
+				tsd2d-ns = <255>;
+				tchsh-ns = <20>;
+				tslch-ns = <20>;
+
+				partition@0 {
+					/* 8MB for raw data. */
+					label = "Flash 0 Raw Data";
+					reg = <0x0 0x800000>;
+				};
+				partition@800000 {
+					/* 8MB for jffs2 data. */
+					label = "Flash 0 jffs2 Filesystem";
+					reg = <0x800000 0x800000>;
+				};
+			};
+
+			flash1: n25q128@1 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				compatible = "n25q128";
+				reg = <1>;	/* chip select */
+				spi-max-frequency = <100000000>;
+				page-size = <256>;
+				block-size = <16>; /* 2^16, 64KB */
+				quad = <1>;
+				tshsl-ns = <200>;
+				tsd2d-ns = <255>;
+				tchsh-ns = <20>;
+				tslch-ns = <20>;
+
+				partition@0 {
+					/* 16MB for user data. */
+					label = "Flash 1 User Data";
+					reg = <0x0 0x1000000>;
+				};
+			};
+		};
+
+		sysmgr@ffd08000 {
+			cpu1-start-addr = <0xffd080c4>;
+		};
+
+		serial0@ffc02000 {
+			status = "okay";
+		};
+
+		watchdog0: wd@ffd02000 {
+			status = "okay";
+		};
+	};
+};

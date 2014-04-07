@@ -8,6 +8,9 @@ Required properties:
   - reg: physical base address of the controller and length of memory mapped
     region.
   - interrupts: interrupt number to the cpu.
+  - nr-irqs: total number of interrupts to be combined in
+    the virtual interrupt.
+  - nr-valid-peri: number of peripherals attached to DMAC.
 
 Optional properties:
   - dma-coherent      : Present if dma operations are coherent
@@ -15,6 +18,7 @@ Optional properties:
     cells in the dmas property of client device.
   - dma-channels: contains the total number of DMA channels supported by the DMAC
   - dma-requests: contains the total number of DMA requests supported by the DMAC
+  - copy-align: power-of-2 alignment for buffers sent to DMAC
 
 Example:
 
@@ -25,6 +29,11 @@ Example:
 		#dma-cells = <1>;
 		#dma-channels = <8>;
 		#dma-requests = <32>;
+		copy-align = <3>;
+		clocks = <&l4_main_clk>;
+		clock-names = "apb_pclk";
+		nr-irqs = <9>;
+		nr-valid-peri = <32>;
 	};
 
 Client drivers (device nodes requiring dma transfers from dev-to-mem or
