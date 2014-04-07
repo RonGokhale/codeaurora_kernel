@@ -373,6 +373,8 @@ static void __init setup_lowcore(void)
 	mem_assign_absolute(S390_lowcore.restart_source, lc->restart_source);
 	mem_assign_absolute(S390_lowcore.restart_psw, lc->restart_psw);
 
+	lc->spinlock_lockval = arch_spin_lockval(0);
+
 	set_prefix((u32)(unsigned long) lc);
 	lowcore_ptr[0] = lc;
 }
