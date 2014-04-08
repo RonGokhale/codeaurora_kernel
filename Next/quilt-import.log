@@ -1,0 +1,6 @@
+Importing jdelvare-hwmon based on 3.14
+	quilt series is empty
+$ git branch -f jdelvare-hwmon/master 455c6fdbd219161bd09b1165f11699d6d73de11c
+Importing rd-docs based on origin/master
+	quilt series is empty
+$ git branch -f rd-docs/master dc5ed40686a4da95881c35d913b60f867755cbe2
