@@ -6025,8 +6025,8 @@ static void chv_crtc_clock_get(struct intel_crtc *crtc,
 	clock.m1 = (pll_dw1 & 0x7) == DPIO_CHV_M1_DIV_BY_2 ? 2 : 0;
 	clock.m2 = ((pll_dw0 & 0xff) << 22) | (pll_dw2 & 0x3fffff);
 	clock.n = (pll_dw1 >> DPIO_CHV_N_DIV_SHIFT) & 0xf;
-	clock.p1 = (cmn_dw13 >> DPIO_CHV_P1_SHIFT) & 0x7;
-	clock.p2 = (cmn_dw13 >> DPIO_CHV_P2_SHIFT) & 0x1f;
+	clock.p1 = (cmn_dw13 >> DPIO_CHV_P1_DIV_SHIFT) & 0x7;
+	clock.p2 = (cmn_dw13 >> DPIO_CHV_P2_DIV_SHIFT) & 0x1f;
 
 	chv_clock(refclk, &clock);
 
@@ -10963,7 +10963,7 @@ static void intel_setup_outputs(struct drm_device *dev)
 
 	intel_lvds_init(dev);
 
-	if (!IS_ULT(dev))
+	if (!IS_ULT(dev) && !IS_CHERRYVIEW(dev))
 		intel_crt_init(dev);
 
 	if (HAS_DDI(dev)) {
