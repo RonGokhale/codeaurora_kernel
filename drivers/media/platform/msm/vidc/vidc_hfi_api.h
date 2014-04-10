@@ -867,6 +867,17 @@ enum hal_event_type {
 	HAL_UNUSED_SEQCHG = 0x10000000,
 };
 
+enum buffer_mode_type {
+        HAL_BUFFER_MODE_STATIC = 0x001,
+        HAL_BUFFER_MODE_RING = 0x010,
+        HAL_BUFFER_MODE_DYNAMIC = 0x100,
+};
+
+struct hal_buffer_alloc_mode {
+        enum hal_buffer buffer_type;
+        enum buffer_mode_type buffer_mode;
+};
+
 /* HAL Response */
 
 enum command_response {
