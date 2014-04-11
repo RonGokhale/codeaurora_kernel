@@ -123,6 +123,7 @@ enum video_decoded_pictures_t {
 #define VIDEO_CMD_SET_DECODE_MODE     (21)
 #define VIDEO_CMD_SET_BUFFER_SIZE      (22)
 #define VIDEO_CMD_SET_USER_AND_EXTRA_DATA (23)
+#define VIDEO_CMD_INPUT_DUMP_COMPLETED (24)
 
 /* Flags for VIDEO_CMD_FREEZE */
 #define VIDEO_CMD_FREEZE_TO_BLACK	(1 << 0)
@@ -259,6 +260,7 @@ struct video_event {
 #define VIDEO_EVENT_INPUT_FLUSHED       (13)
 #define VIDEO_EVENT_OUTPUT_FLUSHED      (14)
 #define VIDEO_EVENT_STREAM_TIMEOUT_ERROR (15)
+#define VIDEO_EVENT_INPUT_DATA_AVAILABLE (16)
 
 
 	unsigned int    status;

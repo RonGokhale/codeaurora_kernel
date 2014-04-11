@@ -58,6 +58,7 @@
 #define VDEC_MSG_EVT_HW_ERROR	(VDEC_MSG_BASE + 14)
 #define VDEC_MSG_EVT_INFO_CONFIG_CHANGED	(VDEC_MSG_BASE + 15)
 #define VDEC_MSG_EVT_INFO_FIELD_DROPPED	(VDEC_MSG_BASE + 16)
+#define VDEC_MSG_RESP_INPUT_DATA_AVAILABLE (VDEC_MSG_BASE + 17)
 
 /*Buffer flags bits masks.*/
 #define VDEC_BUFFERFLAG_EOS	0x00000001
@@ -565,6 +566,7 @@ struct vdec_output_frameinfo {
 
 union vdec_msgdata {
 	struct vdec_output_frameinfo output_frame;
+	struct vdec_input_frameinfo input_frame;
 	void *input_frame_clientdata;
 };
 

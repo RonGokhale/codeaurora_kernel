@@ -52,7 +52,6 @@ static unsigned int vidc_mmu_subsystem[] = {
 #define CC_ERROR_THRESHOLD 10
 #define TEI_ERROR_THRESHOLD 10
 
-
 static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 				"dvb-vid-0",
 				"dvb-vid-1",
@@ -1764,6 +1763,7 @@ static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 	struct video_client_ctx *client_ctx;
 	struct vcd_frame_data vcd_input_buffer;
 	unsigned long kernel_vaddr, phy_addr, user_vaddr;
+
 	int pmem_fd;
 	struct file *file;
 	s32 buffer_index = -1;
@@ -1775,6 +1775,39 @@ static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 		return -EINVAL;
 
 	client_ctx = dev_inst->client_ctx;
+
+#ifdef INPUT_FILE_DUMP
+	{
+		struct vid_dec_msg *vdec_msg;
+		vdec_msg = kzalloc(sizeof(struct vid_dec_msg), GFP_KERNEL);
+		if (!vdec_msg) {
+			ERR("mpq_int_vid_dec_input_frame_done(): "\
+			"cannot allocate vid_dec_msg buffer\n");
+			return -1;
+		}
+
+		vdec_msg->vdec_msg_info.msgdata.input_frame.bufferaddr = input_frame->bufferaddr;
+		vdec_msg->vdec_msg_info.msgdata.input_frame.datalen = input_frame->buffer_len;
+
+		vdec_msg->vdec_msg_info.msgcode =
+					VDEC_MSG_RESP_INPUT_DATA_AVAILABLE;
+					DBG("Send INPUT_DON message to client = %p\n",
+					client_ctx);
+
+		mutex_lock(&client_ctx->msg_queue_lock);
+		list_add_tail(&vdec_msg->list, &client_ctx->msg_queue);
+		mutex_unlock(&client_ctx->msg_queue_lock);
+		wake_up(&client_ctx->msg_wait);
+
+		pr_err("waiting for the capture complete event from client\n");
+		wait_event_interruptible(dev_inst->dmx_src_data->msg_wait_capturecomplete,
+								(dev_inst->dmx_src_data->capture_complete ||
+										kthread_should_stop()));
+
+		pr_err("capture complete event received from client\n");
+	}
+#endif
+
 	user_vaddr = (unsigned long)input_frame->bufferaddr;
 
 	if (vidc_lookup_addr_table(client_ctx, BUFFER_TYPE_INPUT,
@@ -2393,6 +2426,13 @@ static int mpq_dvb_video_command_handler(struct mpq_dvb_video_inst *dev_inst,
 		DBG("mpq_dvb_video_command_handler():Extradata flag 0x%x\n",cmd->flags);
 		rc = mpq_int_video_dec_set_extra_user_data(client_ctx, &cmd->flags);
 		break;
+#ifdef INPUT_FILE_DUMP
+	case VIDEO_CMD_INPUT_DUMP_COMPLETED:
+		ERR("VIDEO_CMD_INPUT_DUMP_COMPLETED\n");
+		dev_inst->dmx_src_data->capture_complete = 1;
+		wake_up(&dev_inst->dmx_src_data->msg_wait_capturecomplete);
+		break;
+#endif
 	default:
 		rc = -EINVAL;
 		break;
@@ -2448,6 +2488,14 @@ static int mpq_dvb_video_get_event(struct video_client_ctx *client_ctx,
 		ev->type = VIDEO_EVENT_INPUT_BUFFER_DONE;
 		ev->u.buffer.client_data =
 				vdec_msg_info.msgdata.input_frame_clientdata;
+		ev->u.buffer.bufferaddr = vdec_msg_info.msgdata.input_frame.bufferaddr;
+		ev->u.buffer.buffer_len = vdec_msg_info.msgdata.input_frame.datalen;
+		break;
+	case VDEC_MSG_RESP_INPUT_DATA_AVAILABLE:
+		DBG("VDEC_MSG_RESP_INPUT_DATA_AVAILABLE\n");
+		ev->type = VIDEO_EVENT_INPUT_DATA_AVAILABLE;
+		ev->u.buffer.bufferaddr = vdec_msg_info.msgdata.input_frame.bufferaddr;
+		ev->u.buffer.buffer_len = vdec_msg_info.msgdata.input_frame.datalen;
 		break;
 	case VDEC_MSG_RESP_OUTPUT_BUFFER_DONE:
 		DBG("VIDEO_EVENT_OUTPUT_BUFFER_DONE\n");
@@ -2669,6 +2717,10 @@ static int mpq_dvb_video_init_dmx_src(struct mpq_dvb_video_inst *dev_inst,
 	INIT_LIST_HEAD(&dev_inst->dmx_src_data->msg_queue);
 	init_waitqueue_head(&dev_inst->dmx_src_data->msg_wait);
 
+#ifdef INPUT_FILE_DUMP
+	init_waitqueue_head(&dev_inst->dmx_src_data->msg_wait_capturecomplete);
+	dev_inst->dmx_src_data->capture_complete = 0;
+#endif
 	dev_inst->dmx_src_data->data_task = kthread_run(
 			mpq_bcast_data_handler,	(void *)dev_inst,
 			vid_thread_names[device_id]);
