@@ -254,10 +254,11 @@ int do_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 		return -EBADF;
 
 	/*
-	 * It's not possible to punch hole or perform collapse range
-	 * on append only file
+	 * It's not possible to punch hole, perform collapse range
+	 * or zero range on append only file
 	 */
-	if (mode & (FALLOC_FL_PUNCH_HOLE | FALLOC_FL_COLLAPSE_RANGE)
+	if (mode & (FALLOC_FL_PUNCH_HOLE | FALLOC_FL_COLLAPSE_RANGE |
+		    FALLOC_FL_ZERO_RANGE)
 	    && IS_APPEND(inode))
 		return -EPERM;
 
