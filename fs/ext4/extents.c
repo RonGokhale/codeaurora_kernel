@@ -29,6 +29,7 @@
  *   - smart tree reduction
  */
 
+#include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/time.h>
 #include <linux/jbd2.h>
@@ -4862,6 +4863,12 @@ out_mutex:
 	return ret;
 }
 
+int ext4_fallocate_mode_block __read_mostly;
+
+module_param_named(fallocate_mode_block, ext4_fallocate_mode_block, int, 0644);
+MODULE_PARM_DESC(fallocate_mode_block,
+		 "Fallocate modes which are blocked for debugging purposes");
+
 /*
  * preallocate space for a file. This implements ext4's fallocate file
  * operation, which gets called from sys_fallocate system call.
@@ -4880,6 +4887,13 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	ext4_lblk_t lblk;
 	struct timespec tv;
 	unsigned int blkbits = inode->i_blkbits;
+
+	/*
+	 * for debugging purposes, allow certain fallocate operations
+	 * to be disabled
+	 */
+	if (unlikely(mode & ext4_fallocate_mode_block))
+		return -EOPNOTSUPP;
 
 	/* Return error if mode is not supported */
 	if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE |
