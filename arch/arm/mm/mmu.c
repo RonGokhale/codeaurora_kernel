@@ -119,7 +119,6 @@ static struct cachepolicy cache_policies[] __initdata = {
 #ifdef CONFIG_CPU_CP15
 unsigned long __init __clear_cr(unsigned long mask)
 {
-	cr_no_alignment = cr_no_alignment & ~mask;
 	cr_alignment = cr_alignment & ~mask;
 	return cr_alignment;
 }
