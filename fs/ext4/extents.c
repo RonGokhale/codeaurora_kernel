@@ -29,6 +29,7 @@
  *   - smart tree reduction
  */
 
+#include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/time.h>
 #include <linux/jbd2.h>
@@ -3313,6 +3314,11 @@ static int ext4_split_extent(handle_t *handle,
 		return PTR_ERR(path);
 	depth = ext_depth(inode);
 	ex = path[depth].p_ext;
+	if (!ex) {
+		EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
+				 (unsigned long) map->m_lblk);
+		return -EIO;
+	}
 	uninitialized = ext4_ext_is_uninitialized(ex);
 	split_flag1 = 0;
 
@@ -3694,6 +3700,12 @@ static int ext4_convert_initialized_extents(handle_t *handle,
 		}
 		depth = ext_depth(inode);
 		ex = path[depth].p_ext;
+		if (!ex) {
+			EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
+					 (unsigned long) map->m_lblk);
+			err = -EIO;
+			goto out;
+		}
 	}
 
 	err = ext4_ext_get_access(handle, inode, path + depth);
@@ -4851,6 +4863,12 @@ out_mutex:
 	return ret;
 }
 
+int ext4_fallocate_mode_block __read_mostly;
+
+module_param_named(fallocate_mode_block, ext4_fallocate_mode_block, int, 0644);
+MODULE_PARM_DESC(fallocate_mode_block,
+		 "Fallocate modes which are blocked for debugging purposes");
+
 /*
  * preallocate space for a file. This implements ext4's fallocate file
  * operation, which gets called from sys_fallocate system call.
@@ -4870,6 +4888,13 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	struct timespec tv;
 	unsigned int blkbits = inode->i_blkbits;
 
+	/*
+	 * for debugging purposes, allow certain fallocate operations
+	 * to be disabled
+	 */
+	if (unlikely(mode & ext4_fallocate_mode_block))
+		return -EOPNOTSUPP;
+
 	/* Return error if mode is not supported */
 	if (mode & ~(FALLOC_FL_KEEP_SIZE | FALLOC_FL_PUNCH_HOLE |
 		     FALLOC_FL_COLLAPSE_RANGE | FALLOC_FL_ZERO_RANGE))
@@ -4877,9 +4902,6 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 
 	if (mode & FALLOC_FL_PUNCH_HOLE)
 		return ext4_punch_hole(inode, offset, len);
-
-	if (mode & FALLOC_FL_COLLAPSE_RANGE)
-		return ext4_collapse_range(inode, offset, len);
 
 	ret = ext4_convert_inline_data(inode);
 	if (ret)
@@ -4891,6 +4913,9 @@ long ext4_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	 */
 	if (!(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)))
 		return -EOPNOTSUPP;
+
+	if (mode & FALLOC_FL_COLLAPSE_RANGE)
+		return ext4_collapse_range(inode, offset, len);
 
 	if (mode & FALLOC_FL_ZERO_RANGE)
 		return ext4_zero_range(file, offset, len, mode);
@@ -5229,11 +5254,11 @@ ext4_ext_shift_path_extents(struct ext4_ext_path *path, ext4_lblk_t shift,
 			if (ex_start == EXT_FIRST_EXTENT(path[depth].p_hdr))
 				update = 1;
 
-			*start = ex_last->ee_block +
+			*start = le32_to_cpu(ex_last->ee_block) +
 				ext4_ext_get_actual_len(ex_last);
 
 			while (ex_start <= ex_last) {
-				ex_start->ee_block -= shift;
+				le32_add_cpu(&ex_start->ee_block, -shift);
 				if (ex_start >
 					EXT_FIRST_EXTENT(path[depth].p_hdr)) {
 					if (ext4_ext_try_to_merge_right(inode,
@@ -5255,7 +5280,7 @@ ext4_ext_shift_path_extents(struct ext4_ext_path *path, ext4_lblk_t shift,
 		if (err)
 			goto out;
 
-		path[depth].p_idx->ei_block -= shift;
+		le32_add_cpu(&path[depth].p_idx->ei_block, -shift);
 		err = ext4_ext_dirty(handle, inode, path + depth);
 		if (err)
 			goto out;
@@ -5300,7 +5325,8 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 		return ret;
 	}
 
-	stop_block = extent->ee_block + ext4_ext_get_actual_len(extent);
+	stop_block = le32_to_cpu(extent->ee_block) +
+			ext4_ext_get_actual_len(extent);
 	ext4_ext_drop_refs(path);
 	kfree(path);
 
@@ -5313,10 +5339,18 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 	 * enough to accomodate the shift.
 	 */
 	path = ext4_ext_find_extent(inode, start - 1, NULL, 0);
+	if (IS_ERR(path))
+		return PTR_ERR(path);
 	depth = path->p_depth;
 	extent =  path[depth].p_ext;
-	ex_start = extent->ee_block;
-	ex_end = extent->ee_block + ext4_ext_get_actual_len(extent);
+	if (extent) {
+		ex_start = le32_to_cpu(extent->ee_block);
+		ex_end = le32_to_cpu(extent->ee_block) +
+			ext4_ext_get_actual_len(extent);
+	} else {
+		ex_start = 0;
+		ex_end = 0;
+	}
 	ext4_ext_drop_refs(path);
 	kfree(path);
 
@@ -5331,7 +5365,13 @@ ext4_ext_shift_extents(struct inode *inode, handle_t *handle,
 			return PTR_ERR(path);
 		depth = path->p_depth;
 		extent = path[depth].p_ext;
-		current_block = extent->ee_block;
+		if (!extent) {
+			EXT4_ERROR_INODE(inode, "unexpected hole at %lu",
+					 (unsigned long) start);
+			return -EIO;
+		}
+
+		current_block = le32_to_cpu(extent->ee_block);
 		if (start > current_block) {
 			/* Hole, move to the next extent */
 			ret = mext_next_extent(inode, path, &extent);
@@ -5368,8 +5408,6 @@ int ext4_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	loff_t new_size;
 	int ret;
 
-	BUG_ON(offset + len > i_size_read(inode));
-
 	/* Collapse range works only on fs block size aligned offsets. */
 	if (offset & (EXT4_BLOCK_SIZE(sb) - 1) ||
 	    len & (EXT4_BLOCK_SIZE(sb) - 1))
@@ -5383,6 +5421,13 @@ int ext4_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	punch_start = offset >> EXT4_BLOCK_SIZE_BITS(sb);
 	punch_stop = (offset + len) >> EXT4_BLOCK_SIZE_BITS(sb);
 
+	/* Call ext4_force_commit to flush all data in case of data=journal. */
+	if (ext4_should_journal_data(inode)) {
+		ret = ext4_force_commit(inode->i_sb);
+		if (ret)
+			return ret;
+	}
+
 	/* Write out all dirty pages */
 	ret = filemap_write_and_wait_range(inode->i_mapping, offset, -1);
 	if (ret)
@@ -5391,14 +5436,12 @@ int ext4_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	/* Take mutex lock */
 	mutex_lock(&inode->i_mutex);
 
-	/* It's not possible punch hole on append only file */
-	if (IS_APPEND(inode) || IS_IMMUTABLE(inode)) {
-		ret = -EPERM;
-		goto out_mutex;
-	}
-
-	if (IS_SWAPFILE(inode)) {
-		ret = -ETXTBSY;
+	/*
+	 * There is no need to overlap collapse range with EOF, in which case
+	 * it is effectively a truncate operation
+	 */
+	if (offset + len >= i_size_read(inode)) {
+		ret = -EINVAL;
 		goto out_mutex;
 	}
 
