@@ -39,7 +39,6 @@
 #include <linux/irq.h>
 #include <linux/seq_file.h>
 #include <linux/root_dev.h>
-#include <linux/cpuidle.h>
 #include <linux/of.h>
 #include <linux/kexec.h>
 
@@ -72,7 +71,7 @@
 
 int CMO_PrPSP = -1;
 int CMO_SecPSP = -1;
-unsigned long CMO_PageSize = (ASM_CONST(1) << IOMMU_PAGE_SHIFT);
+unsigned long CMO_PageSize = (ASM_CONST(1) << IOMMU_PAGE_SHIFT_4K);
 EXPORT_SYMBOL(CMO_PageSize);
 
 int fwnmi_active;  /* TRUE if an FWNMI handler is present */
@@ -356,29 +355,24 @@ early_initcall(alloc_dispatch_log_kmem_cache);
 
 static void pseries_lpar_idle(void)
 {
-	/* This would call on the cpuidle framework, and the back-end pseries
-	 * driver to  go to idle states
+	/*
+	 * Default handler to go into low thread priority and possibly
+	 * low power mode by cedeing processor to hypervisor
 	 */
-	if (cpuidle_idle_call()) {
-		/* On error, execute default handler
-		 * to go into low thread priority and possibly
-		 * low power mode by cedeing processor to hypervisor
-		 */
 
-		/* Indicate to hypervisor that we are idle. */
-		get_lppaca()->idle = 1;
+	/* Indicate to hypervisor that we are idle. */
+	get_lppaca()->idle = 1;
 
-		/*
-		 * Yield the processor to the hypervisor.  We return if
-		 * an external interrupt occurs (which are driven prior
-		 * to returning here) or if a prod occurs from another
-		 * processor. When returning here, external interrupts
-		 * are enabled.
-		 */
-		cede_processor();
+	/*
+	 * Yield the processor to the hypervisor.  We return if
+	 * an external interrupt occurs (which are driven prior
+	 * to returning here) or if a prod occurs from another
+	 * processor. When returning here, external interrupts
+	 * are enabled.
+	 */
+	cede_processor();
 
-		get_lppaca()->idle = 0;
-	}
+	get_lppaca()->idle = 0;
 }
 
 /*
@@ -430,8 +424,7 @@ static void pSeries_machine_kexec(struct kimage *image)
 {
 	long rc;
 
-	if (firmware_has_feature(FW_FEATURE_SET_MODE) &&
-	    (image->type != KEXEC_TYPE_CRASH)) {
+	if (firmware_has_feature(FW_FEATURE_SET_MODE)) {
 		rc = pSeries_disable_reloc_on_exc();
 		if (rc != H_SUCCESS)
 			pr_warning("Warning: Failed to disable relocation on "
@@ -569,7 +562,7 @@ void pSeries_cmo_feature_init(void)
 {
 	char *ptr, *key, *value, *end;
 	int call_status;
-	int page_order = IOMMU_PAGE_SHIFT;
+	int page_order = IOMMU_PAGE_SHIFT_4K;
 
 	pr_debug(" -> fw_cmo_feature_init()\n");
 	spin_lock(&rtas_data_buf_lock);

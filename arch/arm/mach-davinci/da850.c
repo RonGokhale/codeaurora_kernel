@@ -443,7 +443,7 @@ static struct clk_lookup da850_clks[] = {
 	CLK(NULL,		"pll1_sysclk3",	&pll1_sysclk3),
 	CLK("i2c_davinci.1",	NULL,		&i2c0_clk),
 	CLK(NULL,		"timer0",	&timerp64_0_clk),
-	CLK("watchdog",		NULL,		&timerp64_1_clk),
+	CLK("davinci-wdt",	NULL,		&timerp64_1_clk),
 	CLK(NULL,		"arm_rom",	&arm_rom_clk),
 	CLK(NULL,		"tpcc0",	&tpcc0_clk),
 	CLK(NULL,		"tptc0",	&tptc0_clk),
@@ -472,7 +472,7 @@ static struct clk_lookup da850_clks[] = {
 	CLK("spi_davinci.0",	NULL,		&spi0_clk),
 	CLK("spi_davinci.1",	NULL,		&spi1_clk),
 	CLK("vpif",		NULL,		&vpif_clk),
-	CLK("ahci",		NULL,		&sata_clk),
+	CLK("ahci_da850",		NULL,		&sata_clk),
 	CLK("davinci-rproc.0",	NULL,		&dsp_clk),
 	CLK("ehrpwm",		"fck",		&ehrpwm_clk),
 	CLK("ehrpwm",		"tbclk",	&ehrpwm_tbclk),
@@ -1283,7 +1283,6 @@ int __init da850_register_vpif_capture(struct vpif_capture_config
 
 static struct davinci_gpio_platform_data da850_gpio_platform_data = {
 	.ngpio = 144,
-	.intc_irq_num = DA850_N_CP_INTC_IRQ,
 };
 
 int __init da850_register_gpio(void)

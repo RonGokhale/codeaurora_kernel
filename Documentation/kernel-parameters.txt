@@ -229,7 +229,23 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			use by PCI
 			Format: <irq>,<irq>...
 
+	acpi_no_auto_serialize	[HW,ACPI]
+			Disable auto-serialization of AML methods
+			AML control methods that contain the opcodes to create
+			named objects will be marked as "Serialized" by the
+			auto-serialization feature.
+			This feature is enabled by default.
+			This option allows to turn off the feature.
+
 	acpi_no_auto_ssdt	[HW,ACPI] Disable automatic loading of SSDT
+
+	acpica_no_return_repair [HW, ACPI]
+			Disable AML predefined validation mechanism
+			This mechanism can repair the evaluation result to make
+			the return objects more ACPI specification compliant.
+			This option is useful for developers to identify the
+			root cause of an AML interpreter issue when the issue
+			has something to do with the repair mechanism.
 
 	acpi_os_name=	[HW,ACPI] Tell ACPI BIOS the name of the OS
 			Format: To spoof as Windows 98: ="Microsoft Windows"
@@ -298,8 +314,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	acpi_sci=	[HW,ACPI] ACPI System Control Interrupt trigger mode
 			Format: { level | edge | high | low }
 
-	acpi_serialize	[HW,ACPI] force serialization of AML methods
-
 	acpi_skip_timer_override [HW,ACPI]
 			Recognize and ignore IRQ0/pin2 Interrupt Override.
 			For broken nForce2 BIOS resulting in XT-PIC timer.
@@ -342,6 +356,9 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			will bind successfully but a warning message is logged.
 			no: ACPI OperationRegions are not marked as reserved,
 			no further checks are performed.
+
+	acpi_no_memhotplug [ACPI] Disable memory hotplug.  Useful for kdump
+			   kernels.
 
 	add_efi_memmap	[EFI; X86] Include EFI memory map in
 			kernel's map of available physical RAM.
@@ -463,6 +480,22 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 	atkbd.softrepeat= [HW]
 			Use software keyboard repeat
 
+	audit=		[KNL] Enable the audit sub-system
+			Format: { "0" | "1" } (0 = disabled, 1 = enabled)
+			0 - kernel audit is disabled and can not be enabled
+			    until the next reboot
+			unset - kernel audit is initialized but disabled and
+			    will be fully enabled by the userspace auditd.
+			1 - kernel audit is initialized and partially enabled,
+			    storing at most audit_backlog_limit messages in
+			    RAM until it is fully enabled by the userspace
+			    auditd.
+			Default: unset
+
+	audit_backlog_limit= [KNL] Set the audit queue size limit.
+			Format: <int> (must be >=0)
+			Default: 64
+
 	baycom_epp=	[HW,AX25]
 			Format: <io>,<mode>
 
@@ -515,7 +548,14 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	cgroup_disable= [KNL] Disable a particular controller
 			Format: {name of the controller(s) to disable}
-				{Currently supported controllers - "memory"}
+			The effects of cgroup_disable=foo are:
+			- foo isn't auto-mounted if you mount all cgroups in
+			  a single hierarchy
+			- foo isn't visible as an individually mountable
+			  subsystem
+			{Currently only "memory" controller deal with this and
+			cut the overhead, others just disable the usage. So
+			only cgroup_disable=memory is actually worthy}
 
 	checkreqprot	[SELINUX] Set initial checkreqprot flag value.
 			Format: { "0" | "1" }
@@ -985,6 +1025,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			parameter will force ia64_sal_cache_flush to call
 			ia64_pal_cache_flush instead of SAL_CACHE_FLUSH.
 
+	forcepae [X86-32]
+			Forcefully enable Physical Address Extension (PAE).
+			Many Pentium M systems disable PAE but may have a
+			functionally usable PAE implementation.
+			Warning: use of this parameter will taint the kernel
+			and may cause unknown problems.
+
 	ftrace=[tracer]
 			[FTRACE] will set and start the specified tracer
 			as early as possible in order to facilitate early
@@ -1036,7 +1083,9 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			debugfs files are removed at module unload time.
 
 	gpt		[EFI] Forces disk with valid GPT signature but
-			invalid Protective MBR to be treated as GPT.
+			invalid Protective MBR to be treated as GPT. If the
+			primary GPT is corrupted, it enables the backup/alternate
+			GPT to be used instead.
 
 	grcan.enable0=	[HW] Configuration of physical interface 0. Determines
 			the "Enable 0" bit of the configuration register.
@@ -1438,6 +1487,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Valid arguments: on, off
 			Default: on
 
+	kmemcheck=	[X86] Boot-time kmemcheck enable/disable/one-shot mode
+			Valid arguments: 0, 1, 2
+			kmemcheck=0 (disabled)
+			kmemcheck=1 (enabled)
+			kmemcheck=2 (one-shot mode)
+			Default: 2 (one-shot mode)
+
 	kstack=N	[X86] Print N words from the kernel stack
 			in oops dumps.
 
@@ -1691,16 +1747,16 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			option description.
 
 	memmap=nn[KMG]@ss[KMG]
-			[KNL] Force usage of a specific region of memory
-			Region of memory to be used, from ss to ss+nn.
+			[KNL] Force usage of a specific region of memory.
+			Region of memory to be used is from ss to ss+nn.
 
 	memmap=nn[KMG]#ss[KMG]
 			[KNL,ACPI] Mark specific memory as ACPI data.
-			Region of memory to be used, from ss to ss+nn.
+			Region of memory to be marked is from ss to ss+nn.
 
 	memmap=nn[KMG]$ss[KMG]
 			[KNL,ACPI] Mark specific memory as reserved.
-			Region of memory to be used, from ss to ss+nn.
+			Region of memory to be reserved is from ss to ss+nn.
 			Example: Exclude memory from 0x18690000-0x1869ffff
 			         memmap=64K$0x18690000
 			         or
@@ -2018,8 +2074,8 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			IOAPICs that may be present in the system.
 
 	nokaslr		[X86]
-			Disable kernel base offset ASLR (Address Space
-			Layout Randomization) if built into the kernel.
+			Disable kernel and module base offset ASLR (Address
+			Space Layout Randomization) if built into the kernel.
 
 	noautogroup	Disable scheduler automatic task group creation.
 
@@ -3089,7 +3145,11 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			controller if no parameter or 1 is given or disable
 			it if 0 is given (See Documentation/cgroups/memory.txt)
 
-	swiotlb=	[IA-64] Number of I/O TLB slabs
+	swiotlb=	[ARM,IA-64,PPC,MIPS,X86]
+			Format: { <int> | force }
+			<int> -- Number of I/O TLB slabs
+			force -- force using of bounce buffers even if they
+			         wouldn't be automatically used by the kernel
 
 	switches=	[HW,M68k]
 
@@ -3370,14 +3430,24 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 					of CONFIG_HIGHPTE.
 
 	vdso=		[X86,SH]
-			vdso=2: enable compat VDSO (default with COMPAT_VDSO)
-			vdso=1: enable VDSO (default)
+			On X86_32, this is an alias for vdso32=.  Otherwise:
+
+			vdso=1: enable VDSO (the default)
 			vdso=0: disable VDSO mapping
 
-	vdso32=		[X86]
-			vdso32=2: enable compat VDSO (default with COMPAT_VDSO)
-			vdso32=1: enable 32-bit VDSO (default)
-			vdso32=0: disable 32-bit VDSO mapping
+	vdso32=		[X86] Control the 32-bit vDSO
+			vdso32=1: enable 32-bit VDSO
+			vdso32=0 or vdso32=2: disable 32-bit VDSO
+
+			See the help text for CONFIG_COMPAT_VDSO for more
+			details.  If CONFIG_COMPAT_VDSO is set, the default is
+			vdso32=0; otherwise, the default is vdso32=1.
+
+			For compatibility with older kernels, vdso32=2 is an
+			alias for vdso32=0.
+
+			Try vdso32=0 if you encounter an error that says:
+			dl_main: Assertion `(void *) ph->p_vaddr == _rtld_local._dl_sysinfo_dso' failed!
 
 	vector=		[IA-64,SMP]
 			vector=percpu: enable percpu vector domain

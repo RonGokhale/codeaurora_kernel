@@ -33,6 +33,28 @@ struct opal_takeover_args {
 	u64	rd_loc;			/* r11 */
 };
 
+/*
+ * SG entry
+ *
+ * WARNING: The current implementation requires each entry
+ * to represent a block that is 4k aligned *and* each block
+ * size except the last one in the list to be as well.
+ */
+struct opal_sg_entry {
+	void    *data;
+	long    length;
+};
+
+/* sg list */
+struct opal_sg_list {
+	unsigned long num_entries;
+	struct opal_sg_list *next;
+	struct opal_sg_entry entry[];
+};
+
+/* We calculate number of sg entries based on PAGE_SIZE */
+#define SG_ENTRIES_PER_NODE ((PAGE_SIZE - 16) / sizeof(struct opal_sg_entry))
+
 extern long opal_query_takeover(u64 *hal_size, u64 *hal_align);
 
 extern long opal_do_takeover(struct opal_takeover_args *args);
@@ -61,6 +83,8 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_INTERNAL_ERROR	-11
 #define OPAL_BUSY_EVENT		-12
 #define OPAL_HARDWARE_FROZEN	-13
+#define OPAL_WRONG_STATE	-14
+#define OPAL_ASYNC_COMPLETION	-15
 
 /* API Tokens (in r0) */
 #define OPAL_CONSOLE_WRITE			1
@@ -129,9 +153,27 @@ extern int opal_enter_rtas(struct rtas_args *args,
 #define OPAL_LPC_READ				67
 #define OPAL_LPC_WRITE				68
 #define OPAL_RETURN_CPU				69
+#define OPAL_ELOG_READ				71
+#define OPAL_ELOG_WRITE				72
+#define OPAL_ELOG_ACK				73
+#define OPAL_ELOG_RESEND			74
+#define OPAL_ELOG_SIZE				75
 #define OPAL_FLASH_VALIDATE			76
 #define OPAL_FLASH_MANAGE			77
 #define OPAL_FLASH_UPDATE			78
+#define OPAL_RESYNC_TIMEBASE			79
+#define OPAL_DUMP_INIT				81
+#define OPAL_DUMP_INFO				82
+#define OPAL_DUMP_READ				83
+#define OPAL_DUMP_ACK				84
+#define OPAL_GET_MSG				85
+#define OPAL_CHECK_ASYNC_COMPLETION		86
+#define OPAL_SYNC_HOST_REBOOT			87
+#define OPAL_SENSOR_READ			88
+#define OPAL_GET_PARAM				89
+#define OPAL_SET_PARAM				90
+#define OPAL_DUMP_RESEND			91
+#define OPAL_DUMP_INFO2				94
 
 #ifndef __ASSEMBLY__
 
@@ -211,7 +253,19 @@ enum OpalPendingState {
 	OPAL_EVENT_ERROR_LOG		= 0x40,
 	OPAL_EVENT_EPOW			= 0x80,
 	OPAL_EVENT_LED_STATUS		= 0x100,
-	OPAL_EVENT_PCI_ERROR		= 0x200
+	OPAL_EVENT_PCI_ERROR		= 0x200,
+	OPAL_EVENT_DUMP_AVAIL		= 0x400,
+	OPAL_EVENT_MSG_PENDING		= 0x800,
+};
+
+enum OpalMessageType {
+	OPAL_MSG_ASYNC_COMP = 0,	/* params[0] = token, params[1] = rc,
+					 * additional params function-specific
+					 */
+	OPAL_MSG_MEM_ERR,
+	OPAL_MSG_EPOW,
+	OPAL_MSG_SHUTDOWN,
+	OPAL_MSG_TYPE_MAX,
 };
 
 /* Machine check related definitions */
@@ -311,10 +365,14 @@ enum OpalMveEnableAction {
 	OPAL_ENABLE_MVE = 1
 };
 
-enum OpalPciResetAndReinitScope {
+enum OpalPciResetScope {
 	OPAL_PHB_COMPLETE = 1, OPAL_PCI_LINK = 2, OPAL_PHB_ERROR = 3,
 	OPAL_PCI_HOT_RESET = 4, OPAL_PCI_FUNDAMENTAL_RESET = 5,
 	OPAL_PCI_IODA_TABLE_RESET = 6,
+};
+
+enum OpalPciReinitScope {
+	OPAL_REINIT_PCI_DEV = 1000
 };
 
 enum OpalPciResetState {
@@ -354,6 +412,19 @@ enum OpalLPCAddressType {
 	OPAL_LPC_MEM	= 0,
 	OPAL_LPC_IO	= 1,
 	OPAL_LPC_FW	= 2,
+};
+
+/* System parameter permission */
+enum OpalSysparamPerm {
+	OPAL_SYSPARAM_READ      = 0x1,
+	OPAL_SYSPARAM_WRITE     = 0x2,
+	OPAL_SYSPARAM_RW        = (OPAL_SYSPARAM_READ | OPAL_SYSPARAM_WRITE),
+};
+
+struct opal_msg {
+	uint32_t msg_type;
+	uint32_t reserved;
+	uint64_t params[8];
 };
 
 struct opal_machine_check_event {
@@ -401,6 +472,58 @@ struct opal_machine_check_event {
 			uint64_t	effective_address;
 			uint8_t		reserved_2[16];
 		} tlb_error;
+	} u;
+};
+
+/* FSP memory errors handling */
+enum OpalMemErr_Version {
+	OpalMemErr_V1 = 1,
+};
+
+enum OpalMemErrType {
+	OPAL_MEM_ERR_TYPE_RESILIENCE	= 0,
+	OPAL_MEM_ERR_TYPE_DYN_DALLOC,
+	OPAL_MEM_ERR_TYPE_SCRUB,
+};
+
+/* Memory Reilience error type */
+enum OpalMemErr_ResilErrType {
+	OPAL_MEM_RESILIENCE_CE		= 0,
+	OPAL_MEM_RESILIENCE_UE,
+	OPAL_MEM_RESILIENCE_UE_SCRUB,
+};
+
+/* Dynamic Memory Deallocation type */
+enum OpalMemErr_DynErrType {
+	OPAL_MEM_DYNAMIC_DEALLOC	= 0,
+};
+
+/* OpalMemoryErrorData->flags */
+#define OPAL_MEM_CORRECTED_ERROR	0x0001
+#define OPAL_MEM_THRESHOLD_EXCEEDED	0x0002
+#define OPAL_MEM_ACK_REQUIRED		0x8000
+
+struct OpalMemoryErrorData {
+	enum OpalMemErr_Version	version:8;	/* 0x00 */
+	enum OpalMemErrType	type:8;		/* 0x01 */
+	uint16_t		flags;		/* 0x02 */
+	uint8_t			reserved_1[4];	/* 0x04 */
+
+	union {
+		/* Memory Resilience corrected/uncorrected error info */
+		struct {
+			enum OpalMemErr_ResilErrType resil_err_type:8;
+			uint8_t		reserved_1[7];
+			uint64_t	physical_address_start;
+			uint64_t	physical_address_end;
+		} resilience;
+		/* Dynamic memory deallocation error info */
+		struct {
+			enum OpalMemErr_DynErrType dyn_err_type:8;
+			uint8_t		reserved_1[7];
+			uint64_t	physical_address_start;
+			uint64_t	physical_address_end;
+		} dyn_dealloc;
 	} u;
 };
 
@@ -710,7 +833,7 @@ int64_t opal_pci_get_phb_diag_data(uint64_t phb_id, void *diag_buffer,
 int64_t opal_pci_get_phb_diag_data2(uint64_t phb_id, void *diag_buffer,
 				    uint64_t diag_buffer_len);
 int64_t opal_pci_fence_phb(uint64_t phb_id);
-int64_t opal_pci_reinit(uint64_t phb_id, uint8_t reinit_scope);
+int64_t opal_pci_reinit(uint64_t phb_id, uint64_t reinit_scope, uint64_t data);
 int64_t opal_pci_mask_pe_error(uint64_t phb_id, uint16_t pe_number, uint8_t error_type, uint8_t mask_action);
 int64_t opal_set_slot_led_status(uint64_t phb_id, uint64_t slot_id, uint8_t led_type, uint8_t led_action);
 int64_t opal_get_epow_status(__be64 *status);
@@ -720,19 +843,44 @@ int64_t opal_pci_next_error(uint64_t phb_id, uint64_t *first_frozen_pe,
 int64_t opal_pci_poll(uint64_t phb_id);
 int64_t opal_return_cpu(void);
 
-int64_t opal_xscom_read(uint32_t gcid, uint32_t pcb_addr, __be64 *val);
-int64_t opal_xscom_write(uint32_t gcid, uint32_t pcb_addr, uint64_t val);
+int64_t opal_xscom_read(uint32_t gcid, uint64_t pcb_addr, __be64 *val);
+int64_t opal_xscom_write(uint32_t gcid, uint64_t pcb_addr, uint64_t val);
 
 int64_t opal_lpc_write(uint32_t chip_id, enum OpalLPCAddressType addr_type,
 		       uint32_t addr, uint32_t data, uint32_t sz);
 int64_t opal_lpc_read(uint32_t chip_id, enum OpalLPCAddressType addr_type,
 		      uint32_t addr, __be32 *data, uint32_t sz);
+
+int64_t opal_read_elog(uint64_t buffer, size_t size, uint64_t log_id);
+int64_t opal_get_elog_size(uint64_t *log_id, size_t *size, uint64_t *elog_type);
+int64_t opal_write_elog(uint64_t buffer, uint64_t size, uint64_t offset);
+int64_t opal_send_ack_elog(uint64_t log_id);
+void opal_resend_pending_logs(void);
+
 int64_t opal_validate_flash(uint64_t buffer, uint32_t *size, uint32_t *result);
 int64_t opal_manage_flash(uint8_t op);
 int64_t opal_update_flash(uint64_t blk_list);
+int64_t opal_dump_init(uint8_t dump_type);
+int64_t opal_dump_info(uint32_t *dump_id, uint32_t *dump_size);
+int64_t opal_dump_info2(uint32_t *dump_id, uint32_t *dump_size, uint32_t *dump_type);
+int64_t opal_dump_read(uint32_t dump_id, uint64_t buffer);
+int64_t opal_dump_ack(uint32_t dump_id);
+int64_t opal_dump_resend_notification(void);
+
+int64_t opal_get_msg(uint64_t buffer, size_t size);
+int64_t opal_check_completion(uint64_t buffer, size_t size, uint64_t token);
+int64_t opal_sync_host_reboot(void);
+int64_t opal_get_param(uint64_t token, uint32_t param_id, uint64_t buffer,
+		size_t length);
+int64_t opal_set_param(uint64_t token, uint32_t param_id, uint64_t buffer,
+		size_t length);
+int64_t opal_sensor_read(uint32_t sensor_hndl, int token,
+		uint32_t *sensor_data);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname, int depth, void *data);
+extern int early_init_dt_scan_recoverable_ranges(unsigned long node,
+				 const char *uname, int depth, void *data);
 
 extern int opal_get_chars(uint32_t vtermno, char *buf, int count);
 extern int opal_put_chars(uint32_t vtermno, const char *buf, int total_len);
@@ -744,12 +892,21 @@ extern int early_init_dt_scan_opal(unsigned long node, const char *uname,
 				   int depth, void *data);
 
 extern int opal_notifier_register(struct notifier_block *nb);
+extern int opal_message_notifier_register(enum OpalMessageType msg_type,
+						struct notifier_block *nb);
 extern void opal_notifier_enable(void);
 extern void opal_notifier_disable(void);
 extern void opal_notifier_update_evt(uint64_t evt_mask, uint64_t evt_val);
 
 extern int opal_get_chars(uint32_t vtermno, char *buf, int count);
 extern int opal_put_chars(uint32_t vtermno, const char *buf, int total_len);
+
+extern int __opal_async_get_token(void);
+extern int opal_async_get_token_interruptible(void);
+extern int __opal_async_release_token(int token);
+extern int opal_async_release_token(int token);
+extern int opal_async_wait_response(uint64_t token, struct opal_msg *msg);
+extern int opal_get_sensor_data(u32 sensor_hndl, u32 *sensor_data);
 
 extern void hvc_opal_init_early(void);
 
@@ -759,10 +916,15 @@ extern void opal_get_rtc_time(struct rtc_time *tm);
 extern unsigned long opal_get_boot_time(void);
 extern void opal_nvram_init(void);
 extern void opal_flash_init(void);
+extern int opal_elog_init(void);
+extern void opal_platform_dump_init(void);
+extern void opal_sys_param_init(void);
 
 extern int opal_machine_check(struct pt_regs *regs);
+extern bool opal_mce_check_early_recovery(struct pt_regs *regs);
 
 extern void opal_shutdown(void);
+extern int opal_resync_timebase(void);
 
 extern void opal_lpc_init(void);
 

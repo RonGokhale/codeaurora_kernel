@@ -82,6 +82,7 @@ void hibernation_set_ops(const struct platform_hibernation_ops *ops)
 
 	unlock_system_sleep();
 }
+EXPORT_SYMBOL_GPL(hibernation_set_ops);
 
 static bool entering_platform_hibernation;
 
@@ -293,10 +294,10 @@ static int create_image(int platform_mode)
 			error);
 	/* Restore control flow magically appears here */
 	restore_processor_state();
-	if (!in_suspend) {
+	if (!in_suspend)
 		events_check_enabled = false;
-		platform_leave(platform_mode);
-	}
+
+	platform_leave(platform_mode);
 
  Power_up:
 	syscore_resume();
@@ -972,16 +973,20 @@ static ssize_t resume_show(struct kobject *kobj, struct kobj_attribute *attr,
 static ssize_t resume_store(struct kobject *kobj, struct kobj_attribute *attr,
 			    const char *buf, size_t n)
 {
-	unsigned int maj, min;
 	dev_t res;
-	int ret = -EINVAL;
+	int len = n;
+	char *name;
 
-	if (sscanf(buf, "%u:%u", &maj, &min) != 2)
-		goto out;
+	if (len && buf[len-1] == '\n')
+		len--;
+	name = kstrndup(buf, len, GFP_KERNEL);
+	if (!name)
+		return -ENOMEM;
 
-	res = MKDEV(maj,min);
-	if (maj != MAJOR(res) || min != MINOR(res))
-		goto out;
+	res = name_to_dev_t(name);
+	kfree(name);
+	if (!res)
+		return -EINVAL;
 
 	lock_system_sleep();
 	swsusp_resume_device = res;
@@ -989,9 +994,7 @@ static ssize_t resume_store(struct kobject *kobj, struct kobj_attribute *attr,
 	printk(KERN_INFO "PM: Starting manual resume from disk\n");
 	noresume = 0;
 	software_resume();
-	ret = n;
- out:
-	return ret;
+	return n;
 }
 
 power_attr(resume);

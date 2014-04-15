@@ -35,7 +35,7 @@ struct pipe_buffer {
  *	@tmp_page: cached released page
  *	@readers: number of current readers of this pipe
  *	@writers: number of current writers of this pipe
- *	@files: number of struct file refering this pipe (protected by ->i_lock)
+ *	@files: number of struct file referring this pipe (protected by ->i_lock)
  *	@waiting_writers: number of writers blocked waiting for room
  *	@r_counter: reader counter
  *	@w_counter: writer counter
@@ -156,6 +156,8 @@ void generic_pipe_buf_get(struct pipe_inode_info *, struct pipe_buffer *);
 int generic_pipe_buf_confirm(struct pipe_inode_info *, struct pipe_buffer *);
 int generic_pipe_buf_steal(struct pipe_inode_info *, struct pipe_buffer *);
 void generic_pipe_buf_release(struct pipe_inode_info *, struct pipe_buffer *);
+
+extern const struct pipe_buf_operations nosteal_pipe_buf_ops;
 
 /* for F_SETPIPE_SZ and F_GETPIPE_SZ */
 long pipe_fcntl(struct file *, unsigned int, unsigned long arg);

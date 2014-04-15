@@ -71,6 +71,10 @@ enum {
 	MCT_L1_IRQ,
 	MCT_L2_IRQ,
 	MCT_L3_IRQ,
+	MCT_L4_IRQ,
+	MCT_L5_IRQ,
+	MCT_L6_IRQ,
+	MCT_L7_IRQ,
 	MCT_NR_IRQS,
 };
 
@@ -406,7 +410,7 @@ static int exynos4_local_timer_setup(struct clock_event_device *evt)
 	mevt = container_of(evt, struct mct_clock_event_device, evt);
 
 	mevt->base = EXYNOS4_MCT_L_BASE(cpu);
-	sprintf(mevt->name, "mct_tick%d", cpu);
+	snprintf(mevt->name, sizeof(mevt->name), "mct_tick%d", cpu);
 
 	evt->name = mevt->name;
 	evt->cpumask = cpumask_of(cpu);

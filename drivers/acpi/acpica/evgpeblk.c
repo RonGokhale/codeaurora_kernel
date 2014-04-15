@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -87,9 +87,9 @@ acpi_ev_install_gpe_block(struct acpi_gpe_block_info *gpe_block,
 		return_ACPI_STATUS(status);
 	}
 
-	gpe_xrupt_block = acpi_ev_get_gpe_xrupt_block(interrupt_number);
-	if (!gpe_xrupt_block) {
-		status = AE_NO_MEMORY;
+	status =
+	    acpi_ev_get_gpe_xrupt_block(interrupt_number, &gpe_xrupt_block);
+	if (ACPI_FAILURE(status)) {
 		goto unlock_and_exit;
 	}
 
@@ -112,7 +112,7 @@ acpi_ev_install_gpe_block(struct acpi_gpe_block_info *gpe_block,
 	acpi_os_release_lock(acpi_gbl_gpe_lock, flags);
 
 unlock_and_exit:
-	status = acpi_ut_release_mutex(ACPI_MTX_EVENTS);
+	(void)acpi_ut_release_mutex(ACPI_MTX_EVENTS);
 	return_ACPI_STATUS(status);
 }
 

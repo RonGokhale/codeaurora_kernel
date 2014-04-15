@@ -481,11 +481,10 @@ static int platform_drv_probe(struct device *_dev)
 	struct platform_device *dev = to_platform_device(_dev);
 	int ret;
 
-	if (ACPI_HANDLE(_dev))
-		acpi_dev_pm_attach(_dev, true);
+	acpi_dev_pm_attach(_dev, true);
 
 	ret = drv->probe(dev);
-	if (ret && ACPI_HANDLE(_dev))
+	if (ret)
 		acpi_dev_pm_detach(_dev, true);
 
 	if (drv->prevent_deferred_probe && ret == -EPROBE_DEFER) {
@@ -508,8 +507,7 @@ static int platform_drv_remove(struct device *_dev)
 	int ret;
 
 	ret = drv->remove(dev);
-	if (ACPI_HANDLE(_dev))
-		acpi_dev_pm_detach(_dev, true);
+	acpi_dev_pm_detach(_dev, true);
 
 	return ret;
 }
@@ -520,8 +518,7 @@ static void platform_drv_shutdown(struct device *_dev)
 	struct platform_device *dev = to_platform_device(_dev);
 
 	drv->shutdown(dev);
-	if (ACPI_HANDLE(_dev))
-		acpi_dev_pm_detach(_dev, true);
+	acpi_dev_pm_detach(_dev, true);
 }
 
 /**
@@ -677,7 +674,17 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *a,
 			     char *buf)
 {
 	struct platform_device	*pdev = to_platform_device(dev);
-	int len = snprintf(buf, PAGE_SIZE, "platform:%s\n", pdev->name);
+	int len;
+
+	len = of_device_get_modalias(dev, buf, PAGE_SIZE -1);
+	if (len != -ENODEV)
+		return len;
+
+	len = acpi_device_modalias(dev, buf, PAGE_SIZE -1);
+	if (len != -ENODEV)
+		return len;
+
+	len = snprintf(buf, PAGE_SIZE, "platform:%s\n", pdev->name);
 
 	return (len >= PAGE_SIZE) ? (PAGE_SIZE - 1) : len;
 }
@@ -696,6 +703,10 @@ static int platform_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 	/* Some devices have extra OF data and an OF-style MODALIAS */
 	rc = of_device_uevent_modalias(dev, env);
+	if (rc != -ENODEV)
+		return rc;
+
+	rc = acpi_device_uevent_modalias(dev, env);
 	if (rc != -ENODEV)
 		return rc;
 

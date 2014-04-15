@@ -271,13 +271,12 @@ int sensor_hub_input_attr_get_raw_value(struct hid_sensor_hub_device *hsdev,
 
 	spin_lock_irqsave(&data->lock, flags);
 	data->pending.status = true;
-	report = sensor_hub_report(report_id, hsdev->hdev, HID_INPUT_REPORT);
-	if (!report) {
-		spin_unlock_irqrestore(&data->lock, flags);
-		goto err_free;
-	}
-	hid_hw_request(hsdev->hdev, report, HID_REQ_GET_REPORT);
 	spin_unlock_irqrestore(&data->lock, flags);
+	report = sensor_hub_report(report_id, hsdev->hdev, HID_INPUT_REPORT);
+	if (!report)
+		goto err_free;
+
+	hid_hw_request(hsdev->hdev, report, HID_REQ_GET_REPORT);
 	wait_for_completion_interruptible_timeout(&data->pending.ready, HZ*5);
 	switch (data->pending.raw_size) {
 	case 1:
@@ -702,6 +701,9 @@ static const struct hid_device_id sensor_hub_devices[] = {
 			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
 	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, USB_VENDOR_ID_INTEL_1,
 			USB_DEVICE_ID_INTEL_HID_SENSOR),
+			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
+	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, USB_VENDOR_ID_STM_0,
+			USB_DEVICE_ID_STM_HID_SENSOR),
 			.driver_data = HID_SENSOR_HUB_ENUM_QUIRK},
 	{ HID_DEVICE(HID_BUS_ANY, HID_GROUP_SENSOR_HUB, HID_ANY_ID,
 		     HID_ANY_ID) },

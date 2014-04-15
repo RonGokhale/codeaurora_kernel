@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/hyperv.h>
+#include <linux/uio.h>
 
 #include "hyperv_vmbus.h"
 
@@ -209,7 +210,6 @@ static int create_gpadl_header(void *kbuffer, u32 size,
 {
 	int i;
 	int pagecount;
-	unsigned long long pfn;
 	struct vmbus_channel_gpadl_header *gpadl_header;
 	struct vmbus_channel_gpadl_body *gpadl_body;
 	struct vmbus_channel_msginfo *msgheader;
@@ -219,7 +219,6 @@ static int create_gpadl_header(void *kbuffer, u32 size,
 	int pfnsum, pfncount, pfnleft, pfncurr, pfnsize;
 
 	pagecount = size >> PAGE_SHIFT;
-	pfn = virt_to_phys(kbuffer) >> PAGE_SHIFT;
 
 	/* do we need a gpadl body msg */
 	pfnsize = MAX_SIZE_CHANNEL_MESSAGE -
@@ -248,7 +247,8 @@ static int create_gpadl_header(void *kbuffer, u32 size,
 		gpadl_header->range[0].byte_offset = 0;
 		gpadl_header->range[0].byte_count = size;
 		for (i = 0; i < pfncount; i++)
-			gpadl_header->range[0].pfn_array[i] = pfn+i;
+			gpadl_header->range[0].pfn_array[i] = slow_virt_to_phys(
+				kbuffer + PAGE_SIZE * i) >> PAGE_SHIFT;
 		*msginfo = msgheader;
 		*messagecount = 1;
 
@@ -301,7 +301,9 @@ static int create_gpadl_header(void *kbuffer, u32 size,
 			 * so the hypervisor gurantees that this is ok.
 			 */
 			for (i = 0; i < pfncurr; i++)
-				gpadl_body->pfn[i] = pfn + pfnsum + i;
+				gpadl_body->pfn[i] = slow_virt_to_phys(
+					kbuffer + PAGE_SIZE * (pfnsum + i)) >>
+					PAGE_SHIFT;
 
 			/* add to msg header */
 			list_add_tail(&msgbody->msglistentry,
@@ -327,7 +329,8 @@ static int create_gpadl_header(void *kbuffer, u32 size,
 		gpadl_header->range[0].byte_offset = 0;
 		gpadl_header->range[0].byte_count = size;
 		for (i = 0; i < pagecount; i++)
-			gpadl_header->range[0].pfn_array[i] = pfn+i;
+			gpadl_header->range[0].pfn_array[i] = slow_virt_to_phys(
+				kbuffer + PAGE_SIZE * i) >> PAGE_SHIFT;
 
 		*msginfo = msgheader;
 		*messagecount = 1;
@@ -344,7 +347,7 @@ nomem:
  * vmbus_establish_gpadl - Estabish a GPADL for the specified buffer
  *
  * @channel: a channel
- * @kbuffer: from kmalloc
+ * @kbuffer: from kmalloc or vmalloc
  * @size: page-size multiple
  * @gpadl_handle: some funky thing
  */
@@ -552,14 +555,14 @@ EXPORT_SYMBOL_GPL(vmbus_close);
  *
  * Mainly used by Hyper-V drivers.
  */
-int vmbus_sendpacket(struct vmbus_channel *channel, const void *buffer,
+int vmbus_sendpacket(struct vmbus_channel *channel, void *buffer,
 			   u32 bufferlen, u64 requestid,
 			   enum vmbus_packet_type type, u32 flags)
 {
 	struct vmpacket_descriptor desc;
 	u32 packetlen = sizeof(struct vmpacket_descriptor) + bufferlen;
 	u32 packetlen_aligned = ALIGN(packetlen, sizeof(u64));
-	struct scatterlist bufferlist[3];
+	struct kvec bufferlist[3];
 	u64 aligned_data = 0;
 	int ret;
 	bool signal = false;
@@ -573,11 +576,12 @@ int vmbus_sendpacket(struct vmbus_channel *channel, const void *buffer,
 	desc.len8 = (u16)(packetlen_aligned >> 3);
 	desc.trans_id = requestid;
 
-	sg_init_table(bufferlist, 3);
-	sg_set_buf(&bufferlist[0], &desc, sizeof(struct vmpacket_descriptor));
-	sg_set_buf(&bufferlist[1], buffer, bufferlen);
-	sg_set_buf(&bufferlist[2], &aligned_data,
-		   packetlen_aligned - packetlen);
+	bufferlist[0].iov_base = &desc;
+	bufferlist[0].iov_len = sizeof(struct vmpacket_descriptor);
+	bufferlist[1].iov_base = buffer;
+	bufferlist[1].iov_len = bufferlen;
+	bufferlist[2].iov_base = &aligned_data;
+	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
 	ret = hv_ringbuffer_write(&channel->outbound, bufferlist, 3, &signal);
 
@@ -603,7 +607,7 @@ int vmbus_sendpacket_pagebuffer(struct vmbus_channel *channel,
 	u32 descsize;
 	u32 packetlen;
 	u32 packetlen_aligned;
-	struct scatterlist bufferlist[3];
+	struct kvec bufferlist[3];
 	u64 aligned_data = 0;
 	bool signal = false;
 
@@ -635,11 +639,12 @@ int vmbus_sendpacket_pagebuffer(struct vmbus_channel *channel,
 		desc.range[i].pfn	 = pagebuffers[i].pfn;
 	}
 
-	sg_init_table(bufferlist, 3);
-	sg_set_buf(&bufferlist[0], &desc, descsize);
-	sg_set_buf(&bufferlist[1], buffer, bufferlen);
-	sg_set_buf(&bufferlist[2], &aligned_data,
-		packetlen_aligned - packetlen);
+	bufferlist[0].iov_base = &desc;
+	bufferlist[0].iov_len = descsize;
+	bufferlist[1].iov_base = buffer;
+	bufferlist[1].iov_len = bufferlen;
+	bufferlist[2].iov_base = &aligned_data;
+	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
 	ret = hv_ringbuffer_write(&channel->outbound, bufferlist, 3, &signal);
 
@@ -663,7 +668,7 @@ int vmbus_sendpacket_multipagebuffer(struct vmbus_channel *channel,
 	u32 descsize;
 	u32 packetlen;
 	u32 packetlen_aligned;
-	struct scatterlist bufferlist[3];
+	struct kvec bufferlist[3];
 	u64 aligned_data = 0;
 	bool signal = false;
 	u32 pfncount = NUM_PAGES_SPANNED(multi_pagebuffer->offset,
@@ -698,11 +703,12 @@ int vmbus_sendpacket_multipagebuffer(struct vmbus_channel *channel,
 	memcpy(desc.range.pfn_array, multi_pagebuffer->pfn_array,
 	       pfncount * sizeof(u64));
 
-	sg_init_table(bufferlist, 3);
-	sg_set_buf(&bufferlist[0], &desc, descsize);
-	sg_set_buf(&bufferlist[1], buffer, bufferlen);
-	sg_set_buf(&bufferlist[2], &aligned_data,
-		packetlen_aligned - packetlen);
+	bufferlist[0].iov_base = &desc;
+	bufferlist[0].iov_len = descsize;
+	bufferlist[1].iov_base = buffer;
+	bufferlist[1].iov_len = bufferlen;
+	bufferlist[2].iov_base = &aligned_data;
+	bufferlist[2].iov_len = (packetlen_aligned - packetlen);
 
 	ret = hv_ringbuffer_write(&channel->outbound, bufferlist, 3, &signal);
 

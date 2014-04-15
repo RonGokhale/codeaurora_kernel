@@ -446,9 +446,12 @@ static int bL_cpufreq_init(struct cpufreq_policy *policy)
 	}
 
 	if (cur_cluster < MAX_CLUSTERS) {
+		int cpu;
+
 		cpumask_copy(policy->cpus, topology_core_cpumask(policy->cpu));
 
-		per_cpu(physical_cluster, policy->cpu) = cur_cluster;
+		for_each_cpu(cpu, policy->cpus)
+			per_cpu(physical_cluster, cpu) = cur_cluster;
 	} else {
 		/* Assumption: during init, we are always running on A15 */
 		per_cpu(physical_cluster, policy->cpu) = A15_CLUSTER;
@@ -478,7 +481,6 @@ static int bL_cpufreq_exit(struct cpufreq_policy *policy)
 		return -ENODEV;
 	}
 
-	cpufreq_frequency_table_put_attr(policy->cpu);
 	put_cluster_clk_and_freq_table(cpu_dev);
 	dev_dbg(cpu_dev, "%s: Exited, cpu: %d\n", __func__, policy->cpu);
 
@@ -488,7 +490,8 @@ static int bL_cpufreq_exit(struct cpufreq_policy *policy)
 static struct cpufreq_driver bL_cpufreq_driver = {
 	.name			= "arm-big-little",
 	.flags			= CPUFREQ_STICKY |
-					CPUFREQ_HAVE_GOVERNOR_PER_POLICY,
+					CPUFREQ_HAVE_GOVERNOR_PER_POLICY |
+					CPUFREQ_NEED_INITIAL_FREQ_CHECK,
 	.verify			= cpufreq_generic_frequency_table_verify,
 	.target_index		= bL_cpufreq_set_target,
 	.get			= bL_cpufreq_get_rate,

@@ -21,6 +21,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/of_graph.h>
 #include <linux/pm.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
@@ -29,7 +30,6 @@
 #include <media/mt9p031.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
-#include <media/v4l2-of.h>
 #include <media/v4l2-subdev.h>
 
 #include "aptina-pll.h"
@@ -519,11 +519,13 @@ static int mt9p031_set_format(struct v4l2_subdev *subdev,
 
 	/* Clamp the width and height to avoid dividing by zero. */
 	width = clamp_t(unsigned int, ALIGN(format->format.width, 2),
-			max(__crop->width / 7, MT9P031_WINDOW_WIDTH_MIN),
+			max_t(unsigned int, __crop->width / 7,
+			      MT9P031_WINDOW_WIDTH_MIN),
 			__crop->width);
 	height = clamp_t(unsigned int, ALIGN(format->format.height, 2),
-			max(__crop->height / 8, MT9P031_WINDOW_HEIGHT_MIN),
-			__crop->height);
+			 max_t(unsigned int, __crop->height / 8,
+			       MT9P031_WINDOW_HEIGHT_MIN),
+			 __crop->height);
 
 	hratio = DIV_ROUND_CLOSEST(__crop->width, width);
 	vratio = DIV_ROUND_CLOSEST(__crop->height, height);
@@ -565,15 +567,17 @@ static int mt9p031_set_crop(struct v4l2_subdev *subdev,
 			  MT9P031_COLUMN_START_MAX);
 	rect.top = clamp(ALIGN(crop->rect.top, 2), MT9P031_ROW_START_MIN,
 			 MT9P031_ROW_START_MAX);
-	rect.width = clamp(ALIGN(crop->rect.width, 2),
-			   MT9P031_WINDOW_WIDTH_MIN,
-			   MT9P031_WINDOW_WIDTH_MAX);
-	rect.height = clamp(ALIGN(crop->rect.height, 2),
-			    MT9P031_WINDOW_HEIGHT_MIN,
-			    MT9P031_WINDOW_HEIGHT_MAX);
+	rect.width = clamp_t(unsigned int, ALIGN(crop->rect.width, 2),
+			     MT9P031_WINDOW_WIDTH_MIN,
+			     MT9P031_WINDOW_WIDTH_MAX);
+	rect.height = clamp_t(unsigned int, ALIGN(crop->rect.height, 2),
+			      MT9P031_WINDOW_HEIGHT_MIN,
+			      MT9P031_WINDOW_HEIGHT_MAX);
 
-	rect.width = min(rect.width, MT9P031_PIXEL_ARRAY_WIDTH - rect.left);
-	rect.height = min(rect.height, MT9P031_PIXEL_ARRAY_HEIGHT - rect.top);
+	rect.width = min_t(unsigned int, rect.width,
+			   MT9P031_PIXEL_ARRAY_WIDTH - rect.left);
+	rect.height = min_t(unsigned int, rect.height,
+			    MT9P031_PIXEL_ARRAY_HEIGHT - rect.top);
 
 	__crop = __mt9p031_get_pad_crop(mt9p031, fh, crop->pad, crop->which);
 
@@ -939,7 +943,7 @@ mt9p031_get_pdata(struct i2c_client *client)
 	if (!IS_ENABLED(CONFIG_OF) || !client->dev.of_node)
 		return client->dev.platform_data;
 
-	np = v4l2_of_get_next_endpoint(client->dev.of_node, NULL);
+	np = of_graph_get_next_endpoint(client->dev.of_node, NULL);
 	if (!np)
 		return NULL;
 

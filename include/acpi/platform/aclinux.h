@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2013, Intel Corp.
+ * Copyright (C) 2000 - 2014, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -52,6 +52,14 @@
 
 #ifdef __KERNEL__
 
+#define ACPI_USE_SYSTEM_INTTYPES
+
+/* Compile for reduced hardware mode only with this kernel config */
+
+#ifdef CONFIG_ACPI_REDUCED_HARDWARE_ONLY
+#define ACPI_REDUCED_HARDWARE 1
+#endif
+
 #include <linux/string.h>
 #include <linux/kernel.h>
 #include <linux/ctype.h>
@@ -82,6 +90,16 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
+
+/* Disable kernel specific declarators */
+
+#ifndef __init
+#define __init
+#endif
+
+#ifndef __iomem
+#define __iomem
+#endif
 
 /* Host-dependent types and defines for user-space ACPICA */
 
@@ -238,10 +256,6 @@ void acpi_os_unmap_memory(void __iomem * logical_address, acpi_size size);
  * OSL interfaces added by Linux
  */
 void early_acpi_os_unmap_memory(void __iomem * virt, acpi_size size);
-
-void acpi_os_gpe_count(u32 gpe_number);
-
-void acpi_os_fixed_event_count(u32 fixed_event_number);
 
 #endif				/* __KERNEL__ */
 

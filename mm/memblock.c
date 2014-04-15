@@ -266,23 +266,12 @@ static void __init_memblock memblock_remove_region(struct memblock_type *type, u
 	}
 }
 
+#ifdef CONFIG_ARCH_DISCARD_MEMBLOCK
+
 phys_addr_t __init_memblock get_allocated_memblock_reserved_regions_info(
 					phys_addr_t *addr)
 {
 	if (memblock.reserved.regions == memblock_reserved_init_regions)
-		return 0;
-
-	/*
-	 * Don't allow nobootmem allocator to free reserved memory regions
-	 * array if
-	 *  - CONFIG_DEBUG_FS is enabled;
-	 *  - CONFIG_ARCH_DISCARD_MEMBLOCK is not enabled;
-	 *  - reserved memory regions array have been resized during boot.
-	 * Otherwise debug_fs entry "sys/kernel/debug/memblock/reserved"
-	 * will show garbage instead of state of memory reservations.
-	 */
-	if (IS_ENABLED(CONFIG_DEBUG_FS) &&
-	    !IS_ENABLED(CONFIG_ARCH_DISCARD_MEMBLOCK))
 		return 0;
 
 	*addr = __pa(memblock.reserved.regions);
@@ -290,6 +279,20 @@ phys_addr_t __init_memblock get_allocated_memblock_reserved_regions_info(
 	return PAGE_ALIGN(sizeof(struct memblock_region) *
 			  memblock.reserved.max);
 }
+
+phys_addr_t __init_memblock get_allocated_memblock_memory_regions_info(
+					phys_addr_t *addr)
+{
+	if (memblock.memory.regions == memblock_memory_init_regions)
+		return 0;
+
+	*addr = __pa(memblock.memory.regions);
+
+	return PAGE_ALIGN(sizeof(struct memblock_region) *
+			  memblock.memory.max);
+}
+
+#endif
 
 /**
  * memblock_double_array - double the size of the memblock regions array
@@ -981,9 +984,6 @@ static phys_addr_t __init memblock_alloc_base_nid(phys_addr_t size,
 	if (!align)
 		align = SMP_CACHE_BYTES;
 
-	/* align @size to avoid excessive fragmentation on reserved array */
-	size = round_up(size, align);
-
 	found = memblock_find_in_range_node(size, align, 0, max_addr, nid);
 	if (found && !memblock_reserve(found, size))
 		return found;
@@ -1077,8 +1077,8 @@ static void * __init memblock_virt_alloc_internal(
 	if (!align)
 		align = SMP_CACHE_BYTES;
 
-	/* align @size to avoid excessive fragmentation on reserved array */
-	size = round_up(size, align);
+	if (max_addr > memblock.current_limit)
+		max_addr = memblock.current_limit;
 
 again:
 	alloc = memblock_find_in_range_node(size, align, min_addr, max_addr,

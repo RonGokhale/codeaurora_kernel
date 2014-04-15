@@ -423,7 +423,7 @@ static struct platform_pwm_backlight_data pwm_backlight_data = {
 	.max_brightness = 255,
 	.dft_brightness = 255,
 	.pwm_period_ns = 33333, /* 30kHz */
-	.enable_gpio = -1,
+	.enable_gpio = 61,
 };
 
 static struct platform_device pwm_backlight_device = {
@@ -963,7 +963,7 @@ static struct resource fsi_resources[] = {
 	[0] = {
 		.name	= "FSI",
 		.start	= 0xfe1f0000,
-		.end	= 0xfe1f8400 - 1,
+		.end	= 0xfe1f0400 - 1,
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
@@ -988,14 +988,12 @@ static struct asoc_simple_card_info fsi_wm8978_info = {
 	.card		= "FSI2A-WM8978",
 	.codec		= "wm8978.0-001a",
 	.platform	= "sh_fsi2",
-	.daifmt		= SND_SOC_DAIFMT_I2S,
+	.daifmt		= SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_CBM_CFM,
 	.cpu_dai = {
 		.name	= "fsia-dai",
-		.fmt	= SND_SOC_DAIFMT_CBS_CFS | SND_SOC_DAIFMT_IB_NF,
 	},
 	.codec_dai = {
 		.name	= "wm8978-hifi",
-		.fmt	= SND_SOC_DAIFMT_CBM_CFM | SND_SOC_DAIFMT_NB_NF,
 		.sysclk	= 12288000,
 	},
 };
@@ -1209,9 +1207,6 @@ static void __init eva_init(void)
 
 	r8a7740_pinmux_init();
 	r8a7740_meram_workaround();
-
-	/* LCDC0 */
-	gpio_request_one(61, GPIOF_OUT_INIT_HIGH, NULL); /* LCDDON */
 
 	/* GETHER */
 	gpio_request_one(18, GPIOF_OUT_INIT_HIGH, NULL); /* PHY_RST */

@@ -197,7 +197,7 @@ static int handle_tpi(struct kvm_vcpu *vcpu)
 	if (addr & 3)
 		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
 	cc = 0;
-	inti = kvm_s390_get_io_int(vcpu->kvm, vcpu->run->s.regs.crs[6], 0);
+	inti = kvm_s390_get_io_int(vcpu->kvm, vcpu->arch.sie_block->gcr[6], 0);
 	if (!inti)
 		goto no_interrupt;
 	cc = 1;
@@ -396,15 +396,10 @@ static int handle_stidp(struct kvm_vcpu *vcpu)
 
 static void handle_stsi_3_2_2(struct kvm_vcpu *vcpu, struct sysinfo_3_2_2 *mem)
 {
-	struct kvm_s390_float_interrupt *fi = &vcpu->kvm->arch.float_int;
 	int cpus = 0;
 	int n;
 
-	spin_lock(&fi->lock);
-	for (n = 0; n < KVM_MAX_VCPUS; n++)
-		if (fi->local_int[n])
-			cpus++;
-	spin_unlock(&fi->lock);
+	cpus = atomic_read(&vcpu->kvm->online_vcpus);
 
 	/* deal with other level 3 hypervisors */
 	if (stsi(mem, 3, 2, 2))
@@ -636,9 +631,49 @@ static int handle_pfmf(struct kvm_vcpu *vcpu)
 	return 0;
 }
 
+static int handle_essa(struct kvm_vcpu *vcpu)
+{
+	/* entries expected to be 1FF */
+	int entries = (vcpu->arch.sie_block->cbrlo & ~PAGE_MASK) >> 3;
+	unsigned long *cbrlo, cbrle;
+	struct gmap *gmap;
+	int i;
+
+	VCPU_EVENT(vcpu, 5, "cmma release %d pages", entries);
+	gmap = vcpu->arch.gmap;
+	vcpu->stat.instruction_essa++;
+	if (!kvm_enabled_cmma() || !vcpu->arch.sie_block->cbrlo)
+		return kvm_s390_inject_program_int(vcpu, PGM_OPERATION);
+
+	if (vcpu->arch.sie_block->gpsw.mask & PSW_MASK_PSTATE)
+		return kvm_s390_inject_program_int(vcpu, PGM_PRIVILEGED_OP);
+
+	if (((vcpu->arch.sie_block->ipb & 0xf0000000) >> 28) > 6)
+		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
+
+	/* Rewind PSW to repeat the ESSA instruction */
+	vcpu->arch.sie_block->gpsw.addr =
+		__rewind_psw(vcpu->arch.sie_block->gpsw, 4);
+	vcpu->arch.sie_block->cbrlo &= PAGE_MASK;	/* reset nceo */
+	cbrlo = phys_to_virt(vcpu->arch.sie_block->cbrlo);
+	down_read(&gmap->mm->mmap_sem);
+	for (i = 0; i < entries; ++i) {
+		cbrle = cbrlo[i];
+		if (unlikely(cbrle & ~PAGE_MASK || cbrle < 2 * PAGE_SIZE))
+			/* invalid entry */
+			break;
+		/* try to free backing */
+		__gmap_zap(cbrle, gmap);
+	}
+	up_read(&gmap->mm->mmap_sem);
+	if (i < entries)
+		return kvm_s390_inject_program_int(vcpu, PGM_SPECIFICATION);
+	return 0;
+}
+
 static const intercept_handler_t b9_handlers[256] = {
 	[0x8d] = handle_epsw,
-	[0x9c] = handle_io_inst,
+	[0xab] = handle_essa,
 	[0xaf] = handle_pfmf,
 };
 
@@ -731,7 +766,6 @@ static int handle_lctlg(struct kvm_vcpu *vcpu)
 
 static const intercept_handler_t eb_handlers[256] = {
 	[0x2f] = handle_lctlg,
-	[0x8a] = handle_io_inst,
 };
 
 int kvm_s390_handle_eb(struct kvm_vcpu *vcpu)

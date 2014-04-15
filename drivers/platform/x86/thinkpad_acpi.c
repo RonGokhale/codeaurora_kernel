@@ -61,7 +61,6 @@
 #include <linux/freezer.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-
 #include <linux/nvram.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
@@ -74,21 +73,16 @@
 #include <linux/input.h>
 #include <linux/leds.h>
 #include <linux/rfkill.h>
-#include <asm/uaccess.h>
-
 #include <linux/dmi.h>
 #include <linux/jiffies.h>
 #include <linux/workqueue.h>
-
+#include <linux/acpi.h>
+#include <linux/pci_ids.h>
+#include <linux/thinkpad_acpi.h>
 #include <sound/core.h>
 #include <sound/control.h>
 #include <sound/initval.h>
-
-#include <acpi/acpi_drivers.h>
-
-#include <linux/pci_ids.h>
-
-#include <linux/thinkpad_acpi.h>
+#include <asm/uaccess.h>
 
 /* ThinkPad CMOS commands */
 #define TP_CMOS_VOLUME_DOWN	0
@@ -6782,8 +6776,9 @@ static int __init volume_create_alsa_mixer(void)
 	struct snd_kcontrol *ctl_mute;
 	int rc;
 
-	rc = snd_card_create(alsa_index, alsa_id, THIS_MODULE,
-			    sizeof(struct tpacpi_alsa_data), &card);
+	rc = snd_card_new(&tpacpi_pdev->dev,
+			  alsa_index, alsa_id, THIS_MODULE,
+			  sizeof(struct tpacpi_alsa_data), &card);
 	if (rc < 0 || !card) {
 		pr_err("Failed to create ALSA card structures: %d\n", rc);
 		return 1;
@@ -6834,7 +6829,6 @@ static int __init volume_create_alsa_mixer(void)
 	}
 	data->ctl_mute_id = &ctl_mute->id;
 
-	snd_card_set_dev(card, &tpacpi_pdev->dev);
 	rc = snd_card_register(card);
 	if (rc < 0) {
 		pr_err("Failed to register ALSA card: %d\n", rc);

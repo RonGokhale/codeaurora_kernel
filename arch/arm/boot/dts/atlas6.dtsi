@@ -27,6 +27,15 @@
 			timebase-frequency = <0>;
 			bus-frequency = <0>;
 			clock-frequency = <0>;
+			clocks = <&clks 12>;
+			operating-points = <
+				/* kHz    uV */
+				200000  1025000
+				400000  1025000
+				600000  1050000
+				800000  1100000
+			>;
+			clock-latency = <150000>;
 		};
 	};
 
@@ -69,6 +78,7 @@
 			cphifbg@88030000 {
 				compatible = "sirf,prima2-cphifbg";
 				reg = <0x88030000 0x1000>;
+				clocks = <&clks 42>;
 			};
 		};
 
@@ -207,8 +217,8 @@
 				interrupts = <17>;
 				fifosize = <128>;
 				clocks = <&clks 13>;
-				sirf,uart-dma-rx-channel = <21>;
-				sirf,uart-dma-tx-channel = <2>;
+				dmas = <&dmac1 5>, <&dmac0 2>;
+				dma-names = "rx", "tx";
 			};
 
 			uart1: uart@b0060000 {
@@ -218,6 +228,7 @@
 				interrupts = <18>;
 				fifosize = <32>;
 				clocks = <&clks 14>;
+				dma-names = "no-rx", "no-tx";
 			};
 
 			uart2: uart@b0070000 {
@@ -227,8 +238,8 @@
 				interrupts = <19>;
 				fifosize = <128>;
 				clocks = <&clks 15>;
-				sirf,uart-dma-rx-channel = <6>;
-				sirf,uart-dma-tx-channel = <7>;
+				dmas = <&dmac0 6>, <&dmac0 7>;
+				dma-names = "rx", "tx";
 			};
 
 			usp0: usp@b0080000 {
@@ -238,8 +249,8 @@
 				interrupts = <20>;
 				fifosize = <128>;
 				clocks = <&clks 28>;
-				sirf,usp-dma-rx-channel = <17>;
-				sirf,usp-dma-tx-channel = <18>;
+				dmas = <&dmac1 1>, <&dmac1 2>;
+				dma-names = "rx", "tx";
 			};
 
 			usp1: usp@b0090000 {
@@ -249,8 +260,8 @@
 				interrupts = <21>;
 				fifosize = <128>;
 				clocks = <&clks 29>;
-				sirf,usp-dma-rx-channel = <14>;
-				sirf,usp-dma-tx-channel = <15>;
+				dmas = <&dmac0 14>, <&dmac0 15>;
+				dma-names = "rx", "tx";
 			};
 
 			dmac0: dma-controller@b00b0000 {
@@ -546,6 +557,12 @@
                                                 sirf,function = "usp1";
                                         };
                                 };
+				usp1_uart_nostreamctrl_pins_a: usp1@1 {
+                                        usp1 {
+                                                sirf,pins = "usp1_uart_nostreamctrl_grp";
+                                                sirf,function = "usp1_uart_nostreamctrl";
+                                        };
+                                };
                                 usb0_upli_drvbus_pins_a: usb0_upli_drvbus@0 {
                                         usb0_upli_drvbus {
                                                 sirf,pins = "usb0_upli_drvbusgrp";
@@ -636,6 +653,7 @@
 					reg = <0x56100000 0x100000>;
 					interrupts = <38>;
 					status = "disabled";
+					bus-width = <4>;
 					clocks = <&clks 36>;
 				};
 
@@ -645,6 +663,7 @@
 					reg = <0x56200000 0x100000>;
 					interrupts = <23>;
 					status = "disabled";
+					bus-width = <4>;
 					clocks = <&clks 37>;
 				};
 
@@ -654,6 +673,7 @@
 					reg = <0x56300000 0x100000>;
 					interrupts = <23>;
 					status = "disabled";
+					bus-width = <4>;
 					clocks = <&clks 37>;
 				};
 
@@ -663,6 +683,7 @@
 					reg = <0x56500000 0x100000>;
 					interrupts = <39>;
 					status = "disabled";
+					bus-width = <4>;
 					clocks = <&clks 38>;
 				};
 
@@ -695,6 +716,12 @@
 				compatible = "sirf,prima2-sysrtc";
 				reg = <0x2000 0x1000>;
 				interrupts = <52 53 54>;
+			};
+
+			minigpsrtc@2000 {
+				compatible = "sirf,prima2-minigpsrtc";
+				reg = <0x2000 0x1000>;
+				interrupts = <54>;
 			};
 
 			pwrc@3000 {

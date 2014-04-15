@@ -569,6 +569,9 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gva_t addr,
 	if (FNAME(gpte_changed)(vcpu, gw, top_level))
 		goto out_gpte_changed;
 
+	if (!VALID_PAGE(vcpu->arch.mmu.root_hpa))
+		goto out_gpte_changed;
+
 	for (shadow_walk_init(&it, vcpu, addr);
 	     shadow_walk_okay(&it) && it.level > gw->level;
 	     shadow_walk_next(&it)) {
@@ -820,6 +823,11 @@ static void FNAME(invlpg)(struct kvm_vcpu *vcpu, gva_t gva)
 	 */
 	mmu_topup_memory_caches(vcpu);
 
+	if (!VALID_PAGE(vcpu->arch.mmu.root_hpa)) {
+		WARN_ON(1);
+		return;
+	}
+
 	spin_lock(&vcpu->kvm->mmu_lock);
 	for_each_shadow_entry(vcpu, gva, iterator) {
 		level = iterator.level;
@@ -905,7 +913,8 @@ static gpa_t FNAME(gva_to_gpa_nested)(struct kvm_vcpu *vcpu, gva_t vaddr,
  *   and kvm_mmu_notifier_invalidate_range_start detect the mapping page isn't
  *   used by guest then tlbs are not flushed, so guest is allowed to access the
  *   freed pages.
- *   And we increase kvm->tlbs_dirty to delay tlbs flush in this case.
+ *   We set tlbs_dirty to let the notifier know this change and delay the flush
+ *   until such a case actually happens.
  */
 static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 {
@@ -934,7 +943,7 @@ static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 			return -EINVAL;
 
 		if (FNAME(prefetch_invalid_gpte)(vcpu, sp, &sp->spt[i], gpte)) {
-			vcpu->kvm->tlbs_dirty++;
+			vcpu->kvm->tlbs_dirty = true;
 			continue;
 		}
 
@@ -949,7 +958,7 @@ static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 
 		if (gfn != sp->gfns[i]) {
 			drop_spte(vcpu->kvm, &sp->spt[i]);
-			vcpu->kvm->tlbs_dirty++;
+			vcpu->kvm->tlbs_dirty = true;
 			continue;
 		}
 

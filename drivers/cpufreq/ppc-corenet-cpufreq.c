@@ -21,15 +21,14 @@
 #include <linux/of.h>
 #include <linux/slab.h>
 #include <linux/smp.h>
+#include <sysdev/fsl_soc.h>
 
 /**
  * struct cpu_data - per CPU data struct
- * @clk: the clk of CPU
  * @parent: the parent node of cpu clock
  * @table: frequency table
  */
 struct cpu_data {
-	struct clk *clk;
 	struct device_node *parent;
 	struct cpufreq_frequency_table *table;
 };
@@ -80,13 +79,6 @@ static inline const struct cpumask *cpu_core_mask(int cpu)
 	return cpumask_of(0);
 }
 #endif
-
-static unsigned int corenet_cpufreq_get_speed(unsigned int cpu)
-{
-	struct cpu_data *data = per_cpu(cpu_data, cpu);
-
-	return clk_get_rate(data->clk) / 1000;
-}
 
 /* reduce the duplicated frequencies in frequency table */
 static void freq_table_redup(struct cpufreq_frequency_table *freq_table,
@@ -158,8 +150,8 @@ static int corenet_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		goto err_np;
 	}
 
-	data->clk = of_clk_get(np, 0);
-	if (IS_ERR(data->clk)) {
+	policy->clk = of_clk_get(np, 0);
+	if (IS_ERR(policy->clk)) {
 		pr_err("%s: no clock information\n", __func__);
 		goto err_nomem2;
 	}
@@ -214,7 +206,8 @@ static int corenet_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	for_each_cpu(i, per_cpu(cpu_mask, cpu))
 		per_cpu(cpu_data, i) = data;
 
-	policy->cpuinfo.transition_latency = CPUFREQ_ETERNAL;
+	policy->cpuinfo.transition_latency =
+				(12 * NSEC_PER_SEC) / fsl_get_sys_freq();
 	of_node_put(np);
 
 	return 0;
@@ -237,7 +230,6 @@ static int __exit corenet_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 	struct cpu_data *data = per_cpu(cpu_data, policy->cpu);
 	unsigned int cpu;
 
-	cpufreq_frequency_table_put_attr(policy->cpu);
 	of_node_put(data->parent);
 	kfree(data->table);
 	kfree(data);
@@ -255,7 +247,7 @@ static int corenet_cpufreq_target(struct cpufreq_policy *policy,
 	struct cpu_data *data = per_cpu(cpu_data, policy->cpu);
 
 	parent = of_clk_get(data->parent, data->table[index].driver_data);
-	return clk_set_parent(data->clk, parent);
+	return clk_set_parent(policy->clk, parent);
 }
 
 static struct cpufreq_driver ppc_corenet_cpufreq_driver = {
@@ -265,7 +257,7 @@ static struct cpufreq_driver ppc_corenet_cpufreq_driver = {
 	.exit		= __exit_p(corenet_cpufreq_cpu_exit),
 	.verify		= cpufreq_generic_frequency_table_verify,
 	.target_index	= corenet_cpufreq_target,
-	.get		= corenet_cpufreq_get_speed,
+	.get		= cpufreq_generic_get,
 	.attr		= cpufreq_generic_attr,
 };
 

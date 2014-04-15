@@ -42,6 +42,7 @@
 #include <acpi/acpi_bus.h>
 #include <acpi/acpi_drivers.h>
 #include <acpi/acpi_numa.h>
+#include <acpi/acpi_io.h>
 #include <asm/acpi.h>
 
 static inline acpi_handle acpi_device_handle(struct acpi_device *adev)
@@ -52,6 +53,12 @@ static inline acpi_handle acpi_device_handle(struct acpi_device *adev)
 #define ACPI_COMPANION(dev)		((dev)->acpi_node.companion)
 #define ACPI_COMPANION_SET(dev, adev)	ACPI_COMPANION(dev) = (adev)
 #define ACPI_HANDLE(dev)		acpi_device_handle(ACPI_COMPANION(dev))
+
+static inline void acpi_preset_companion(struct device *dev,
+					 struct acpi_device *parent, u64 addr)
+{
+	ACPI_COMPANION_SET(dev, acpi_find_child_device(parent, addr, NULL));
+}
 
 static inline const char *acpi_dev_name(struct acpi_device *adev)
 {
@@ -100,6 +107,10 @@ static inline void acpi_initrd_override(void *data, size_t size)
 {
 }
 #endif
+
+#define BAD_MADT_ENTRY(entry, end) (					    \
+		(!entry) || (unsigned long)entry + sizeof(*entry) > end ||  \
+		((struct acpi_subtable_header *)entry)->length < sizeof(*entry))
 
 char * __acpi_map_table (unsigned long phys_addr, unsigned long size);
 void __acpi_unmap_table(char *map, unsigned long size);
@@ -252,14 +263,9 @@ extern void acpi_dmi_osi_linux(int enable, const struct dmi_system_id *d);
 extern void acpi_osi_setup(char *str);
 
 #ifdef CONFIG_ACPI_NUMA
-int acpi_get_pxm(acpi_handle handle);
-int acpi_get_node(acpi_handle *handle);
+int acpi_get_node(acpi_handle handle);
 #else
-static inline int acpi_get_pxm(acpi_handle handle)
-{
-	return 0;
-}
-static inline int acpi_get_node(acpi_handle *handle)
+static inline int acpi_get_node(acpi_handle handle)
 {
 	return 0;
 }
@@ -409,6 +415,9 @@ static inline bool acpi_driver_match_device(struct device *dev,
 	return !!acpi_match_device(drv->acpi_match_table, dev);
 }
 
+int acpi_device_uevent_modalias(struct device *, struct kobj_uevent_env *);
+int acpi_device_modalias(struct device *, char *, int);
+
 #define ACPI_PTR(_ptr)	(_ptr)
 
 #else	/* !CONFIG_ACPI */
@@ -460,7 +469,7 @@ struct acpi_table_header;
 static inline int acpi_table_parse(char *id,
 				int (*handler)(struct acpi_table_header *))
 {
-	return -1;
+	return -ENODEV;
 }
 
 static inline int acpi_nvs_register(__u64 start, __u64 size)
@@ -486,6 +495,18 @@ static inline bool acpi_driver_match_device(struct device *dev,
 					    const struct device_driver *drv)
 {
 	return false;
+}
+
+static inline int acpi_device_uevent_modalias(struct device *dev,
+				struct kobj_uevent_env *env)
+{
+	return -ENODEV;
+}
+
+static inline int acpi_device_modalias(struct device *dev,
+				char *buf, int size)
+{
+	return -ENODEV;
 }
 
 #define ACPI_PTR(_ptr)	(NULL)

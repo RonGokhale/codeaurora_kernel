@@ -848,9 +848,9 @@ out:
 static bool invalid_mkclean_vma(struct vm_area_struct *vma, void *arg)
 {
 	if (vma->vm_flags & VM_SHARED)
-		return 0;
+		return false;
 
-	return 1;
+	return true;
 }
 
 int page_mkclean(struct page *page)
@@ -894,9 +894,9 @@ void page_move_anon_rmap(struct page *page,
 {
 	struct anon_vma *anon_vma = vma->anon_vma;
 
-	VM_BUG_ON(!PageLocked(page));
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	VM_BUG_ON(!anon_vma);
-	VM_BUG_ON(page->index != linear_page_index(vma, address));
+	VM_BUG_ON_PAGE(page->index != linear_page_index(vma, address), page);
 
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
 	page->mapping = (struct address_space *) anon_vma;
@@ -995,7 +995,7 @@ void do_page_add_anon_rmap(struct page *page,
 	if (unlikely(PageKsm(page)))
 		return;
 
-	VM_BUG_ON(!PageLocked(page));
+	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	/* address might be in next vma when migration races vma_adjust */
 	if (first)
 		__page_set_anon_rmap(page, vma, address, exclusive);
@@ -1165,6 +1165,16 @@ int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		}
 		set_pte_at(mm, address, pte,
 			   swp_entry_to_pte(make_hwpoison_entry(page)));
+	} else if (pte_unused(pteval)) {
+		/*
+		 * The guest indicated that the page content is of no
+		 * interest anymore. Simply discard the pte, vmscan
+		 * will take care of the rest.
+		 */
+		if (PageAnon(page))
+			dec_mm_counter(mm, MM_ANONPAGES);
+		else
+			dec_mm_counter(mm, MM_FILEPAGES);
 	} else if (PageAnon(page)) {
 		swp_entry_t entry = { .val = page_private(page) };
 		pte_t swp_pte;
@@ -1360,8 +1370,9 @@ static int try_to_unmap_cluster(unsigned long cursor, unsigned int *mapcount,
 }
 
 static int try_to_unmap_nonlinear(struct page *page,
-		struct address_space *mapping, struct vm_area_struct *vma)
+		struct address_space *mapping, void *arg)
 {
+	struct vm_area_struct *vma;
 	int ret = SWAP_AGAIN;
 	unsigned long cursor;
 	unsigned long max_nl_cursor = 0;
@@ -1481,7 +1492,7 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 		.anon_lock = page_lock_anon_vma_read,
 	};
 
-	VM_BUG_ON(!PageHuge(page) && PageTransHuge(page));
+	VM_BUG_ON_PAGE(!PageHuge(page) && PageTransHuge(page), page);
 
 	/*
 	 * During exec, a temporary VMA is setup and later moved.
@@ -1533,7 +1544,7 @@ int try_to_munlock(struct page *page)
 
 	};
 
-	VM_BUG_ON(!PageLocked(page) || PageLRU(page));
+	VM_BUG_ON_PAGE(!PageLocked(page) || PageLRU(page), page);
 
 	ret = rmap_walk(page, &rwc);
 	return ret;
@@ -1663,7 +1674,7 @@ static int rmap_walk_file(struct page *page, struct rmap_walk_control *rwc)
 	if (list_empty(&mapping->i_mmap_nonlinear))
 		goto done;
 
-	ret = rwc->file_nonlinear(page, mapping, vma);
+	ret = rwc->file_nonlinear(page, mapping, rwc->arg);
 
 done:
 	mutex_unlock(&mapping->i_mmap_mutex);

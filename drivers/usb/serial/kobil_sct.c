@@ -193,7 +193,7 @@ static int kobil_open(struct tty_struct *tty, struct usb_serial_port *port)
 			  KOBIL_TIMEOUT
 	);
 	dev_dbg(dev, "%s - Send get_HW_version URB returns: %i\n", __func__, result);
-	dev_dbg(dev, "Harware version: %i.%i.%i\n", transfer_buffer[0],
+	dev_dbg(dev, "Hardware version: %i.%i.%i\n", transfer_buffer[0],
 		transfer_buffer[1], transfer_buffer[2]);
 
 	/* get firmware version */
@@ -557,7 +557,8 @@ static int kobil_ioctl(struct tty_struct *tty,
 			);
 
 		dev_dbg(&port->dev,
-			"%s - Send reset_all_queues (FLUSH) URB returns: %i", __func__, result);
+			"%s - Send reset_all_queues (FLUSH) URB returns: %i\n",
+			__func__, result);
 		kfree(transfer_buffer);
 		return (result < 0) ? -EIO: 0;
 	default:

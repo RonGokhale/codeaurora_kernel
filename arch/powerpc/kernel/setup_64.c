@@ -97,6 +97,38 @@ int dcache_bsize;
 int icache_bsize;
 int ucache_bsize;
 
+#if defined(CONFIG_PPC_BOOK3E) && defined(CONFIG_SMP)
+static void setup_tlb_core_data(void)
+{
+	int cpu;
+
+	BUILD_BUG_ON(offsetof(struct tlb_core_data, lock) != 0);
+
+	for_each_possible_cpu(cpu) {
+		int first = cpu_first_thread_sibling(cpu);
+
+		paca[cpu].tcd_ptr = &paca[first].tcd;
+
+		/*
+		 * If we have threads, we need either tlbsrx.
+		 * or e6500 tablewalk mode, or else TLB handlers
+		 * will be racy and could produce duplicate entries.
+		 */
+		if (smt_enabled_at_boot >= 2 &&
+		    !mmu_has_feature(MMU_FTR_USE_TLBRSRV) &&
+		    book3e_htw_mode != PPC_HTW_E6500) {
+			/* Should we panic instead? */
+			WARN_ONCE("%s: unsupported MMU configuration -- expect problems\n",
+				  __func__);
+		}
+	}
+}
+#else
+static void setup_tlb_core_data(void)
+{
+}
+#endif
+
 #ifdef CONFIG_SMP
 
 static char *smt_enabled_cmdline;
@@ -445,6 +477,7 @@ void __init setup_system(void)
 
 	smp_setup_cpu_maps();
 	check_smt_enabled();
+	setup_tlb_core_data();
 
 #ifdef CONFIG_SMP
 	/* Release secondary cpus out of their spinloops at 0x60 now that
@@ -520,23 +553,25 @@ static void __init irqstack_early_init(void)
 #ifdef CONFIG_PPC_BOOK3E
 static void __init exc_lvl_early_init(void)
 {
-	extern unsigned int interrupt_base_book3e;
-	extern unsigned int exc_debug_debug_book3e;
-
 	unsigned int i;
+	unsigned long sp;
 
 	for_each_possible_cpu(i) {
-		critirq_ctx[i] = (struct thread_info *)
-			__va(memblock_alloc(THREAD_SIZE, THREAD_SIZE));
-		dbgirq_ctx[i] = (struct thread_info *)
-			__va(memblock_alloc(THREAD_SIZE, THREAD_SIZE));
-		mcheckirq_ctx[i] = (struct thread_info *)
-			__va(memblock_alloc(THREAD_SIZE, THREAD_SIZE));
+		sp = memblock_alloc(THREAD_SIZE, THREAD_SIZE);
+		critirq_ctx[i] = (struct thread_info *)__va(sp);
+		paca[i].crit_kstack = __va(sp + THREAD_SIZE);
+
+		sp = memblock_alloc(THREAD_SIZE, THREAD_SIZE);
+		dbgirq_ctx[i] = (struct thread_info *)__va(sp);
+		paca[i].dbg_kstack = __va(sp + THREAD_SIZE);
+
+		sp = memblock_alloc(THREAD_SIZE, THREAD_SIZE);
+		mcheckirq_ctx[i] = (struct thread_info *)__va(sp);
+		paca[i].mc_kstack = __va(sp + THREAD_SIZE);
 	}
 
 	if (cpu_has_feature(CPU_FTR_DEBUG_LVL_EXC))
-		patch_branch(&interrupt_base_book3e + (0x040 / 4) + 1,
-			     (unsigned long)&exc_debug_debug_book3e, 0);
+		patch_exception(0x040, exc_debug_debug_book3e);
 }
 #else
 #define exc_lvl_early_init()
@@ -544,7 +579,8 @@ static void __init exc_lvl_early_init(void)
 
 /*
  * Stack space used when we detect a bad kernel stack pointer, and
- * early in SMP boots before relocation is enabled.
+ * early in SMP boots before relocation is enabled. Exclusive emergency
+ * stack for machine checks.
  */
 static void __init emergency_stack_init(void)
 {
@@ -567,6 +603,13 @@ static void __init emergency_stack_init(void)
 		sp  = memblock_alloc_base(THREAD_SIZE, THREAD_SIZE, limit);
 		sp += THREAD_SIZE;
 		paca[i].emergency_sp = __va(sp);
+
+#ifdef CONFIG_PPC_BOOK3S_64
+		/* emergency stack for machine check exception handling. */
+		sp  = memblock_alloc_base(THREAD_SIZE, THREAD_SIZE, limit);
+		sp += THREAD_SIZE;
+		paca[i].mc_emergency_sp = __va(sp);
+#endif
 	}
 }
 

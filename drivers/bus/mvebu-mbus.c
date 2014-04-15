@@ -588,12 +588,6 @@ static const struct mvebu_mbus_soc_data mv78xx0_mbus_data = {
 	.show_cpu_target     = mvebu_sdram_debug_show_orion,
 };
 
-/*
- * The driver doesn't yet have a DT binding because the details of
- * this DT binding still need to be sorted out. However, as a
- * preparation, we already use of_device_id to match a SoC description
- * string against the SoC specific details of this driver.
- */
 static const struct of_device_id of_mvebu_mbus_ids[] = {
 	{ .compatible = "marvell,armada370-mbus",
 	  .data = &armada_370_xp_mbus_data, },
@@ -734,11 +728,11 @@ int __init mvebu_mbus_init(const char *soc, phys_addr_t mbuswins_phys_base,
 {
 	const struct of_device_id *of_id;
 
-	for (of_id = of_mvebu_mbus_ids; of_id->compatible; of_id++)
+	for (of_id = of_mvebu_mbus_ids; of_id->compatible[0]; of_id++)
 		if (!strcmp(of_id->compatible, soc))
 			break;
 
-	if (!of_id->compatible) {
+	if (!of_id->compatible[0]) {
 		pr_err("could not find a matching SoC family\n");
 		return -ENODEV;
 	}
@@ -876,14 +870,14 @@ static void __init mvebu_mbus_get_pcie_resources(struct device_node *np,
 	ret = of_property_read_u32_array(np, "pcie-mem-aperture", reg, ARRAY_SIZE(reg));
 	if (!ret) {
 		mem->start = reg[0];
-		mem->end = mem->start + reg[1];
+		mem->end = mem->start + reg[1] - 1;
 		mem->flags = IORESOURCE_MEM;
 	}
 
 	ret = of_property_read_u32_array(np, "pcie-io-aperture", reg, ARRAY_SIZE(reg));
 	if (!ret) {
 		io->start = reg[0];
-		io->end = io->start + reg[1];
+		io->end = io->start + reg[1] - 1;
 		io->flags = IORESOURCE_IO;
 	}
 }

@@ -39,7 +39,6 @@
 #include <linux/workqueue.h>
 #include <linux/nmi.h>
 #include <linux/acpi.h>
-#include <linux/acpi_io.h>
 #include <linux/efi.h>
 #include <linux/ioport.h>
 #include <linux/list.h>
@@ -49,14 +48,11 @@
 #include <asm/io.h>
 #include <asm/uaccess.h>
 
-#include <acpi/acpi.h>
-#include <acpi/acpi_bus.h>
-#include <acpi/processor.h>
 #include "internal.h"
 
 #define _COMPONENT		ACPI_OS_SERVICES
 ACPI_MODULE_NAME("osl");
-#define PREFIX		"ACPI: "
+
 struct acpi_os_dpc {
 	acpi_osd_exec_callback function;
 	void *context;
@@ -544,7 +540,7 @@ static u64 acpi_tables_addr;
 static int all_tables_size;
 
 /* Copied from acpica/tbutils.c:acpi_tb_checksum() */
-u8 __init acpi_table_checksum(u8 *buffer, u32 length)
+static u8 __init acpi_table_checksum(u8 *buffer, u32 length)
 {
 	u8 sum = 0;
 	u8 *end = buffer + length;
@@ -1172,8 +1168,7 @@ void acpi_os_wait_events_complete(void)
 
 struct acpi_hp_work {
 	struct work_struct work;
-	acpi_hp_callback func;
-	void *data;
+	struct acpi_device *adev;
 	u32 src;
 };
 
@@ -1182,25 +1177,24 @@ static void acpi_hotplug_work_fn(struct work_struct *work)
 	struct acpi_hp_work *hpw = container_of(work, struct acpi_hp_work, work);
 
 	acpi_os_wait_events_complete();
-	hpw->func(hpw->data, hpw->src);
+	acpi_device_hotplug(hpw->adev, hpw->src);
 	kfree(hpw);
 }
 
-acpi_status acpi_hotplug_execute(acpi_hp_callback func, void *data, u32 src)
+acpi_status acpi_hotplug_schedule(struct acpi_device *adev, u32 src)
 {
 	struct acpi_hp_work *hpw;
 
 	ACPI_DEBUG_PRINT((ACPI_DB_EXEC,
-		  "Scheduling function [%p(%p, %u)] for deferred execution.\n",
-		  func, data, src));
+		  "Scheduling hotplug event (%p, %u) for deferred execution.\n",
+		  adev, src));
 
 	hpw = kmalloc(sizeof(*hpw), GFP_KERNEL);
 	if (!hpw)
 		return AE_NO_MEMORY;
 
 	INIT_WORK(&hpw->work, acpi_hotplug_work_fn);
-	hpw->func = func;
-	hpw->data = data;
+	hpw->adev = adev;
 	hpw->src = src;
 	/*
 	 * We can't run hotplug code in kacpid_wq/kacpid_notify_wq etc., because
@@ -1215,6 +1209,10 @@ acpi_status acpi_hotplug_execute(acpi_hp_callback func, void *data, u32 src)
 	return AE_OK;
 }
 
+bool acpi_queue_hotplug_work(struct work_struct *work)
+{
+	return queue_work(kacpi_hotplug_wq, work);
+}
 
 acpi_status
 acpi_os_create_semaphore(u32 max_units, u32 initial_units, acpi_handle * handle)
@@ -1282,7 +1280,7 @@ acpi_status acpi_os_wait_semaphore(acpi_handle handle, u32 units, u16 timeout)
 		jiffies = MAX_SCHEDULE_TIMEOUT;
 	else
 		jiffies = msecs_to_jiffies(timeout);
-	
+
 	ret = down_timeout(sem, jiffies);
 	if (ret)
 		status = AE_TIME;
@@ -1539,17 +1537,21 @@ static int __init osi_setup(char *str)
 
 __setup("acpi_osi=", osi_setup);
 
-/* enable serialization to combat AE_ALREADY_EXISTS errors */
-static int __init acpi_serialize_setup(char *str)
+/*
+ * Disable the auto-serialization of named objects creation methods.
+ *
+ * This feature is enabled by default.  It marks the AML control methods
+ * that contain the opcodes to create named objects as "Serialized".
+ */
+static int __init acpi_no_auto_serialize_setup(char *str)
 {
-	printk(KERN_INFO PREFIX "serialize enabled\n");
-
-	acpi_gbl_all_methods_serialized = TRUE;
+	acpi_gbl_auto_serialize_methods = FALSE;
+	pr_info("ACPI: auto-serialization disabled\n");
 
 	return 1;
 }
 
-__setup("acpi_serialize", acpi_serialize_setup);
+__setup("acpi_no_auto_serialize", acpi_no_auto_serialize_setup);
 
 /* Check of resource interference between native drivers and ACPI
  * OperationRegions (SystemIO and System Memory only).
@@ -1780,6 +1782,17 @@ static int __init acpi_no_auto_ssdt_setup(char *s)
 
 __setup("acpi_no_auto_ssdt", acpi_no_auto_ssdt_setup);
 
+static int __init acpi_disable_return_repair(char *s)
+{
+	printk(KERN_NOTICE PREFIX
+	       "ACPI: Predefined validation mechanism disabled\n");
+	acpi_gbl_disable_auto_repair = TRUE;
+
+	return 1;
+}
+
+__setup("acpica_no_return_repair", acpi_disable_return_repair);
+
 acpi_status __init acpi_os_initialize(void)
 {
 	acpi_os_map_generic_address(&acpi_gbl_FADT.xpm1a_event_block);
@@ -1794,7 +1807,7 @@ acpi_status __init acpi_os_initialize1(void)
 {
 	kacpid_wq = alloc_workqueue("kacpid", 0, 1);
 	kacpi_notify_wq = alloc_workqueue("kacpi_notify", 0, 1);
-	kacpi_hotplug_wq = alloc_workqueue("kacpi_hotplug", 0, 1);
+	kacpi_hotplug_wq = alloc_ordered_workqueue("kacpi_hotplug", 0);
 	BUG_ON(!kacpid_wq);
 	BUG_ON(!kacpi_notify_wq);
 	BUG_ON(!kacpi_hotplug_wq);

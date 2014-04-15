@@ -932,6 +932,7 @@ static int kimage_load_segment(struct kimage *image,
  */
 struct kimage *kexec_image;
 struct kimage *kexec_crash_image;
+int kexec_load_disabled;
 
 static DEFINE_MUTEX(kexec_mutex);
 
@@ -942,7 +943,7 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 	int result;
 
 	/* We only trust the superuser with rebooting the system. */
-	if (!capable(CAP_SYS_BOOT))
+	if (!capable(CAP_SYS_BOOT) || kexec_load_disabled)
 		return -EPERM;
 
 	/*
@@ -1038,10 +1039,10 @@ void __weak crash_unmap_reserved_pages(void)
 {}
 
 #ifdef CONFIG_COMPAT
-asmlinkage long compat_sys_kexec_load(unsigned long entry,
-				unsigned long nr_segments,
-				struct compat_kexec_segment __user *segments,
-				unsigned long flags)
+COMPAT_SYSCALL_DEFINE4(kexec_load, compat_ulong_t, entry,
+		       compat_ulong_t, nr_segments,
+		       struct compat_kexec_segment __user *, segments,
+		       compat_ulong_t, flags)
 {
 	struct compat_kexec_segment in;
 	struct kexec_segment out, __user *ksegments;
@@ -1536,7 +1537,7 @@ void vmcoreinfo_append_str(const char *fmt, ...)
 	size_t r;
 
 	va_start(args, fmt);
-	r = vsnprintf(buf, sizeof(buf), fmt, args);
+	r = vscnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
 	r = min(r, vmcoreinfo_max_size - vmcoreinfo_size);

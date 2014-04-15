@@ -362,8 +362,7 @@ static void giveback(struct driver_data *drv_data)
 	drv_data->cur_msg = NULL;
 	drv_data->cur_transfer = NULL;
 
-	last_transfer = list_entry(msg->transfers.prev,
-					struct spi_transfer,
+	last_transfer = list_last_entry(&msg->transfers, struct spi_transfer,
 					transfer_list);
 
 	/* Delay if requested before any change in chip select */
@@ -1066,6 +1065,8 @@ pxa2xx_spi_acpi_get_pdata(struct platform_device *pdev)
 
 	pdata->num_chipselect = 1;
 	pdata->enable_dma = true;
+	pdata->tx_chan_id = -1;
+	pdata->rx_chan_id = -1;
 
 	return pdata;
 }
@@ -1266,7 +1267,7 @@ static void pxa2xx_spi_shutdown(struct platform_device *pdev)
 		dev_err(&pdev->dev, "shutdown failed with %d\n", status);
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int pxa2xx_spi_suspend(struct device *dev)
 {
 	struct driver_data *drv_data = dev_get_drvdata(dev);

@@ -12,8 +12,8 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+ * along with this program; if not, you can access it online at
+ * http://www.gnu.org/licenses/gpl-2.0.html.
  *
  * Copyright IBM Corporation, 2001
  *
@@ -49,7 +49,6 @@
 #include <linux/module.h>
 
 #define CREATE_TRACE_POINTS
-#include <trace/events/rcu.h>
 
 #include "rcu.h"
 
@@ -199,17 +198,6 @@ void wait_rcu_gp(call_rcu_func_t crf)
 	destroy_rcu_head_on_stack(&rcu.head);
 }
 EXPORT_SYMBOL_GPL(wait_rcu_gp);
-
-#ifdef CONFIG_PROVE_RCU
-/*
- * wrapper function to avoid #include problems.
- */
-int rcu_my_thread_group_empty(void)
-{
-	return thread_group_empty(current);
-}
-EXPORT_SYMBOL_GPL(rcu_my_thread_group_empty);
-#endif /* #ifdef CONFIG_PROVE_RCU */
 
 #ifdef CONFIG_DEBUG_OBJECTS_RCU_HEAD
 static inline void debug_init_rcu_head(struct rcu_head *head)
