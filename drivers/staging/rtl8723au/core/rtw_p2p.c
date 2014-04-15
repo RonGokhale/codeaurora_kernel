@@ -16,6 +16,7 @@
 
 #include <drv_types.h>
 #include <rtw_p2p.h>
+#include <rtl8723a_cmd.h>
 #include <wifi.h>
 
 #ifdef CONFIG_8723AU_P2P
@@ -3120,45 +3121,40 @@ static void restore_p2p_state_handler(struct rtw_adapter *padapter)
 static void pre_tx_invitereq_handler(struct rtw_adapter *padapter)
 {
 	struct wifidirect_info  *pwdinfo = &padapter->wdinfo;
-	u8	val8 = 1;
 
 	set_channel_bwmode23a(padapter, pwdinfo->invitereq_info.peer_ch, HAL_PRIME_CHNL_OFFSET_DONT_CARE, HT_CHANNEL_WIDTH_20);
-	padapter->HalFunc.SetHwRegHandler(padapter, HW_VAR_MLME_SITESURVEY, (u8 *)(&val8));
+	rtl8723a_mlme_sitesurvey(padapter, 1);
 	issue23a_probereq_p2p(padapter, NULL);
 	mod_timer(&pwdinfo->pre_tx_scan_timer,
 		  jiffies + msecs_to_jiffies(P2P_TX_PRESCAN_TIMEOUT));
-
-
 }
 
 static void pre_tx_provdisc_handler(struct rtw_adapter *padapter)
 {
 	struct wifidirect_info  *pwdinfo = &padapter->wdinfo;
-	u8	val8 = 1;
 
-
-	set_channel_bwmode23a(padapter, pwdinfo->tx_prov_disc_info.peer_channel_num[0], HAL_PRIME_CHNL_OFFSET_DONT_CARE, HT_CHANNEL_WIDTH_20);
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_SITESURVEY, (u8 *)(&val8));
+	set_channel_bwmode23a(padapter,
+			      pwdinfo->tx_prov_disc_info.peer_channel_num[0],
+			      HAL_PRIME_CHNL_OFFSET_DONT_CARE,
+			      HT_CHANNEL_WIDTH_20);
+	rtl8723a_mlme_sitesurvey(padapter, 1);
 	issue23a_probereq_p2p(padapter, NULL);
 	mod_timer(&pwdinfo->pre_tx_scan_timer,
 		  jiffies + msecs_to_jiffies(P2P_TX_PRESCAN_TIMEOUT));
-
-
 }
 
 static void pre_tx_negoreq_handler(struct rtw_adapter *padapter)
 {
 	struct wifidirect_info  *pwdinfo = &padapter->wdinfo;
-	u8	val8 = 1;
 
-
-	set_channel_bwmode23a(padapter, pwdinfo->nego_req_info.peer_channel_num[0], HAL_PRIME_CHNL_OFFSET_DONT_CARE, HT_CHANNEL_WIDTH_20);
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_SITESURVEY, (u8 *)(&val8));
+	set_channel_bwmode23a(padapter,
+			      pwdinfo->nego_req_info.peer_channel_num[0],
+			      HAL_PRIME_CHNL_OFFSET_DONT_CARE,
+			      HT_CHANNEL_WIDTH_20);
+	rtl8723a_mlme_sitesurvey(padapter, 1);
 	issue23a_probereq_p2p(padapter, NULL);
 	mod_timer(&pwdinfo->pre_tx_scan_timer,
 		  jiffies + msecs_to_jiffies(P2P_TX_PRESCAN_TIMEOUT));
-
-
 }
 
 static void ro_ch_handler(struct rtw_adapter *padapter)
@@ -3568,54 +3564,50 @@ void p2p_ps_wk_hdl23a(struct rtw_adapter *padapter, u8 p2p_ps_state)
 	/*  Pre action for p2p state */
 	switch (p2p_ps_state)
 	{
-		case P2P_PS_DISABLE:
+	case P2P_PS_DISABLE:
+		pwdinfo->p2p_ps_state = p2p_ps_state;
+
+		rtl8723a_set_p2p_ps_offload_cmd(padapter, p2p_ps_state);
+
+		pwdinfo->noa_index = 0;
+		pwdinfo->ctwindow = 0;
+		pwdinfo->opp_ps = 0;
+		pwdinfo->noa_num = 0;
+		pwdinfo->p2p_ps_mode = P2P_PS_NONE;
+		if (padapter->pwrctrlpriv.bFwCurrentInPSMode == true) {
+			if (pwrpriv->smart_ps == 0) {
+				pwrpriv->smart_ps = 2;
+				rtl8723a_set_FwPwrMode_cmd(padapter, padapter->pwrctrlpriv.pwr_mode);
+			}
+		}
+		break;
+	case P2P_PS_ENABLE:
+		if (pwdinfo->p2p_ps_mode > P2P_PS_NONE) {
 			pwdinfo->p2p_ps_state = p2p_ps_state;
 
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_FW_P2P_PS_OFFLOAD, (u8 *)(&p2p_ps_state));
-
-			pwdinfo->noa_index = 0;
-			pwdinfo->ctwindow = 0;
-			pwdinfo->opp_ps = 0;
-			pwdinfo->noa_num = 0;
-			pwdinfo->p2p_ps_mode = P2P_PS_NONE;
-			if (padapter->pwrctrlpriv.bFwCurrentInPSMode == true)
-			{
-				if (pwrpriv->smart_ps == 0)
-				{
-					pwrpriv->smart_ps = 2;
-					rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_FW_PWRMODE, (u8 *)&padapter->pwrctrlpriv.pwr_mode);
+			if (pwdinfo->ctwindow > 0) {
+				if (pwrpriv->smart_ps != 0) {
+					pwrpriv->smart_ps = 0;
+					DBG_8723A("%s(): Enter CTW, change "
+						  "SmartPS\n", __func__);
+					rtl8723a_set_FwPwrMode_cmd(padapter, padapter->pwrctrlpriv.pwr_mode);
 				}
 			}
-			break;
-		case P2P_PS_ENABLE:
-			if (pwdinfo->p2p_ps_mode > P2P_PS_NONE) {
-				pwdinfo->p2p_ps_state = p2p_ps_state;
-
-				if (pwdinfo->ctwindow > 0)
-				{
-					if (pwrpriv->smart_ps != 0)
-					{
-						pwrpriv->smart_ps = 0;
-						DBG_8723A("%s(): Enter CTW, change SmartPS\n", __func__);
-						rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_FW_PWRMODE, (u8 *)&padapter->pwrctrlpriv.pwr_mode);
-					}
-				}
-				rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_FW_P2P_PS_OFFLOAD, (u8 *)(&p2p_ps_state));
-			}
-			break;
-		case P2P_PS_SCAN:
-		case P2P_PS_SCAN_DONE:
-		case P2P_PS_ALLSTASLEEP:
-			if (pwdinfo->p2p_ps_mode > P2P_PS_NONE) {
-				pwdinfo->p2p_ps_state = p2p_ps_state;
-				rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_FW_P2P_PS_OFFLOAD, (u8 *)(&p2p_ps_state));
-			}
-			break;
-		default:
-			break;
+			rtl8723a_set_p2p_ps_offload_cmd(padapter,
+							p2p_ps_state);
+		}
+		break;
+	case P2P_PS_SCAN:
+	case P2P_PS_SCAN_DONE:
+	case P2P_PS_ALLSTASLEEP:
+		if (pwdinfo->p2p_ps_mode > P2P_PS_NONE) {
+			pwdinfo->p2p_ps_state = p2p_ps_state;
+			rtl8723a_set_p2p_ps_offload_cmd(padapter, p2p_ps_state);
+		}
+		break;
+	default:
+		break;
 	}
-
-
 }
 
 u8 p2p_ps_wk_cmd23a(struct rtw_adapter*padapter, u8 p2p_ps_state, u8 enqueue)

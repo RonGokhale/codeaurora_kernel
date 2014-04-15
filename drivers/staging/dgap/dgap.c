@@ -12,21 +12,6 @@
  * implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
  * PURPOSE.  See the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
- *
- *	NOTE TO LINUX KERNEL HACKERS:  DO NOT REFORMAT THIS CODE!
- *
- *	This is shared code between Digi's CVS archive and the
- *	Linux Kernel sources.
- *	Changing the source just for reformatting needlessly breaks
- *	our CVS diff history.
- *
- *	Send any bug fixes/changes to:  Eng.Linux at digi dot com.
- *	Thank you.
- *
  */
 
 /*
@@ -78,20 +63,10 @@
 
 #include "dgap.h"
 
-#define init_MUTEX(sem)         sema_init(sem, 1)
-#define DECLARE_MUTEX(name)     \
-	struct semaphore name = __SEMAPHORE_INITIALIZER(name, 1)
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Digi International, http://www.digi.com");
 MODULE_DESCRIPTION("Driver for the Digi International EPCA PCI based product line");
 MODULE_SUPPORTED_DEVICE("dgap");
-
-/**************************************************************************
- *
- * protos for this file
- *
- */
 
 static int dgap_start(void);
 static void dgap_init_globals(void);
@@ -105,7 +80,6 @@ static int dgap_probe1(struct pci_dev *pdev, int card_type);
 static int dgap_do_remap(struct board_t *brd);
 static irqreturn_t dgap_intr(int irq, void *voidbrd);
 
-/* Our function prototypes */
 static int dgap_tty_open(struct tty_struct *tty, struct file *file);
 static void dgap_tty_close(struct tty_struct *tty, struct file *file);
 static int dgap_block_til_ready(struct tty_struct *tty, struct file *file,
@@ -220,12 +194,11 @@ static int dgap_finalize_board_init(struct board_t *brd);
 
 static void dgap_get_vpd(struct board_t *brd);
 static void dgap_do_reset_board(struct board_t *brd);
-static int dgap_do_wait_for_bios(struct board_t *brd);
-static int dgap_do_wait_for_fep(struct board_t *brd);
+static int dgap_test_bios(struct board_t *brd);
+static int dgap_test_fep(struct board_t *brd);
 static int dgap_tty_register_ports(struct board_t *brd);
 static int dgap_firmware_load(struct pci_dev *pdev, int card_type);
 
-/* Driver unload function */
 static void dgap_cleanup_module(void);
 
 module_exit(dgap_cleanup_module);
@@ -237,22 +210,14 @@ static const struct file_operations DgapBoardFops = {
 	.owner	= THIS_MODULE,
 };
 
-/*
- * Globals
- */
 static uint dgap_NumBoards;
 static struct board_t *dgap_Board[MAXBOARDS];
 static ulong dgap_poll_counter;
 static char *dgap_config_buf;
 static int dgap_driver_state = DRIVER_INITIALIZED;
-DEFINE_SPINLOCK(dgap_dl_lock);
 static wait_queue_head_t dgap_dl_wait;
-static int dgap_dl_action;
 static int dgap_poll_tick = 20;	/* Poll interval - 20 ms */
 
-/*
- * Static vars.
- */
 static struct class *dgap_class;
 
 static struct board_t *dgap_BoardsByMajor[256];
@@ -655,8 +620,6 @@ static void dgap_cleanup_module(void)
 	class_destroy(dgap_class);
 	unregister_chrdev(DIGI_DGAP_MAJOR, "dgap");
 
-	kfree(dgap_config_buf);
-
 	for (i = 0; i < dgap_NumBoards; ++i) {
 		dgap_remove_ports_sysfiles(dgap_Board[i]);
 		dgap_tty_uninit(dgap_Board[i]);
@@ -819,9 +782,8 @@ static int dgap_found_board(struct pci_dev *pdev, int id)
 	if (i)
 		brd->state = BOARD_FAILED;
 
-	pr_info("dgap: board %d: %s (rev %d), irq %ld, %s\n",
-		dgap_NumBoards, brd->name, brd->rev, brd->irq,
-		brd->state ? "NOT READY\0" : "READY\0");
+	pr_info("dgap: board %d: %s (rev %d), irq %ld\n",
+		dgap_NumBoards, brd->name, brd->rev, brd->irq);
 
 	return 0;
 }
@@ -863,7 +825,7 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 	dgap_get_vpd(brd);
 	dgap_do_reset_board(brd);
 
-	if (fw_info[card_type].conf_name) {
+	if ((fw_info[card_type].conf_name) && !dgap_config_buf) {
 		ret = request_firmware(&fw, fw_info[card_type].conf_name,
 					 &pdev->dev);
 		if (ret) {
@@ -871,20 +833,22 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 				fw_info[card_type].conf_name);
 			return ret;
 		}
+
+		dgap_config_buf = kmalloc(fw->size + 1, GFP_KERNEL);
 		if (!dgap_config_buf) {
-			dgap_config_buf = kmalloc(fw->size + 1, GFP_ATOMIC);
-			if (!dgap_config_buf) {
-				release_firmware(fw);
-				return -ENOMEM;
-			}
+			release_firmware(fw);
+			return -ENOMEM;
 		}
 
 		memcpy(dgap_config_buf, fw->data, fw->size);
 		release_firmware(fw);
 		dgap_config_buf[fw->size + 1] = '\0';
 
-		if (dgap_parsefile(&dgap_config_buf, TRUE) != 0)
+		if (dgap_parsefile(&dgap_config_buf, TRUE) != 0) {
+			kfree(dgap_config_buf);
 			return -EINVAL;
+		}
+		kfree(dgap_config_buf);
 	}
 
 	ret = dgap_after_config_loaded(brd->boardnum);
@@ -926,8 +890,9 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 		release_firmware(fw);
 
 		/* Wait for BIOS to test board... */
-		if (!dgap_do_wait_for_bios(brd))
-			return -ENXIO;
+		ret = dgap_test_bios(brd);
+		if (ret)
+			return ret;
 	}
 
 	if (fw_info[card_type].fep_name) {
@@ -942,8 +907,9 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 		release_firmware(fw);
 
 		/* Wait for FEP to load on board... */
-		if (!dgap_do_wait_for_fep(brd))
-			return -ENXIO;
+		ret = dgap_test_fep(brd);
+		if (ret)
+			return ret;
 	}
 
 #ifdef DIGI_CONCENTRATORS_SUPPORTED
@@ -1197,7 +1163,6 @@ static void dgap_init_globals(void)
 	init_timer(&dgap_poll_timer);
 
 	init_waitqueue_head(&dgap_dl_wait);
-	dgap_dl_action = 0;
 }
 
 /************************************************************************
@@ -4369,16 +4334,15 @@ static void dgap_do_bios_load(struct board_t *brd, const uchar *ubios, int len)
 /*
  * Checks to see if the BIOS completed running on the card.
  */
-static int dgap_do_wait_for_bios(struct board_t *brd)
+static int dgap_test_bios(struct board_t *brd)
 {
 	uchar *addr;
 	u16 word;
 	u16 err1;
 	u16 err2;
-	int ret = 0;
 
 	if (!brd || (brd->magic != DGAP_BOARD_MAGIC) || !brd->re_map_membase)
-		return ret;
+		return -EINVAL;
 
 	addr = brd->re_map_membase;
 	word = readw(addr + POSTAREA);
@@ -4392,7 +4356,7 @@ static int dgap_do_wait_for_bios(struct board_t *brd)
 	while (brd->wait_for_bios < 1000) {
 		/* Check to see if BIOS thinks board is good. (GD). */
 		if (word == *(u16 *) "GD")
-			return 1;
+			return 0;
 		msleep_interruptible(10);
 		brd->wait_for_bios++;
 		word = readw(addr + POSTAREA);
@@ -4406,7 +4370,7 @@ static int dgap_do_wait_for_bios(struct board_t *brd)
 	brd->state = BOARD_FAILED;
 	brd->dpastatus = BD_NOBIOS;
 
-	return ret;
+	return -EIO;
 }
 
 /*
@@ -4457,16 +4421,15 @@ static void dgap_do_fep_load(struct board_t *brd, const uchar *ufep, int len)
 /*
  * Waits for the FEP to report thats its ready for us to use.
  */
-static int dgap_do_wait_for_fep(struct board_t *brd)
+static int dgap_test_fep(struct board_t *brd)
 {
 	uchar *addr;
 	u16 word;
 	u16 err1;
 	u16 err2;
-	int ret = 0;
 
 	if (!brd || (brd->magic != DGAP_BOARD_MAGIC) || !brd->re_map_membase)
-		return ret;
+		return -EINVAL;
 
 	addr = brd->re_map_membase;
 	word = readw(addr + FEPSTAT);
@@ -4486,7 +4449,7 @@ static int dgap_do_wait_for_fep(struct board_t *brd)
 			if (word == *(u16 *) "5A")
 				brd->bd_flags |= BD_FEP5PLUS;
 
-			return 1;
+			return 0;
 		}
 		msleep_interruptible(10);
 		brd->wait_for_fep++;
@@ -4501,7 +4464,7 @@ static int dgap_do_wait_for_fep(struct board_t *brd)
 	brd->state = BOARD_FAILED;
 	brd->dpastatus = BD_NOFEP;
 
-	return ret;
+	return -EIO;
 }
 
 /*

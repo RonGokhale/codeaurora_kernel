@@ -283,35 +283,9 @@ void Update23aTblForSoftAP(u8 *bssrateset, u32 bssratelen)
 	}
 }
 
-void Save_DM_Func_Flag23a(struct rtw_adapter *padapter)
-{
-	u8	bSaveFlag = true;
-
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_DM_FUNC_OP, (u8 *)(&bSaveFlag));
-}
-
-void Restore_DM_Func_Flag23a(struct rtw_adapter *padapter)
-{
-	u8	bSaveFlag = false;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_DM_FUNC_OP, (u8 *)(&bSaveFlag));
-}
-
-void Switch_DM_Func23a(struct rtw_adapter *padapter, unsigned long mode, u8 enable)
-{
-	if (enable == true)
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_DM_FUNC_SET, (u8 *)(&mode));
-	else
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_DM_FUNC_CLR, (u8 *)(&mode));
-}
-
-static void Set_NETYPE0_MSR(struct rtw_adapter *padapter, u8 type)
-{
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MEDIA_STATUS, (u8 *)(&type));
-}
-
 void Set_MSR23a(struct rtw_adapter *padapter, u8 type)
 {
-		Set_NETYPE0_MSR(padapter, type);
+	rtl8723a_set_media_status(padapter, type);
 }
 
 inline u8 rtw_get_oper_ch23a(struct rtw_adapter *adapter)
@@ -483,51 +457,9 @@ unsigned int decide_wait_for_beacon_timeout23a(unsigned int bcn_interval)
 		return bcn_interval << 2;
 }
 
-void CAM_empty_entry23a(struct rtw_adapter *Adapter, u8 ucIndex)
-{
-	rtw_hal_set_hwreg23a(Adapter, HW_VAR_CAM_EMPTY_ENTRY, (u8 *)(&ucIndex));
-}
-
 void invalidate_cam_all23a(struct rtw_adapter *padapter)
 {
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_CAM_INVALID_ALL, NULL);
-}
-
-void write_cam23a(struct rtw_adapter *padapter, u8 entry, u16 ctrl, u8 *mac, u8 *key)
-{
-	unsigned int	i, val, addr;
-	int j;
-	u32	cam_val[2];
-
-	addr = entry << 3;
-
-	for (j = 5; j >= 0; j--) {
-		switch (j) {
-		case 0:
-			val = (ctrl | (mac[0] << 16) | (mac[1] << 24));
-			break;
-		case 1:
-			val = (mac[2] | (mac[3] << 8) | (mac[4] << 16) | (mac[5] << 24));
-			break;
-		default:
-			i = (j - 2) << 2;
-			val = (key[i] | (key[i+1] << 8) | (key[i+2] << 16) | (key[i+3] << 24));
-			break;
-		}
-
-		cam_val[0] = val;
-		cam_val[1] = addr + (unsigned int)j;
-
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_CAM_WRITE, (u8 *)cam_val);
-
-		/* rtw_write32(padapter, WCAMI, val); */
-
-		/* cmd = CAM_POLLINIG | CAM_WRITE | (addr + j); */
-		/* rtw_write32(padapter, RWCAM, cmd); */
-
-		/* DBG_8723A("%s => cam write: %x, %x\n", __func__, cmd, val); */
-
-	}
+	rtl8723a_cam_invalid_all(padapter);
 }
 
 void clear_cam_entry23a(struct rtw_adapter *padapter, u8 entry)
@@ -536,7 +468,7 @@ void clear_cam_entry23a(struct rtw_adapter *padapter, u8 entry)
 
 	unsigned char null_key[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-	write_cam23a(padapter, entry, 0, null_sta, null_key);
+	rtl8723a_cam_write(padapter, entry, 0, null_sta, null_key);
 }
 
 int allocate_fw_sta_entry23a(struct rtw_adapter *padapter)
@@ -561,7 +493,7 @@ void flush_all_cam_entry23a(struct rtw_adapter *padapter)
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_CAM_INVALID_ALL, NULL);
+	rtl8723a_cam_invalid_all(padapter);
 
 	memset((u8 *)(pmlmeinfo->FW_sta_info), 0, sizeof(pmlmeinfo->FW_sta_info));
 }
@@ -649,22 +581,22 @@ void WMMOnAssocRsp23a(struct rtw_adapter *padapter)
 
 		switch (ACI) {
 		case 0x0:
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_BE, (u8 *)(&acParm));
+			rtl8723a_set_ac_param_be(padapter, acParm);
 			acm_mask |= (ACM? BIT(1):0);
 			edca[XMIT_BE_QUEUE] = acParm;
 			break;
 		case 0x1:
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_BK, (u8 *)(&acParm));
+			rtl8723a_set_ac_param_bk(padapter, acParm);
 			/* acm_mask |= (ACM? BIT(0):0); */
 			edca[XMIT_BK_QUEUE] = acParm;
 			break;
 		case 0x2:
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_VI, (u8 *)(&acParm));
+			rtl8723a_set_ac_param_vi(padapter, acParm);
 			acm_mask |= (ACM? BIT(2):0);
 			edca[XMIT_VI_QUEUE] = acParm;
 			break;
 		case 0x3:
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_VO, (u8 *)(&acParm));
+			rtl8723a_set_ac_param_vo(padapter, acParm);
 			acm_mask |= (ACM? BIT(3):0);
 			edca[XMIT_VO_QUEUE] = acParm;
 			break;
@@ -674,7 +606,7 @@ void WMMOnAssocRsp23a(struct rtw_adapter *padapter)
 	}
 
 	if (padapter->registrypriv.acm_method == 1)
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_ACM_CTRL, (u8 *)(&acm_mask));
+		rtl8723a_set_acm_ctrl(padapter, acm_mask);
 	else
 		padapter->mlmepriv.acm_mask = acm_mask;
 
@@ -838,7 +770,7 @@ void HT_caps_handler23a(struct rtw_adapter *padapter, struct ndis_802_11_var_ies
 	pmlmeinfo->HT_caps.u.HT_cap_element.HT_caps_info = le16_to_cpu(pmlmeinfo->HT_caps.u.HT_cap_element.HT_caps_info);
 	pmlmeinfo->HT_caps.u.HT_cap_element.HT_ext_caps = le16_to_cpu(pmlmeinfo->HT_caps.u.HT_cap_element.HT_ext_caps);
 
-	rtw23a_hal_get_hwreg(padapter, HW_VAR_RF_TYPE, (u8 *)(&rf_type));
+	rf_type = rtl8723a_get_rf_type(padapter);
 
 	/* update the MCS rates */
 	for (i = 0; i < 16; i++) {
@@ -896,9 +828,8 @@ void HTOnAssocRsp23a(struct rtw_adapter *padapter)
 
 	min_MPDU_spacing = (pmlmeinfo->HT_caps.u.HT_cap_element.AMPDU_para & 0x1c) >> 2;
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AMPDU_MIN_SPACE, (u8 *)(&min_MPDU_spacing));
-
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AMPDU_FACTOR, (u8 *)(&max_AMPDU_len));
+	rtl8723a_set_ampdu_min_space(padapter, min_MPDU_spacing);
+	rtl8723a_set_ampdu_factor(padapter, max_AMPDU_len);
 }
 
 void ERP_IE_handler23a(struct rtw_adapter *padapter, struct ndis_802_11_var_ies * pIE)
@@ -1457,7 +1388,7 @@ void update_tx_basic_rate23a(struct rtw_adapter *padapter, u8 wirelessmode)
 	else
 		update_mgnt_tx_rate23a(padapter, IEEE80211_OFDM_RATE_6MB);
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BASIC_RATE, supported_rates);
+	HalSetBrateCfg23a(padapter, supported_rates);
 }
 
 unsigned char check_assoc_AP23a(u8 *pframe, uint len)
@@ -1546,15 +1477,15 @@ void update_IOT_info23a(struct rtw_adapter *padapter)
 		pmlmeinfo->turboMode_cts2self = 0;
 		pmlmeinfo->turboMode_rtsen = 1;
 		/* disable high power */
-		Switch_DM_Func23a(padapter, ~DYNAMIC_BB_DYNAMIC_TXPWR,
-			       false);
+		rtl8723a_odm_support_ability_clr(padapter, (u32)
+						 ~DYNAMIC_BB_DYNAMIC_TXPWR);
 		break;
 	case HT_IOT_PEER_REALTEK:
 		/* rtw_write16(padapter, 0x4cc, 0xffff); */
 		/* rtw_write16(padapter, 0x546, 0x01c0); */
 		/* disable high power */
-		Switch_DM_Func23a(padapter, ~DYNAMIC_BB_DYNAMIC_TXPWR,
-			       false);
+		rtl8723a_odm_support_ability_clr(padapter, (u32)
+						 ~DYNAMIC_BB_DYNAMIC_TXPWR);
 		break;
 	default:
 		pmlmeinfo->turboMode_cts2self = 0;
@@ -1567,22 +1498,19 @@ void update_capinfo23a(struct rtw_adapter *Adapter, u16 updateCap)
 {
 	struct mlme_ext_priv	*pmlmeext = &Adapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
-	bool		ShortPreamble;
 
 	if (updateCap & cShortPreamble) {
 		/*  Short Preamble */
 		if (pmlmeinfo->preamble_mode != PREAMBLE_SHORT) {
 			/*  PREAMBLE_LONG or PREAMBLE_AUTO */
-			ShortPreamble = true;
 			pmlmeinfo->preamble_mode = PREAMBLE_SHORT;
-			rtw_hal_set_hwreg23a(Adapter, HW_VAR_ACK_PREAMBLE, (u8 *)&ShortPreamble);
+			rtl8723a_ack_preamble(Adapter, true);
 		}
 	} else { /*  Long Preamble */
 		if (pmlmeinfo->preamble_mode != PREAMBLE_LONG) {
 			/*  PREAMBLE_SHORT or PREAMBLE_AUTO */
-			ShortPreamble = false;
 			pmlmeinfo->preamble_mode = PREAMBLE_LONG;
-			rtw_hal_set_hwreg23a(Adapter, HW_VAR_ACK_PREAMBLE, (u8 *)&ShortPreamble);
+			rtl8723a_ack_preamble(Adapter, false);
 		}
 	}
 	if (updateCap & cIBSS) {
@@ -1605,13 +1533,12 @@ void update_capinfo23a(struct rtw_adapter *Adapter, u16 updateCap)
 			pmlmeinfo->slotTime = NON_SHORT_SLOT_TIME;
 		}
 	}
-	rtw_hal_set_hwreg23a(Adapter, HW_VAR_SLOT_TIME, &pmlmeinfo->slotTime);
+	rtl8723a_set_slot_time(Adapter, pmlmeinfo->slotTime);
 }
 
 void update_wireless_mode23a(struct rtw_adapter *padapter)
 {
 	int ratelen, network_type = 0;
-	u32 SIFS_Timer;
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 	struct wlan_bssid_ex *cur_network = &pmlmeinfo->network;
@@ -1640,10 +1567,9 @@ void update_wireless_mode23a(struct rtw_adapter *padapter)
 
 	pmlmeext->cur_wireless_mode = network_type & padapter->registrypriv.wireless_mode;
 
-	SIFS_Timer = 0x0a0a0808; /* 0x0808 -> for CCK, 0x0a0a -> for OFDM */
-                             /* change this value if having IOT issues. */
-
-	padapter->HalFunc.SetHwRegHandler(padapter, HW_VAR_RESP_SIFS,  (u8 *)&SIFS_Timer);
+	/* 0x0808 -> for CCK, 0x0a0a -> for OFDM */
+	/* change this value if having IOT issues. */
+	rtl8723a_set_resp_sifs(padapter, 0x08, 0x08, 0x0a, 0x0a);
 
 	if (pmlmeext->cur_wireless_mode & WIRELESS_11B)
 		update_mgnt_tx_rate23a(padapter, IEEE80211_CCK_RATE_1MB);
@@ -1726,9 +1652,10 @@ void update_TSF23a(struct mlme_ext_priv *pmlmeext, u8 *pframe, uint len)
 	pmlmeext->TSFValue |= le32_to_cpu(*pbuf);
 }
 
-void correct_TSF23a(struct rtw_adapter *padapter, struct mlme_ext_priv *pmlmeext)
+void correct_TSF23a(struct rtw_adapter *padapter,
+		    struct mlme_ext_priv *pmlmeext)
 {
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_CORRECT_TSF, NULL);
+	hw_var_set_correct_tsf(padapter);
 }
 
 void beacon_timing_control23a(struct rtw_adapter *padapter)

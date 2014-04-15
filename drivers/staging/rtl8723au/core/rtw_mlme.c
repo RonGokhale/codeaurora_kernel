@@ -908,7 +908,12 @@ void rtw_indicate_connect23a(struct rtw_adapter *padapter)
 
 		rtw_led_control(padapter, LED_CTL_LINK);
 
-		rtw_os_indicate_connect23a(padapter);
+		rtw_cfg80211_indicate_connect(padapter);
+
+		netif_carrier_on(padapter->pnetdev);
+
+		if (padapter->pid[2] != 0)
+			kill_pid(find_vpid(padapter->pid[2]), SIGALRM, 1);
 	}
 
 	rtw_set_roaming(padapter, 0);
@@ -959,11 +964,6 @@ void rtw_indicate_disconnect23a(struct rtw_adapter *padapter)
 
 }
 
-inline void rtw_indicate_scan_done23a(struct rtw_adapter *padapter, bool aborted)
-{
-	rtw_os_indicate_scan_done23a(padapter, aborted);
-}
-
 void rtw_scan_abort23a(struct rtw_adapter *adapter)
 {
 	unsigned long start;
@@ -985,7 +985,8 @@ void rtw_scan_abort23a(struct rtw_adapter *adapter)
 	if (check_fwstate(pmlmepriv, _FW_UNDER_SURVEY)) {
 		if (!adapter->bDriverStopped && !adapter->bSurpriseRemoved)
 			DBG_8723A(FUNC_NDEV_FMT"waiting for scan_abort time out!\n", FUNC_NDEV_ARG(adapter->pnetdev));
-		rtw_indicate_scan_done23a(adapter, true);
+		rtw_cfg80211_indicate_scan_done(wdev_to_priv(adapter->rtw_wdev),
+						true);
 	}
 	pmlmeext->scan_abort = false;
 }
@@ -1296,17 +1297,6 @@ void rtw23a_joinbss_event_cb(struct rtw_adapter *adapter, u8 *pbuf)
 
 }
 
-/* FOR AP , AD-HOC mode */
-void rtw_stassoc_hw_rpt23a(struct rtw_adapter *adapter, struct sta_info *psta)
-{
-	u16 media_status;
-
-	if (psta == NULL)	return;
-
-	media_status = (psta->mac_id<<8)|1; /*   MACID|OPMODE:1 connect */
-	rtw_hal_set_hwreg23a(adapter, HW_VAR_H2C_MEDIA_STATUS_RPT, (u8 *)&media_status);
-}
-
 void rtw_stassoc_event_callback23a(struct rtw_adapter *adapter, u8 *pbuf)
 {
 	struct sta_info *psta;
@@ -1326,8 +1316,6 @@ void rtw_stassoc_event_callback23a(struct rtw_adapter *adapter, u8 *pbuf)
 			/* bss_cap_update_on_sta_join23a(adapter, psta); */
 			/* sta_info_update23a(adapter, psta); */
 			ap_sta_info_defer_update23a(adapter, psta);
-
-			rtw_stassoc_hw_rpt23a(adapter,psta);
 		}
 		return;
 	}
@@ -1353,8 +1341,6 @@ void rtw_stassoc_event_callback23a(struct rtw_adapter *adapter, u8 *pbuf)
 	DBG_8723A("%s\n",__func__);
 	/* for ad-hoc mode */
 	rtw_hal_set_odm_var23a(adapter,HAL_ODM_STA_INFO,psta,true);
-
-	rtw_stassoc_hw_rpt23a(adapter,psta);
 
 	if(adapter->securitypriv.dot11AuthAlgrthm==dot11AuthAlgrthm_8021X)
 		psta->dot118021XPrivacy = adapter->securitypriv.dot11PrivacyAlgrthm;
@@ -1401,13 +1387,6 @@ void rtw_stadel_event_callback23a(struct rtw_adapter *adapter, u8 *pbuf)
 		mac_id = pstadel->mac_id;
 
 	DBG_8723A("%s(mac_id=%d)=" MAC_FMT "\n", __func__, mac_id, MAC_ARG(pstadel->macaddr));
-
-	if(mac_id>=0) {
-		u16 media_status;
-		media_status = (mac_id<<8)|0; /*   MACID|OPMODE:0 means disconnect */
-		/* for STA,AP,ADHOC mode, report disconnect stauts to FW */
-		rtw_hal_set_hwreg23a(adapter, HW_VAR_H2C_MEDIA_STATUS_RPT, (u8 *)&media_status);
-	}
 
         if (check_fwstate(pmlmepriv, WIFI_AP_STATE))
         {
@@ -1568,7 +1547,7 @@ void rtw_scan_timeout_handler23a(unsigned long data)
 
 	spin_unlock_bh(&pmlmepriv->lock);
 
-	rtw_indicate_scan_done23a(adapter, true);
+	rtw_cfg80211_indicate_scan_done(wdev_to_priv(adapter->rtw_wdev), true);
 }
 
 static void rtw_auto_scan_handler(struct rtw_adapter *padapter)
@@ -2023,6 +2002,48 @@ static int rtw_append_pmkid(struct rtw_adapter *Adapter, int iEntry,
 	}
 	return ie_len;
 }
+
+static void
+_rtw_report_sec_ie(struct rtw_adapter *adapter, u8 authmode, u8 *sec_ie)
+{
+	uint	len;
+	u8	*buff, *p, i;
+	union iwreq_data wrqu;
+
+	RT_TRACE(_module_mlme_osdep_c_, _drv_info_,
+		 ("+_rtw_report_sec_ie, authmode =%d\n", authmode));
+
+	buff = NULL;
+	if (authmode == _WPA_IE_ID_) {
+		RT_TRACE(_module_mlme_osdep_c_, _drv_info_,
+			 ("_rtw_report_sec_ie, authmode =%d\n", authmode));
+
+		buff = kzalloc(IW_CUSTOM_MAX, GFP_KERNEL);
+		if (!buff)
+			return;
+		p = buff;
+
+		p += sprintf(p, "ASSOCINFO(ReqIEs =");
+
+		len = sec_ie[1]+2;
+		len =  (len < IW_CUSTOM_MAX) ? len : IW_CUSTOM_MAX;
+
+		for (i = 0; i < len; i++)
+			p += sprintf(p, "%02x", sec_ie[i]);
+
+		p += sprintf(p, ")");
+
+		memset(&wrqu, 0, sizeof(wrqu));
+
+		wrqu.data.length = p-buff;
+
+		wrqu.data.length = (wrqu.data.length < IW_CUSTOM_MAX) ?
+				   wrqu.data.length : IW_CUSTOM_MAX;
+
+		kfree(buff);
+	}
+}
+
 int rtw_restruct_sec_ie23a(struct rtw_adapter *adapter, u8 *in_ie, u8 *out_ie,
 			uint in_len)
 {
@@ -2058,8 +2079,8 @@ int rtw_restruct_sec_ie23a(struct rtw_adapter *adapter, u8 *in_ie, u8 *out_ie,
 		memcpy(&out_ie[ielength], &psecuritypriv->supplicant_ie[0],
 		       psecuritypriv->supplicant_ie[1] + 2);
 		ielength += psecuritypriv->supplicant_ie[1] + 2;
-		rtw_report_sec_ie23a(adapter, authmode,
-				  psecuritypriv->supplicant_ie);
+		_rtw_report_sec_ie(adapter, authmode,
+				   psecuritypriv->supplicant_ie);
 	}
 
 	iEntry = SecIsInPMKIDList(adapter, pmlmepriv->assoc_bssid);
@@ -2193,13 +2214,10 @@ void rtw_joinbss_reset23a(struct rtw_adapter *padapter)
 			threshold = 1;
 		else
 			threshold = 0;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_RXDMA_AGG_PG_TH,
-				  (u8 *)(&threshold));
-	} else {
+	} else
 		threshold = 1;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_RXDMA_AGG_PG_TH,
-				  (u8 *)(&threshold));
-	}
+
+	rtl8723a_set_rxdma_agg_pg_th(padapter, threshold);
 }
 
 /* the fucntion is >= passive_level */
@@ -2330,16 +2348,14 @@ void rtw_update_ht_cap23a(struct rtw_adapter *padapter, u8 *pie, uint ie_len)
 	/* update cur_bwmode & cur_ch_offset */
 	if ((pregistrypriv->cbw40_enable) &&
 		(pmlmeinfo->HT_caps.u.HT_cap_element.HT_caps_info & BIT(1)) &&
-		(pmlmeinfo->HT_info.infos[0] & BIT(2)))
-	{
+		(pmlmeinfo->HT_info.infos[0] & BIT(2))) {
 		int i;
-		u8	rf_type;
+		u8 rf_type;
 
-		padapter->HalFunc.GetHwRegHandler(padapter, HW_VAR_RF_TYPE, (u8 *)(&rf_type));
+		rf_type = rtl8723a_get_rf_type(padapter);
 
 		/* update the MCS rates */
-		for (i = 0; i < 16; i++)
-		{
+		for (i = 0; i < 16; i++) {
 			if ((rf_type == RF_1T1R) || (rf_type == RF_1T2R))
 				pmlmeinfo->HT_caps.u.HT_cap_element.MCS_rate[i] &= MCS_rate_1R23A[i];
 			else
@@ -2349,17 +2365,18 @@ void rtw_update_ht_cap23a(struct rtw_adapter *padapter, u8 *pie, uint ie_len)
 		pmlmeext->cur_bwmode = HT_CHANNEL_WIDTH_40;
 		switch ((pmlmeinfo->HT_info.infos[0] & 0x3))
 		{
-			case HT_EXTCHNL_OFFSET_UPPER:
-				pmlmeext->cur_ch_offset = HAL_PRIME_CHNL_OFFSET_LOWER;
-				break;
+		case HT_EXTCHNL_OFFSET_UPPER:
+			pmlmeext->cur_ch_offset = HAL_PRIME_CHNL_OFFSET_LOWER;
+			break;
 
-			case HT_EXTCHNL_OFFSET_LOWER:
-				pmlmeext->cur_ch_offset = HAL_PRIME_CHNL_OFFSET_UPPER;
-				break;
+		case HT_EXTCHNL_OFFSET_LOWER:
+			pmlmeext->cur_ch_offset = HAL_PRIME_CHNL_OFFSET_UPPER;
+			break;
 
-			default:
-				pmlmeext->cur_ch_offset = HAL_PRIME_CHNL_OFFSET_DONT_CARE;
-				break;
+		default:
+			pmlmeext->cur_ch_offset =
+				HAL_PRIME_CHNL_OFFSET_DONT_CARE;
+			break;
 		}
 	}
 

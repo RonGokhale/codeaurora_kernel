@@ -474,10 +474,6 @@ void get_rate_set23a(struct rtw_adapter *padapter, unsigned char *pbssrate,
 void UpdateBrateTbl23a(struct rtw_adapter *padapter,u8 *mBratesOS);
 void Update23aTblForSoftAP(u8 *bssrateset, u32 bssratelen);
 
-void Save_DM_Func_Flag23a(struct rtw_adapter *padapter);
-void Restore_DM_Func_Flag23a(struct rtw_adapter *padapter);
-void Switch_DM_Func23a(struct rtw_adapter *padapter, unsigned long mode, u8 enable);
-
 void Set_MSR23a(struct rtw_adapter *padapter, u8 type);
 
 u8 rtw_get_oper_ch23a(struct rtw_adapter *adapter);
@@ -495,12 +491,9 @@ void SetBWMode23a(struct rtw_adapter *padapter, unsigned short bwmode,
 
 unsigned int decide_wait_for_beacon_timeout23a(unsigned int bcn_interval);
 
-void write_cam23a(struct rtw_adapter *padapter, u8 entry, u16 ctrl,
-	       u8 *mac, u8 *key);
 void clear_cam_entry23a(struct rtw_adapter *padapter, u8 entry);
 
 void invalidate_cam_all23a(struct rtw_adapter *padapter);
-void CAM_empty_entry23a(struct rtw_adapter *Adapter, u8 ucIndex);
 
 int allocate_fw_sta_entry23a(struct rtw_adapter *padapter);
 void flush_all_cam_entry23a(struct rtw_adapter *padapter);

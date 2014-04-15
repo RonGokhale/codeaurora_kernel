@@ -20,7 +20,6 @@
 #include <recv_osdep.h>
 #include <hal_intf.h>
 #include <rtw_version.h>
-#include <ethernet.h>
 
 #include <usb_osintf.h>
 #include <linux/version.h>
@@ -887,7 +886,7 @@ void rtw_ips_pwr_down23a(struct rtw_adapter *padapter)
 
 void rtw_ips_dev_unload23a(struct rtw_adapter *padapter)
 {
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_FIFO_CLEARN_UP, NULL);
+	rtl8723a_fifo_cleanup(padapter);
 
 	if (padapter->intf_stop)
 		padapter->intf_stop(padapter);

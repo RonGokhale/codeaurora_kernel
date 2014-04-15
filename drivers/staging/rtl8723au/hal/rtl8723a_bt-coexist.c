@@ -3944,7 +3944,6 @@ bthci_CmdAMPTestEnd(struct rtw_adapter *padapter,
 	enum hci_status status = HCI_STATUS_SUCCESS;
 	struct bt_30info *pBTInfo = GET_BT_INFO(padapter);
 	struct bt_hci_info *pBtHciInfo = &pBTInfo->BtHciInfo;
-	u8 bFilterOutNonAssociatedBSSID = true;
 
 	if (!pBtHciInfo->bInTestMode) {
 		RTPRINT(FIOCTL, (IOCTL_BT_EVENT|IOCTL_BT_LOGO), ("Not in Test mode, return status = HCI_STATUS_CMD_DISALLOW\n"));
@@ -3956,7 +3955,7 @@ bthci_CmdAMPTestEnd(struct rtw_adapter *padapter,
 
 	del_timer_sync(&pBTInfo->BTTestSendPacketTimer);
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_CHECK_BSSID, (u8 *)(&bFilterOutNonAssociatedBSSID));
+	rtl8723a_check_bssid(padapter, true);
 
 	/* send command complete event here when all data are received. */
 	{
@@ -4057,8 +4056,7 @@ bthci_CmdAMPTestCommand(struct rtw_adapter *padapter,
 			  jiffies + msecs_to_jiffies(50));
 		RTPRINT(FIOCTL, (IOCTL_BT_EVENT|IOCTL_BT_LOGO), ("TX Single Test \n"));
 	} else if (pBtHciInfo->TestScenario == 0x02) {
-		u8 bFilterOutNonAssociatedBSSID = false;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_CHECK_BSSID, (u8 *)(&bFilterOutNonAssociatedBSSID));
+		rtl8723a_check_bssid(padapter, false);
 		RTPRINT(FIOCTL, (IOCTL_BT_EVENT|IOCTL_BT_LOGO), ("Receive Frame Test \n"));
 	}
 
@@ -4677,7 +4675,7 @@ bthci_StateConnected(struct rtw_adapter *padapter,
 		if (padapter->HalFunc.UpdateRAMaskHandler)
 			padapter->HalFunc.UpdateRAMaskHandler(padapter, MAX_FW_SUPPORT_MACID_NUM-1-EntryNum, 0);
 
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_BASIC_RATE, padapter->mlmepriv.cur_network.network.SupportedRates);
+		HalSetBrateCfg23a(padapter, padapter->mlmepriv.cur_network.network.SupportedRates);
 		BTDM_SetFwChnlInfo(padapter, RT_MEDIA_CONNECT);
 		break;
 	default:
@@ -11221,7 +11219,9 @@ void HALBT_SetKey(struct rtw_adapter *padapter, u8 EntryNum)
 	pBtAssocEntry->HwCAMIndex = BT_HWCAM_STAR + EntryNum;
 
 	usConfig = CAM_VALID | (CAM_AES << 2);
-	write_cam23a(padapter, pBtAssocEntry->HwCAMIndex, usConfig, pBtAssocEntry->BTRemoteMACAddr, pBtAssocEntry->PTK + TKIP_ENC_KEY_POS);
+	rtl8723a_cam_write(padapter, pBtAssocEntry->HwCAMIndex, usConfig,
+			   pBtAssocEntry->BTRemoteMACAddr,
+			   pBtAssocEntry->PTK + TKIP_ENC_KEY_POS);
 }
 
 void HALBT_RemoveKey(struct rtw_adapter *padapter, u8 EntryNum)
@@ -11234,8 +11234,10 @@ void HALBT_RemoveKey(struct rtw_adapter *padapter, u8 EntryNum)
 
 	if (pBTinfo->BtAsocEntry[EntryNum].HwCAMIndex != 0) {
 		/*  ToDo : add New HALBT_RemoveKey function !! */
-		if (pBtAssocEntry->HwCAMIndex >= BT_HWCAM_STAR && pBtAssocEntry->HwCAMIndex < HALF_CAM_ENTRY)
-			CAM_empty_entry23a(padapter, pBtAssocEntry->HwCAMIndex);
+		if (pBtAssocEntry->HwCAMIndex >= BT_HWCAM_STAR &&
+		    pBtAssocEntry->HwCAMIndex < HALF_CAM_ENTRY)
+			rtl8723a_cam_empty_entry(padapter,
+						 pBtAssocEntry->HwCAMIndex);
 		pBTinfo->BtAsocEntry[EntryNum].HwCAMIndex = 0;
 	}
 }

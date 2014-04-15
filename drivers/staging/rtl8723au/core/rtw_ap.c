@@ -374,9 +374,9 @@ void add_RATid23a(struct rtw_adapter *padapter, struct sta_info *psta, u8 rssi_l
 			tx_ra_bitmap |= rtw_get_bit_value_from_ieee_value23a(psta->bssrateset[i]&0x7f);
 	}
 	/* n mode ra_bitmap */
-	if (psta_ht->ht_option)
-	{
-		rtw23a_hal_get_hwreg(padapter, HW_VAR_RF_TYPE, (u8 *)(&rf_type));
+	if (psta_ht->ht_option) {
+		rf_type = rtl8723a_get_rf_type(padapter);
+
 		if (rf_type == RF_2T2R)
 			limit = 16;/*  2R */
 		else
@@ -523,8 +523,6 @@ static void update_bmc_sta(struct rtw_adapter *padapter)
 		psta->raid = raid;
 		psta->init_rate = init_rate;
 
-		rtw_stassoc_hw_rpt23a(padapter, psta);
-
 		spin_lock_bh(&psta->lock);
 		psta->state = _FW_LINKED;
 		spin_unlock_bh(&psta->lock);
@@ -632,9 +630,8 @@ static void update_hw_ht_param(struct rtw_adapter *padapter)
 
 	min_MPDU_spacing = (pmlmeinfo->HT_caps.u.HT_cap_element.AMPDU_para & 0x1c) >> 2;
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AMPDU_MIN_SPACE, (u8 *)(&min_MPDU_spacing));
-
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AMPDU_FACTOR, (u8 *)(&max_AMPDU_len));
+	rtl8723a_set_ampdu_min_space(padapter, min_MPDU_spacing);
+	rtl8723a_set_ampdu_factor(padapter, max_AMPDU_len);
 
 	/*  Config SM Power Save setting */
 	pmlmeinfo->SM_PS = (pmlmeinfo->HT_caps.u.HT_cap_element.HT_caps_info & 0x0C) >> 2;
@@ -695,27 +692,28 @@ static void start_bss_network(struct rtw_adapter *padapter, u8 *pbuf)
 	Set_MSR23a(padapter, _HW_STATE_AP_);
 
 	/* Set BSSID REG */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, pnetwork->MacAddress);
+	hw_var_set_bssid(padapter, pnetwork->MacAddress);
 
 	/* Set EDCA param reg */
 	acparm = 0x002F3217; /*  VO */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_VO, (u8 *)(&acparm));
+	rtl8723a_set_ac_param_vo(padapter, acparm);
 	acparm = 0x005E4317; /*  VI */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_VI, (u8 *)(&acparm));
+	rtl8723a_set_ac_param_vi(padapter, acparm);
 	acparm = 0x005ea42b;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_BE, (u8 *)(&acparm));
+	rtl8723a_set_ac_param_be(padapter, acparm);
 	acparm = 0x0000A444; /*  BK */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_AC_PARAM_BK, (u8 *)(&acparm));
+	rtl8723a_set_ac_param_bk(padapter, acparm);
 
 	/* Set Security */
-	val8 = (psecuritypriv->dot11AuthAlgrthm == dot11AuthAlgrthm_8021X)? 0xcc: 0xcf;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_SEC_CFG, (u8 *)(&val8));
+	val8 = (psecuritypriv->dot11AuthAlgrthm == dot11AuthAlgrthm_8021X) ?
+		0xcc: 0xcf;
+	rtl8723a_set_sec_cfg(padapter, val8);
 
 	/* Beacon Control related register */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BEACON_INTERVAL, (u8 *)(&bcn_interval));
+	rtl8723a_set_beacon_interval(padapter, bcn_interval);
 
 	UpdateBrateTbl23a(padapter, pnetwork->SupportedRates);
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BASIC_RATE, pnetwork->SupportedRates);
+	HalSetBrateCfg23a(padapter, pnetwork->SupportedRates);
 
 	if (!pmlmepriv->cur_network.join_res) {
 		/* setting only at  first time */
@@ -723,7 +721,8 @@ static void start_bss_network(struct rtw_adapter *padapter, u8 *pbuf)
 		/* disable dynamic functions, such as high power, DIG */
 
 		/* turn on all dynamic functions */
-		Switch_DM_Func23a(padapter, DYNAMIC_ALL_FUNC_ENABLE, true);
+		rtl8723a_odm_support_ability_set(padapter,
+						 DYNAMIC_ALL_FUNC_ENABLE);
 	}
 	/* set channel, bwmode */
 	p = rtw_get_ie23a((pnetwork->IEs + sizeof(struct ndis_802_11_fixed_ies)),
@@ -990,7 +989,7 @@ int rtw_check_beacon_data23a(struct rtw_adapter *padapter, u8 *pbuf,  int len)
 		ht_cap = true;
 		network_type |= WIRELESS_11_24N;
 
-		rtw23a_hal_get_hwreg(padapter, HW_VAR_RF_TYPE, (u8 *)(&rf_type));
+		rf_type = rtl8723a_get_rf_type(padapter);
 
 		if ((psecuritypriv->wpa_pairwise_cipher & WPA_CIPHER_CCMP) ||
 		    (psecuritypriv->wpa2_pairwise_cipher & WPA_CIPHER_CCMP))
@@ -1350,50 +1349,37 @@ void update_beacon23a(struct rtw_adapter *padapter, u8 ie_id, u8 *oui, u8 tx)
 
 	switch (ie_id)
 	{
-		case 0xFF:
+	case 0xFF:
+		/* 8: TimeStamp, 2: Beacon Interval 2:Capability */
+		update_bcn_fixed_ie(padapter);
+		break;
 
-			update_bcn_fixed_ie(padapter);/* 8: TimeStamp, 2: Beacon Interval 2:Capability */
+	case _TIM_IE_:
+		update_BCNTIM(padapter);
+		break;
 
-			break;
+	case _ERPINFO_IE_:
+		update_bcn_erpinfo_ie(padapter);
+		break;
 
-		case _TIM_IE_:
+	case _HT_CAPABILITY_IE_:
+		update_bcn_htcap_ie(padapter);
+		break;
 
-			update_BCNTIM(padapter);
+	case _RSN_IE_2_:
+		update_bcn_rsn_ie(padapter);
+		break;
 
-			break;
+	case _HT_ADD_INFO_IE_:
+		update_bcn_htinfo_ie(padapter);
+		break;
 
-		case _ERPINFO_IE_:
+	case _VENDOR_SPECIFIC_IE_:
+		update_bcn_vendor_spec_ie(padapter, oui);
+		break;
 
-			update_bcn_erpinfo_ie(padapter);
-
-			break;
-
-		case _HT_CAPABILITY_IE_:
-
-			update_bcn_htcap_ie(padapter);
-
-			break;
-
-		case _RSN_IE_2_:
-
-			update_bcn_rsn_ie(padapter);
-
-			break;
-
-		case _HT_ADD_INFO_IE_:
-
-			update_bcn_htinfo_ie(padapter);
-
-			break;
-
-		case _VENDOR_SPECIFIC_IE_:
-
-			update_bcn_vendor_spec_ie(padapter, oui);
-
-			break;
-
-		default:
-			break;
+	default:
+		break;
 	}
 
 	pmlmepriv->update_bcn = true;

@@ -553,7 +553,6 @@ void rtw_free_assoc_resources23a(struct rtw_adapter *adapter,
 			      int lock_scanned_queue);
 void rtw_indicate_disconnect23a(struct rtw_adapter *adapter);
 void rtw_indicate_connect23a(struct rtw_adapter *adapter);
-void rtw_indicate_scan_done23a(struct rtw_adapter *padapter, bool aborted);
 void rtw_scan_abort23a(struct rtw_adapter *adapter);
 
 int rtw_restruct_sec_ie23a(struct rtw_adapter *adapter, u8 *in_ie, u8 *out_ie,
@@ -619,6 +618,5 @@ void rtw23a_roaming(struct rtw_adapter *adapter,
 		 struct wlan_network *tgt_network);
 void rtw_set_roaming(struct rtw_adapter *adapter, u8 to_roaming);
 u8 rtw_to_roaming(struct rtw_adapter *adapter);
-void rtw_stassoc_hw_rpt23a(struct rtw_adapter *adapter, struct sta_info *psta);
 
 #endif /* __RTL871X_MLME_H_ */

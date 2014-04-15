@@ -21,7 +21,6 @@
 #include <wlan_bssdef.h>
 #include <mlme_osdep.h>
 #include <recv_osdep.h>
-#include <ethernet.h>
 #include <linux/ieee80211.h>
 
 #ifdef CONFIG_8723AU_BT_COEXIST
@@ -6454,8 +6453,7 @@ void issue_assocreq23a(struct rtw_adapter *padapter)
 			pmlmeinfo->HT_caps.u.HT_cap_element.HT_caps_info |=
 				0x000c;
 
-			rtw23a_hal_get_hwreg(padapter, HW_VAR_RF_TYPE,
-					     (u8 *)(&rf_type));
+			rf_type = rtl8723a_get_rf_type(padapter);
 			/* switch (pregpriv->rf_config) */
 			switch (rf_type)
 			{
@@ -7555,21 +7553,21 @@ unsigned int send_delba23a(struct rtw_adapter *padapter, u8 initiator, u8 *addr)
 
 unsigned int send_beacon23a(struct rtw_adapter *padapter)
 {
-	u8	bxmitok = false;
+	bool	bxmitok;
 	int	issue = 0;
 	int poll = 0;
 	unsigned long start = jiffies;
 	unsigned int passing_time;
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BCN_VALID, NULL);
+	rtl8723a_bcn_valid(padapter);
 	do {
 		issue_beacon23a(padapter, 100);
 		issue++;
 		do {
 			yield();
-			rtw23a_hal_get_hwreg(padapter, HW_VAR_BCN_VALID, (u8 *)(&bxmitok));
+			bxmitok = rtl8723a_get_bcn_valid(padapter);
 			poll++;
-		} while ((poll%10)!= 0 && false == bxmitok &&
+		} while ((poll % 10) != 0 && bxmitok == false &&
 			 !padapter->bSurpriseRemoved &&
 			 !padapter->bDriverStopped);
 
@@ -7615,11 +7613,10 @@ bool IsLegal5GChannel(struct rtw_adapter *Adapter, u8 channel)
 
 void site_survey23a(struct rtw_adapter *padapter)
 {
-	unsigned char survey_channel = 0, val8;
+	unsigned char survey_channel = 0;
 	enum rt_scan_type ScanType = SCAN_PASSIVE;
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
-	u32 initialgain = 0;
 #ifdef CONFIG_8723AU_P2P
 	struct wifidirect_info *pwdinfo = &padapter->wdinfo;
 
@@ -7652,9 +7649,6 @@ void site_survey23a(struct rtw_adapter *padapter)
 
 	if (survey_channel != 0) {
 		/* PAUSE 4-AC Queue when site_survey23a */
-		/* rtw23a_hal_get_hwreg(padapter, HW_VAR_TXPAUSE, (u8 *)(&val8)); */
-		/* val8 |= 0x0f; */
-		/* rtw_hal_set_hwreg23a(padapter, HW_VAR_TXPAUSE, (u8 *)(&val8)); */
 		if (pmlmeext->sitesurvey_res.channel_idx == 0)
 			set_channel_bwmode23a(padapter, survey_channel,
 					      HAL_PRIME_CHNL_OFFSET_DONT_CARE,
@@ -7719,11 +7713,10 @@ void site_survey23a(struct rtw_adapter *padapter)
 			rtw_p2p_set_state(pwdinfo, P2P_STATE_FIND_PHASE_LISTEN);
 			pmlmeext->sitesurvey_res.state = SCAN_DISABLE;
 
-			initialgain = 0xff; /* restore RX GAIN */
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_INITIAL_GAIN, (u8 *)(&initialgain));
+			/* restore RX GAIN */
+			rtl8723a_set_initial_gain(padapter, 0xff);
 			/* turn on dynamic functions */
-			Restore_DM_Func_Flag23a(padapter);
-			/* Switch_DM_Func23a(padapter, DYNAMIC_FUNC_DIG|DYNAMIC_FUNC_HP|DYNAMIC_FUNC_SS, true); */
+			rtl8723a_odm_support_ability_restore(padapter);
 
 			mod_timer(&pwdinfo->find_phase_timer, jiffies +
 				  msecs_to_jiffies(pwdinfo->listen_dwell * 100));
@@ -7744,16 +7737,14 @@ void site_survey23a(struct rtw_adapter *padapter)
 
 			/* flush 4-AC Queue after site_survey23a */
 			/* val8 = 0; */
-			/* rtw_hal_set_hwreg23a(padapter, HW_VAR_TXPAUSE, (u8 *)(&val8)); */
 
 			/* config MSR */
 			Set_MSR23a(padapter, (pmlmeinfo->state & 0x3));
 
-			initialgain = 0xff; /* restore RX GAIN */
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_INITIAL_GAIN, (u8 *)(&initialgain));
+			/* restore RX GAIN */
+			rtl8723a_set_initial_gain(padapter, 0xff);
 			/* turn on dynamic functions */
-			Restore_DM_Func_Flag23a(padapter);
-			/* Switch_DM_Func23a(padapter, DYNAMIC_ALL_FUNC_ENABLE, true); */
+			rtl8723a_odm_support_ability_restore(padapter);
 
 			if (is_client_associated_to_ap23a(padapter) == true)
 			{
@@ -7761,8 +7752,7 @@ void site_survey23a(struct rtw_adapter *padapter)
 
 			}
 
-			val8 = 0; /* survey done */
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_SITESURVEY, (u8 *)(&val8));
+			rtl8723a_mlme_sitesurvey(padapter, 0);
 
 			report_surveydone_event23a(padapter);
 
@@ -7969,8 +7959,6 @@ u8 collect_bss_info23a(struct rtw_adapter *padapter, struct recv_frame *precv_fr
 void start_create_ibss23a(struct rtw_adapter* padapter)
 {
 	unsigned short	caps;
-	u8	val8;
-	u8	join_type;
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 	struct wlan_bssid_ex *pnetwork = &pmlmeinfo->network;
@@ -7983,10 +7971,8 @@ void start_create_ibss23a(struct rtw_adapter* padapter)
 	/* udpate capability */
 	caps = rtw_get_capability23a(pnetwork);
 	update_capinfo23a(padapter, caps);
-	if (caps&cap_IBSS)/* adhoc master */
-	{
-		val8 = 0xcf;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_SEC_CFG, (u8 *)(&val8));
+	if (caps&cap_IBSS) {	/* adhoc master */
+		rtl8723a_set_sec_cfg(padapter, 0xcf);
 
 		/* switch channel */
 		/* SelectChannel23a(padapter, pmlmeext->cur_channel, HAL_PRIME_CHNL_OFFSET_DONT_CARE); */
@@ -8008,9 +7994,8 @@ void start_create_ibss23a(struct rtw_adapter* padapter)
 		}
 		else
 		{
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, padapter->registrypriv.dev_network.MacAddress);
-			join_type = 0;
-			rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
+			hw_var_set_bssid(padapter, padapter->registrypriv.dev_network.MacAddress);
+			hw_var_set_mlme_join(padapter, 0);
 
 			report_join_res23a(padapter, 1);
 			pmlmeinfo->state |= WIFI_FW_ASSOC_SUCCESS;
@@ -8047,9 +8032,10 @@ void start_clnt_join23a(struct rtw_adapter* padapter)
 
 		Set_MSR23a(padapter, WIFI_FW_STATION_STATE);
 
-		val8 = (pmlmeinfo->auth_algo == dot11AuthAlgrthm_8021X)? 0xcc: 0xcf;
+		val8 = (pmlmeinfo->auth_algo == dot11AuthAlgrthm_8021X) ?
+			0xcc: 0xcf;
 
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_SEC_CFG, (u8 *)(&val8));
+		rtl8723a_set_sec_cfg(padapter, val8);
 
 		/* switch channel */
 		/* set_channel_bwmode23a(padapter, pmlmeext->cur_channel, pmlmeext->cur_ch_offset, pmlmeext->cur_bwmode); */
@@ -8062,12 +8048,10 @@ void start_clnt_join23a(struct rtw_adapter* padapter)
 			  msecs_to_jiffies((REAUTH_TO * REAUTH_LIMIT) + (REASSOC_TO*REASSOC_LIMIT) + beacon_timeout));
 		pmlmeinfo->state = WIFI_FW_AUTH_NULL | WIFI_FW_STATION_STATE;
 	}
-	else if (caps&cap_IBSS) /* adhoc client */
-	{
+	else if (caps&cap_IBSS) {	/* adhoc client */
 		Set_MSR23a(padapter, WIFI_FW_ADHOC_STATE);
 
-		val8 = 0xcf;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_SEC_CFG, (u8 *)(&val8));
+		rtl8723a_set_sec_cfg(padapter, 0xcf);
 
 		/* switch channel */
 		set_channel_bwmode23a(padapter, pmlmeext->cur_channel, pmlmeext->cur_ch_offset, pmlmeext->cur_bwmode);
@@ -8691,17 +8675,14 @@ void mlmeext_joinbss_event_callback23a(struct rtw_adapter *padapter, int join_re
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 	struct wlan_bssid_ex *cur_network = &pmlmeinfo->network;
 	struct sta_priv		*pstapriv = &padapter->stapriv;
-	u8	join_type;
-	u16 media_status;
 
-	if (join_res < 0)
-	{
-		join_type = 1;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, null_addr);
+	if (join_res < 0) {
+		hw_var_set_mlme_join(padapter, 1);
+		hw_var_set_bssid(padapter, null_addr);
 
 		/* restore to initial setting. */
-		update_tx_basic_rate23a(padapter, padapter->registrypriv.wireless_mode);
+		update_tx_basic_rate23a(padapter,
+					padapter->registrypriv.wireless_mode);
 
 		goto exit_mlmeext_joinbss_event_callback23a;
 	}
@@ -8719,15 +8700,15 @@ void mlmeext_joinbss_event_callback23a(struct rtw_adapter *padapter, int join_re
 	}
 
 	/* turn on dynamic functions */
-	Switch_DM_Func23a(padapter, DYNAMIC_ALL_FUNC_ENABLE, true);
+	rtl8723a_odm_support_ability_set(padapter, DYNAMIC_ALL_FUNC_ENABLE);
 
 	/*  update IOT-releated issue */
 	update_IOT_info23a(padapter);
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BASIC_RATE, cur_network->SupportedRates);
+	HalSetBrateCfg23a(padapter, cur_network->SupportedRates);
 
 	/* BCN interval */
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BEACON_INTERVAL, (u8 *)(&pmlmeinfo->bcn_interval));
+	rtl8723a_set_beacon_interval(padapter, pmlmeinfo->bcn_interval);
 
 	/* udpate capability */
 	update_capinfo23a(padapter, pmlmeinfo->capability);
@@ -8752,16 +8733,11 @@ void mlmeext_joinbss_event_callback23a(struct rtw_adapter *padapter, int join_re
 
 		/* set per sta rate after updating HT cap. */
 		set_sta_rate23a(padapter, psta);
-
-		media_status = (psta->mac_id<<8)|1; /*   MACID|OPMODE: 1 means connect */
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_H2C_MEDIA_STATUS_RPT, (u8 *)&media_status);
 	}
 
-	join_type = 2;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
+	hw_var_set_mlme_join(padapter, 2);
 
-	if ((pmlmeinfo->state&0x03) == WIFI_FW_STATION_STATE)
-	{
+	if ((pmlmeinfo->state&0x03) == WIFI_FW_STATION_STATE) {
 		/*  correcting TSF */
 		correct_TSF23a(padapter, pmlmeext);
 
@@ -8778,7 +8754,6 @@ void mlmeext_sta_add_event_callback23a(struct rtw_adapter *padapter, struct sta_
 {
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
-	u8	join_type;
 
 	DBG_8723A("%s\n", __func__);
 
@@ -8810,8 +8785,7 @@ void mlmeext_sta_add_event_callback23a(struct rtw_adapter *padapter, struct sta_
 
 		}
 
-		join_type = 2;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
+		hw_var_set_mlme_join(padapter, 2);
 	}
 
 	pmlmeinfo->FW_sta_info[psta->mac_id].psta = psta;
@@ -8832,8 +8806,8 @@ void mlmeext_sta_del_event_callback23a(struct rtw_adapter *padapter)
 	{
 		/* set_opmode_cmd(padapter, infra_client_with_mlme); */
 
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_DISCONNECT, NULL);
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, null_addr);
+		hw_var_set_mlme_disconnect(padapter);
+		hw_var_set_bssid(padapter, null_addr);
 
 		/* restore to initial setting. */
 		update_tx_basic_rate23a(padapter, padapter->registrypriv.wireless_mode);
@@ -9189,27 +9163,19 @@ u8 setopmode_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 	struct setopmode_parm *psetop = (struct setopmode_parm *)pbuf;
 
-	if (psetop->mode == Ndis802_11APMode)
-	{
+	if (psetop->mode == Ndis802_11APMode) {
 		pmlmeinfo->state = WIFI_FW_AP_STATE;
 		type = _HW_STATE_AP_;
-	}
-	else if (psetop->mode == Ndis802_11Infrastructure)
-	{
+	} else if (psetop->mode == Ndis802_11Infrastructure) {
 		pmlmeinfo->state &= ~(BIT(0)|BIT(1));/*  clear state */
 		pmlmeinfo->state |= WIFI_FW_STATION_STATE;/* set to	STATION_STATE */
 		type = _HW_STATE_STATION_;
-	}
-	else if (psetop->mode == Ndis802_11IBSS)
-	{
+	} else if (psetop->mode == Ndis802_11IBSS)
 		type = _HW_STATE_ADHOC_;
-	}
 	else
-	{
 		type = _HW_STATE_NOLINK_;
-	}
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_SET_OPMODE, (u8 *)(&type));
+	hw_var_set_opmode(padapter, type);
 	/* Set_NETYPE0_MSR(padapter, type); */
 
 	return H2C_SUCCESS;
@@ -9249,12 +9215,10 @@ u8 createbss_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 		pmlmeinfo->candidate_tid_bitmap = 0;
 
 		/* disable dynamic functions, such as high power, DIG */
-		Save_DM_Func_Flag23a(padapter);
-		Switch_DM_Func23a(padapter, DYNAMIC_FUNC_DISABLE, false);
+		rtl8723a_odm_support_ability_backup(padapter);
 
-		/* config the initial gain under linking, need to write the BB registers */
-		/* initialgain = 0x1E; */
-		/* rtw_hal_set_hwreg23a(padapter, HW_VAR_INITIAL_GAIN, (u8 *)(&initialgain)); */
+		rtl8723a_odm_support_ability_clr(padapter,
+						 DYNAMIC_FUNC_DISABLE);
 
 		/* cancel link timer */
 		del_timer_sync(&pmlmeext->link_timer);
@@ -9275,7 +9239,6 @@ u8 createbss_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 
 u8 join_cmd_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 {
-	u8	join_type;
 	struct ndis_802_11_var_ies *	pIE;
 	struct registry_priv	*pregpriv = &padapter->registrypriv;
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
@@ -9305,7 +9268,7 @@ u8 join_cmd_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 		/* Set_MSR23a(padapter, _HW_STATE_NOLINK_); */
 		Set_MSR23a(padapter, _HW_STATE_STATION_);
 
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_DISCONNECT, NULL);
+		hw_var_set_mlme_disconnect(padapter);
 	}
 
 	rtw_joinbss_reset23a(padapter);
@@ -9385,19 +9348,9 @@ u8 join_cmd_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 
 		i += (pIE->Length + 2);
 	}
-	/* disable dynamic functions, such as high power, DIG */
-	/* Switch_DM_Func23a(padapter, DYNAMIC_FUNC_DISABLE, false); */
 
-	/* config the initial gain under linking, need to write the BB
-	   registers */
-	/* initialgain = 0x1E; */
-	/* rtw_hal_set_hwreg23a(padapter, HW_VAR_INITIAL_GAIN,
-	   (u8 *)(&initialgain)); */
-
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID,
-			  pmlmeinfo->network.MacAddress);
-	join_type = 0;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
+	hw_var_set_bssid(padapter, pmlmeinfo->network.MacAddress);
+	hw_var_set_mlme_join(padapter, 0);
 
 	/* cancel link timer */
 	del_timer_sync(&pmlmeext->link_timer);
@@ -9413,7 +9366,6 @@ u8 disconnect_hdl23a(struct rtw_adapter *padapter, unsigned char *pbuf)
 	struct mlme_ext_priv	*pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 	struct wlan_bssid_ex *pnetwork = &pmlmeinfo->network;
-	u8	val8;
 
 	if (is_client_associated_to_ap23a(padapter))
 	{
@@ -9424,18 +9376,15 @@ u8 disconnect_hdl23a(struct rtw_adapter *padapter, unsigned char *pbuf)
 
 	/* pmlmeinfo->state = WIFI_FW_NULL_STATE; */
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_DISCONNECT, NULL);
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, null_addr);
+	hw_var_set_mlme_disconnect(padapter);
+	hw_var_set_bssid(padapter, null_addr);
 
 	/* restore to initial setting. */
 	update_tx_basic_rate23a(padapter, padapter->registrypriv.wireless_mode);
 
-	if (((pmlmeinfo->state&0x03) == WIFI_FW_ADHOC_STATE) || ((pmlmeinfo->state&0x03) == WIFI_FW_AP_STATE))
-	{
-		/* Stop BCN */
-		val8 = 0;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_BCN_FUNC, (u8 *)(&val8));
-	}
+	if (((pmlmeinfo->state & 0x03) == WIFI_FW_ADHOC_STATE) ||
+	    ((pmlmeinfo->state & 0x03) == WIFI_FW_AP_STATE))
+		rtl8723a_set_bcn_func(padapter, 0);	/* Stop BCN */
 
 	/* set MSR to no link state -> infra. mode */
 	Set_MSR23a(padapter, _HW_STATE_STATION_);
@@ -9527,14 +9476,10 @@ u8 sitesurvey_cmd_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
 	struct sitesurvey_parm *pparm = (struct sitesurvey_parm *)pbuf;
 	u8 bdelayscan = false;
-	u8 val8;
 	u32 initialgain;
 	u32 i;
 
 	if (pmlmeext->sitesurvey_res.state == SCAN_DISABLE) {
-		/* for first time sitesurvey_cmd */
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_CHECK_TXBUF, NULL);
-
 		pmlmeext->sitesurvey_res.state = SCAN_START;
 		pmlmeext->sitesurvey_res.bss_cnt = 0;
 		pmlmeext->sitesurvey_res.channel_idx = 0;
@@ -9582,25 +9527,23 @@ u8 sitesurvey_cmd_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 	if ((pmlmeext->sitesurvey_res.state == SCAN_START) ||
 	    (pmlmeext->sitesurvey_res.state == SCAN_TXNULL)) {
 		/* disable dynamic functions, such as high power, DIG */
-		Save_DM_Func_Flag23a(padapter);
-		Switch_DM_Func23a(padapter, DYNAMIC_FUNC_DISABLE, false);
+		rtl8723a_odm_support_ability_backup(padapter);
+		rtl8723a_odm_support_ability_clr(padapter,
+						 DYNAMIC_FUNC_DISABLE);
 
 		/* config the initial gain under scaning, need to
 		   write the BB registers */
-		if ((wdev_to_priv(padapter->rtw_wdev))->p2p_enabled == true) {
+		if (wdev_to_priv(padapter->rtw_wdev)->p2p_enabled == true)
 			initialgain = 0x30;
-		} else
+		else
 			initialgain = 0x1E;
 
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_INITIAL_GAIN,
-				  (u8 *)(&initialgain));
+		rtl8723a_set_initial_gain(padapter, initialgain);
 
 		/* set MSR to no link state */
 		Set_MSR23a(padapter, _HW_STATE_NOLINK_);
 
-		val8 = 1; /* under site survey */
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_SITESURVEY,
-				  (u8 *)(&val8));
+		rtl8723a_mlme_sitesurvey(padapter, 1);
 
 		pmlmeext->sitesurvey_res.state = SCAN_PROCESS;
 	}
@@ -9641,10 +9584,10 @@ u8 setkey_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 
 	DBG_8723A_LEVEL(_drv_always_, "set group key to hw: alg:%d(WEP40-1 WEP104-5 TKIP-2 AES-4) "
 			"keyid:%d\n", pparm->algorithm, pparm->keyid);
-	write_cam23a(padapter, pparm->keyid, ctrl, null_sta, pparm->key);
+	rtl8723a_cam_write(padapter, pparm->keyid, ctrl, null_sta, pparm->key);
 
 	/* allow multicast packets to driver */
-        padapter->HalFunc.SetHwRegHandler(padapter, HW_VAR_ON_RCR_AM, null_addr);
+	rtl8723a_on_rcr_am(padapter);
 
 	return H2C_SUCCESS;
 }
@@ -9705,7 +9648,8 @@ u8 set_stakey_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 						pparm->addr[1], pparm->addr[2], pparm->addr[3], pparm->addr[4],
 						pparm->addr[5], cam_id);
 
-			write_cam23a(padapter, cam_id, ctrl, pparm->addr, pparm->key);
+			rtl8723a_cam_write(padapter, cam_id, ctrl,
+					   pparm->addr, pparm->key);
 
 			return H2C_SUCCESS_RSP;
 
@@ -9728,7 +9672,7 @@ u8 set_stakey_hdl23a(struct rtw_adapter *padapter, u8 *pbuf)
 
 	ctrl = BIT(15) | ((pparm->algorithm) << 2);
 
-	write_cam23a(padapter, cam_id, ctrl, pparm->addr, pparm->key);
+	rtl8723a_cam_write(padapter, cam_id, ctrl, pparm->addr, pparm->key);
 
 	pmlmeinfo->enc_algo = pparm->algorithm;
 

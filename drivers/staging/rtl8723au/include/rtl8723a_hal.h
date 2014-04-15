@@ -437,14 +437,6 @@ struct hal_data_8723a {
 	/*  Interrupt related register information. */
 	u32	IntArray[2];
 	u32	IntrMask[2];
-
-	/*  */
-	/*  For SDIO Interface HAL related */
-	/*  */
-
-	/*  Auto FSM to Turn On, include clock, isolation, power control for MAC only */
-	u8			bMacPwrCtrlOn;
-
 };
 
 #define GET_HAL_DATA(__pAdapter)	((struct hal_data_8723a *)((__pAdapter)->HalData))
@@ -556,8 +548,6 @@ void Hal_EfuseParseThermalMeter_8723A(struct rtw_adapter *padapter, u8 *hwinfo, 
 void Hal_InitChannelPlan23a(struct rtw_adapter *padapter);
 
 void rtl8723a_set_hal_ops(struct hal_ops *pHalFunc);
-void SetHwReg8723A(struct rtw_adapter *padapter, u8 variable, u8 *val);
-void GetHwReg8723A(struct rtw_adapter *padapter, u8 variable, u8 *val);
 #ifdef CONFIG_8723AU_BT_COEXIST
 void rtl8723a_SingleDualAntennaDetection(struct rtw_adapter *padapter);
 #endif
