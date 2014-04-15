@@ -254,15 +254,23 @@ int do_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 		return -EBADF;
 
 	/*
-	 * It's not possible to punch hole or perform collapse range
-	 * on append only file
+	 * It's not possible to punch hole, perform collapse range
+	 * or zero range on append only file
 	 */
-	if (mode & (FALLOC_FL_PUNCH_HOLE | FALLOC_FL_COLLAPSE_RANGE)
+	if (mode & (FALLOC_FL_PUNCH_HOLE | FALLOC_FL_COLLAPSE_RANGE |
+		    FALLOC_FL_ZERO_RANGE)
 	    && IS_APPEND(inode))
 		return -EPERM;
 
 	if (IS_IMMUTABLE(inode))
 		return -EPERM;
+
+	/*
+	 * We can not allow to do any fallocate operation on an active
+	 * swapfile
+	 */
+	if (IS_SWAPFILE(inode))
+		ret = -ETXTBSY;
 
 	/*
 	 * Revalidate the write permissions, in case security policy has
@@ -285,14 +293,6 @@ int do_fallocate(struct file *file, int mode, loff_t offset, loff_t len)
 	/* Check for wrap through zero too */
 	if (((offset + len) > inode->i_sb->s_maxbytes) || ((offset + len) < 0))
 		return -EFBIG;
-
-	/*
-	 * There is no need to overlap collapse range with EOF, in which case
-	 * it is effectively a truncate operation
-	 */
-	if ((mode & FALLOC_FL_COLLAPSE_RANGE) &&
-	    (offset + len >= i_size_read(inode)))
-		return -EINVAL;
 
 	if (!file->f_op->fallocate)
 		return -EOPNOTSUPP;
