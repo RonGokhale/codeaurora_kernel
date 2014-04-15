@@ -973,6 +973,7 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->last_valid_block_count = sbi->total_valid_block_count;
 	sbi->alloc_valid_block_count = 0;
 	INIT_LIST_HEAD(&sbi->dir_inode_list);
+	atomic_set(&sbi->dirty_dir_inodes, 0);
 	spin_lock_init(&sbi->dir_inode_lock);
 
 	init_orphan_info(sbi);

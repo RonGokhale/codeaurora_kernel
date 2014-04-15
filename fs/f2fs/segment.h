@@ -668,20 +668,22 @@ static inline unsigned int max_hw_blocks(struct f2fs_sb_info *sbi)
 /*
  * It is very important to gather dirty pages and write at once, so that we can
  * submit a big bio without interfering other data writes.
- * By default, 512 pages for directory data,
+ * By default, avg. dirty pages for directory data,
  * 512 pages (2MB) * 3 for three types of nodes, and
  * max_bio_blocks for meta are set.
  */
 static inline int nr_pages_to_skip(struct f2fs_sb_info *sbi, int type)
 {
-	if (type == DATA)
-		return sbi->blocks_per_seg;
-	else if (type == NODE)
+	if (type == DATA) {
+		unsigned int dirty = atomic_read(&sbi->dirty_dir_inodes);
+		if (dirty > sbi->blocks_per_seg * sbi->blocks_per_seg)
+			return div_u64(get_pages(sbi, F2FS_DIRTY_DENTS), dirty);
+	} else if (type == NODE) {
 		return 3 * sbi->blocks_per_seg;
-	else if (type == META)
+	} else if (type == META) {
 		return MAX_BIO_BLOCKS(max_hw_blocks(sbi));
-	else
-		return 0;
+	}
+	return sbi->blocks_per_seg;
 }
 
 /*

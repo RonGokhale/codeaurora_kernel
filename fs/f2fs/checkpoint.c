@@ -562,6 +562,7 @@ static int __add_dirty_inode(struct inode *inode, struct dir_inode_entry *new)
 	set_inode_flag(F2FS_I(inode), FI_DIRTY_DIR);
 	F2FS_I(inode)->dirty_dir = new;
 	list_add_tail(&new->list, &sbi->dir_inode_list);
+	atomic_inc(&sbi->dirty_dir_inodes);
 	stat_inc_dirty_dir(sbi);
 	return 0;
 }
@@ -626,6 +627,7 @@ void remove_dirty_dir_inode(struct inode *inode)
 	list_del(&entry->list);
 	F2FS_I(inode)->dirty_dir = NULL;
 	clear_inode_flag(F2FS_I(inode), FI_DIRTY_DIR);
+	atomic_dec(&sbi->dirty_dir_inodes);
 	stat_dec_dirty_dir(sbi);
 	spin_unlock(&sbi->dir_inode_lock);
 	kmem_cache_free(inode_entry_slab, entry);

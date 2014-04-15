@@ -450,6 +450,7 @@ struct f2fs_sb_info {
 
 	/* for directory inode management */
 	struct list_head dir_inode_list;	/* dir inode list */
+	atomic_t dirty_dir_inodes;		/* # of dirty inodes */
 	spinlock_t dir_inode_lock;		/* for dir inode list lock */
 
 	/* basic file system units */
