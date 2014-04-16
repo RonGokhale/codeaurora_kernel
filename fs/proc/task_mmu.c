@@ -1033,8 +1033,6 @@ static int pagemap_hugetlb(pte_t *pte, unsigned long addr, unsigned long end,
 	pagemap_entry_t pme;
 	unsigned long hmask;
 
-	BUG_ON(!vma);
-
 	if (vma->vm_flags & VM_SOFTDIRTY)
 		flags2 = __PM_SOFT_DIRTY;
 	else
