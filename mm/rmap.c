@@ -1020,7 +1020,7 @@ void page_add_new_anon_rmap(struct page *page,
 	__mod_zone_page_state(page_zone(page), NR_ANON_PAGES,
 			hpage_nr_pages(page));
 	__page_set_anon_rmap(page, vma, address, 1);
-	if (!mlocked_vma_newpage(vma, page)) {
+	if (!mlocked_vma_newpage(vma, page) && !PageUnevictable(page)) {
 		SetPageActive(page);
 		lru_cache_add(page);
 	} else
