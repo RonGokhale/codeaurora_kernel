@@ -20,7 +20,6 @@
 #include <recv_osdep.h>
 #include <hal_intf.h>
 #include <rtw_version.h>
-#include <ethernet.h>
 
 #include <usb_osintf.h>
 #include <linux/version.h>
@@ -66,10 +65,10 @@ static int rtw_acm_method;/*  0:By SW 1:By HW. */
 static int rtw_wmm_enable = 1;/*  default is set to enable the wmm. */
 static int rtw_uapsd_enable;
 
-int rtw_ht_enable23A = 1;
+static int rtw_ht_enable = 1;
 /* 0 :diable, bit(0): enable 2.4g, bit(1): enable 5g */
-int rtw_cbw40_enable23A = 3;
-int rtw_ampdu_enable23A = 1;/* for enable tx_ampdu */
+static int rtw_cbw40_enable = 3;
+static int rtw_ampdu_enable = 1;/* for enable tx_ampdu */
 /*  0: disable, bit(0):enable 2.4g, bit(1):enable 5g, default is set to enable
  * 2.4GHZ for IOT issue with bufflao's AP at 5GHZ
  */
@@ -130,9 +129,9 @@ module_param(rtw_wmm_enable, int, 0644);
 module_param(rtw_vrtl_carrier_sense, int, 0644);
 module_param(rtw_vcs_type, int, 0644);
 module_param(rtw_busy_thresh, int, 0644);
-module_param(rtw_ht_enable23A, int, 0644);
-module_param(rtw_cbw40_enable23A, int, 0644);
-module_param(rtw_ampdu_enable23A, int, 0644);
+module_param(rtw_ht_enable, int, 0644);
+module_param(rtw_cbw40_enable, int, 0644);
+module_param(rtw_ampdu_enable, int, 0644);
 module_param(rtw_rx_stbc, int, 0644);
 module_param(rtw_ampdu_amsdu, int, 0644);
 
@@ -203,9 +202,9 @@ static uint loadparam(struct rtw_adapter *padapter,  struct net_device *pnetdev)
 	 /* UAPSD */
 	registry_par->wmm_enable = (u8)rtw_wmm_enable;
 	registry_par->uapsd_enable = (u8)rtw_uapsd_enable;
-	registry_par->ht_enable = (u8)rtw_ht_enable23A;
-	registry_par->cbw40_enable = (u8)rtw_cbw40_enable23A;
-	registry_par->ampdu_enable = (u8)rtw_ampdu_enable23A;
+	registry_par->ht_enable = (u8)rtw_ht_enable;
+	registry_par->cbw40_enable = (u8)rtw_cbw40_enable;
+	registry_par->ampdu_enable = (u8)rtw_ampdu_enable;
 	registry_par->rx_stbc = (u8)rtw_rx_stbc;
 	registry_par->ampdu_amsdu = (u8)rtw_ampdu_amsdu;
 	registry_par->lowrate_two_xmit = (u8)rtw_lowrate_two_xmit;
@@ -456,9 +455,6 @@ static u8 rtw_init_default_value(struct rtw_adapter *padapter)
 	padapter->bWritePortCancel = false;
 	padapter->bRxRSSIDisplay = 0;
 	padapter->bNotifyChannelChange = 0;
-#ifdef CONFIG_8723AU_P2P
-	padapter->bShowGetP2PState = 1;
-#endif
 	return ret;
 }
 
@@ -521,17 +517,6 @@ u8 rtw_init_drv_sw23a(struct rtw_adapter *padapter)
 		goto exit;
 	}
 
-#ifdef CONFIG_8723AU_P2P
-	rtw_init_wifidirect_timers23a(padapter);
-	init_wifidirect_info23a(padapter, P2P_ROLE_DISABLE);
-	reset_global_wifidirect_info23a(padapter);
-	rtw_init_cfg80211_wifidirect_info(padapter);
-#ifdef CONFIG_8723AU_P2P
-	if (rtw_init_wifi_display_info(padapter) == _FAIL)
-		RT_TRACE(_module_os_intfs_c_, _drv_err_,
-			 ("\n Can't init init_wifi_display_info\n"));
-#endif
-#endif /* CONFIG_8723AU_P2P */
 
 	if (init_mlme_ext_priv23a(padapter) == _FAIL) {
 		RT_TRACE(_module_os_intfs_c_, _drv_err_,
@@ -600,10 +585,6 @@ void rtw_cancel_all_timer23a(struct rtw_adapter *padapter)
 
 	del_timer_sync(&padapter->pwrctrlpriv.pwr_state_check_timer);
 
-#ifdef CONFIG_8723AU_P2P
-	del_timer_sync(&padapter->cfg80211_wdinfo.remain_on_ch_timer);
-#endif /* CONFIG_8723AU_P2P */
-
 	del_timer_sync(&padapter->mlmepriv.set_scan_deny_timer);
 	rtw_clear_scan_deny(padapter);
 	RT_TRACE(_module_os_intfs_c_, _drv_info_,
@@ -616,25 +597,7 @@ void rtw_cancel_all_timer23a(struct rtw_adapter *padapter)
 
 u8 rtw_free_drv_sw23a(struct rtw_adapter *padapter)
 {
-#ifdef CONFIG_8723AU_P2P
-	struct wifidirect_info *pwdinfo;
-#endif
-
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("==>rtw_free_drv_sw23a"));
-
-	/* we can call rtw_p2p_enable23a here, but:
-	 *  1. rtw_p2p_enable23a may have IO operation
-	 *  2. rtw_p2p_enable23a is bundled with wext interface
-	 */
-#ifdef CONFIG_8723AU_P2P
-	pwdinfo = &padapter->wdinfo;
-	if (!rtw_p2p_chk_state(pwdinfo, P2P_STATE_NONE)) {
-		del_timer_sync(&pwdinfo->find_phase_timer);
-		del_timer_sync(&pwdinfo->restore_p2p_state_timer);
-		del_timer_sync(&pwdinfo->pre_tx_scan_timer);
-		rtw_p2p_set_state(pwdinfo, P2P_STATE_NONE);
-	}
-#endif
 
 	free_mlme_ext_priv23a(&padapter->mlmeextpriv);
 
@@ -887,7 +850,7 @@ void rtw_ips_pwr_down23a(struct rtw_adapter *padapter)
 
 void rtw_ips_dev_unload23a(struct rtw_adapter *padapter)
 {
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_FIFO_CLEARN_UP, NULL);
+	rtl8723a_fifo_cleanup(padapter);
 
 	if (padapter->intf_stop)
 		padapter->intf_stop(padapter);
@@ -945,12 +908,6 @@ static int netdev_close(struct net_device *pnetdev)
 		/*  Close LED */
 		rtw_led_control(padapter, LED_CTL_POWER_OFF);
 	}
-
-#ifdef CONFIG_8723AU_P2P
-	if (wdev_to_priv(padapter->rtw_wdev)->p2p_enabled)
-		wdev_to_priv(padapter->rtw_wdev)->p2p_enabled = false;
-	rtw_p2p_enable23a(padapter, P2P_ROLE_DISABLE);
-#endif /* CONFIG_8723AU_P2P */
 
 	rtw_scan_abort23a(padapter);
 	 /* set this at the end */

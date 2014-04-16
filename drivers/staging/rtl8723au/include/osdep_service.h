@@ -30,7 +30,6 @@
 #include <linux/kref.h>
 #include <linux/netdevice.h>
 #include <linux/skbuff.h>
-#include <linux/circ_buf.h>
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
 #include <asm/atomic.h>
@@ -40,7 +39,6 @@
 #include <linux/sched.h>
 #include <linux/etherdevice.h>
 #include <linux/wireless.h>
-#include <net/iw_handler.h>
 #include <linux/if_arp.h>
 #include <linux/rtnetlink.h>
 #include <linux/delay.h>
@@ -139,7 +137,6 @@ void	_rtw_vmfree(u8 *pbuf, u32 sz);
 
 extern unsigned char REALTEK_96B_IE23A[];
 extern unsigned char MCS_rate_2R23A[16];
-extern unsigned char RTW_WPA_OUI23A[];
 extern unsigned char WPA_TKIP_CIPHER23A[4];
 extern unsigned char RSN_TKIP_CIPHER23A[4];
 
@@ -148,16 +145,6 @@ extern unsigned char	MCS_rate_1R23A[16];
 
 void	_rtw_init_queue23a(struct rtw_queue *pqueue);
 u32	_rtw_queue_empty23a(struct rtw_queue *pqueue);
-
-static inline u32 bitshift(u32 bitmask)
-{
-	u32 i;
-
-	for (i = 0; i <= 31; i++)
-		if (((bitmask>>i) &  0x1) == 1) break;
-
-	return i;
-}
 
 void rtw_suspend_lock_init(void);
 void rtw_suspend_lock_uninit(void);
@@ -173,12 +160,6 @@ void rtw_unlock_suspend(void);
 #define FUNC_NDEV_ARG(ndev) __func__, ndev->name
 #define FUNC_ADPT_FMT "%s(%s)"
 #define FUNC_ADPT_ARG(adapter) __func__, adapter->pnetdev->name
-
-#define rtw_signal_process(pid, sig) kill_pid(find_vpid((pid)),(sig), 1)
-
-u64 rtw_modular6423a(u64 x, u64 y);
-u64 rtw_division6423a(u64 x, u64 y);
-
 
 /* Macros for handling unaligned memory accesses */
 
@@ -199,9 +180,7 @@ bool rtw_cbuf_push23a(struct rtw_cbuf *cbuf, void *buf);
 void *rtw_cbuf_pop23a(struct rtw_cbuf *cbuf);
 struct rtw_cbuf *rtw_cbuf_alloc23a(u32 size);
 void rtw_cbuf_free(struct rtw_cbuf *cbuf);
-int rtw_change_ifname(struct rtw_adapter *padapter, const char *ifname);
 s32 c2h_evt_hdl(struct rtw_adapter *adapter, struct c2h_evt_hdr *c2h_evt, c2h_id_filter filter);
-void indicate_wx_scan_complete_event(struct rtw_adapter *padapter);
 u8 rtw_do_join23a(struct rtw_adapter *padapter);
 
 #endif
