@@ -287,8 +287,8 @@ static irqreturn_t spi_sirfsoc_irq(int irq, void *dev_id)
 				sspi->left_rx_word)
 			sspi->rx_word(sspi);
 
-	if (spi_stat & (SIRFSOC_SPI_FIFO_EMPTY
-			| SIRFSOC_SPI_TXFIFO_THD_REACH))
+	if (spi_stat & (SIRFSOC_SPI_TXFIFO_EMPTY |
+			SIRFSOC_SPI_TXFIFO_THD_REACH))
 		while (!((readl(sspi->base + SIRFSOC_SPI_TXFIFO_STATUS)
 				& SIRFSOC_SPI_FIFO_FULL)) &&
 				sspi->left_tx_word)
@@ -382,14 +382,19 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 	if (IS_DMA_VALID(t)) {
 		struct dma_async_tx_descriptor *rx_desc, *tx_desc;
 
-		sspi->dst_start = dma_map_single(&spi->dev, sspi->rx, t->len, DMA_FROM_DEVICE);
+		sspi->dst_start = dma_map_single(&spi->dev,
+				sspi->rx, t->len, (t->tx_buf != t->rx_buf) ?
+				DMA_FROM_DEVICE : DMA_BIDIRECTIONAL);
 		rx_desc = dmaengine_prep_slave_single(sspi->rx_chan,
 			sspi->dst_start, t->len, DMA_DEV_TO_MEM,
 			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 		rx_desc->callback = spi_sirfsoc_dma_fini_callback;
 		rx_desc->callback_param = &sspi->rx_done;
 
-		sspi->src_start = dma_map_single(&spi->dev, (void *)sspi->tx, t->len, DMA_TO_DEVICE);
+		sspi->src_start = dma_map_single(&spi->dev,
+				(void *)sspi->tx, t->len,
+				(t->tx_buf != t->rx_buf) ?
+				DMA_TO_DEVICE : DMA_BIDIRECTIONAL);
 		tx_desc = dmaengine_prep_slave_single(sspi->tx_chan,
 			sspi->src_start, t->len, DMA_MEM_TO_DEV,
 			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
@@ -404,13 +409,18 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 		/* Send the first word to trigger the whole tx/rx process */
 		sspi->tx_word(sspi);
 
-		writel(SIRFSOC_SPI_RX_OFLOW_INT_EN | SIRFSOC_SPI_TX_UFLOW_INT_EN |
-			SIRFSOC_SPI_RXFIFO_THD_INT_EN | SIRFSOC_SPI_TXFIFO_THD_INT_EN |
-			SIRFSOC_SPI_FRM_END_INT_EN | SIRFSOC_SPI_RXFIFO_FULL_INT_EN |
-			SIRFSOC_SPI_TXFIFO_EMPTY_INT_EN, sspi->base + SIRFSOC_SPI_INT_EN);
+		writel(SIRFSOC_SPI_RX_OFLOW_INT_EN |
+			SIRFSOC_SPI_TX_UFLOW_INT_EN |
+			SIRFSOC_SPI_RXFIFO_THD_INT_EN |
+			SIRFSOC_SPI_TXFIFO_THD_INT_EN |
+			SIRFSOC_SPI_FRM_END_INT_EN |
+			SIRFSOC_SPI_RXFIFO_FULL_INT_EN |
+			SIRFSOC_SPI_TXFIFO_EMPTY_INT_EN,
+			sspi->base + SIRFSOC_SPI_INT_EN);
 	}
 
-	writel(SIRFSOC_SPI_RX_EN | SIRFSOC_SPI_TX_EN, sspi->base + SIRFSOC_SPI_TX_RX_EN);
+	writel(SIRFSOC_SPI_RX_EN | SIRFSOC_SPI_TX_EN,
+			sspi->base + SIRFSOC_SPI_TX_RX_EN);
 
 	if (!IS_DMA_VALID(t)) { /* for PIO */
 		if (wait_for_completion_timeout(&sspi->rx_done, timeout) == 0)
@@ -434,8 +444,10 @@ static int spi_sirfsoc_transfer(struct spi_device *spi, struct spi_transfer *t)
 	}
 
 	if (IS_DMA_VALID(t)) {
-		dma_unmap_single(&spi->dev, sspi->src_start, t->len, DMA_TO_DEVICE);
-		dma_unmap_single(&spi->dev, sspi->dst_start, t->len, DMA_FROM_DEVICE);
+		dma_unmap_single(&spi->dev,
+				sspi->src_start, t->len, DMA_TO_DEVICE);
+		dma_unmap_single(&spi->dev,
+				sspi->dst_start, t->len, DMA_FROM_DEVICE);
 	}
 
 	/* TX, RX FIFO stop */
@@ -470,7 +482,16 @@ static void spi_sirfsoc_chipselect(struct spi_device *spi, int value)
 		writel(regval, sspi->base + SIRFSOC_SPI_CTRL);
 	} else {
 		int gpio = sspi->chipselect[spi->chip_select];
-		gpio_direction_output(gpio, spi->mode & SPI_CS_HIGH ? 0 : 1);
+		switch (value) {
+		case BITBANG_CS_ACTIVE:
+			gpio_direction_output(gpio,
+					spi->mode & SPI_CS_HIGH ? 1 : 0);
+			break;
+		case BITBANG_CS_INACTIVE:
+			gpio_direction_output(gpio,
+					spi->mode & SPI_CS_HIGH ? 0 : 1);
+			break;
+		}
 	}
 }
 
@@ -503,7 +524,8 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 		break;
 	case 12:
 	case 16:
-		regval |= (bits_per_word ==  12) ? SIRFSOC_SPI_TRAN_DAT_FORMAT_12 :
+		regval |= (bits_per_word ==  12) ?
+			SIRFSOC_SPI_TRAN_DAT_FORMAT_12 :
 			SIRFSOC_SPI_TRAN_DAT_FORMAT_16;
 		sspi->rx_word = spi_sirfsoc_rx_word_u16;
 		sspi->tx_word = spi_sirfsoc_tx_word_u16;
@@ -531,8 +553,8 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 		regval |= SIRFSOC_SPI_CLK_IDLE_STAT;
 
 	/*
-	 * Data should be driven at least 1/2 cycle before the fetch edge to make
-	 * sure that data gets stable at the fetch edge.
+	 * Data should be driven at least 1/2 cycle before the fetch edge
+	 * to make sure that data gets stable at the fetch edge.
 	 */
 	if (((spi->mode & SPI_CPOL) && (spi->mode & SPI_CPHA)) ||
 	    (!(spi->mode & SPI_CPOL) && !(spi->mode & SPI_CPHA)))
@@ -559,16 +581,24 @@ spi_sirfsoc_setup_transfer(struct spi_device *spi, struct spi_transfer *t)
 		regval &= ~SIRFSOC_SPI_CMD_MODE;
 		sspi->tx_by_cmd = false;
 	}
+	/*
+	 * set spi controller in RISC chipselect mode, we are controlling CS by
+	 * software BITBANG_CS_ACTIVE and BITBANG_CS_INACTIVE.
+	 */
+	regval |= SIRFSOC_SPI_CS_IO_MODE;
 	writel(regval, sspi->base + SIRFSOC_SPI_CTRL);
 
 	if (IS_DMA_VALID(t)) {
 		/* Enable DMA mode for RX, TX */
 		writel(0, sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
-		writel(SIRFSOC_SPI_RX_DMA_FLUSH, sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
+		writel(SIRFSOC_SPI_RX_DMA_FLUSH,
+			sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
 	} else {
 		/* Enable IO mode for RX, TX */
-		writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
-		writel(SIRFSOC_SPI_IO_MODE_SEL, sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
+		writel(SIRFSOC_SPI_IO_MODE_SEL,
+			sspi->base + SIRFSOC_SPI_TX_DMA_IO_CTRL);
+		writel(SIRFSOC_SPI_IO_MODE_SEL,
+			sspi->base + SIRFSOC_SPI_RX_DMA_IO_CTRL);
 	}
 
 	return 0;
@@ -598,7 +628,8 @@ static int spi_sirfsoc_probe(struct platform_device *pdev)
 		goto err_cs;
 	}
 
-	master = spi_alloc_master(&pdev->dev, sizeof(*sspi) + sizeof(int) * num_cs);
+	master = spi_alloc_master(&pdev->dev,
+			sizeof(*sspi) + sizeof(int) * num_cs);
 	if (!master) {
 		dev_err(&pdev->dev, "Unable to allocate SPI master\n");
 		return -ENOMEM;
@@ -794,8 +825,7 @@ static struct platform_driver spi_sirfsoc_driver = {
 	.remove = spi_sirfsoc_remove,
 };
 module_platform_driver(spi_sirfsoc_driver);
-
 MODULE_DESCRIPTION("SiRF SoC SPI master driver");
-MODULE_AUTHOR("Zhiwu Song <Zhiwu.Song@csr.com>, "
-		"Barry Song <Baohua.Song@csr.com>");
+MODULE_AUTHOR("Zhiwu Song <Zhiwu.Song@csr.com>");
+MODULE_AUTHOR("Barry Song <Baohua.Song@csr.com>");
 MODULE_LICENSE("GPL v2");
