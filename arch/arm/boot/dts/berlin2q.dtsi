@@ -1,74 +1,89 @@
 /*
- * Device Tree Include file for Marvell Armada 1500 (Berlin BG2) SoC
- *
- * Sebastian Hesselbarth <sebastian.hesselbarth@gmail.com>
- *
- * based on GPL'ed 2.6 kernel sources
- *  (c) Marvell International Ltd.
+ * Copyright (C) 2014 Antoine Ténart <antoine.tenart@free-electrons.com>
  *
  * This file is licensed under the terms of the GNU General Public
- * License version 2.  This program is licensed "as is" without any
+ * License version 2. This program is licensed "as is" without any
  * warranty of any kind, whether express or implied.
  */
 
-#include "skeleton.dtsi"
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
+#include "skeleton.dtsi"
+
 / {
-	model = "Marvell Armada 1500 (BG2) SoC";
-	compatible = "marvell,berlin2", "marvell,berlin";
+	model = "Marvell Armada 1500 pro (BG2-Q) SoC";
+	compatible = "marvell,berlin2q", "marvell,berlin";
 
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
 
 		cpu@0 {
-			compatible = "marvell,pj4b";
+			compatible = "arm,cortex-a9";
 			device_type = "cpu";
 			next-level-cache = <&l2>;
 			reg = <0>;
 		};
 
 		cpu@1 {
-			compatible = "marvell,pj4b";
+			compatible = "arm,cortex-a9";
 			device_type = "cpu";
 			next-level-cache = <&l2>;
 			reg = <1>;
 		};
+
+		cpu@2 {
+			compatible = "arm,cortex-a9";
+			device_type = "cpu";
+			next-level-cache = <&l2>;
+			reg = <2>;
+		};
+
+		cpu@3 {
+			compatible = "arm,cortex-a9";
+			device_type = "cpu";
+			next-level-cache = <&l2>;
+			reg = <3>;
+		};
 	};
 
-	clocks {
-		smclk: sysmgr-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <25000000>;
-		};
+	smclk: sysmgr-clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+	};
 
-		cfgclk: cfg-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <100000000>;
-		};
+	cfgclk: config-clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+	};
 
-		sysclk: system-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <400000000>;
-		};
+	cpuclk: cpu-clock {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <1200000000>;
+	};
+
+	twdclk: twdclk {
+		compatible = "fixed-factor-clock";
+		#clock-cells = <0>;
+		clocks = <&cpuclk>;
+		clock-mult = <1>;
+		clock-div = <3>;
 	};
 
 	soc {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
-		interrupt-parent = <&gic>;
 
 		ranges = <0 0xf7000000 0x1000000>;
+		interrupt-parent = <&gic>;
 
 		l2: l2-cache-controller@ac0000 {
-			compatible = "marvell,tauros3-cache", "arm,pl310-cache";
+			compatible = "arm,pl310-cache";
 			reg = <0xac0000 0x1000>;
-			cache-unified;
 			cache-level = <2>;
 		};
 
@@ -77,18 +92,18 @@
 			reg = <0xad0000 0x58>;
 		};
 
-		gic: interrupt-controller@ad1000 {
-			compatible = "arm,cortex-a9-gic";
-			reg = <0xad1000 0x1000>, <0xad0100 0x0100>;
-			interrupt-controller;
-			#interrupt-cells = <3>;
-		};
-
 		local-timer@ad0600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xad0600 0x20>;
+			clocks = <&twdclk>;
 			interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&sysclk>;
+		};
+
+		gic: interrupt-controller@ad1000 {
+			compatible = "arm,cortex-a9-gic";
+			reg = <0xad1000 0x1000>, <0xad0100 0x100>;
+			interrupt-controller;
+			#interrupt-cells = <3>;
 		};
 
 		apb@e80000 {
@@ -102,25 +117,22 @@
 			timer0: timer@2c00 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c00 0x14>;
-				interrupts = <8>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
-				status = "okay";
+				interrupts = <8>;
 			};
 
 			timer1: timer@2c14 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c14 0x14>;
-				interrupts = <9>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
-				status = "okay";
+				status = "disabled";
 			};
 
 			timer2: timer@2c28 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c28 0x14>;
-				interrupts = <10>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
@@ -129,7 +141,6 @@
 			timer3: timer@2c3c {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c3c 0x14>;
-				interrupts = <11>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
@@ -138,7 +149,6 @@
 			timer4: timer@2c50 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c50 0x14>;
-				interrupts = <12>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
@@ -147,7 +157,6 @@
 			timer5: timer@2c64 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c64 0x14>;
-				interrupts = <13>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
@@ -156,7 +165,6 @@
 			timer6: timer@2c78 {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c78 0x14>;
-				interrupts = <14>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
@@ -165,15 +173,14 @@
 			timer7: timer@2c8c {
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c8c 0x14>;
-				interrupts = <15>;
 				clocks = <&cfgclk>;
 				clock-names = "timer";
 				status = "disabled";
 			};
 
-			aic: interrupt-controller@3000 {
+			aic: interrupt-controller@3800 {
 				compatible = "snps,dw-apb-ictl";
-				reg = <0x3000 0xc00>;
+				reg = <0x3800 0x30>;
 				interrupt-controller;
 				#interrupt-cells = <1>;
 				interrupt-parent = <&gic>;
@@ -181,9 +188,9 @@
 			};
 		};
 
-		generic-regs@ea0184 {
+		generic-regs@ea0110 {
 			compatible = "marvell,berlin-generic-regs", "syscon";
-			reg = <0xea0184 0x10>;
+			reg = <0xea0110 0x10>;
 		};
 
 		apb@fc0000 {
@@ -194,39 +201,29 @@
 			ranges = <0 0xfc0000 0x10000>;
 			interrupt-parent = <&sic>;
 
-			uart0: serial@9000 {
+			uart0: uart@9000 {
 				compatible = "snps,dw-apb-uart";
 				reg = <0x9000 0x100>;
-				reg-shift = <2>;
-				reg-io-width = <1>;
+				interrupt-parent = <&sic>;
 				interrupts = <8>;
 				clocks = <&smclk>;
+				reg-shift = <2>;
 				status = "disabled";
 			};
 
-			uart1: serial@a000 {
+			uart1: uart@a000 {
 				compatible = "snps,dw-apb-uart";
 				reg = <0xa000 0x100>;
-				reg-shift = <2>;
-				reg-io-width = <1>;
+				interrupt-parent = <&sic>;
 				interrupts = <9>;
 				clocks = <&smclk>;
-				status = "disabled";
-			};
-
-			uart2: serial@b000 {
-				compatible = "snps,dw-apb-uart";
-				reg = <0xb000 0x100>;
 				reg-shift = <2>;
-				reg-io-width = <1>;
-				interrupts = <10>;
-				clocks = <&smclk>;
 				status = "disabled";
 			};
 
 			sic: interrupt-controller@e000 {
 				compatible = "snps,dw-apb-ictl";
-				reg = <0xe000 0x400>;
+				reg = <0xe000 0x30>;
 				interrupt-controller;
 				#interrupt-cells = <1>;
 				interrupt-parent = <&gic>;
