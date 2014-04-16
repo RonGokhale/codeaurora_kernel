@@ -126,6 +126,12 @@ static inline int pte_present(pte_t pte)
 {
 	return pte_val(pte) & _PAGE_PRESENT;
 }
+
+static inline int pte_present_nonuma(pte_t pte)
+{
+	return pte_present(pte);
+}
+
 #endif /* CONFIG_NUMA_BALANCING */
 
 /* Conversion functions: convert a page and protection to a page entry,
