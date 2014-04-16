@@ -744,6 +744,7 @@ struct snd_soc_codec_driver {
 		unsigned int freq_in, unsigned int freq_out);
 
 	/* codec IO */
+	struct regmap *(*get_regmap)(struct device *);
 	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
 	int (*write)(struct snd_soc_codec *, unsigned int, unsigned int);
 	unsigned int reg_cache_size;
@@ -1251,7 +1252,7 @@ static inline struct snd_soc_codec *snd_soc_kcontrol_codec(
  * registered with snd_soc_add_platform_controls() or via table based setup of
  * a snd_soc_platform_driver. Otherwise the behavior is undefined.
  */
-static inline struct snd_soc_codec *snd_soc_kcontrol_platform(
+static inline struct snd_soc_platform *snd_soc_kcontrol_platform(
 	struct snd_kcontrol *kcontrol)
 {
 	return snd_kcontrol_chip(kcontrol);
