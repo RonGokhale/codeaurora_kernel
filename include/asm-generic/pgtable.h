@@ -670,7 +670,7 @@ static inline int pmd_trans_unstable(pmd_t *pmd)
 static inline int pte_numa(pte_t pte)
 {
 	return (pte_flags(pte) &
-		(_PAGE_NUMA|_PAGE_PRESENT)) == _PAGE_NUMA;
+		(_PAGE_NUMA|_PAGE_PROTNONE|_PAGE_PRESENT)) == _PAGE_NUMA;
 }
 #endif
 
@@ -678,7 +678,7 @@ static inline int pte_numa(pte_t pte)
 static inline int pmd_numa(pmd_t pmd)
 {
 	return (pmd_flags(pmd) &
-		(_PAGE_NUMA|_PAGE_PRESENT)) == _PAGE_NUMA;
+		(_PAGE_NUMA|_PAGE_PROTNONE|_PAGE_PRESENT)) == _PAGE_NUMA;
 }
 #endif
 
