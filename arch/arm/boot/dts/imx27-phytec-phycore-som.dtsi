@@ -251,6 +251,15 @@
 			>;
 		};
 
+		pinctrl_ssi1: ssi1grp {
+			fsl,pins = <
+				MX27_PAD_SSI1_FS__SSI1_FS 0x0
+				MX27_PAD_SSI1_RXDAT__SSI1_RXDAT 0x0
+				MX27_PAD_SSI1_TXDAT__SSI1_TXDAT 0x0
+				MX27_PAD_SSI1_CLK__SSI1_CLK 0x0
+			>;
+		};
+
 		pinctrl_usbotg: usbotggrp {
 			fsl,pins = <
 				MX27_PAD_USBOTG_CLK__USBOTG_CLK 0x0
@@ -279,6 +288,13 @@
 	status = "okay";
 };
 
+&ssi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ssi1>;
+	fsl,mode = "i2s-slave";
+	status = "okay";
+};
+
 &usbotg {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg>;
@@ -295,7 +311,7 @@
 &weim {
 	status = "okay";
 
-	nor: nor@c0000000 {
+	nor: nor@0,0 {
 		compatible = "cfi-flash";
 		reg = <0 0x00000000 0x02000000>;
 		bank-width = <2>;
@@ -305,7 +321,7 @@
 		#size-cells = <1>;
 	};
 
-	sram: sram@c8000000 {
+	sram: sram@1,0 {
 		compatible = "mtd-ram";
 		reg = <1 0x00000000 0x00800000>;
 		bank-width = <2>;
