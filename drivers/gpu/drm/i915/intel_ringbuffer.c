@@ -41,12 +41,16 @@ static inline int ring_space(struct intel_ring_buffer *ring)
 	return space;
 }
 
-void __intel_ring_advance(struct intel_ring_buffer *ring)
+static bool intel_ring_stopped(struct intel_ring_buffer *ring)
 {
 	struct drm_i915_private *dev_priv = ring->dev->dev_private;
+	return dev_priv->gpu_error.stop_rings & intel_ring_flag(ring);
+}
 
+void __intel_ring_advance(struct intel_ring_buffer *ring)
+{
 	ring->tail &= ring->size - 1;
-	if (dev_priv->gpu_error.stop_rings & intel_ring_flag(ring))
+	if (intel_ring_stopped(ring))
 		return;
 	ring->write_tail(ring, ring->tail);
 }
@@ -437,32 +441,41 @@ static void ring_setup_phys_status_page(struct intel_ring_buffer *ring)
 	I915_WRITE(HWS_PGA, addr);
 }
 
+static bool stop_ring(struct intel_ring_buffer *ring)
+{
+	struct drm_i915_private *dev_priv = to_i915(ring->dev);
+
+	if (!IS_GEN2(ring->dev)) {
+		I915_WRITE_MODE(ring, _MASKED_BIT_ENABLE(STOP_RING));
+		if (wait_for_atomic((I915_READ_MODE(ring) & MODE_IDLE) != 0, 1000)) {
+			DRM_ERROR("%s :timed out trying to stop ring\n", ring->name);
+			return false;
+		}
+	}
+
+	I915_WRITE_CTL(ring, 0);
+	I915_WRITE_HEAD(ring, 0);
+	ring->write_tail(ring, 0);
+
+	if (!IS_GEN2(ring->dev)) {
+		(void)I915_READ_CTL(ring);
+		I915_WRITE_MODE(ring, _MASKED_BIT_DISABLE(STOP_RING));
+	}
+
+	return (I915_READ_HEAD(ring) & HEAD_ADDR) == 0;
+}
+
 static int init_ring_common(struct intel_ring_buffer *ring)
 {
 	struct drm_device *dev = ring->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_object *obj = ring->obj;
 	int ret = 0;
-	u32 head;
 
 	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
-	/* Stop the ring if it's running. */
-	I915_WRITE_CTL(ring, 0);
-	I915_WRITE_HEAD(ring, 0);
-	ring->write_tail(ring, 0);
-	if (wait_for_atomic((I915_READ_MODE(ring) & MODE_IDLE) != 0, 1000))
-		DRM_ERROR("%s :timed out trying to stop ring\n", ring->name);
-
-	if (I915_NEED_GFX_HWS(dev))
-		intel_ring_setup_status_page(ring);
-	else
-		ring_setup_phys_status_page(ring);
-
-	head = I915_READ_HEAD(ring) & HEAD_ADDR;
-
-	/* G45 ring initialization fails to reset head to zero */
-	if (head != 0) {
+	if (!stop_ring(ring)) {
+		/* G45 ring initialization often fails to reset head to zero */
 		DRM_DEBUG_KMS("%s head not reset to zero "
 			      "ctl %08x head %08x tail %08x start %08x\n",
 			      ring->name,
@@ -471,9 +484,7 @@ static int init_ring_common(struct intel_ring_buffer *ring)
 			      I915_READ_TAIL(ring),
 			      I915_READ_START(ring));
 
-		I915_WRITE_HEAD(ring, 0);
-
-		if (I915_READ_HEAD(ring) & HEAD_ADDR) {
+		if (!stop_ring(ring)) {
 			DRM_ERROR("failed to set %s head to zero "
 				  "ctl %08x head %08x tail %08x start %08x\n",
 				  ring->name,
@@ -481,8 +492,15 @@ static int init_ring_common(struct intel_ring_buffer *ring)
 				  I915_READ_HEAD(ring),
 				  I915_READ_TAIL(ring),
 				  I915_READ_START(ring));
+			ret = -EIO;
+			goto out;
 		}
 	}
+
+	if (I915_NEED_GFX_HWS(dev))
+		intel_ring_setup_status_page(ring);
+	else
+		ring_setup_phys_status_page(ring);
 
 	/* Initialize the ring. This must happen _after_ we've cleared the ring
 	 * registers with the above sequence (the readback of the HEAD registers
@@ -587,13 +605,15 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 		I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(ASYNC_FLIP_PERF_DISABLE));
 
 	/* Required for the hardware to program scanline values for waiting */
+	/* WaEnableFlushTlbInvalidationMode:snb */
 	if (INTEL_INFO(dev)->gen == 6)
 		I915_WRITE(GFX_MODE,
-			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_ALWAYS));
+			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_EXPLICIT));
 
+	/* WaBCSVCSTlbInvalidationMode:ivb,vlv,hsw */
 	if (IS_GEN7(dev))
 		I915_WRITE(GFX_MODE_GEN7,
-			   _MASKED_BIT_DISABLE(GFX_TLB_INVALIDATE_ALWAYS) |
+			   _MASKED_BIT_ENABLE(GFX_TLB_INVALIDATE_EXPLICIT) |
 			   _MASKED_BIT_ENABLE(GFX_REPLAY_MODE));
 
 	if (INTEL_INFO(dev)->gen >= 5) {
@@ -610,13 +630,6 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 		 */
 		I915_WRITE(CACHE_MODE_0,
 			   _MASKED_BIT_DISABLE(CM0_STC_EVICT_DISABLE_LRA_SNB));
-
-		/* This is not explicitly set for GEN6, so read the register.
-		 * see intel_ring_mi_set_context() for why we care.
-		 * TODO: consider explicitly setting the bit for GEN5
-		 */
-		ring->itlb_before_ctx_switch =
-			!!(I915_READ(GFX_MODE) & GFX_TLB_INVALIDATE_ALWAYS);
 	}
 
 	if (INTEL_INFO(dev)->gen >= 6)
