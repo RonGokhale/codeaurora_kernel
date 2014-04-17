@@ -46,10 +46,6 @@
 			nvidia,hpd-gpios =
 				<&gpio TEGRA_GPIO(N, 7) GPIO_ACTIVE_HIGH>;
 			nvidia,ddc-i2c-bus = <&hdmiddc>;
-
-			/* deprecated */
-			nvidia,hpd-gpio =
-				<&gpio TEGRA_GPIO(N, 7) GPIO_ACTIVE_HIGH>;
 		};
 	};
 
