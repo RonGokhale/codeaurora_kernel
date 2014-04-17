@@ -84,6 +84,9 @@ static void tick_do_update_jiffies64(ktime_t now)
 
 		/* Keep the tick_next_period variable up to date */
 		tick_next_period = ktime_add(last_jiffies_update, tick_period);
+	} else {
+		write_sequnlock(&jiffies_lock);
+		return;
 	}
 	write_sequnlock(&jiffies_lock);
 	update_wall_time();
@@ -228,6 +231,27 @@ void tick_nohz_full_kick(void)
 {
 	if (tick_nohz_full_cpu(smp_processor_id()))
 		irq_work_queue(&__get_cpu_var(nohz_full_kick_work));
+}
+
+static void nohz_full_kick_queue(struct queue_single_data *qsd)
+{
+	__tick_nohz_full_check();
+}
+
+static DEFINE_PER_CPU(struct queue_single_data, nohz_full_kick_qsd) = {
+	.func = nohz_full_kick_queue,
+};
+
+void tick_nohz_full_kick_cpu(int cpu)
+{
+	if (!tick_nohz_full_cpu(cpu))
+		return;
+
+	if (cpu == smp_processor_id()) {
+		irq_work_queue(&__get_cpu_var(nohz_full_kick_work));
+	} else {
+		smp_queue_function_single(cpu, &per_cpu(nohz_full_kick_qsd, cpu));
+	}
 }
 
 static void nohz_full_kick_ipi(void *info)
@@ -967,7 +991,7 @@ static void tick_nohz_switch_to_nohz(void)
 	struct tick_sched *ts = &__get_cpu_var(tick_cpu_sched);
 	ktime_t next;
 
-	if (!tick_nohz_active)
+	if (!tick_nohz_enabled)
 		return;
 
 	local_irq_disable();
