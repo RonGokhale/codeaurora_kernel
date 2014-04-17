@@ -28,6 +28,7 @@
  * ########################################################################
  */
 
+#include <linux/compiler.h>
 
 #include "ieee754int.h"
 #include "ieee754sp.h"
@@ -55,7 +56,7 @@
 #define DPSTR(s, b, mh, ml) {s, b, mh, ml}
 #endif
 
-const struct ieee754dp_konst __ieee754dp_spcvals[] = {
+const struct ieee754dp_const __ieee754dp_spcvals[] = {
 	DPSTR(0, DP_EMIN - 1 + DP_EBIAS, 0, 0), /* + zero   */
 	DPSTR(1, DP_EMIN - 1 + DP_EBIAS, 0, 0), /* - zero   */
 	DPSTR(0, DP_EBIAS, 0, 0),	/* + 1.0   */
@@ -75,7 +76,7 @@ const struct ieee754dp_konst __ieee754dp_spcvals[] = {
 	DPSTR(0, 63 + DP_EBIAS, 0, 0),	/* + 1.0e63 */
 };
 
-const struct ieee754sp_konst __ieee754sp_spcvals[] = {
+const struct ieee754sp_const __ieee754sp_spcvals[] = {
 	SPSTR(0, SP_EMIN - 1 + SP_EBIAS, 0),	/* + zero   */
 	SPSTR(1, SP_EMIN - 1 + SP_EBIAS, 0),	/* - zero   */
 	SPSTR(0, SP_EBIAS, 0),	/* + 1.0   */
@@ -96,7 +97,7 @@ const struct ieee754sp_konst __ieee754sp_spcvals[] = {
 };
 
 
-int ieee754si_xcpt(int r, const char *op, ...)
+int __cold ieee754si_xcpt(int r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 
@@ -111,7 +112,7 @@ int ieee754si_xcpt(int r, const char *op, ...)
 	return ax.rv.si;
 }
 
-s64 ieee754di_xcpt(s64 r, const char *op, ...)
+s64 __cold ieee754di_xcpt(s64 r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 

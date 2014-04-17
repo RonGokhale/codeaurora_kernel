@@ -23,29 +23,30 @@
  * ########################################################################
  */
 
+#include <linux/compiler.h>
 
 #include "ieee754dp.h"
 
-int ieee754dp_class(ieee754dp x)
+int ieee754dp_class(union ieee754dp x)
 {
 	COMPXDP;
 	EXPLODEXDP;
 	return xc;
 }
 
-int ieee754dp_isnan(ieee754dp x)
+int ieee754dp_isnan(union ieee754dp x)
 {
 	return ieee754dp_class(x) >= IEEE754_CLASS_SNAN;
 }
 
-int ieee754dp_issnan(ieee754dp x)
+int ieee754dp_issnan(union ieee754dp x)
 {
 	assert(ieee754dp_isnan(x));
 	return ((DPMANT(x) & DP_MBIT(DP_MBITS-1)) == DP_MBIT(DP_MBITS-1));
 }
 
 
-ieee754dp ieee754dp_xcpt(ieee754dp r, const char *op, ...)
+union ieee754dp __cold ieee754dp_xcpt(union ieee754dp r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 	if (!TSTX())
@@ -60,7 +61,7 @@ ieee754dp ieee754dp_xcpt(ieee754dp r, const char *op, ...)
 	return ax.rv.dp;
 }
 
-ieee754dp ieee754dp_nanxcpt(ieee754dp r, const char *op, ...)
+union ieee754dp __cold ieee754dp_nanxcpt(union ieee754dp r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 
@@ -87,7 +88,7 @@ ieee754dp ieee754dp_nanxcpt(ieee754dp r, const char *op, ...)
 	return ax.rv.dp;
 }
 
-ieee754dp ieee754dp_bestnan(ieee754dp x, ieee754dp y)
+union ieee754dp ieee754dp_bestnan(union ieee754dp x, union ieee754dp y)
 {
 	assert(ieee754dp_isnan(x));
 	assert(ieee754dp_isnan(y));
@@ -130,7 +131,7 @@ static u64 get_rounding(int sn, u64 xm)
  * xe is an unbiased exponent
  * xm is 3bit extended precision value.
  */
-ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
+union ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 {
 	assert(xm);		/* we don't gen exact zeros (probably should) */
 
@@ -150,12 +151,12 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 			case IEEE754_RZ:
 				return ieee754dp_zero(sn);
 			case IEEE754_RU:    /* toward +Infinity */
-				if(sn == 0)
+				if (sn == 0)
 					return ieee754dp_min(0);
 				else
 					return ieee754dp_zero(1);
 			case IEEE754_RD:    /* toward -Infinity */
-				if(sn == 0)
+				if (sn == 0)
 					return ieee754dp_zero(0);
 				else
 					return ieee754dp_min(1);
