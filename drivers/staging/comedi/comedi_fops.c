@@ -1435,13 +1435,15 @@ static int __comedi_get_user_cmd(struct comedi_device *dev,
 	s = &dev->subdevices[cmd->subdev];
 
 	if (s->type == COMEDI_SUBD_UNUSED) {
-		dev_dbg(dev->class_dev, "%d not valid subdevice\n", cmd->subdev);
+		dev_dbg(dev->class_dev, "%d not valid subdevice\n",
+			cmd->subdev);
 		return -EIO;
 	}
 
 	if (!s->do_cmd || !s->do_cmdtest || !s->async) {
 		dev_dbg(dev->class_dev,
-			"subdevice %d does not support commands\n", cmd->subdev);
+			"subdevice %d does not support commands\n",
+			cmd->subdev);
 		return -EIO;
 	}
 
@@ -1597,7 +1599,6 @@ static int do_cmdtest_ioctl(struct comedi_device *dev,
 {
 	struct comedi_cmd cmd;
 	struct comedi_subdevice *s;
-	unsigned int *chanlist = NULL;
 	unsigned int __user *user_chanlist;
 	int ret;
 
@@ -1625,8 +1626,6 @@ static int do_cmdtest_ioctl(struct comedi_device *dev,
 		dev_dbg(dev->class_dev, "bad cmd address\n");
 		ret = -EFAULT;
 	}
-
-	kfree(chanlist);
 
 	return ret;
 }
