@@ -102,6 +102,8 @@ static u32 audio_dma_ctl_base;
 
 DEFINE_MUTEX(hdmi_msm_state_mutex);
 DEFINE_MUTEX(hdmi_msm_power_mutex);
+DEFINE_MUTEX(hdmi_msm_audio_info_mutex);
+DEFINE_MUTEX(hdmi_msm_audio_config_mutex);
 
 EXPORT_SYMBOL(hdmi_msm_state_mutex);
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
@@ -4191,6 +4193,8 @@ int hdmi_msm_audio_info_setup(bool enabled, u32 num_of_channels,
 	u32 aud_pck_ctrl_2_reg;
 	u32 layout;
 
+	mutex_lock(&hdmi_msm_audio_info_mutex);
+
 	layout = (MSM_HDMI_AUDIO_CHANNEL_2 == num_of_channels) ? 0 : 1;
 	aud_pck_ctrl_2_reg = 1 | (layout << 1);
 	HDMI_OUTP(0x00044, aud_pck_ctrl_2_reg);
@@ -4239,6 +4243,7 @@ int hdmi_msm_audio_info_setup(bool enabled, u32 num_of_channels,
 		default:
 			pr_err("%s(): Unsupported num_of_channels = %u\n",
 					__func__, num_of_channels);
+			mutex_unlock(&hdmi_msm_audio_info_mutex);
 			return -EINVAL;
 			break;
 		}
@@ -4298,6 +4303,7 @@ int hdmi_msm_audio_info_setup(bool enabled, u32 num_of_channels,
 
 
 	hdmi_msm_dump_regs("HDMI-AUDIO-ON: ");
+	mutex_unlock(&hdmi_msm_audio_info_mutex);
 
 	return 0;
 
@@ -4382,6 +4388,8 @@ static void hdmi_msm_en_acp_packet(uint32 byte1)
 
 static void hdmi_msm_audio_setup(void)
 {
+	mutex_lock(&hdmi_msm_audio_config_mutex);
+
 	/* (0) for clr_avmute, (1) for set_avmute */
 	hdmi_msm_en_gc_packet(0);
 	/* (0) for isrc1 only, (1) for isrc1 and isrc2 */
@@ -4407,6 +4415,7 @@ static void hdmi_msm_audio_setup(void)
 	/* Turn on Audio FIFO and SAM DROP ISR */
 	HDMI_OUTP(0x02CC, HDMI_INP(0x02CC) | BIT(1) | BIT(3));
 	DEV_INFO("HDMI Audio: Enabled\n");
+	mutex_unlock(&hdmi_msm_audio_config_mutex);
 }
 
 static int hdmi_msm_audio_off(boolean check, int timeout)
@@ -4433,9 +4442,11 @@ static int hdmi_msm_audio_off(boolean check, int timeout)
 				__func__);
 	}
 
+	mutex_lock(&hdmi_msm_audio_config_mutex);
 	hdmi_msm_audio_info_setup(FALSE, 0, 0, 0, FALSE);
 	hdmi_msm_audio_acr_setup(FALSE, 0, 0, 0);
 	DEV_INFO("HDMI Audio: Disabled\n");
+	mutex_unlock(&hdmi_msm_audio_config_mutex);
 	return 0;
 }
 
