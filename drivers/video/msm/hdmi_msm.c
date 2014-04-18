@@ -5091,6 +5091,12 @@ static void hdmi_msm_turn_on(void)
 #endif
 	hdmi_msm_spd_infoframe_packetsetup();
 
+	if (!hdmi_msm_is_dvi_mode()) {
+		afe_short_silence(100);
+		if (!hdmi_msm_state->hdcp_enable)
+		SWITCH_SET_HDMI_AUDIO(1, 0);
+	}
+
 	if (hdmi_msm_state->hdcp_enable && hdmi_msm_state->reauth) {
 		hdmi_msm_hdcp_enable();
 		hdmi_msm_state->reauth = FALSE ;
@@ -5507,6 +5513,10 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 		hdcp_deauthenticate();
 	}
 	SWITCH_SET_HDMI_AUDIO(0, 0);
+	msleep(100);
+	if (!hdmi_msm_is_dvi_mode())
+		afe_short_silence(100);
+
 
 	if (!hdmi_msm_is_dvi_mode()) {
 		if (external_common_state->hpd_state &&
