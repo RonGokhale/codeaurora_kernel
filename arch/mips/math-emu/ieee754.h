@@ -395,11 +395,7 @@ extern const struct ieee754sp_const __ieee754sp_spcvals[];
  * Indefinite integer value
  */
 #define ieee754si_indef()	INT_MAX
-#ifdef LONG_LONG_MAX
 #define ieee754di_indef()	LONG_LONG_MAX
-#else
-#define ieee754di_indef()	((s64)(~0ULL>>1))
-#endif
 
 /* IEEE exception context, passed to handler */
 struct ieee754xctx {
