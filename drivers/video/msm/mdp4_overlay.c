@@ -3885,16 +3885,16 @@ static u32 mdp4_overlay_get_vsync_cnt(struct msm_fb_data_type *mfd)
 		return 0;
 }
 
-static int mdp4_wait_expect_vsync(struct msm_fb_data_type *mfd,
-	u32 timeout, u32 expect_vsync, u32 *cur_vsync)
+static u32 mdp4_wait_expect_vsync(struct msm_fb_data_type *mfd,
+	u32 timeout, u32 expect_vsync)
 {
-	int ret = 0;
+	u32 cur_vsync_cnt;
 	if (hdmi_prim_display || mfd->index == 0)
-		ret = mdp4_dtv_wait_expect_vsync(timeout,
-			expect_vsync, cur_vsync);
+		cur_vsync_cnt = mdp4_dtv_wait_expect_vsync(timeout,
+			expect_vsync);
 	else
-		*cur_vsync = 0;
-	return ret;
+		cur_vsync_cnt = 0;
+	return cur_vsync_cnt;
 }
 
 void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
@@ -3908,7 +3908,6 @@ void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
 	u32 frame_rate, cur_time_100us, cur_repeat = 2;
 	u32 backup_frc = true, free_run = false;
 	int ts_diff, fc_diff, vsync_diff = 0, play_delay;
-	int ret;
 
 	if ((!mfd->frc_pipe_ndx) || (mfd->frc_pipe_ndx >= OVERLAY_PIPE_MAX))
 		goto frc_update_exit;
@@ -4061,7 +4060,6 @@ void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
 		vsync_diff = FRC_MAX_WAIT_VSYNC_CYCLE;
 
 	if (vsync_diff > 0) {
-		cur_vsync_cnt = 0;
 		*last_frc = *cur_frc;
 		backup_frc = false;
 		msm_fb_release_busy(mfd);
@@ -4069,10 +4067,8 @@ void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
 			*release_busy = false;
 		time_out = mfd->disp_frame_period *
 			(vsync_diff + 1) / 1000;
-		ret = mdp4_wait_expect_vsync(mfd,
-			time_out, expect_vsync_cnt, &cur_vsync_cnt);
-		if (ret)
-			pipe->frc_cadence = FRC_CADENCE_FREE_RUN;
+		cur_vsync_cnt = mdp4_wait_expect_vsync(mfd,
+			time_out, expect_vsync_cnt);
 	}
 
 	pr_mem("frc:v_cnt=%d f_cnt=%d e_vs=%d sl=%d de=%d en=%d ts=%d",
@@ -4259,7 +4255,7 @@ int mdp4_overlay_play(struct fb_info *info, struct msmfb_overlay_data *req)
 			/* cndx = 0 */
 			mdp4_lcdc_pipe_queue(0, pipe);
 			mdp4_lcdc_set_avparams(pipe, img->memory_id);
-                }
+		}
 	} else if (pipe->mixer_num == MDP4_MIXER1) {
 		if (ctrl->panel_mode & MDP4_PANEL_DTV) {
 			mdp4_dtv_pipe_queue(0, pipe);/* cndx = 0 */

@@ -79,6 +79,7 @@ static struct vsycn_ctrl {
 	int vg2fd;
 	unsigned long long avtimer_tick;
 	u32 vsync_cnt;
+	spinlock_t vsync_lock;
 } vsync_ctrl_db[MAX_CONTROLLER];
 
 void mdp4_dtv_base_swap(int cndx, struct mdp4_overlay_pipe *pipe)
@@ -382,7 +383,7 @@ void mdp4_dtv_wait4vsync(int cndx)
 {
 	struct vsycn_ctrl *vctrl;
 	struct mdp4_overlay_pipe *pipe;
-	int ret;
+	ktime_t timestamp;
 
 	if (cndx >= MAX_CONTROLLER) {
 		pr_err("%s: out or range: cndx=%d\n", __func__, cndx);
@@ -396,11 +397,12 @@ void mdp4_dtv_wait4vsync(int cndx)
 		return;
 
 	mdp4_dtv_vsync_irq_ctrl(cndx, 1);
+	timestamp = vctrl->vsync_time;
 
-	ret = wait_event_interruptible_timeout(vctrl->wait_queue, 1,
-			msecs_to_jiffies(VSYNC_PERIOD * 8));
-	if (ret <= 0)
-		pr_err("%s timeout ret=%d", __func__, ret);
+	wait_event_interruptible_timeout(
+			vctrl->wait_queue,
+			!ktime_equal(timestamp, vctrl->vsync_time),
+			msecs_to_jiffies((VSYNC_PERIOD * 2) + 4));
 
 	mdp4_dtv_vsync_irq_ctrl(cndx, 0);
 	mdp4_stat.wait4vsync1++;
@@ -442,22 +444,30 @@ ssize_t mdp4_dtv_show_event(struct device *dev,
 	unsigned long long avtimer_tick = 0;
 	u64 vsync_tick = 0;
 	ktime_t timestamp;
+	unsigned long irq_flags;
 
 	cndx = 0;
 	vctrl = &vsync_ctrl_db[0];
-	memset(buf, 0, 64);
-	timestamp = vctrl->vsync_time;
 
-	ret = wait_event_interruptible(vctrl->wait_queue,
-			!ktime_equal(timestamp, vctrl->vsync_time) &&
-			vctrl->vsync_irq_enabled);
+	spin_lock_irqsave(&vctrl->vsync_lock, irq_flags);
+	timestamp = vctrl->vsync_time;
+	spin_unlock_irqrestore(&vctrl->vsync_lock, irq_flags);
+
+	ret = wait_event_interruptible_timeout(
+			vctrl->wait_queue,
+			(!ktime_equal(timestamp, vctrl->vsync_time) &&
+			vctrl->vsync_irq_enabled),
+			msecs_to_jiffies((VSYNC_PERIOD * 2) + 4));
 	if (ret == -ERESTARTSYS)
 		return ret;
+
+	spin_lock_irqsave(&vctrl->vsync_lock, irq_flags);
 	vg1fd = vctrl->vg1fd;
 	vg2fd = vctrl->vg2fd;
 	avtimer_tick = vctrl->avtimer_tick;
-
 	vsync_tick = ktime_to_ns(vctrl->vsync_time);
+	spin_unlock_irqrestore(&vctrl->vsync_lock, irq_flags);
+
 	ret = snprintf(buf, PAGE_SIZE,
 			"VSYNC=%llu%c"
 			"AVSYNCTP=%llu%c"
@@ -493,6 +503,7 @@ void mdp4_dtv_vsync_init(int cndx)
 	init_completion(&vctrl->dmae_comp);
 	atomic_set(&vctrl->suspend, 1);
 	spin_lock_init(&vctrl->spin_lock);
+	spin_lock_init(&vctrl->vsync_lock);
 	init_waitqueue_head(&vctrl->wait_queue);
 }
 
@@ -1038,31 +1049,39 @@ u32 mdp4_dtv_get_vsync_cnt(void)
 	return vctrl->vsync_cnt;
 }
 
-int mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync,
-			u32 *cur_vsync)
+u32 mdp4_dtv_wait_expect_vsync(u32 timeout, u32 expect_vsync)
 {
 	struct vsycn_ctrl *vctrl;
 	int ret;
+	u32 flag;
+	unsigned long irq_flags;
 
 	vctrl = &vsync_ctrl_db[0];
 
 	mdp4_dtv_vsync_irq_ctrl(0, 1);
 
+	spin_lock_irqsave(&vctrl->vsync_lock, irq_flags);
+	flag = vctrl->vsync_cnt;
+	spin_unlock_irqrestore(&vctrl->vsync_lock, irq_flags);
+
+	if (expect_vsync <= flag)
+		return flag;
+
 	ret = wait_event_interruptible_timeout(
 			vctrl->wait_queue,
-			(expect_vsync == vctrl->vsync_cnt),
-			timeout);
-	if (ret <= 0) {
-		pr_err("%s fails: timeout=%d ret=%d",
-			__func__, timeout, ret);
-		ret = -ETIMEDOUT;
-	} else {
-		ret = 0;
-	}
+			(expect_vsync <= vctrl->vsync_cnt),
+			msecs_to_jiffies(timeout));
+
+	if (ret <= 0)
+		pr_err("%s expect vsync tmt: %d", __func__, ret);
+
+	spin_lock_irqsave(&vctrl->vsync_lock, irq_flags);
+	flag = vctrl->vsync_cnt;
+	spin_unlock_irqrestore(&vctrl->vsync_lock, irq_flags);
+
 	mdp4_dtv_vsync_irq_ctrl(0, 0);
 
-	*cur_vsync = vctrl->vsync_cnt;
-	return ret;
+	return flag;
 }
 
 /* TODO: dtv writeback need to be added later */
@@ -1078,7 +1097,7 @@ void mdp4_external_vsync_dtv(void)
 	vctrl = &vsync_ctrl_db[cndx];
 	pr_debug("%s: cpu=%d\n", __func__, smp_processor_id());
 
-	spin_lock(&vctrl->spin_lock);
+	spin_lock(&vctrl->vsync_lock);
 	vctrl->vsync_time = ktime_get();
 	vctrl->avtimer_tick = 0;
 	if (vctrl->avtimer && ((vctrl->vg1fd > 0) || (vctrl->vg2fd > 0))) {
@@ -1094,11 +1113,12 @@ void mdp4_external_vsync_dtv(void)
 			mdp4_stat.frame_cnt_from_last_drop++;
 		mdp4_stat.frame_cnt++;
 		vg1fd_last = vctrl->vg1fd;
-
 	}
 	vctrl->vsync_cnt++;
+
+	spin_unlock(&vctrl->vsync_lock);
 	wake_up_interruptible_all(&vctrl->wait_queue);
-	spin_unlock(&vctrl->spin_lock);
+
 }
 
 /*
