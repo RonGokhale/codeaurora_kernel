@@ -109,12 +109,14 @@ static DEFINE_MUTEX(hdcp_auth_state_mutex);
 static void hdmi_msm_dump_regs(const char *prefix);
 
 static void hdmi_msm_hdcp_enable(void);
-static void hdmi_msm_turn_on(void);
+static void hdmi_msm_turn_on(u32 force);
 static int hdmi_msm_audio_off(boolean check, int timeout);
 static int hdmi_msm_read_edid(void);
 static void hdmi_msm_hpd_off(void);
 static boolean hdmi_msm_is_dvi_mode(void);
 static void hdmi_msm_encrypt_en_no_lock(u32 enable);
+static int hdmi_msm_power_on_sub(struct platform_device *pdev, u32 force);
+
 
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_CEC_SUPPORT
 
@@ -1396,7 +1398,7 @@ static void hdmi_msm_send_event(boolean on)
 	mutex_unlock(&hdmi_msm_power_mutex);
 	if (mfd->ref_cnt && hdmi_prim_display) {
 		if (on)
-			hdmi_msm_power_on(hdmi_msm_pdev);
+			hdmi_msm_power_on_sub(hdmi_msm_pdev, false);
 		else
 			hdmi_msm_power_off(hdmi_msm_pdev);
 	}
@@ -1514,7 +1516,7 @@ static void hdmi_msm_hdcp_work(struct work_struct *work)
 		mutex_unlock(&external_common_state_hpd_mutex);
 		if (hdmi_msm_state->reauth == TRUE &&
 		!hdmi_msm_state->panel_power_on) {
-			hdmi_msm_turn_on();
+			hdmi_msm_turn_on(false);
 		} else {
 			DEV_DBG("%s: Starting HDCP re-authentication\n",
 					__func__);
@@ -5027,7 +5029,7 @@ int hdmi_msm_clk(int on)
 	return 0;
 }
 
-static void hdmi_msm_turn_on(void)
+static void hdmi_msm_turn_on(u32 force)
 {
 	uint32 audio_pkt_ctrl, audio_cfg;
 	struct msm_fb_data_type *mfd = platform_get_drvdata(hdmi_msm_pdev);
@@ -5056,18 +5058,21 @@ static void hdmi_msm_turn_on(void)
 		msleep(20);
 	}
 	if (mfd->cont_splash_done) {
-		hdmi_msm_set_mode(FALSE);
-		mutex_lock(&hdcp_auth_state_mutex);
-		hdmi_msm_reset_core();
-		mutex_unlock(&hdcp_auth_state_mutex);
+		if (force ||
+		(external_common_state->cur_vic != external_common_state->video_resolution + 1)) {
+			hdmi_msm_set_mode(FALSE);
+			mutex_lock(&hdcp_auth_state_mutex);
+			hdmi_msm_reset_core();
+			mutex_unlock(&hdcp_auth_state_mutex);
 
-		hdmi_msm_init_phy(external_common_state->video_resolution);
-		/* HDMI_USEC_REFTIMER[0x0208] */
-		HDMI_OUTP(0x0208, 0x0001001B);
+			hdmi_msm_init_phy(external_common_state->video_resolution);
+			/* HDMI_USEC_REFTIMER[0x0208] */
+			HDMI_OUTP(0x0208, 0x0001001B);
 
-		hdmi_msm_video_setup(external_common_state->video_resolution);
+			hdmi_msm_video_setup(external_common_state->video_resolution);
+			external_common_state->cur_vic = external_common_state->video_resolution + 1;
+		}
 		hdmi_msm_set_mode(TRUE);
-
 	}
 	if (!hdmi_msm_is_dvi_mode()) {
 		hdmi_msm_audio_setup();
@@ -5346,7 +5351,7 @@ static int hdmi_msm_power_ctrl(boolean enable)
 	return rc;
 }
 
-static int hdmi_msm_power_on(struct platform_device *pdev)
+static int hdmi_msm_power_on_sub(struct platform_device *pdev, u32 force)
 {
 	struct msm_fb_data_type *mfd = platform_get_drvdata(pdev);
 	int ret = 0;
@@ -5378,7 +5383,7 @@ static int hdmi_msm_power_on(struct platform_device *pdev)
 				__func__, mfd->var_xres, mfd->var_yres,
 				mfd->var_pixclock);
 
-		hdmi_msm_turn_on();
+		hdmi_msm_turn_on(force);
 		hdmi_msm_state->panel_power_on = TRUE;
 
 		if (hdmi_msm_state->hdcp_enable) {
@@ -5409,6 +5414,11 @@ error:
 	return ret;
 }
 
+static int hdmi_msm_power_on(struct platform_device *pdev)
+{
+	return hdmi_msm_power_on_sub(pdev, true);
+}
+
 void mhl_connect_api(boolean on)
 {
 	char *envp[2];
@@ -5418,7 +5428,7 @@ void mhl_connect_api(boolean on)
 		hdmi_msm_read_edid();
 		hdmi_msm_state->reauth = FALSE ;
 		/* Build EDID table */
-		hdmi_msm_turn_on();
+		hdmi_msm_turn_on(true);
 		DEV_INFO("HDMI HPD: CONNECTED: send ONLINE\n");
 		kobject_uevent(external_common_state->uevent_kobj,
 			       KOBJ_ONLINE);

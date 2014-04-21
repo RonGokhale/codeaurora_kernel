@@ -75,6 +75,7 @@ struct external_common_state_type {
 	boolean pre_suspend_hpd_state;
 	struct kobject *uevent_kobj;
 	uint32 video_resolution;
+	uint32 cur_vic;
 	struct device *dev;
 	struct switch_dev sdev;
 	struct switch_dev audio_sdev;
