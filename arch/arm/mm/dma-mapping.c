@@ -336,7 +336,7 @@ early_param("coherent_pool", early_coherent_pool);
  */
 static int __init coherent_init(void)
 {
-	pgprot_t prot = pgprot_dmacoherent(pgprot_kernel);
+	pgprot_t prot = pgprot_dmacoherent(PAGE_KERNEL);
 	size_t size = coherent_pool_size;
 	struct page *page;
 	void *ptr;
@@ -641,7 +641,7 @@ static void *__alloc_from_contiguous(struct device *dev, size_t size,
 static void __free_from_contiguous(struct device *dev, struct page *page,
 				   size_t size)
 {
-	__dma_remap(page, size, pgprot_kernel, false);
+	__dma_remap(page, size, PAGE_KERNEL, false);
 	dma_release_from_contiguous(dev, page, size >> PAGE_SHIFT);
 }
 
@@ -1259,7 +1259,7 @@ static int __iommu_remove_mapping(struct device *dev, dma_addr_t iova, size_t si
 static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,
 	    dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
 {
-	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
+	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	struct page **pages;
 	void *addr = NULL;
 
