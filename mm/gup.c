@@ -453,7 +453,7 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 				case -ENOENT:
 					goto next_page;
 				default:
-					BUILD_BUG();
+					BUG();
 				}
 				cond_resched();
 			}
