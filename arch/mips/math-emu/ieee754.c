@@ -28,6 +28,7 @@
  * ########################################################################
  */
 
+#include <linux/compiler.h>
 
 #include "ieee754int.h"
 #include "ieee754sp.h"
@@ -44,18 +45,17 @@
 /* special constants
 */
 
-
-#if (defined(BYTE_ORDER) && BYTE_ORDER == LITTLE_ENDIAN) || defined(__MIPSEL__)
-#define SPSTR(s, b, m) {m, b, s}
-#define DPSTR(s, b, mh, ml) {ml, mh, b, s}
-#endif
-
 #ifdef __MIPSEB__
 #define SPSTR(s, b, m) {s, b, m}
 #define DPSTR(s, b, mh, ml) {s, b, mh, ml}
+#elif defined(__MIPSEL__)
+#define SPSTR(s, b, m) {m, b, s}
+#define DPSTR(s, b, mh, ml) {ml, mh, b, s}
+#else /* !defined (__MIPSEB__) && !defined (__MIPSEL__) */
+#error "MIPS but neither __MIPSEB__ nor __MIPSEL__?"
 #endif
 
-const struct ieee754dp_konst __ieee754dp_spcvals[] = {
+const struct ieee754dp_const __ieee754dp_spcvals[] = {
 	DPSTR(0, DP_EMIN - 1 + DP_EBIAS, 0, 0), /* + zero   */
 	DPSTR(1, DP_EMIN - 1 + DP_EBIAS, 0, 0), /* - zero   */
 	DPSTR(0, DP_EBIAS, 0, 0),	/* + 1.0   */
@@ -75,7 +75,7 @@ const struct ieee754dp_konst __ieee754dp_spcvals[] = {
 	DPSTR(0, 63 + DP_EBIAS, 0, 0),	/* + 1.0e63 */
 };
 
-const struct ieee754sp_konst __ieee754sp_spcvals[] = {
+const struct ieee754sp_const __ieee754sp_spcvals[] = {
 	SPSTR(0, SP_EMIN - 1 + SP_EBIAS, 0),	/* + zero   */
 	SPSTR(1, SP_EMIN - 1 + SP_EBIAS, 0),	/* - zero   */
 	SPSTR(0, SP_EBIAS, 0),	/* + 1.0   */
@@ -96,11 +96,11 @@ const struct ieee754sp_konst __ieee754sp_spcvals[] = {
 };
 
 
-int ieee754si_xcpt(int r, const char *op, ...)
+int __cold ieee754si_xcpt(int r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 
-	if (!TSTX())
+	if (!ieee754_tstx())
 		return r;
 	ax.op = op;
 	ax.rt = IEEE754_RT_SI;
@@ -111,11 +111,11 @@ int ieee754si_xcpt(int r, const char *op, ...)
 	return ax.rv.si;
 }
 
-s64 ieee754di_xcpt(s64 r, const char *op, ...)
+s64 __cold ieee754di_xcpt(s64 r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 
-	if (!TSTX())
+	if (!ieee754_tstx())
 		return r;
 	ax.op = op;
 	ax.rt = IEEE754_RT_DI;

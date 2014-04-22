@@ -26,25 +26,25 @@
 
 #include "ieee754dp.h"
 
-int ieee754dp_finite(ieee754dp x)
+int ieee754dp_finite(union ieee754dp x)
 {
 	return DPBEXP(x) != DP_EMAX + 1 + DP_EBIAS;
 }
 
-ieee754dp ieee754dp_copysign(ieee754dp x, ieee754dp y)
+union ieee754dp ieee754dp_copysign(union ieee754dp x, union ieee754dp y)
 {
-	CLEARCX;
+	ieee754_clearcx();
 	DPSIGN(x) = DPSIGN(y);
 	return x;
 }
 
 
-ieee754dp ieee754dp_neg(ieee754dp x)
+union ieee754dp ieee754dp_neg(union ieee754dp x)
 {
 	COMPXDP;
 
 	EXPLODEXDP;
-	CLEARCX;
+	ieee754_clearcx();
 	FLUSHXDP;
 
 	/*
@@ -55,8 +55,8 @@ ieee754dp ieee754dp_neg(ieee754dp x)
 	DPSIGN(x) ^= 1;
 
 	if (xc == IEEE754_CLASS_SNAN) {
-		ieee754dp y = ieee754dp_indef();
-		SETCX(IEEE754_INVALID_OPERATION);
+		union ieee754dp y = ieee754dp_indef();
+		ieee754_setcx(IEEE754_INVALID_OPERATION);
 		DPSIGN(y) = DPSIGN(x);
 		return ieee754dp_nanxcpt(y, "neg");
 	}
@@ -65,19 +65,19 @@ ieee754dp ieee754dp_neg(ieee754dp x)
 }
 
 
-ieee754dp ieee754dp_abs(ieee754dp x)
+union ieee754dp ieee754dp_abs(union ieee754dp x)
 {
 	COMPXDP;
 
 	EXPLODEXDP;
-	CLEARCX;
+	ieee754_clearcx();
 	FLUSHXDP;
 
 	/* Clear sign ALWAYS, irrespective of NaN */
 	DPSIGN(x) = 0;
 
 	if (xc == IEEE754_CLASS_SNAN) {
-		SETCX(IEEE754_INVALID_OPERATION);
+		ieee754_setcx(IEEE754_INVALID_OPERATION);
 		return ieee754dp_nanxcpt(ieee754dp_indef(), "abs");
 	}
 
