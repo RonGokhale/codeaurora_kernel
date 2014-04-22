@@ -662,7 +662,10 @@ static void isolate_freepages(struct zone *zone,
 				struct compact_control *cc)
 {
 	struct page *page;
-	unsigned long pfn, low_pfn, next_free_pfn, z_end_pfn;
+	unsigned long pfn;	     /* scanning cursor */
+	unsigned long low_pfn;	     /* lowest pfn scanner is able to scan */
+	unsigned long next_free_pfn; /* start pfn for scaning at next round */
+	unsigned long z_end_pfn;     /* zone's end pfn */
 	int nr_freepages = cc->nr_freepages;
 	struct list_head *freelist = &cc->freepages;
 
@@ -679,8 +682,8 @@ static void isolate_freepages(struct zone *zone,
 	low_pfn = ALIGN(cc->migrate_pfn + 1, pageblock_nr_pages);
 
 	/*
-	 * Seed the value for max(next_free_pfn, pfn) updates. If there are
-	 * none, the pfn < low_pfn check will kick in.
+	 * Seed the value for max(next_free_pfn, pfn) updates. If no pages are
+	 * isolated, the pfn < low_pfn check will kick in.
 	 */
 	next_free_pfn = 0;
 
