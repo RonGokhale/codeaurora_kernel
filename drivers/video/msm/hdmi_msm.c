@@ -98,7 +98,6 @@ static struct platform_device *hdmi_msm_pdev;
 
 /* Enable HDCP by default */
 static bool hdcp_feature_on = true;
-static u32 audio_dma_ctl_base;
 
 DEFINE_MUTEX(hdmi_msm_state_mutex);
 DEFINE_MUTEX(hdmi_msm_power_mutex);
@@ -5610,6 +5609,8 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	int rc;
 	struct platform_device *fb_dev;
 	struct msm_fb_data_type *mfd = NULL;
+	u32 audio_pkt_ctrl;
+	u32 audio_eng_cfg;
 
 	if (!hdmi_msm_state) {
 		pr_err("%s: hdmi_msm_state is NULL\n", __func__);
@@ -5657,14 +5658,6 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 		return 0;
 	}
 
-	/* reset audio dma */
-	if (hdmi_prim_display) {
-		if (audio_dma_ctl_base == 0)
-			audio_dma_ctl_base = (u32)ioremap(0x28106000, 0x100);
-		if (audio_dma_ctl_base)
-			outpdw(audio_dma_ctl_base, 0);
-	}
-
 	hdmi_msm_state->hdmi_app_clk = clk_get(&pdev->dev, "core_clk");
 	if (IS_ERR(hdmi_msm_state->hdmi_app_clk)) {
 		DEV_ERR("'core_clk' clk not found\n");
@@ -5709,6 +5702,47 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 		DEV_ERR("Init FAILED: cec_power function missing\n");
 		rc = -ENODEV;
 		goto error;
+	}
+
+	audio_pkt_ctrl = HDMI_INP(HDMI_AUDIO_PKT_CTRL);
+	audio_eng_cfg  = HDMI_INP(HDMI_AUDIO_CFG);
+
+	if ((audio_pkt_ctrl & BIT(0)) || (audio_eng_cfg & BIT(0))) {
+		u32 lpa_dma_idle, i = 0;
+		void __iomem *dai_base = ioremap(0x28100000,
+			(0x2810DFFF - 0x28100000) + 1);
+
+		DEV_INFO("%s: msm-dai: 0x%08x\n", __func__,
+			(unsigned int)dai_base);
+
+		lpa_dma_idle = readl_relaxed(dai_base + 0x6014);
+
+		DEV_INFO("lpa_dma_idle = 0x%x\n", lpa_dma_idle);
+
+		hdmi_audio_packet_enable(false);
+
+		while (i < 200) {
+			u32 val;
+
+			msleep(20);
+
+			val = readl_relaxed(dai_base + 0x6014);
+			DEV_INFO("lpa_dma_idle = 0x%x\n", val);
+
+			if (val == lpa_dma_idle)
+				break;
+
+			lpa_dma_idle = val;
+			i++;
+		}
+
+		DEV_INFO("%s: DAI DMA idle after %d ms\n", __func__, i * 20);
+		hdmi_audio_enable(false, 0);
+
+		lpa_dma_idle = readl_relaxed(dai_base + 0x6000);
+		writel_relaxed(lpa_dma_idle & ~BIT(0), dai_base + 0x6000);
+
+		iounmap(dai_base);
 	}
 
 	rc = request_threaded_irq(hdmi_msm_state->irq, NULL, &hdmi_msm_isr,
@@ -5828,11 +5862,6 @@ static int __devexit hdmi_msm_remove(struct platform_device *pdev)
 	if (hdmi_msm_state->hdmi_io)
 		iounmap(hdmi_msm_state->hdmi_io);
 	hdmi_msm_state->hdmi_io = NULL;
-
-	if (audio_dma_ctl_base) {
-		iounmap((unsigned char *)audio_dma_ctl_base);
-		audio_dma_ctl_base = 0;
-	}
 
 	external_common_state_remove();
 
