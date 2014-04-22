@@ -2876,6 +2876,8 @@ static void hdcp_deauthenticate(void)
 	mutex_lock(&hdcp_auth_state_mutex);
 	external_common_state->hdcp_active = FALSE;
 	mutex_unlock(&hdcp_auth_state_mutex);
+	hdmi_msm_encrypt_en_no_lock(false);
+	msleep(20);
 	/* 0x0130 HDCP_RESET
 	  [0] LINK0_DEAUTHENTICATE */
 	HDMI_OUTP(0x0130, 0x1);
@@ -2884,7 +2886,6 @@ static void hdcp_deauthenticate(void)
 	  [8] ENCRYPTION_ENABLE
 	  [0] ENABLE */
 	/* encryption_enable = 0 | hdcp block enable = 1 */
-	hdmi_msm_encrypt_en_no_lock(false);
 	HDMI_OUTP(0x0110, 0x0);
 	msleep(20);
 
@@ -3790,6 +3791,9 @@ static void hdmi_msm_hdcp_enable(void)
 
 		SWITCH_SET_HDMI_AUDIO(1, 0);
 	}
+
+	hdmi_msm_encrypt_en_no_lock(true);
+	mdp4_dtv_mute(false);
 
 	/*
 	 * HDCP auth'ed successfully,
@@ -5479,6 +5483,7 @@ static int hdmi_msm_power_off(struct platform_device *pdev)
 	}
 
 	if (hdmi_msm_state->hdcp_enable) {
+		mdp4_dtv_mute(true);
 		if (hdmi_msm_state->hdcp_activating) {
 			/*
 			 * Let the HDCP work know that we got an HPD
