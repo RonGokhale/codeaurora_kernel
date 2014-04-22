@@ -181,6 +181,7 @@ void hdmi_msm_cec_deinit_input_event(void);
 void mhl_connect_api(boolean on);
 void hdmi_msm_en_gc_packet(boolean do_av_mute);
 void hdmi_msm_encrypt_en(u32 enable);
+int afe_short_silence(u32 duration);
 void mdp4_dtv_mute(u32 enable);
 u32 hdmi_msm_is_cec_wakeup_enabled(void);
 u32 hdmi_msm_cect_no_daemon_enabled(void);
