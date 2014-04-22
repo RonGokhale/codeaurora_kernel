@@ -1,3 +1,8 @@
+#include <linux/kernel.h>
+#include <linux/errno.h>
+#include <linux/err.h>
+#include <linux/spinlock.h>
+
 #include <linux/hugetlb.h>
 #include <linux/mm.h>
 #include <linux/rmap.h>
@@ -6,8 +11,8 @@
 
 #include "internal.h"
 
-static inline struct page *no_page_table(struct vm_area_struct *vma,
-		unsigned int flags)
+static struct page *no_page_table(struct vm_area_struct *vma,
+				  unsigned int flags)
 {
 	/*
 	 * When core dumping an enormous anonymous area that nobody
@@ -208,7 +213,7 @@ struct page *follow_page_mask(struct vm_area_struct *vma,
 	return follow_page_pte(vma, address, pmd, flags);
 }
 
-static inline int stack_guard_page(struct vm_area_struct *vma, unsigned long addr)
+static int stack_guard_page(struct vm_area_struct *vma, unsigned long addr)
 {
 	return stack_guard_page_start(vma, addr) ||
 	       stack_guard_page_end(vma, addr+PAGE_SIZE);
