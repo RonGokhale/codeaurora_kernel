@@ -205,6 +205,8 @@ kmem_cache_create(const char *name, size_t size, size_t align,
 	int err;
 
 	get_online_cpus();
+	get_online_mems();
+
 	mutex_lock(&slab_mutex);
 
 	err = kmem_cache_sanity_check(name, size);
@@ -239,6 +241,8 @@ kmem_cache_create(const char *name, size_t size, size_t align,
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
+
+	put_online_mems();
 	put_online_cpus();
 
 	if (err) {
@@ -272,6 +276,8 @@ void kmem_cache_create_memcg(struct mem_cgroup *memcg, struct kmem_cache *root_c
 	char *cache_name;
 
 	get_online_cpus();
+	get_online_mems();
+
 	mutex_lock(&slab_mutex);
 
 	/*
@@ -295,6 +301,8 @@ void kmem_cache_create_memcg(struct mem_cgroup *memcg, struct kmem_cache *root_c
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
+
+	put_online_mems();
 	put_online_cpus();
 }
 
@@ -322,6 +330,8 @@ static int kmem_cache_destroy_memcg_children(struct kmem_cache *s)
 void kmem_cache_destroy(struct kmem_cache *s)
 {
 	get_online_cpus();
+	get_online_mems();
+
 	mutex_lock(&slab_mutex);
 
 	s->refcount--;
@@ -350,14 +360,35 @@ void kmem_cache_destroy(struct kmem_cache *s)
 	memcg_free_cache_params(s);
 	kfree(s->name);
 	kmem_cache_free(kmem_cache, s);
-	goto out_put_cpus;
+	goto out;
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
-out_put_cpus:
+out:
+	put_online_mems();
 	put_online_cpus();
 }
 EXPORT_SYMBOL(kmem_cache_destroy);
+
+/**
+ * kmem_cache_shrink - Shrink a cache.
+ * @cachep: The cache to shrink.
+ *
+ * Releases as many slabs as possible for a cache.
+ * To help debugging, a zero exit status indicates all slabs were released.
+ */
+int kmem_cache_shrink(struct kmem_cache *cachep)
+{
+	int ret;
+
+	get_online_cpus();
+	get_online_mems();
+	ret = __kmem_cache_shrink(cachep);
+	put_online_mems();
+	put_online_cpus();
+	return ret;
+}
+EXPORT_SYMBOL(kmem_cache_shrink);
 
 int slab_is_available(void)
 {
