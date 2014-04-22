@@ -46,29 +46,6 @@ static const struct snd_soc_dapm_route qi_lb60_routes[] = {
 	{"Speaker", NULL, "ROUT"},
 };
 
-#define QI_LB60_DAIFMT (SND_SOC_DAIFMT_I2S | \
-			SND_SOC_DAIFMT_NB_NF | \
-			SND_SOC_DAIFMT_CBM_CFM)
-
-static int qi_lb60_codec_init(struct snd_soc_pcm_runtime *rtd)
-{
-	struct snd_soc_codec *codec = rtd->codec;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dapm_context *dapm = &codec->dapm;
-	int ret;
-
-	snd_soc_dapm_nc_pin(dapm, "LIN");
-	snd_soc_dapm_nc_pin(dapm, "RIN");
-
-	ret = snd_soc_dai_set_fmt(cpu_dai, QI_LB60_DAIFMT);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set cpu dai format: %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
 static struct snd_soc_dai_link qi_lb60_dai = {
 	.name = "jz4740",
 	.stream_name = "jz4740",
@@ -76,7 +53,8 @@ static struct snd_soc_dai_link qi_lb60_dai = {
 	.platform_name = "jz4740-i2s",
 	.codec_dai_name = "jz4740-hifi",
 	.codec_name = "jz4740-codec",
-	.init = qi_lb60_codec_init,
+	.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+		SND_SOC_DAIFMT_CBM_CFM,
 };
 
 static struct snd_soc_card qi_lb60 = {
@@ -89,6 +67,7 @@ static struct snd_soc_card qi_lb60 = {
 	.num_dapm_widgets = ARRAY_SIZE(qi_lb60_widgets),
 	.dapm_routes = qi_lb60_routes,
 	.num_dapm_routes = ARRAY_SIZE(qi_lb60_routes),
+	.fully_routed = true,
 };
 
 static const struct gpio qi_lb60_gpios[] = {
@@ -107,7 +86,7 @@ static int qi_lb60_probe(struct platform_device *pdev)
 
 	card->dev = &pdev->dev;
 
-	ret = snd_soc_register_card(card);
+	ret = devm_snd_soc_register_card(&pdev->dev, card);
 	if (ret) {
 		dev_err(&pdev->dev, "snd_soc_register_card() failed: %d\n",
 			ret);
@@ -118,9 +97,6 @@ static int qi_lb60_probe(struct platform_device *pdev)
 
 static int qi_lb60_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-
-	snd_soc_unregister_card(card);
 	gpio_free_array(qi_lb60_gpios, ARRAY_SIZE(qi_lb60_gpios));
 	return 0;
 }
