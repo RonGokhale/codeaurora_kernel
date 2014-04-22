@@ -84,6 +84,9 @@ config PINCTRL_AT91
 	depends on ARCH_AT91
 	select PINMUX
 	select PINCONF
+	select GPIOLIB
+	select OF_GPIO
+	select GPIOLIB_IRQCHIP
 	help
 	  Say Y here to enable the at91 pinctrl driver
 
@@ -222,9 +225,17 @@ config PINCTRL_MSM
 	select PINCONF
 	select GENERIC_PINCONF
 
+config PINCTRL_APQ8064
+	tristate "Qualcomm APQ8064 pin controller driver"
+	depends on GPIOLIB && OF
+	select PINCTRL_MSM
+	help
+	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
+	  Qualcomm TLMM block found in the Qualcomm APQ8064 platform.
+
 config PINCTRL_MSM8X74
 	tristate "Qualcomm 8x74 pin controller driver"
-	depends on GPIOLIB && OF
+	depends on GPIOLIB && OF && (ARCH_QCOM || COMPILE_TEST)
 	select PINCTRL_MSM
 	help
 	  This is the pinctrl, pinmux, pinconf and gpiolib driver for the
@@ -281,6 +292,7 @@ config PINCTRL_ST
 	depends on OF
 	select PINMUX
 	select PINCONF
+	select GPIOLIB_IRQCHIP
 
 config PINCTRL_TEGRA
 	bool
