@@ -29,7 +29,7 @@
 			pll-supply = <&palmas_smps3_reg>;
 
 			nvidia,ddc-i2c-bus = <&hdmi_ddc>;
-			nvidia,hpd-gpio =
+			nvidia,hpd-gpios =
 				<&gpio TEGRA_GPIO(N, 7) GPIO_ACTIVE_HIGH>;
 		};
 
