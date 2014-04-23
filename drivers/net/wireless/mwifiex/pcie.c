@@ -17,6 +17,7 @@
  * this warranty disclaimer.
  */
 
+#include <linux/vmalloc.h>
 #include <linux/firmware.h>
 
 #include "decl.h"
