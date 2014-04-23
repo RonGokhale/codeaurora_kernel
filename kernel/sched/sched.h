@@ -409,6 +409,8 @@ struct rt_rq {
 	int overloaded;
 	struct plist_head pushable_tasks;
 #endif
+	int rt_queued;
+
 	int rt_throttled;
 	u64 rt_time;
 	u64 rt_runtime;
@@ -422,18 +424,6 @@ struct rt_rq {
 	struct task_group *tg;
 #endif
 };
-
-#ifdef CONFIG_RT_GROUP_SCHED
-static inline int rt_rq_throttled(struct rt_rq *rt_rq)
-{
-	return rt_rq->rt_throttled && !rt_rq->rt_nr_boosted;
-}
-#else
-static inline int rt_rq_throttled(struct rt_rq *rt_rq)
-{
-	return rt_rq->rt_throttled;
-}
-#endif
 
 /* Deadline class' related fields in a runqueue */
 struct dl_rq {
@@ -1225,7 +1215,7 @@ static inline void inc_nr_running(struct rq *rq)
 		if (tick_nohz_full_cpu(rq->cpu)) {
 			/* Order rq->nr_running write against the IPI */
 			smp_wmb();
-			smp_send_reschedule(rq->cpu);
+			tick_nohz_full_kick_cpu(rq->cpu);
 		}
        }
 #endif
