@@ -224,7 +224,7 @@ struct atmel_spi {
 	struct platform_device	*pdev;
 
 	struct spi_transfer	*current_transfer;
-	unsigned long		current_remaining_bytes;
+	int			current_remaining_bytes;
 	int			done_status;
 
 	struct completion	xfer_completion;
@@ -1110,13 +1110,18 @@ static int atmel_spi_one_transfer(struct spi_master *master,
 				atmel_spi_next_xfer_pio(master, xfer);
 			} else {
 				as->current_remaining_bytes -= len;
+				if (as->current_remaining_bytes < 0)
+					as->current_remaining_bytes = 0;
 			}
 		} else {
 			atmel_spi_next_xfer_pio(master, xfer);
 		}
 
+		/* interrupts are disabled, so free the lock for schedule */
+		atmel_spi_unlock(as);
 		ret = wait_for_completion_timeout(&as->xfer_completion,
 							SPI_DMA_TIMEOUT);
+		atmel_spi_lock(as);
 		if (WARN_ON(ret == 0)) {
 			dev_err(&spi->dev,
 				"spi trasfer timeout, err %d\n", ret);
