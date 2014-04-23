@@ -217,15 +217,15 @@ union vnt_tx_head {
 struct vnt_tx_fifo_head {
 	u32 adwTxKey[4];
 	u16 wFIFOCtl;
-	u16 wTimeStamp;
+	__le16 time_stamp;
 	u16 wFragCtl;
-	u16 wReserved;
+	__le16 current_rate;
 } __packed;
 
 struct vnt_tx_buffer {
 	u8 byType;
 	u8 byPKTNO;
-	u16 wTxByteCount;
+	__le16 tx_byte_count;
 	struct vnt_tx_fifo_head fifo_head;
 	union vnt_tx_head tx_head;
 } __packed;
@@ -241,7 +241,7 @@ struct vnt_tx_short_buf_head {
 struct vnt_beacon_buffer {
 	u8 byType;
 	u8 byPKTNO;
-	u16 wTxByteCount;
+	__le16 tx_byte_count;
 	struct vnt_tx_short_buf_head short_head;
 	struct ieee80211_hdr hdr;
 } __packed;
