@@ -1,0 +1,3217 @@
+$ date
+Wednesday 23 April  09:36:38 EST 2014
+$ git checkout master
+Already on 'master'
+$ git reset --hard stable
+HEAD is now at c089b229dfdd Merge branch 'for-linus' of git://git.kernel.org/pub/scm/linux/kernel/git/rw/uml
+Merging origin/master (4d0fa8a0f012 Merge tag 'gpio-v3.15-2' of git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-gpio)
+$ git merge origin/master
+Updating c089b229dfdd..4d0fa8a0f012
+Fast-forward
+ arch/x86/vdso/vdso-layout.lds.S | 19 ++++++++-----------
+ drivers/gpio/gpiolib-acpi.c     | 12 +++++++++---
+ drivers/gpio/gpiolib.c          |  2 +-
+ 3 files changed, 18 insertions(+), 15 deletions(-)
+Merging fixes/master (b0031f227e47 Merge tag 's2mps11-build' of git://git.kernel.org/pub/scm/linux/kernel/git/broonie/regulator)
+$ git merge fixes/master
+Already up-to-date.
+Merging kbuild-current/rc-fixes (38dbfb59d117 Linus 3.14-rc1)
+$ git merge kbuild-current/rc-fixes
+Already up-to-date.
+Merging arc-current/for-curr (a798c10faf62 Linux 3.15-rc2)
+$ git merge arc-current/for-curr
+Already up-to-date.
+Merging arm-current/fixes (244b47838626 ARM: 8026/1: Fix emulation of multiply accumulate instructions)
+$ git merge arm-current/fixes
+Merge made by the 'recursive' strategy.
+ arch/arm/Kconfig.debug   | 12 ++++++------
+ arch/arm/vfp/vfpdouble.c |  2 ++
+ arch/arm/vfp/vfpsingle.c |  2 ++
+ 3 files changed, 10 insertions(+), 6 deletions(-)
+Merging m68k-current/for-linus (50be9eba831d m68k: Update defconfigs for v3.14-rc1)
+$ git merge m68k-current/for-linus
+Already up-to-date.
+Merging metag-fixes/fixes (0414855fdc4a Linux 3.14-rc5)
+$ git merge metag-fixes/fixes
+Already up-to-date.
+Merging powerpc-merge/merge (cc4f265ad9a3 powerpc/powernv Adapt opal-elog and opal-dump to new sysfs_remove_file_self)
+$ git merge powerpc-merge/merge
+Already up-to-date.
+Merging sparc/master (a798c10faf62 Linux 3.15-rc2)
+$ git merge sparc/master
+Already up-to-date.
+Merging net/master (7b07bd4e5187 net: sxgbe: Added phy_found error path)
+$ git merge net/master
+Merge made by the 'recursive' strategy.
+ MAINTAINERS                                     |  1 -
+ drivers/net/ethernet/arc/emac_main.c            | 21 ++++++++-----
+ drivers/net/ethernet/intel/e1000e/netdev.c      |  6 ++--
+ drivers/net/ethernet/intel/i40e/i40e_main.c     |  9 ++++++
+ drivers/net/ethernet/intel/i40e/i40e_nvm.c      |  2 +-
+ drivers/net/ethernet/intel/i40e/i40e_ptp.c      |  4 +--
+ drivers/net/ethernet/intel/i40e/i40e_txrx.c     | 22 +++++++-------
+ drivers/net/ethernet/intel/igb/e1000_i210.c     |  2 +-
+ drivers/net/ethernet/intel/igb/e1000_mac.c      | 13 ++++----
+ drivers/net/ethernet/intel/igb/igb_main.c       |  4 ++-
+ drivers/net/ethernet/intel/igb/igb_ptp.c        |  4 +--
+ drivers/net/ethernet/intel/ixgbe/ixgbe.h        | 21 ++-----------
+ drivers/net/ethernet/intel/ixgbe/ixgbe_common.c |  2 +-
+ drivers/net/ethernet/intel/ixgbe/ixgbe_main.c   |  3 +-
+ drivers/net/ethernet/intel/ixgbe/ixgbe_phy.c    |  6 ++--
+ drivers/net/ethernet/intel/ixgbe/ixgbe_ptp.c    | 40 ++++++++-----------------
+ drivers/net/ethernet/samsung/sxgbe/sxgbe_desc.c |  4 +--
+ drivers/net/ethernet/samsung/sxgbe/sxgbe_desc.h | 39 +++++++++++-------------
+ drivers/net/ethernet/samsung/sxgbe/sxgbe_mdio.c | 14 +++++++--
+ drivers/net/virtio_net.c                        |  2 +-
+ include/linux/sock_diag.h                       |  2 +-
+ net/core/sock_diag.c                            |  4 +--
+ net/packet/diag.c                               |  2 +-
+ 23 files changed, 109 insertions(+), 118 deletions(-)
+Merging ipsec/master (a32452366b72 vti4: Don't count header length twice.)
+$ git merge ipsec/master
+Resolved 'net/ipv4/ip_vti.c' using previous resolution.
+Auto-merging net/ipv6/xfrm6_output.c
+Auto-merging net/ipv4/xfrm4_output.c
+Auto-merging net/ipv4/ip_vti.c
+CONFLICT (content): Merge conflict in net/ipv4/ip_vti.c
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master 4b1d0c64ecb5] Merge remote-tracking branch 'ipsec/master'
+$ git diff -M --stat --summary HEAD^..
+ net/ipv4/ip_vti.c       |  1 -
+ net/ipv4/xfrm4_output.c | 32 ++++++++++++++++++--------------
+ net/ipv6/xfrm6_output.c | 22 +++++++++++++---------
+ 3 files changed, 31 insertions(+), 24 deletions(-)
+Merging sound-current/for-linus (8dc9abb93dde ALSA: hda/realtek - Add headset Mic support for Dell machine)
+$ git merge sound-current/for-linus
+Already up-to-date.
+Merging pci-current/for-linus (f5d3352b2751 PCI: tegra: Use new OF interrupt mapping when possible)
+$ git merge pci-current/for-linus
+Already up-to-date.
+Merging wireless/master (c82552c5b0cb ath9k: add a recv budget)
+$ git merge wireless/master
+Auto-merging MAINTAINERS
+Merge made by the 'recursive' strategy.
+ MAINTAINERS                                  |  1 -
+ drivers/net/wireless/ath/ath9k/recv.c        |  9 ++++++---
+ drivers/net/wireless/rt2x00/rt2x00mac.c      | 22 ++++++++++++----------
+ drivers/net/wireless/rtlwifi/rtl8188ee/trx.c |  2 +-
+ 4 files changed, 19 insertions(+), 15 deletions(-)
+Merging driver-core.current/driver-core-linus (94f8cc0eea03 drivers/base/dd.c incorrect pr_debug() parameters)
+$ git merge driver-core.current/driver-core-linus
+Already up-to-date.
+Merging tty.current/tty-linus (12de375ec493 Revert "serial: 8250, disable "too much work" messages")
+$ git merge tty.current/tty-linus
+Already up-to-date.
+Merging usb.current/usb-linus (94d72f008909 uas: fix deadlocky memory allocations)
+$ git merge usb.current/usb-linus
+Already up-to-date.
+Merging staging.current/staging-linus (a798c10faf62 Linux 3.15-rc2)
+$ git merge staging.current/staging-linus
+Already up-to-date.
+Merging char-misc.current/char-misc-linus (03367ef5ea81 Drivers: hv: vmbus: Negotiate version 3.0 when running on ws2012r2 hosts)
+$ git merge char-misc.current/char-misc-linus
+Already up-to-date.
+Merging input-current/for-linus (46a2986ebbe1 Input: synaptics - add min/max quirk for ThinkPad T431s, L440, L540, S1 Yoga and X1)
+$ git merge input-current/for-linus
+Merge made by the 'recursive' strategy.
+ drivers/input/misc/da9055_onkey.c     |   1 -
+ drivers/input/mouse/synaptics.c       |  97 +++++++++++++-
+ drivers/input/serio/i8042-x86ia64io.h |  15 +++
+ drivers/input/serio/i8042.c           |   6 +
+ drivers/input/serio/serio.c           |  14 ++
+ drivers/input/tablet/wacom_sys.c      | 246 ++++++++++++++++------------------
+ drivers/input/tablet/wacom_wac.c      |  29 ++--
+ drivers/input/touchscreen/ads7846.c   |   2 +-
+ include/linux/serio.h                 |   1 +
+ include/uapi/linux/input.h            |   1 +
+ 10 files changed, 261 insertions(+), 151 deletions(-)
+Merging md-current/for-linus (d47648fcf061 raid5: avoid finding "discard" stripe)
+$ git merge md-current/for-linus
+Already up-to-date.
+Merging crypto-current/master (eb4a5346e777 hwrng: bcm2835 - fix oops when rng h/w is accessed during registration)
+$ git merge crypto-current/master
+Already up-to-date.
+Merging ide/master (5b40dd30bbfa ide: Fix SC1200 dependencies)
+$ git merge ide/master
+Merge made by the 'recursive' strategy.
+ drivers/ide/Kconfig     | 5 ++++-
+ drivers/ide/ide-probe.c | 8 +++++---
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+Merging dwmw2/master (5950f0803ca9 pcmcia: remove RPX board stuff)
+$ git merge dwmw2/master
+Already up-to-date.
+Merging devicetree-current/devicetree/merge (1f42e5dd5065 of: Add self test for of_match_node())
+$ git merge devicetree-current/devicetree/merge
+Already up-to-date.
+Merging rr-fixes/fixes (7122c3e9154b scripts/link-vmlinux.sh: only filter kernel symbols for arm)
+$ git merge rr-fixes/fixes
+Already up-to-date.
+Merging mfd-fixes/master (73beb63d290f mfd: rtsx_pcr: Disable interrupts before cancelling delayed works)
+$ git merge mfd-fixes/master
+Already up-to-date.
+Merging vfio-fixes/for-linus (239a87020b26 Merge branch 'for-joerg/arm-smmu/fixes' of git://git.kernel.org/pub/scm/linux/kernel/git/will/linux into for-linus)
+$ git merge vfio-fixes/for-linus
+Already up-to-date.
+Merging drm-intel-fixes/for-linux-next-fixes (b6842feb63a2 drm/i915: Allow user modes to exceed DVI 165MHz limit)
+$ git merge drm-intel-fixes/for-linux-next-fixes
+Merge made by the 'recursive' strategy.
+ drivers/gpu/drm/i915/intel_hdmi.c | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+Merging asm-generic/master (fb9de7ebc3a2 xtensa: Use generic asm/mmu.h for nommu)
+$ git merge asm-generic/master
+Already up-to-date.
+Merging arc/for-next (134aeaed08c4 ARC: Fixed spelling errors within comments)
+$ git merge arc/for-next
+Merge made by the 'recursive' strategy.
+ arch/arc/include/asm/irq.h       |  2 --
+ arch/arc/include/asm/processor.h | 29 ++++-------------------------
+ arch/arc/kernel/entry.S          | 12 ++++++------
+ arch/arc/kernel/irq.c            | 18 ------------------
+ arch/arc/kernel/process.c        | 23 +++++++++++++++++++++++
+ arch/arc/mm/cache_arc700.c       |  4 ++++
+ arch/arc/plat-arcfpga/Makefile   |  2 +-
+ arch/arc/plat-arcfpga/platform.c |  4 ++--
+ arch/arc/plat-arcfpga/smp.c      | 18 ++++++++++++++++++
+ 9 files changed, 58 insertions(+), 54 deletions(-)
+Merging arm/for-next (0b8eecaf8ad0 Merge branches 'fixes' and 'misc' into for-next)
+$ git merge arm/for-next
+Merge made by the 'recursive' strategy.
+ Documentation/arm/memory.txt  |   7 ---
+ arch/arm/Kconfig              |   5 ++
+ arch/arm/include/asm/memory.h |   3 +-
+ arch/arm/kernel/Makefile      |   1 +
+ arch/arm/kernel/ftrace.c      |  13 +++++
+ arch/arm/kernel/hibernate.c   | 107 ++++++++++++++++++++++++++++++++++++++++++
+ arch/arm/kernel/topology.c    |   8 ++--
+ arch/arm/mm/proc-v7.S         |  28 +++++++++--
+ include/linux/suspend.h       |   2 +
+ 9 files changed, 158 insertions(+), 16 deletions(-)
+ create mode 100644 arch/arm/kernel/hibernate.c
+Merging arm-kvm-cpuresume/arm-kvm-cpuresume (91a3f6af430d arm: kernel: sleep: restore HYP mode configuration in cpu_resume)
+$ git merge arm-kvm-cpuresume/arm-kvm-cpuresume
+Auto-merging arch/arm/include/asm/assembler.h
+Merge made by the 'recursive' strategy.
+ arch/arm/include/asm/assembler.h | 2 +-
+ arch/arm/kernel/sleep.S          | 5 ++++-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+Merging arm-perf/for-next/perf (c9eaa447e77e Linux 3.15-rc1)
+$ git merge arm-perf/for-next/perf
+Already up-to-date.
+Merging arm-soc/for-next (2bf73dd61a84 Merge tag 'tags/cleanup2-3.15' of git://git.kernel.org/pub/scm/linux/kernel/git/arm/arm-soc)
+$ git merge arm-soc/for-next
+Already up-to-date.
+Merging bcm2835/for-next (fa389e220254 Linux 3.14-rc6)
+$ git merge bcm2835/for-next
+Already up-to-date.
+Merging berlin/berlin/for-next (7726250ca801 Merge branch 'berlin/dt' into berlin/for-next)
+$ git merge berlin/berlin/for-next
+Merge made by the 'recursive' strategy.
+ Documentation/arm/Marvell/README                   |   5 +
+ .../devicetree/bindings/arm/marvell,berlin.txt     |   1 +
+ arch/arm/boot/dts/Makefile                         |   3 +-
+ arch/arm/boot/dts/berlin2.dtsi                     | 115 +++++++
+ arch/arm/boot/dts/berlin2cd.dtsi                   | 102 +++++++
+ arch/arm/boot/dts/berlin2q-marvell-dmp.dts         |  28 ++
+ arch/arm/boot/dts/berlin2q.dtsi                    | 336 +++++++++++++++++++++
+ arch/arm/mach-berlin/Kconfig                       |   6 +
+ 8 files changed, 595 insertions(+), 1 deletion(-)
+ create mode 100644 arch/arm/boot/dts/berlin2q-marvell-dmp.dts
+ create mode 100644 arch/arm/boot/dts/berlin2q.dtsi
+Merging cortex-m/for-next (f0d7515372ff ARM: v7m: add trivial suspend support)
+$ git merge cortex-m/for-next
+Already up-to-date.
+Merging ep93xx/ep93xx-for-next (bfb0709fd17b Merge branch 'ep93xx-fixes' into ep93xx-for-next)
+$ git merge ep93xx/ep93xx-for-next
+Merge made by the 'recursive' strategy.
+Merging imx-mxs/for-next (ae3e2c43933b Merge branch 'imx/dt' into for-next)
+$ git merge imx-mxs/for-next
+Removing arch/arm/mach-imx/mach-mx51_babbage.c
+Auto-merging arch/arm/boot/dts/Makefile
+Auto-merging arch/arm/Kconfig.debug
+Auto-merging Documentation/devicetree/bindings/vendor-prefixes.txt
+Merge made by the 'recursive' strategy.
+ .../devicetree/bindings/clock/imx25-clock.txt      |   3 +
+ .../devicetree/bindings/vendor-prefixes.txt        |   1 +
+ arch/arm/Kconfig.debug                             |   9 +
+ arch/arm/boot/dts/Makefile                         |   4 +
+ .../boot/dts/imx25-eukrea-mbimxsd25-baseboard.dts  |  13 +
+ arch/arm/boot/dts/imx25-pdk.dts                    | 217 ++++++++++-
+ arch/arm/boot/dts/imx25.dtsi                       |  40 +-
+ arch/arm/boot/dts/imx27-apf27.dts                  |   1 +
+ arch/arm/boot/dts/imx27-pdk.dts                    | 172 ++++++++-
+ arch/arm/boot/dts/imx27-phytec-phycore-rdk.dts     |  96 ++++-
+ arch/arm/boot/dts/imx27-phytec-phycore-som.dtsi    |  48 ++-
+ arch/arm/boot/dts/imx27.dtsi                       |  31 +-
+ arch/arm/boot/dts/imx28-duckbill.dts               |  12 +-
+ arch/arm/boot/dts/imx28.dtsi                       |   1 +
+ arch/arm/boot/dts/imx35-eukrea-cpuimx35.dtsi       |  15 +
+ .../boot/dts/imx35-eukrea-mbimxsd35-baseboard.dts  |  22 ++
+ arch/arm/boot/dts/imx35-pdk.dts                    |  67 ++++
+ arch/arm/boot/dts/imx35.dtsi                       |  25 +-
+ arch/arm/boot/dts/imx50.dtsi                       |   5 +
+ arch/arm/boot/dts/imx51-babbage.dts                | 333 ++++++++++------
+ arch/arm/boot/dts/imx51-digi-connectcore-jsk.dts   | 108 ++++++
+ arch/arm/boot/dts/imx51-digi-connectcore-som.dtsi  | 377 ++++++++++++++++++
+ arch/arm/boot/dts/imx51-eukrea-cpuimx51.dtsi       |  11 +
+ .../boot/dts/imx51-eukrea-mbimxsd51-baseboard.dts  |  58 +++
+ arch/arm/boot/dts/imx51.dtsi                       |   7 +
+ arch/arm/boot/dts/imx53-m53evk.dts                 |  23 +-
+ arch/arm/boot/dts/imx53-qsb-common.dtsi            |   3 +-
+ arch/arm/boot/dts/imx53-tx53-x03x.dts              |  11 +-
+ arch/arm/boot/dts/imx53.dtsi                       |   9 +-
+ arch/arm/boot/dts/imx6dl-phytec-pbab01.dts         |  19 +
+ arch/arm/boot/dts/imx6dl-phytec-pfla02.dtsi        |  22 ++
+ arch/arm/boot/dts/imx6q-dmo-edmqmx6.dts            |  48 ++-
+ arch/arm/boot/dts/imx6q-gk802.dts                  |   5 +
+ arch/arm/boot/dts/imx6q-gw5400-a.dts               |   3 -
+ arch/arm/boot/dts/imx6q-phytec-pbab01.dts          |  31 +-
+ arch/arm/boot/dts/imx6q-phytec-pfla02.dtsi         | 307 +--------------
+ arch/arm/boot/dts/imx6qdl-gw52xx.dtsi              |   3 -
+ arch/arm/boot/dts/imx6qdl-microsom-ar8035.dtsi     |  22 +-
+ arch/arm/boot/dts/imx6qdl-phytec-pbab01.dtsi       | 102 +++++
+ arch/arm/boot/dts/imx6qdl-phytec-pfla02.dtsi       | 356 +++++++++++++++++
+ arch/arm/boot/dts/imx6qdl-sabresd.dtsi             |  19 +
+ arch/arm/boot/dts/imx6qdl.dtsi                     |  14 +-
+ arch/arm/boot/dts/imx6sl-evk.dts                   |   1 +
+ arch/arm/boot/dts/imx6sl.dtsi                      |   5 +-
+ arch/arm/boot/dts/vf610-colibri.dts                | 123 ++++++
+ arch/arm/boot/dts/vf610-twr.dts                    |  38 ++
+ arch/arm/boot/dts/vf610.dtsi                       |  28 +-
+ arch/arm/configs/imx_v4_v5_defconfig               |   7 +-
+ arch/arm/configs/imx_v6_v7_defconfig               |  12 +-
+ arch/arm/configs/mxs_defconfig                     |   6 +-
+ arch/arm/include/debug/vf.S                        |  15 +-
+ arch/arm/mach-imx/Kconfig                          |  15 -
+ arch/arm/mach-imx/Makefile                         |   1 -
+ arch/arm/mach-imx/clk-imx25.c                      |  24 +-
+ arch/arm/mach-imx/clk-imx27.c                      |   2 -
+ arch/arm/mach-imx/clk-imx31.c                      |   2 -
+ arch/arm/mach-imx/clk-imx51-imx53.c                |  20 +-
+ arch/arm/mach-imx/clk-imx6q.c                      |  43 ++-
+ arch/arm/mach-imx/clk-imx6sl.c                     |   6 +-
+ arch/arm/mach-imx/common.h                         |   2 +
+ arch/arm/mach-imx/mach-mx21ads.c                   | 173 +++++----
+ arch/arm/mach-imx/mach-mx51_babbage.c              | 428 ---------------------
+ arch/arm/mach-imx/time.c                           |  15 +
+ 63 files changed, 2488 insertions(+), 1151 deletions(-)
+ create mode 100644 arch/arm/boot/dts/imx35-pdk.dts
+ create mode 100644 arch/arm/boot/dts/imx51-digi-connectcore-jsk.dts
+ create mode 100644 arch/arm/boot/dts/imx51-digi-connectcore-som.dtsi
+ create mode 100644 arch/arm/boot/dts/imx6dl-phytec-pbab01.dts
+ create mode 100644 arch/arm/boot/dts/imx6dl-phytec-pfla02.dtsi
+ create mode 100644 arch/arm/boot/dts/imx6qdl-phytec-pbab01.dtsi
+ create mode 100644 arch/arm/boot/dts/imx6qdl-phytec-pfla02.dtsi
+ create mode 100644 arch/arm/boot/dts/vf610-colibri.dts
+ delete mode 100644 arch/arm/mach-imx/mach-mx51_babbage.c
+Merging ixp4xx/next (19f949f52599 Linux 3.8)
+$ git merge ixp4xx/next
+Already up-to-date.
+Merging keystone/next (47fc77cc704e Merge branch 'for_3.15/fixes' into next)
+$ git merge keystone/next
+Already up-to-date!
+Merge made by the 'recursive' strategy.
+Merging msm/for-next (81cf1e061d00 ARM: msm: Rename msm devicetrees to have standard 'qcom' prefix)
+$ git merge msm/for-next
+Already up-to-date.
+Merging mvebu/for-next (8c801d6fc97c Merge branch 'mvebu/drivers-mbus_pci-fixes' into for-next)
+$ git merge mvebu/for-next
+Merge made by the 'recursive' strategy.
+ arch/arm/boot/dts/armada-370-db.dts              |  1 +
+ arch/arm/boot/dts/armada-370-xp.dtsi             |  1 +
+ arch/arm/boot/dts/armada-375-db.dts              |  5 ++
+ arch/arm/boot/dts/armada-38x.dtsi                |  1 +
+ arch/arm/boot/dts/armada-xp-db.dts               |  2 +-
+ arch/arm/boot/dts/armada-xp-gp.dts               | 10 +--
+ arch/arm/boot/dts/armada-xp-openblocks-ax3-4.dts |  2 +-
+ arch/arm/boot/dts/kirkwood-b3.dts                |  2 +-
+ arch/arm/boot/dts/kirkwood-cloudbox.dts          |  2 +-
+ arch/arm/boot/dts/kirkwood-dreamplug.dts         |  2 +-
+ arch/arm/boot/dts/kirkwood-laplug.dts            |  2 +-
+ arch/arm/boot/dts/kirkwood-mv88f6281gtw-ge.dts   |  2 +-
+ arch/arm/boot/dts/kirkwood-ns2-common.dtsi       |  4 +-
+ arch/arm/boot/dts/kirkwood-nsa310.dts            |  2 +-
+ arch/arm/boot/dts/kirkwood-nsa310a.dts           |  2 +-
+ arch/arm/boot/dts/kirkwood-openblocks_a6.dts     |  2 +-
+ arch/arm/boot/dts/kirkwood-openblocks_a7.dts     |  2 +-
+ arch/arm/mach-orion5x/common.h                   |  2 +-
+ drivers/bus/mvebu-mbus.c                         | 22 ++++--
+ drivers/irqchip/irq-armada-370-xp.c              | 17 ++++-
+ drivers/memory/mvebu-devbus.c                    | 15 +++-
+ drivers/pci/host/pci-mvebu.c                     | 92 +++++++++++++++++++-----
+ 22 files changed, 146 insertions(+), 46 deletions(-)
+Merging renesas/next (3984ba10dddc Merge branches 'heads/cleanup-for-v3.16' and 'heads/dt-for-v3.16' into devel)
+$ git merge renesas/next
+Removing arch/arm/mach-shmobile/include/mach/emev2.h
+Removing arch/arm/mach-shmobile/clock-emev2.c
+Auto-merging arch/arm/boot/dts/Makefile
+Merge made by the 'recursive' strategy.
+ arch/arm/boot/dts/Makefile                         |   3 +-
+ .../boot/dts/r8a7740-armadillo800eva-reference.dts |  27 ++-
+ arch/arm/boot/dts/r8a7740.dtsi                     |   9 +-
+ arch/arm/boot/dts/r8a7778-bockw-reference.dts      |  14 ++
+ arch/arm/boot/dts/r8a7778.dtsi                     |  18 +-
+ arch/arm/boot/dts/r8a7779.dtsi                     |  18 +-
+ arch/arm/boot/dts/r8a7790-lager.dts                |  67 +++++-
+ arch/arm/boot/dts/r8a7790.dtsi                     | 122 +++++++++--
+ arch/arm/boot/dts/r8a7791-koelsch.dts              |  84 ++++++--
+ arch/arm/boot/dts/r8a7791.dtsi                     | 109 ++++++++--
+ arch/arm/boot/dts/sh73a0-kzm9g-reference.dts       |  15 +-
+ arch/arm/boot/dts/sh73a0.dtsi                      |   1 -
+ arch/arm/configs/shmobile_defconfig                |  14 ++
+ arch/arm/mach-shmobile/Kconfig                     |  17 +-
+ arch/arm/mach-shmobile/Makefile                    |   3 +-
+ arch/arm/mach-shmobile/board-armadillo800eva.c     |   1 +
+ arch/arm/mach-shmobile/board-bockw.c               |  63 ++++--
+ arch/arm/mach-shmobile/board-koelsch-reference.c   |  86 ++++----
+ arch/arm/mach-shmobile/board-koelsch.c             |   2 +-
+ arch/arm/mach-shmobile/board-lager-reference.c     |  79 ++++---
+ arch/arm/mach-shmobile/board-lager.c               |  33 +--
+ arch/arm/mach-shmobile/clock-emev2.c               | 231 ---------------------
+ arch/arm/mach-shmobile/clock-r8a7778.c             |  22 +-
+ arch/arm/mach-shmobile/clock-r8a7790.c             |  32 ++-
+ arch/arm/mach-shmobile/clock-r8a7791.c             |  23 +-
+ arch/arm/mach-shmobile/clock.c                     |  28 +++
+ arch/arm/mach-shmobile/include/mach/clock.h        |  16 ++
+ arch/arm/mach-shmobile/include/mach/common.h       |   1 +
+ arch/arm/mach-shmobile/include/mach/emev2.h        |   9 -
+ arch/arm/mach-shmobile/setup-emev2.c               |  11 +-
+ arch/arm/mach-shmobile/setup-r8a7740.c             |  13 +-
+ arch/arm/mach-shmobile/setup-r8a7790.c             |  12 +-
+ arch/arm/mach-shmobile/setup-r8a7791.c             |   2 +-
+ arch/arm/mach-shmobile/setup-rcar-gen2.c           |  16 +-
+ arch/arm/mach-shmobile/setup-sh7372.c              |   6 +-
+ arch/arm/mach-shmobile/smp-emev2.c                 |   1 -
+ arch/arm/mach-shmobile/smp-r8a7791.c               |  15 +-
+ arch/arm/mach-shmobile/timer.c                     |  28 +++
+ include/dt-bindings/clock/r8a7790-clock.h          |   7 +-
+ include/dt-bindings/clock/r8a7791-clock.h          |   5 +-
+ 40 files changed, 716 insertions(+), 547 deletions(-)
+ delete mode 100644 arch/arm/mach-shmobile/clock-emev2.c
+ delete mode 100644 arch/arm/mach-shmobile/include/mach/emev2.h
+Merging samsung/for-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge samsung/for-next
+Already up-to-date.
+Merging tegra/for-next (628d56b42d35 Merge branch for-3.16/defconfig into for-next)
+$ git merge tegra/for-next
+Auto-merging arch/arm/boot/dts/Makefile
+Merge made by the 'recursive' strategy.
+ arch/arm/boot/dts/Makefile                |    1 +
+ arch/arm/boot/dts/tegra124-jetson-tk1.dts | 1791 +++++++++++++++++++++++++++++
+ arch/arm/boot/dts/tegra124-venice2.dts    |    4 +-
+ arch/arm/configs/tegra_defconfig          |    1 +
+ 4 files changed, 1796 insertions(+), 1 deletion(-)
+ create mode 100644 arch/arm/boot/dts/tegra124-jetson-tk1.dts
+Merging arm64/for-next/core (ebf81a938dad arm64: Fix DMA range invalidation for cache line unaligned buffers)
+$ git merge arm64/for-next/core
+Already up-to-date.
+Merging blackfin/for-linus (c4a2c58d2095 blackfin: cleanup board files)
+$ git merge blackfin/for-linus
+Already up-to-date.
+Merging c6x/for-linux-next (ae72758f1dd9 c6x: fix build failure caused by cache.h)
+$ git merge c6x/for-linux-next
+Already up-to-date.
+Merging cris/for-next (cd065a010a97 CRISv10: Readd missing header)
+$ git merge cris/for-next
+Already up-to-date.
+Merging hexagon/linux-next (a9a44fdf3296 Hexagon: update CR year for elf.h)
+$ git merge hexagon/linux-next
+Already up-to-date.
+Merging ia64/next (e32634f5d57f pstore: Fix memory leak when decompress using big_oops_buf)
+$ git merge ia64/next
+Already up-to-date.
+Merging m68k/for-next (50be9eba831d m68k: Update defconfigs for v3.14-rc1)
+$ git merge m68k/for-next
+Already up-to-date.
+Merging m68knommu/for-next (2bf0787b4b42 m68k: fix a compiler warning when building for DragonBall)
+$ git merge m68knommu/for-next
+Merge made by the 'recursive' strategy.
+ arch/m68k/kernel/setup_no.c         | 13 ++++++-------
+ arch/m68k/platform/68000/m68EZ328.c |  3 ++-
+ arch/m68k/platform/68000/m68VZ328.c |  1 +
+ 3 files changed, 9 insertions(+), 8 deletions(-)
+Merging metag/for-next (2aca46ce1b5c sched: remove unused SCHED_INIT_NODE)
+$ git merge metag/for-next
+Already up-to-date.
+Merging microblaze/next (a66a626538af microblaze: Use asm-generic/io.h)
+$ git merge microblaze/next
+Already up-to-date.
+Merging mips/mips-for-linux-next (d061774ea0ba Merge branch '3.15-fixes' into mips-for-linux-next)
+$ git merge mips/mips-for-linux-next
+Removing arch/mips/include/asm/rm9k-ocd.h
+Removing arch/mips/dec/prom/call_o32.S
+Auto-merging MAINTAINERS
+Merge made by the 'recursive' strategy.
+ MAINTAINERS                           |   3 +
+ arch/mips/dec/ecc-berr.c              |   1 +
+ arch/mips/dec/kn02xa-berr.c           |   1 +
+ arch/mips/dec/prom/Makefile           |   1 -
+ arch/mips/dec/prom/call_o32.S         |  89 --------
+ arch/mips/fw/lib/call_o32.S           |  57 +++--
+ arch/mips/fw/sni/sniprom.c            |   3 +-
+ arch/mips/include/asm/branch.h        |  12 +
+ arch/mips/include/asm/cpu-features.h  |  11 +
+ arch/mips/include/asm/dec/prom.h      |  48 ++--
+ arch/mips/include/asm/rm9k-ocd.h      |  56 -----
+ arch/mips/include/uapi/asm/bitfield.h |  29 +++
+ arch/mips/include/uapi/asm/inst.h     | 414 ++++++++++++++++------------------
+ arch/mips/kernel/proc.c               |   9 +-
+ arch/mips/lib/csum_partial.S          |   9 +
+ arch/mips/lib/delay.c                 |  14 +-
+ arch/mips/lib/strncpy_user.S          |  13 +-
+ arch/mips/loongson/Kconfig            |   1 -
+ arch/mips/loongson/lemote-2f/clock.c  |   5 +-
+ arch/mips/math-emu/Makefile           |   2 +
+ arch/mips/math-emu/cp1emu.c           | 402 ++++++++++++++++-----------------
+ arch/mips/math-emu/dp_add.c           |   8 +-
+ arch/mips/math-emu/dp_cmp.c           |   8 +-
+ arch/mips/math-emu/dp_div.c           |  12 +-
+ arch/mips/math-emu/dp_fint.c          |   6 +-
+ arch/mips/math-emu/dp_flong.c         |   6 +-
+ arch/mips/math-emu/dp_frexp.c         |   4 +-
+ arch/mips/math-emu/dp_fsp.c           |   6 +-
+ arch/mips/math-emu/dp_logb.c          |   4 +-
+ arch/mips/math-emu/dp_modf.c          |   4 +-
+ arch/mips/math-emu/dp_mul.c           |   8 +-
+ arch/mips/math-emu/dp_scalb.c         |   6 +-
+ arch/mips/math-emu/dp_simple.c        |  20 +-
+ arch/mips/math-emu/dp_sqrt.c          |  12 +-
+ arch/mips/math-emu/dp_sub.c           |   8 +-
+ arch/mips/math-emu/dp_tint.c          |  17 +-
+ arch/mips/math-emu/dp_tlong.c         |  16 +-
+ arch/mips/math-emu/dsemul.c           |  35 +--
+ arch/mips/math-emu/ieee754.c          |  24 +-
+ arch/mips/math-emu/ieee754.h          | 288 ++++++++++-------------
+ arch/mips/math-emu/ieee754d.c         |   7 +-
+ arch/mips/math-emu/ieee754dp.c        |  39 ++--
+ arch/mips/math-emu/ieee754dp.h        |  43 ++--
+ arch/mips/math-emu/ieee754int.h       | 171 +++++++-------
+ arch/mips/math-emu/ieee754m.c         |  12 +-
+ arch/mips/math-emu/ieee754sp.c        |  42 ++--
+ arch/mips/math-emu/ieee754sp.h        |  58 ++---
+ arch/mips/math-emu/ieee754xcpt.c      |   5 +-
+ arch/mips/math-emu/kernel_linkage.c   |   7 +-
+ arch/mips/math-emu/me-debugfs.c       |  62 +++++
+ arch/mips/math-emu/sp_add.c           |   8 +-
+ arch/mips/math-emu/sp_cmp.c           |   8 +-
+ arch/mips/math-emu/sp_div.c           |  12 +-
+ arch/mips/math-emu/sp_fdp.c           |  12 +-
+ arch/mips/math-emu/sp_fint.c          |   6 +-
+ arch/mips/math-emu/sp_flong.c         |   6 +-
+ arch/mips/math-emu/sp_frexp.c         |   4 +-
+ arch/mips/math-emu/sp_logb.c          |   4 +-
+ arch/mips/math-emu/sp_modf.c          |   4 +-
+ arch/mips/math-emu/sp_mul.c           |   8 +-
+ arch/mips/math-emu/sp_scalb.c         |   6 +-
+ arch/mips/math-emu/sp_simple.c        |  20 +-
+ arch/mips/math-emu/sp_sqrt.c          |  12 +-
+ arch/mips/math-emu/sp_sub.c           |   8 +-
+ arch/mips/math-emu/sp_tint.c          |  17 +-
+ arch/mips/math-emu/sp_tlong.c         |  16 +-
+ drivers/cpufreq/loongson2_cpufreq.c   |   4 +-
+ 67 files changed, 1099 insertions(+), 1174 deletions(-)
+ delete mode 100644 arch/mips/dec/prom/call_o32.S
+ delete mode 100644 arch/mips/include/asm/rm9k-ocd.h
+ create mode 100644 arch/mips/include/uapi/asm/bitfield.h
+ create mode 100644 arch/mips/math-emu/me-debugfs.c
+Merging openrisc/for-upstream (548dafe880ad openrisc: Use get_signal() signal_setup_done())
+$ git merge openrisc/for-upstream
+Already up-to-date.
+Merging parisc/for-next (6c700d71f7fa [PARISC] hpux: Remove obsolete regs parameter from do_execve() in hpux_execve())
+$ git merge parisc/for-next
+Already up-to-date.
+Merging parisc-hd/for-next (455c6fdbd219 Linux 3.14)
+$ git merge parisc-hd/for-next
+Already up-to-date.
+Merging powerpc/next (cd427485357c Merge remote-tracking branch 'scott/next' into next)
+$ git merge powerpc/next
+Already up-to-date.
+Merging mpc5xxx/next (bc7505942233 powerpc/512x: dts: add MPC5125 clock specs)
+$ git merge mpc5xxx/next
+Already up-to-date.
+Merging galak/next (9e2ecdbba3b0 powerpc/fsl-booke: add the reg prop for pci bridge device node for T4/B4)
+$ git merge galak/next
+Already up-to-date.
+Merging s390/features (164739eff3f9 s390/pci: add some new arch specific pci attributes)
+$ git merge s390/features
+Merge made by the 'recursive' strategy.
+ Documentation/s390/zfcpdump.txt        |  73 ++----
+ arch/s390/Kconfig                      |  24 +-
+ arch/s390/include/asm/ccwgroup.h       |   2 +
+ arch/s390/include/asm/futex.h          |   4 +-
+ arch/s390/include/asm/lowcore.h        |  13 +-
+ arch/s390/include/asm/mmu_context.h    |  43 ++-
+ arch/s390/include/asm/pci.h            |  12 +-
+ arch/s390/include/asm/pci_clp.h        |  10 +-
+ arch/s390/include/asm/processor.h      |  22 ++
+ arch/s390/include/asm/ptrace.h         |  22 ++
+ arch/s390/include/asm/setup.h          |  16 +-
+ arch/s390/include/asm/smp.h            |   5 +-
+ arch/s390/include/asm/spinlock.h       | 134 ++++++----
+ arch/s390/include/asm/spinlock_types.h |  23 +-
+ arch/s390/include/asm/switch_to.h      |   1 -
+ arch/s390/include/asm/syscall.h        |   2 +-
+ arch/s390/include/asm/thread_info.h    |  34 +--
+ arch/s390/kernel/asm-offsets.c         |   2 +
+ arch/s390/kernel/compat_signal.c       |   2 +-
+ arch/s390/kernel/crash_dump.c          |  83 +++---
+ arch/s390/kernel/early.c               |   6 +
+ arch/s390/kernel/entry.S               |  87 ++++---
+ arch/s390/kernel/entry64.S             |  82 +++---
+ arch/s390/kernel/head31.S              |   1 -
+ arch/s390/kernel/nmi.c                 |   8 +-
+ arch/s390/kernel/process.c             |   6 +-
+ arch/s390/kernel/ptrace.c              |   4 +-
+ arch/s390/kernel/setup.c               | 459 ++++++++++++---------------------
+ arch/s390/kernel/signal.c              |  12 +-
+ arch/s390/kernel/smp.c                 |  20 +-
+ arch/s390/kernel/topology.c            |   4 +-
+ arch/s390/kvm/kvm-s390.c               |   2 +-
+ arch/s390/lib/spinlock.c               | 147 ++++++++---
+ arch/s390/lib/uaccess.c                |  10 +-
+ arch/s390/mm/fault.c                   |   2 +-
+ arch/s390/mm/mem_detect.c              | 130 +++-------
+ arch/s390/mm/page-states.c             |  10 -
+ arch/s390/mm/pgtable.c                 |  10 +-
+ arch/s390/mm/vmem.c                    |  30 +--
+ arch/s390/pci/pci.c                    |   6 +-
+ arch/s390/pci/pci_clp.c                |  10 +
+ arch/s390/pci/pci_event.c              |   5 +-
+ arch/s390/pci/pci_sysfs.c              | 135 +++++-----
+ drivers/s390/char/Makefile             |   2 +-
+ drivers/s390/char/zcore.c              |  44 +---
+ drivers/s390/cio/chsc.c                |  22 +-
+ include/linux/memblock.h               |  79 +++++-
+ mm/Kconfig                             |   3 +
+ mm/memblock.c                          | 205 ++++++++++-----
+ 49 files changed, 1060 insertions(+), 1008 deletions(-)
+Merging sparc-next/master (049ffa8ab33a Merge branch 'drm-next' of git://people.freedesktop.org/~airlied/linux)
+$ git merge sparc-next/master
+Already up-to-date.
+Merging tile/master (5eb0bdf84433 arch/tile: remove unused variable 'devcap')
+$ git merge tile/master
+Already up-to-date.
+Merging uml/next (989e59fa41c5 um: Include generic barrier.h)
+$ git merge uml/next
+Resolved 'arch/um/include/asm/Kbuild' using previous resolution.
+Removing arch/x86/um/shared/sysdep/skas_ptrace.h
+Removing arch/um/sys-ppc/shared/sysdep/skas_ptrace.h
+Removing arch/um/sys-ia64/sysdep/skas_ptrace.h
+Removing arch/um/include/shared/skas_ptrace.h
+Removing arch/um/include/shared/skas/proc_mm.h
+Auto-merging arch/um/include/shared/os.h
+Auto-merging arch/um/include/asm/Kbuild
+CONFLICT (content): Merge conflict in arch/um/include/asm/Kbuild
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master 8a05b2f31ffc] Merge remote-tracking branch 'uml/next'
+$ git diff -M --stat --summary HEAD^..
+ arch/um/include/shared/os.h                 |   2 -
+ arch/um/include/shared/skas/proc_mm.h       |  44 ------
+ arch/um/include/shared/skas/skas.h          |   3 -
+ arch/um/include/shared/skas_ptrace.h        |  14 --
+ arch/um/kernel/ptrace.c                     |  32 ----
+ arch/um/kernel/reboot.c                     |  35 ++---
+ arch/um/kernel/skas/mmu.c                   |  68 +++------
+ arch/um/kernel/skas/process.c               |  27 ----
+ arch/um/kernel/trap.c                       |   2 +-
+ arch/um/kernel/um_arch.c                    |  10 --
+ arch/um/os-Linux/process.c                  |  16 --
+ arch/um/os-Linux/skas/mem.c                 | 100 ++----------
+ arch/um/os-Linux/skas/process.c             | 200 ++++++------------------
+ arch/um/os-Linux/start_up.c                 | 154 -------------------
+ arch/um/sys-ia64/sysdep/skas_ptrace.h       |  22 ---
+ arch/um/sys-ppc/shared/sysdep/skas_ptrace.h |  22 ---
+ arch/x86/um/ldt.c                           | 227 ++++++----------------------
+ arch/x86/um/shared/sysdep/faultinfo_32.h    |   3 -
+ arch/x86/um/shared/sysdep/faultinfo_64.h    |   3 -
+ arch/x86/um/shared/sysdep/skas_ptrace.h     |  22 ---
+ 20 files changed, 148 insertions(+), 858 deletions(-)
+ delete mode 100644 arch/um/include/shared/skas/proc_mm.h
+ delete mode 100644 arch/um/include/shared/skas_ptrace.h
+ delete mode 100644 arch/um/sys-ia64/sysdep/skas_ptrace.h
+ delete mode 100644 arch/um/sys-ppc/shared/sysdep/skas_ptrace.h
+ delete mode 100644 arch/x86/um/shared/sysdep/skas_ptrace.h
+Merging unicore32/unicore32 (c284464658ac arch/unicore32: remove CONFIG_EXPERIMENTAL)
+$ git merge unicore32/unicore32
+Already up-to-date.
+Merging xtensa/for_next (cfe8255f0afc xtensa: xt2000: drop redundant sysmem initialization)
+$ git merge xtensa/for_next
+Auto-merging arch/xtensa/Kconfig
+Merge made by the 'recursive' strategy.
+ arch/xtensa/Kconfig                         |  19 ++
+ arch/xtensa/boot/dts/kc705.dts              |  11 +
+ arch/xtensa/boot/dts/xtfpga-flash-128m.dtsi |  28 +++
+ arch/xtensa/boot/dts/xtfpga-flash-16m.dtsi  |  48 ++---
+ arch/xtensa/boot/dts/xtfpga-flash-4m.dtsi   |  32 +--
+ arch/xtensa/boot/dts/xtfpga.dtsi            |  37 ++--
+ arch/xtensa/include/asm/bootparam.h         |  13 +-
+ arch/xtensa/include/asm/fixmap.h            |  58 ++++++
+ arch/xtensa/include/asm/highmem.h           |  45 ++++-
+ arch/xtensa/include/asm/pgtable.h           |   4 +
+ arch/xtensa/include/asm/sysmem.h            |  38 ++++
+ arch/xtensa/include/asm/tlbflush.h          |  11 +-
+ arch/xtensa/kernel/setup.c                  |  46 +----
+ arch/xtensa/kernel/smp.c                    |  15 ++
+ arch/xtensa/kernel/xtensa_ksyms.c           |   7 +
+ arch/xtensa/mm/Makefile                     |   1 +
+ arch/xtensa/mm/cache.c                      |   7 +-
+ arch/xtensa/mm/highmem.c                    |  72 +++++++
+ arch/xtensa/mm/init.c                       | 299 +++++++++++++++++++++++-----
+ arch/xtensa/mm/mmu.c                        |  36 ++++
+ arch/xtensa/mm/tlb.c                        |  15 ++
+ arch/xtensa/platforms/xt2000/setup.c        |  12 +-
+ scripts/sortextable.c                       |   5 +
+ 23 files changed, 694 insertions(+), 165 deletions(-)
+ create mode 100644 arch/xtensa/boot/dts/kc705.dts
+ create mode 100644 arch/xtensa/boot/dts/xtfpga-flash-128m.dtsi
+ create mode 100644 arch/xtensa/include/asm/fixmap.h
+ create mode 100644 arch/xtensa/include/asm/sysmem.h
+ create mode 100644 arch/xtensa/mm/highmem.c
+Merging btrfs/next (00fdf13a2e9f Btrfs: fix a crash of clone with inline extents's split)
+$ git merge btrfs/next
+Already up-to-date.
+Merging ceph/master (a30be7cb2ccb ceph: skip invalid dentry during dcache readdir)
+$ git merge ceph/master
+Already up-to-date.
+Merging cifs/for-next (ebfc45ee7004 Merge git://git.kernel.org/pub/scm/linux/kernel/git/davem/net)
+$ git merge cifs/for-next
+Already up-to-date.
+Merging configfs/linux-next (b930c26416c4 Merge branch 'for-linus' of git://git.kernel.org/pub/scm/linux/kernel/git/mason/linux-btrfs)
+$ git merge configfs/linux-next
+Already up-to-date.
+Merging ecryptfs/next (9e78d14a9f64 Use %pd in eCryptFS)
+$ git merge ecryptfs/next
+Auto-merging fs/ecryptfs/inode.c
+Merge made by the 'recursive' strategy.
+ fs/ecryptfs/file.c  |  4 ++--
+ fs/ecryptfs/inode.c | 12 ++++++------
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+Merging ext3/for_next (01d8885785a6 reiserfs: fix race in readdir)
+$ git merge ext3/for_next
+Already up-to-date.
+Merging ext4/dev (26f9c9ac0a11 ext4: add fallocate mode blocking for debugging purposes)
+$ git merge ext4/dev
+Merge made by the 'recursive' strategy.
+ fs/ext4/ext4.h              |  26 ++---
+ fs/ext4/ext4_extents.h      |  22 ++--
+ fs/ext4/extents.c           | 240 +++++++++++++++++++++++---------------------
+ fs/ext4/extents_status.c    |   2 +-
+ fs/ext4/file.c              | 150 +++++++++++++--------------
+ fs/ext4/inode.c             |  66 ++++++------
+ fs/ext4/move_extent.c       |  38 +++----
+ fs/ext4/namei.c             |   3 +-
+ fs/ext4/super.c             |   3 +-
+ include/trace/events/ext4.h |   9 +-
+ 10 files changed, 288 insertions(+), 271 deletions(-)
+Merging f2fs/dev (c600cc6e6906 f2fs: adjust free mem size to flush dentry blocks)
+$ git merge f2fs/dev
+Merge made by the 'recursive' strategy.
+ fs/f2fs/checkpoint.c | 65 ++++++++++++++-----------------------------
+ fs/f2fs/data.c       | 13 ++++-----
+ fs/f2fs/f2fs.h       |  7 ++++-
+ fs/f2fs/inline.c     | 13 +++++----
+ fs/f2fs/inode.c      | 17 ++++++------
+ fs/f2fs/node.c       | 78 +++++++++++++++++++++++++++-------------------------
+ fs/f2fs/node.h       | 13 +++++++--
+ fs/f2fs/recovery.c   | 18 ++++++------
+ fs/f2fs/segment.c    | 27 ++++++++++++------
+ fs/f2fs/super.c      | 49 ++++++++++++++++++++++++++++++---
+ 10 files changed, 173 insertions(+), 127 deletions(-)
+Merging fscache/fscache (fe02fb3ec109 FS-Cache: Handle removal of unadded object to the fscache_object_list rb tree)
+$ git merge fscache/fscache
+Merge made by the 'recursive' strategy.
+Merging fuse/for-next (f3846266f593 fuse: fix "uninitialized variable" warning)
+$ git merge fuse/for-next
+Already up-to-date.
+Merging gfs2/master (991deec8193a GFS2: quotas not being refreshed in gfs2_adjust_quota)
+$ git merge gfs2/master
+Merge made by the 'recursive' strategy.
+ fs/gfs2/quota.c | 1 +
+ 1 file changed, 1 insertion(+)
+Merging jfs/jfs-next (24e4a0f3de21 fs/jfs/jfs_inode.c: atomically set inode->i_flags)
+$ git merge jfs/jfs-next
+Merge made by the 'recursive' strategy.
+ fs/jfs/jfs_inode.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+Merging logfs/master (339466142b3f Fix the call to BUG() caused by no free segment found)
+$ git merge logfs/master
+Auto-merging fs/logfs/super.c
+Merge made by the 'recursive' strategy.
+ fs/logfs/dev_mtd.c | 2 +-
+ fs/logfs/super.c   | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+Merging nfs/linux-next (1f2edbe3fe21 NFS: Don't ignore suid/sgid bit changes after a successful write)
+$ git merge nfs/linux-next
+Merge made by the 'recursive' strategy.
+ fs/nfs/getroot.c |  3 ++-
+ fs/nfs/inode.c   | 26 +++++++++++++++++---------
+ fs/nfs/write.c   | 35 +++++++++++++++++++++++++++++++++--
+ 3 files changed, 52 insertions(+), 12 deletions(-)
+Merging nfsd/nfsd-next (06f9cc12caa8 nfsd4: don't create unnecessary mask acl)
+$ git merge nfsd/nfsd-next
+Already up-to-date.
+Merging omfs/for-next (976d167615b6 Linux 3.1-rc9)
+$ git merge omfs/for-next
+Already up-to-date.
+Merging squashfs/master (6d565409503f Squashfs: fix failure to unlock pages on decompress error)
+$ git merge squashfs/master
+Already up-to-date.
+Merging v9fs/for-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge v9fs/for-next
+Already up-to-date.
+Merging ubifs/linux-next (d56030ac25d3 UBI: block: Remove __initdata from ubiblock_param_ops)
+$ git merge ubifs/linux-next
+Already up-to-date.
+Merging xfs/for-next (7043507bfa1a Merge branch 'xfs-filestreams-lookup' into for-next)
+$ git merge xfs/for-next
+Auto-merging fs/xfs/xfs_file.c
+Merge made by the 'recursive' strategy.
+ fs/xfs/xfs_alloc_btree.c    |   1 -
+ fs/xfs/xfs_attr_remote.c    |   3 +-
+ fs/xfs/xfs_bmap.c           | 208 ++++++++------
+ fs/xfs/xfs_bmap.h           |   4 +-
+ fs/xfs/xfs_bmap_btree.c     |   9 +-
+ fs/xfs/xfs_bmap_btree.h     |   2 +-
+ fs/xfs/xfs_btree.c          |  38 ++-
+ fs/xfs/xfs_btree.h          |   2 +-
+ fs/xfs/xfs_buf.c            |  17 +-
+ fs/xfs/xfs_buf.h            |   4 +-
+ fs/xfs/xfs_buf_item.c       |   3 +-
+ fs/xfs/xfs_da_btree.c       |   8 +-
+ fs/xfs/xfs_da_btree.h       |   6 +-
+ fs/xfs/xfs_da_format.h      |  10 +-
+ fs/xfs/xfs_dir2.c           |  26 +-
+ fs/xfs/xfs_dir2.h           |   4 +-
+ fs/xfs/xfs_dir2_block.c     |   9 +-
+ fs/xfs/xfs_dir2_data.c      |   3 +-
+ fs/xfs/xfs_dir2_leaf.c      |   2 +-
+ fs/xfs/xfs_dir2_node.c      |   2 +-
+ fs/xfs/xfs_dir2_priv.h      |   4 +-
+ fs/xfs/xfs_dir2_readdir.c   |  14 +-
+ fs/xfs/xfs_dir2_sf.c        |  21 +-
+ fs/xfs/xfs_dquot_buf.c      |   5 +-
+ fs/xfs/xfs_file.c           |   2 +-
+ fs/xfs/xfs_filestream.c     | 684 ++++++++++----------------------------------
+ fs/xfs/xfs_filestream.h     |  34 +--
+ fs/xfs/xfs_ialloc_btree.c   |   1 -
+ fs/xfs/xfs_icache.c         |  12 +-
+ fs/xfs/xfs_icache.h         |   6 +-
+ fs/xfs/xfs_inode.c          |  39 +--
+ fs/xfs/xfs_inode.h          |   4 +-
+ fs/xfs/xfs_inode_fork.c     |   3 +-
+ fs/xfs/xfs_inode_fork.h     |   3 +-
+ fs/xfs/xfs_iomap.c          |   2 +-
+ fs/xfs/xfs_log_recover.c    |   9 +-
+ fs/xfs/xfs_mru_cache.c      | 151 ++++------
+ fs/xfs/xfs_mru_cache.h      |  31 +-
+ fs/xfs/xfs_qm.c             |   3 +-
+ fs/xfs/xfs_qm_syscalls.c    |   1 -
+ fs/xfs/xfs_quota_defs.h     |   2 +-
+ fs/xfs/xfs_shared.h         |   2 +-
+ fs/xfs/xfs_super.c          |  22 +-
+ fs/xfs/xfs_symlink.c        |   2 +-
+ fs/xfs/xfs_symlink_remote.c |   1 -
+ fs/xfs/xfs_trace.c          |   1 +
+ fs/xfs/xfs_trace.h          |  58 ++++
+ fs/xfs/xfs_trans.c          |   2 +-
+ fs/xfs/xfs_trans_ail.c      |   5 +-
+ fs/xfs/xfs_trans_priv.h     |   3 +-
+ 50 files changed, 516 insertions(+), 972 deletions(-)
+Merging file-private-locks/linux-next (ce40437a6043 locks: rename FL_FILE_PVT and IS_FILE_PVT to use "*_OFDLCK" instead)
+$ git merge file-private-locks/linux-next
+Merge made by the 'recursive' strategy.
+ arch/arm/kernel/sys_oabi-compat.c |  6 ++---
+ fs/compat.c                       | 14 +++++-----
+ fs/fcntl.c                        | 12 ++++-----
+ fs/locks.c                        | 55 +++++++++++++++++++--------------------
+ include/linux/fs.h                |  2 +-
+ include/uapi/asm-generic/fcntl.h  | 20 +++++++-------
+ security/selinux/hooks.c          |  6 ++---
+ 7 files changed, 57 insertions(+), 58 deletions(-)
+Merging vfs/for-next (d73c7c209651 kill generic_file_splice_write())
+$ git merge vfs/for-next
+Auto-merging include/linux/fs.h
+Auto-merging fs/xfs/xfs_trace.h
+Auto-merging fs/xfs/xfs_file.c
+Auto-merging fs/f2fs/data.c
+Auto-merging fs/ext4/inode.c
+Auto-merging fs/ext4/ext4.h
+Auto-merging fs/ecryptfs/file.c
+Merge made by the 'recursive' strategy.
+ Documentation/filesystems/Locking                  |   3 +-
+ Documentation/filesystems/vfs.txt                  |   3 +-
+ drivers/char/raw.c                                 |   8 +-
+ drivers/mtd/nand/nandsim.c                         |   4 +-
+ drivers/staging/lustre/lustre/include/lclient.h    |  11 +-
+ drivers/staging/lustre/lustre/lclient/lcommon_cl.c |  48 +-
+ drivers/staging/lustre/lustre/llite/file.c         | 112 +---
+ .../staging/lustre/lustre/llite/llite_internal.h   |   3 +-
+ drivers/staging/lustre/lustre/llite/rw.c           |   3 +-
+ drivers/staging/lustre/lustre/llite/rw26.c         | 105 ++--
+ drivers/staging/lustre/lustre/llite/vvp_io.c       |  29 +-
+ drivers/usb/gadget/storage_common.c                |   4 +-
+ fs/9p/vfs_addr.c                                   |   5 +-
+ fs/9p/vfs_file.c                                   |  14 +-
+ fs/adfs/file.c                                     |   8 +-
+ fs/affs/file.c                                     |   8 +-
+ fs/afs/file.c                                      |   8 +-
+ fs/afs/internal.h                                  |   3 +-
+ fs/afs/write.c                                     |  11 +-
+ fs/aio.c                                           |  14 +-
+ fs/bfs/file.c                                      |   8 +-
+ fs/block_dev.c                                     |  40 +-
+ fs/btrfs/file.c                                    |  53 +-
+ fs/btrfs/inode.c                                   |  47 +-
+ fs/ceph/addr.c                                     |   4 +-
+ fs/ceph/file.c                                     | 185 +++----
+ fs/cifs/cifsfs.c                                   |  55 +-
+ fs/cifs/cifsfs.h                                   |  12 +-
+ fs/cifs/file.c                                     |  81 ++-
+ fs/direct-io.c                                     | 164 ++----
+ fs/ecryptfs/file.c                                 |  13 +-
+ fs/exofs/file.c                                    |  10 +-
+ fs/exofs/inode.c                                   |   2 +-
+ fs/ext2/file.c                                     |  10 +-
+ fs/ext2/inode.c                                    |  10 +-
+ fs/ext3/file.c                                     |  10 +-
+ fs/ext3/inode.c                                    |  15 +-
+ fs/ext4/ext4.h                                     |   3 +-
+ fs/ext4/file.c                                     |  33 +-
+ fs/ext4/indirect.c                                 |  14 +-
+ fs/ext4/inode.c                                    |  24 +-
+ fs/f2fs/data.c                                     |  17 +-
+ fs/f2fs/file.c                                     |  10 +-
+ fs/fat/file.c                                      |   8 +-
+ fs/fat/inode.c                                     |  12 +-
+ fs/file_table.c                                    |   6 +
+ fs/fuse/cuse.c                                     |   8 +-
+ fs/fuse/file.c                                     | 154 +++---
+ fs/fuse/fuse_i.h                                   |   5 +-
+ fs/gfs2/aops.c                                     |  11 +-
+ fs/gfs2/file.c                                     |  30 +-
+ fs/hfs/inode.c                                     |  16 +-
+ fs/hfsplus/inode.c                                 |  15 +-
+ fs/hostfs/hostfs_kern.c                            |   8 +-
+ fs/hpfs/file.c                                     |   8 +-
+ fs/jffs2/file.c                                    |   8 +-
+ fs/jfs/file.c                                      |  10 +-
+ fs/jfs/inode.c                                     |   8 +-
+ fs/logfs/file.c                                    |   8 +-
+ fs/minix/file.c                                    |   8 +-
+ fs/nfs/direct.c                                    | 335 ++++--------
+ fs/nfs/file.c                                      |  65 +--
+ fs/nfs/internal.h                                  |   6 +-
+ fs/nfs/nfs4file.c                                  |  10 +-
+ fs/nilfs2/file.c                                   |   8 +-
+ fs/nilfs2/inode.c                                  |   9 +-
+ fs/ntfs/file.c                                     |   9 +-
+ fs/ocfs2/aops.c                                    |   7 +-
+ fs/ocfs2/file.c                                    | 138 +----
+ fs/omfs/file.c                                     |   8 +-
+ fs/open.c                                          |   6 +
+ fs/pipe.c                                          | 145 +----
+ fs/ramfs/file-mmu.c                                |  10 +-
+ fs/ramfs/file-nommu.c                              |  10 +-
+ fs/read_write.c                                    | 100 +++-
+ fs/reiserfs/file.c                                 |  10 +-
+ fs/reiserfs/inode.c                                |  10 +-
+ fs/romfs/mmap-nommu.c                              |   4 +-
+ fs/splice.c                                        | 194 +++----
+ fs/sysv/file.c                                     |   8 +-
+ fs/ubifs/file.c                                    |  25 +-
+ fs/udf/file.c                                      |  19 +-
+ fs/udf/inode.c                                     |  10 +-
+ fs/ufs/file.c                                      |   8 +-
+ fs/xfs/xfs_aops.c                                  |  17 +-
+ fs/xfs/xfs_file.c                                  | 119 +---
+ fs/xfs/xfs_trace.h                                 |   1 -
+ include/linux/blk_types.h                          |   4 +-
+ include/linux/ceph/libceph.h                       |   2 -
+ include/linux/fs.h                                 |  41 +-
+ include/linux/nfs_fs.h                             |   7 +-
+ include/linux/splice.h                             |  10 -
+ include/linux/uio.h                                |  51 +-
+ mm/filemap.c                                       | 158 ++----
+ mm/iov_iter.c                                      | 598 +++++++++++++++++++--
+ mm/page_io.c                                       |  21 +-
+ mm/process_vm_access.c                             |  10 +-
+ mm/shmem.c                                         |  26 +-
+ mm/vmscan.c                                        |   2 +-
+ net/ceph/pagevec.c                                 |  35 +-
+ 100 files changed, 1787 insertions(+), 2016 deletions(-)
+$ git am -3 ../patches/0001-vfs-using-vfree-requires-including-vmalloc.h.patch
+Applying: vfs: using vfree requires including vmalloc.h
+$ git reset HEAD^
+Unstaged changes after reset:
+M	fs/nfs/direct.c
+$ git add -A .
+$ git commit -v -a --amend
+[master 10f203a02d19] Merge remote-tracking branch 'vfs/for-next'
+Merging pci/next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge pci/next
+Already up-to-date.
+Merging hid/for-next (12e5706a47c2 Merge branch 'for-3.16/rmi4' into for-next)
+$ git merge hid/for-next
+Auto-merging drivers/leds/Kconfig
+Auto-merging drivers/hid/hid-core.c
+Removing Documentation/ABI/testing/sysfs-driver-hid-thingm
+Merge made by the 'recursive' strategy.
+ Documentation/ABI/testing/sysfs-driver-hid-thingm |  23 -
+ drivers/hid/Kconfig                               |   8 +
+ drivers/hid/Makefile                              |   1 +
+ drivers/hid/hid-core.c                            |   2 +
+ drivers/hid/hid-rmi.c                             | 888 ++++++++++++++++++++++
+ drivers/hid/hid-thingm.c                          | 361 +++++----
+ drivers/leds/Kconfig                              |   2 +
+ include/linux/hid.h                               |   2 +
+ 8 files changed, 1104 insertions(+), 183 deletions(-)
+ delete mode 100644 Documentation/ABI/testing/sysfs-driver-hid-thingm
+ create mode 100644 drivers/hid/hid-rmi.c
+Merging i2c/i2c/for-next (9e897e13bd46 Merge branch 'for-linus' of git://git.open-osd.org/linux-open-osd)
+$ git merge i2c/i2c/for-next
+Already up-to-date.
+Merging jdelvare-hwmon/master (c9eaa447e77e Linux 3.15-rc1)
+$ git merge jdelvare-hwmon/master
+Already up-to-date.
+Merging hwmon-staging/hwmon-next (bd8f4a63c14a hwmon: (lm77) Convert to use devm_hwmon_device_register_with_groups)
+$ git merge hwmon-staging/hwmon-next
+Merge made by the 'recursive' strategy.
+ Documentation/hwmon/lm77 |  20 ++-
+ drivers/hwmon/lm70.c     |  62 ++------
+ drivers/hwmon/lm77.c     | 374 +++++++++++++++++++----------------------------
+ drivers/hwmon/tmp102.c   |  62 ++++----
+ drivers/hwmon/tmp421.c   |  47 ++----
+ 5 files changed, 223 insertions(+), 342 deletions(-)
+Merging v4l-dvb/master (b40dfe97cc3a Merge branch 'v4l_for_linus' into to_next)
+$ git merge v4l-dvb/master
+Merge made by the 'recursive' strategy.
+ drivers/media/i2c/s5c73m3/s5c73m3-core.c         |  2 +-
+ drivers/media/platform/davinci/vpbe_display.c    | 16 +++++++-
+ drivers/media/platform/davinci/vpfe_capture.c    |  2 +
+ drivers/media/platform/davinci/vpif_capture.c    | 34 +++++++++++------
+ drivers/media/platform/davinci/vpif_display.c    | 35 +++++++++++------
+ drivers/media/platform/exynos4-is/fimc-core.c    |  2 +-
+ drivers/media/usb/dvb-usb-v2/Makefile            |  1 -
+ drivers/media/usb/dvb-usb-v2/rtl28xxu.c          | 48 +++++++++++++++++++++---
+ drivers/media/usb/gspca/sonixb.c                 |  2 -
+ drivers/staging/media/davinci_vpfe/vpfe_video.c  | 13 ++++++-
+ drivers/staging/media/sn9c102/sn9c102_devtable.h |  2 -
+ 11 files changed, 119 insertions(+), 38 deletions(-)
+Merging kbuild/for-next (de71647f7af0 Merge branch 'kbuild/kbuild' into kbuild/for-next)
+$ git merge kbuild/for-next
+Auto-merging lib/Kconfig.debug
+Auto-merging init/Kconfig
+Auto-merging Makefile
+Merge made by the 'recursive' strategy.
+ .gitignore                 |   4 +-
+ Documentation/lto-build    | 173 +++++++++++++++++++++++++++++++++++++++++++++
+ Makefile                   |  25 +++++--
+ arch/x86/Kconfig           |   2 +-
+ init/Kconfig               |  73 +++++++++++++++++++
+ kernel/gcov/Kconfig        |   2 +-
+ lib/Kconfig.debug          |   2 +-
+ scripts/Makefile.build     |  61 ----------------
+ scripts/Makefile.extrawarn |  67 ++++++++++++++++++
+ scripts/Makefile.lto       |  84 ++++++++++++++++++++++
+ scripts/Makefile.modpost   |   7 +-
+ scripts/link-vmlinux.sh    |   2 +-
+ scripts/tags.sh            |   6 +-
+ 13 files changed, 431 insertions(+), 77 deletions(-)
+ create mode 100644 Documentation/lto-build
+ create mode 100644 scripts/Makefile.extrawarn
+ create mode 100644 scripts/Makefile.lto
+Merging kconfig/for-next (95edca5c523c localmodconfig: Add config depends by default settings)
+$ git merge kconfig/for-next
+Already up-to-date.
+Merging libata/for-next (e248588eabd8 Merge branch 'for-3.16' into for-next)
+$ git merge libata/for-next
+Merge made by the 'recursive' strategy.
+ drivers/ata/Kconfig           |  5 ++---
+ drivers/ata/ahci.c            | 35 ++++++++++++++++++------------
+ drivers/ata/ahci.h            |  1 +
+ drivers/ata/libata-core.c     | 27 ++++++++++++++---------
+ drivers/ata/pata_arasan_cf.c  |  7 ++++--
+ drivers/ata/pata_at91.c       | 11 +++++-----
+ drivers/ata/pata_octeon_cf.c  | 50 +++++++++++++++----------------------------
+ drivers/ata/pata_samsung_cf.c | 10 ++++++---
+ include/linux/libata.h        |  1 +
+ 9 files changed, 77 insertions(+), 70 deletions(-)
+Merging pm/linux-next (869846f70bf8 Merge branch 'acpica-next' into linux-next)
+$ git merge pm/linux-next
+Removing tools/power/acpi/tools/acpidump/acpidump.c
+Merge made by the 'recursive' strategy.
+ Documentation/kernel-parameters.txt                |   10 +-
+ drivers/acpi/acpica/Makefile                       |    1 +
+ drivers/acpi/acpica/acapps.h                       |  170 +++
+ drivers/acpi/acpica/acglobal.h                     |    9 +-
+ drivers/acpi/acpica/aclocal.h                      |    8 +-
+ drivers/acpi/acpica/actables.h                     |   60 +-
+ drivers/acpi/acpica/acutils.h                      |   10 +-
+ drivers/acpi/acpica/evmisc.c                       |    3 +-
+ drivers/acpi/acpica/evsci.c                        |    2 +-
+ drivers/acpi/acpica/evxface.c                      |   61 +-
+ drivers/acpi/acpica/exconfig.c                     |   82 +-
+ drivers/acpi/acpica/exdump.c                       |    4 +-
+ drivers/acpi/acpica/exfield.c                      |  104 +-
+ drivers/acpi/acpica/tbdata.c                       |  723 +++++++++++
+ drivers/acpi/acpica/tbfadt.c                       |   10 +-
+ drivers/acpi/acpica/tbfind.c                       |    4 +-
+ drivers/acpi/acpica/tbinstal.c                     |  837 +++++--------
+ drivers/acpi/acpica/tbutils.c                      |  171 +--
+ drivers/acpi/acpica/tbxface.c                      |   18 +-
+ drivers/acpi/acpica/tbxfload.c                     |   87 +-
+ drivers/acpi/acpica/utdecode.c                     |   74 +-
+ drivers/acpi/acpica/utstring.c                     |    2 +-
+ drivers/acpi/osl.c                                 |   11 +-
+ drivers/cpufreq/Kconfig.arm                        |    6 +-
+ drivers/cpufreq/powernv-cpufreq.c                  |    1 +
+ drivers/cpufreq/ppc-corenet-cpufreq.c              |    2 +-
+ drivers/cpufreq/unicore2-cpufreq.c                 |    4 +-
+ drivers/idle/intel_idle.c                          |    3 +-
+ include/acpi/acpixf.h                              |    7 +-
+ include/acpi/actbl.h                               |   11 +-
+ include/acpi/platform/acgcc.h                      |   11 +
+ include/acpi/platform/aclinux.h                    |    5 +-
+ kernel/power/suspend.c                             |    3 +
+ tools/power/acpi/Makefile                          |   37 +-
+ tools/power/acpi/common/cmfsize.c                  |  101 ++
+ tools/power/acpi/common/getopt.c                   |  239 ++++
+ tools/power/acpi/man/acpidump.8                    |   85 +-
+ .../acpi/os_specific/service_layers/oslinuxtbl.c   | 1275 ++++++++++++++++++++
+ .../acpi/os_specific/service_layers/osunixdir.c    |  204 ++++
+ .../acpi/os_specific/service_layers/osunixmap.c    |  151 +++
+ tools/power/acpi/tools/acpidump/acpidump.c         |  559 ---------
+ tools/power/acpi/tools/acpidump/acpidump.h         |  131 ++
+ tools/power/acpi/tools/acpidump/apdump.c           |  451 +++++++
+ tools/power/acpi/tools/acpidump/apfiles.c          |  228 ++++
+ tools/power/acpi/tools/acpidump/apmain.c           |  340 ++++++
+ 45 files changed, 4887 insertions(+), 1428 deletions(-)
+ create mode 100644 drivers/acpi/acpica/acapps.h
+ create mode 100644 drivers/acpi/acpica/tbdata.c
+ create mode 100644 tools/power/acpi/common/cmfsize.c
+ create mode 100644 tools/power/acpi/common/getopt.c
+ create mode 100644 tools/power/acpi/os_specific/service_layers/oslinuxtbl.c
+ create mode 100644 tools/power/acpi/os_specific/service_layers/osunixdir.c
+ create mode 100644 tools/power/acpi/os_specific/service_layers/osunixmap.c
+ delete mode 100644 tools/power/acpi/tools/acpidump/acpidump.c
+ create mode 100644 tools/power/acpi/tools/acpidump/acpidump.h
+ create mode 100644 tools/power/acpi/tools/acpidump/apdump.c
+ create mode 100644 tools/power/acpi/tools/acpidump/apfiles.c
+ create mode 100644 tools/power/acpi/tools/acpidump/apmain.c
+Merging idle/next (23a299cd9378 Merge branches 'turbostat' and 'intel_idle' into release)
+$ git merge idle/next
+Already up-to-date.
+Merging apm/for-next (158204397034 apm-emulation: add hibernation APM events to support suspend2disk)
+$ git merge apm/for-next
+Already up-to-date.
+Merging cpupowerutils/master (f16603386b38 cpupower tools: add install target to the debug tools' makefiles)
+$ git merge cpupowerutils/master
+Already up-to-date.
+Merging thermal/next (9477165ec525 thermal: rcar-thermal: update thermal zone only when temperature changes)
+$ git merge thermal/next
+Already up-to-date.
+Merging ieee1394/for-next (0ca49345b6f4 firewire: ohci: fix probe failure with Agere/LSI controllers)
+$ git merge ieee1394/for-next
+Already up-to-date.
+Merging dlm/next (075f01775f53 dlm: use INFO for recovery messages)
+$ git merge dlm/next
+Already up-to-date.
+Merging swiotlb/linux-next (0cb637bff80d swiotlb: Don't DoS us with 'swiotlb buffer is full' (v2))
+$ git merge swiotlb/linux-next
+Already up-to-date.
+Merging slave-dma/next (8cc3e30bea9a dmaengine: edma: Add DMA memcpy support)
+$ git merge slave-dma/next
+Merge made by the 'recursive' strategy.
+ arch/arm/common/edma.c             |   4 ++
+ drivers/dma/edma.c                 | 131 +++++++++++++++++++++++++++++++++----
+ include/linux/platform_data/edma.h |  18 ++---
+ 3 files changed, 130 insertions(+), 23 deletions(-)
+Merging dmaengine/next (b9bf6d2e84b7 dma: mv_xor: Flush descriptors before activating a channel)
+$ git merge dmaengine/next
+Auto-merging include/linux/dmaengine.h
+Auto-merging drivers/dma/dmaengine.c
+Merge made by the 'recursive' strategy.
+ drivers/dma/dmaengine.c   |  2 ++
+ drivers/dma/ioat/dca.c    | 13 +++----
+ drivers/dma/ioat/dma.c    |  2 +-
+ drivers/dma/ioat/dma_v3.c |  6 ++--
+ drivers/dma/mv_xor.c      | 88 +++++++++++++++++++++++++++++++++++------------
+ include/linux/dmaengine.h |  1 +
+ 6 files changed, 80 insertions(+), 32 deletions(-)
+Merging net-next/master (5a9d19ab76f9 Merge branch 'ndo_set_config')
+$ git merge net-next/master
+Merge made by the 'recursive' strategy.
+ drivers/net/ethernet/ethoc.c                      |   6 -
+ drivers/net/ethernet/samsung/sxgbe/sxgbe_main.c   |  50 +-----
+ drivers/net/ethernet/stmicro/stmmac/stmmac_main.c |  22 ---
+ drivers/net/ethernet/ti/cpmac.c                   |  14 --
+ drivers/net/hyperv/hyperv_net.h                   | 110 ++++++++++++-
+ drivers/net/hyperv/netvsc.c                       | 136 ++++++++++++----
+ drivers/net/hyperv/netvsc_drv.c                   | 103 +++++++++++-
+ drivers/net/hyperv/rndis_filter.c                 | 189 +++++++++++++++++++++-
+ drivers/net/macvlan.c                             | 116 ++++++++++---
+ drivers/net/phy/at803x.c                          |  36 +----
+ drivers/net/phy/phy_device.c                      |   3 +-
+ include/linux/netdevice.h                         |   1 +
+ include/linux/phy.h                               |   1 +
+ include/net/6lowpan.h                             |   1 +
+ include/net/net_namespace.h                       |  15 ++
+ include/net/tcp.h                                 |   1 -
+ net/core/dev.c                                    |  42 ++---
+ net/ieee802154/reassembly.c                       |  48 ++++--
+ net/ipv4/tcp.c                                    |   8 +
+ net/ipv4/tcp_input.c                              |  22 ---
+ net/ipv4/tcp_output.c                             |  22 +++
+ net/sctp/socket.c                                 |   5 +
+ net/sctp/ulpqueue.c                               |   4 +
+ 23 files changed, 721 insertions(+), 234 deletions(-)
+Merging ipsec-next/master (f1370cc4a01e xfrm: Remove useless secid field from xfrm_audit.)
+$ git merge ipsec-next/master
+Merge made by the 'recursive' strategy.
+ include/net/xfrm.h     | 29 ++++++++++-------------------
+ net/key/af_key.c       | 12 +++++-------
+ net/xfrm/xfrm_policy.c | 22 ++++++++--------------
+ net/xfrm/xfrm_state.c  | 17 +++++++----------
+ net/xfrm/xfrm_user.c   | 27 ++++++---------------------
+ 5 files changed, 36 insertions(+), 71 deletions(-)
+Merging wireless-next/master (644aa4d62096 b43: remove list of IEEE 802.11 devices)
+$ git merge wireless-next/master
+Auto-merging drivers/net/wireless/ath/ath9k/recv.c
+Merge made by the 'recursive' strategy.
+ drivers/net/wireless/ath/ath10k/bmi.c            |  13 +-
+ drivers/net/wireless/ath/ath10k/bmi.h            |   2 +-
+ drivers/net/wireless/ath/ath10k/ce.c             | 356 ++++++-----
+ drivers/net/wireless/ath/ath10k/ce.h             |  15 +-
+ drivers/net/wireless/ath/ath10k/core.c           |  85 ++-
+ drivers/net/wireless/ath/ath10k/core.h           |  18 +-
+ drivers/net/wireless/ath/ath10k/debug.c          | 109 +++-
+ drivers/net/wireless/ath/ath10k/htc.c            |  12 +-
+ drivers/net/wireless/ath/ath10k/htt.h            |  21 +-
+ drivers/net/wireless/ath/ath10k/htt_rx.c         | 513 +++++++++------
+ drivers/net/wireless/ath/ath10k/hw.h             |   1 +
+ drivers/net/wireless/ath/ath10k/mac.c            | 763 +++++++++++++----------
+ drivers/net/wireless/ath/ath10k/pci.c            | 219 ++++---
+ drivers/net/wireless/ath/ath10k/pci.h            |   3 -
+ drivers/net/wireless/ath/ath10k/txrx.c           | 183 ------
+ drivers/net/wireless/ath/ath10k/txrx.h           |   1 -
+ drivers/net/wireless/ath/ath10k/wmi.c            |  62 +-
+ drivers/net/wireless/ath/ath10k/wmi.h            |  98 ++-
+ drivers/net/wireless/ath/ath6kl/Kconfig          |  30 +-
+ drivers/net/wireless/ath/ath6kl/cfg80211.c       |   9 +-
+ drivers/net/wireless/ath/ath6kl/core.c           |   6 +-
+ drivers/net/wireless/ath/ath6kl/debug.c          |   4 -
+ drivers/net/wireless/ath/ath6kl/debug.h          |   2 +-
+ drivers/net/wireless/ath/ath6kl/hif.c            |   3 -
+ drivers/net/wireless/ath/ath6kl/hif.h            |   4 +-
+ drivers/net/wireless/ath/ath6kl/htc_mbox.c       |  23 +-
+ drivers/net/wireless/ath/ath6kl/htc_pipe.c       |  10 +-
+ drivers/net/wireless/ath/ath6kl/init.c           |   1 -
+ drivers/net/wireless/ath/ath6kl/main.c           |  10 +-
+ drivers/net/wireless/ath/ath6kl/sdio.c           |  17 +-
+ drivers/net/wireless/ath/ath6kl/target.h         |   2 +-
+ drivers/net/wireless/ath/ath6kl/txrx.c           |  31 +-
+ drivers/net/wireless/ath/ath6kl/usb.c            |   2 -
+ drivers/net/wireless/ath/ath6kl/wmi.c            |  19 +-
+ drivers/net/wireless/ath/ath6kl/wmi.h            |   1 -
+ drivers/net/wireless/ath/ath9k/ath9k.h           |  12 +
+ drivers/net/wireless/ath/ath9k/init.c            |  10 +-
+ drivers/net/wireless/ath/ath9k/main.c            | 106 ++++
+ drivers/net/wireless/ath/ath9k/recv.c            |   3 +
+ drivers/net/wireless/ath/wil6210/interrupt.c     |   2 +-
+ drivers/net/wireless/ath/wil6210/main.c          |   4 +-
+ drivers/net/wireless/ath/wil6210/pcie_bus.c      |   2 -
+ drivers/net/wireless/ath/wil6210/rx_reorder.c    |  17 +
+ drivers/net/wireless/ath/wil6210/wil6210.h       |   3 +-
+ drivers/net/wireless/ath/wil6210/wmi.c           |  11 +-
+ drivers/net/wireless/ath/wil6210/wmi.h           |  50 +-
+ drivers/net/wireless/b43/b43.h                   |   4 -
+ drivers/net/wireless/b43/main.c                  |  89 ++-
+ drivers/net/wireless/b43/phy_g.c                 |   6 +-
+ drivers/net/wireless/b43/phy_n.c                 | 272 +++++++-
+ drivers/net/wireless/b43/radio_2056.c            | 418 +++++++++++--
+ drivers/net/wireless/b43/tables_nphy.c           |  72 +--
+ drivers/net/wireless/b43/tables_nphy.h           |   3 +-
+ drivers/net/wireless/b43/wa.c                    |   2 +-
+ drivers/net/wireless/iwlwifi/dvm/lib.c           |   2 +-
+ drivers/net/wireless/iwlwifi/dvm/mac80211.c      |   2 +-
+ drivers/net/wireless/iwlwifi/dvm/main.c          |  12 +
+ drivers/net/wireless/iwlwifi/iwl-1000.c          |   1 +
+ drivers/net/wireless/iwlwifi/iwl-2000.c          |   2 +
+ drivers/net/wireless/iwlwifi/iwl-5000.c          |   1 +
+ drivers/net/wireless/iwlwifi/iwl-6000.c          |   3 +
+ drivers/net/wireless/iwlwifi/iwl-7000.c          |   9 +-
+ drivers/net/wireless/iwlwifi/iwl-config.h        |   5 +
+ drivers/net/wireless/iwlwifi/iwl-fw.h            |  27 +-
+ drivers/net/wireless/iwlwifi/iwl-nvm-parse.c     |  25 +-
+ drivers/net/wireless/iwlwifi/iwl-op-mode.h       |  25 +-
+ drivers/net/wireless/iwlwifi/iwl-prph.h          |   8 +
+ drivers/net/wireless/iwlwifi/iwl-trans.h         |  10 +-
+ drivers/net/wireless/iwlwifi/mvm/coex.c          |  34 +-
+ drivers/net/wireless/iwlwifi/mvm/d3.c            |  94 ++-
+ drivers/net/wireless/iwlwifi/mvm/debugfs-vif.c   |  13 +-
+ drivers/net/wireless/iwlwifi/mvm/debugfs.c       |  15 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-coex.h   |  38 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-d3.h     |  17 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-rs.h     |   2 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-scan.h   |  26 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-sta.h    |  46 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api-tx.h     |   3 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-api.h        |  54 +-
+ drivers/net/wireless/iwlwifi/mvm/fw-error-dump.h |   6 +-
+ drivers/net/wireless/iwlwifi/mvm/fw.c            |  12 +-
+ drivers/net/wireless/iwlwifi/mvm/mac-ctxt.c      |   5 +-
+ drivers/net/wireless/iwlwifi/mvm/mac80211.c      |  49 +-
+ drivers/net/wireless/iwlwifi/mvm/mvm.h           |  26 +-
+ drivers/net/wireless/iwlwifi/mvm/ops.c           |  56 +-
+ drivers/net/wireless/iwlwifi/mvm/power.c         | 272 ++++----
+ drivers/net/wireless/iwlwifi/mvm/rs.c            | 330 +++++++++-
+ drivers/net/wireless/iwlwifi/mvm/rs.h            |  24 +
+ drivers/net/wireless/iwlwifi/mvm/rx.c            |  45 +-
+ drivers/net/wireless/iwlwifi/mvm/scan.c          |  20 +-
+ drivers/net/wireless/iwlwifi/mvm/sf.c            |   3 -
+ drivers/net/wireless/iwlwifi/mvm/sta.c           | 177 +-----
+ drivers/net/wireless/iwlwifi/mvm/sta.h           |   3 +
+ drivers/net/wireless/iwlwifi/mvm/time-event.c    |  71 +--
+ drivers/net/wireless/iwlwifi/mvm/tt.c            |  10 +-
+ drivers/net/wireless/iwlwifi/mvm/tx.c            |  11 +-
+ drivers/net/wireless/iwlwifi/mvm/utils.c         |  46 +-
+ drivers/net/wireless/iwlwifi/pcie/internal.h     |   9 +-
+ drivers/net/wireless/iwlwifi/pcie/rx.c           |  84 +--
+ drivers/net/wireless/iwlwifi/pcie/trans.c        |  47 +-
+ drivers/net/wireless/iwlwifi/pcie/tx.c           |  62 +-
+ drivers/net/wireless/mwifiex/11ac.c              |   3 +-
+ drivers/net/wireless/mwifiex/11n.c               |   3 +-
+ drivers/net/wireless/mwifiex/11n_aggr.c          |  21 +-
+ drivers/net/wireless/mwifiex/README              |   7 +
+ drivers/net/wireless/mwifiex/cmdevt.c            |   5 +-
+ drivers/net/wireless/mwifiex/debugfs.c           |  25 +
+ drivers/net/wireless/mwifiex/decl.h              |   8 +-
+ drivers/net/wireless/mwifiex/ioctl.h             |   2 +-
+ drivers/net/wireless/mwifiex/main.c              |   4 +-
+ drivers/net/wireless/mwifiex/main.h              |   4 +-
+ drivers/net/wireless/mwifiex/pcie.c              | 228 ++++++-
+ drivers/net/wireless/mwifiex/pcie.h              |  27 +
+ drivers/net/wireless/mwifiex/scan.c              |  37 +-
+ drivers/net/wireless/mwifiex/sdio.c              |   9 +-
+ drivers/net/wireless/mwifiex/sdio.h              |  18 +-
+ drivers/net/wireless/mwifiex/uap_cmd.c           |   8 +-
+ drivers/net/wireless/mwifiex/usb.c               |  55 +-
+ drivers/net/wireless/mwifiex/wmm.c               |   9 -
+ drivers/net/wireless/ray_cs.c                    |   2 +-
+ drivers/net/wireless/rt2x00/rt2800lib.c          |  15 +-
+ drivers/net/wireless/rt2x00/rt61pci.c            |  10 +-
+ drivers/net/wireless/rt2x00/rt73usb.c            |  10 +-
+ drivers/net/wireless/rtl818x/rtl8180/Makefile    |   4 +-
+ drivers/net/wireless/rtl818x/rtl8180/dev.c       |  10 +-
+ drivers/net/wireless/rtl818x/rtl818x.h           |   6 +-
+ 126 files changed, 3772 insertions(+), 2334 deletions(-)
+Merging bluetooth/master (d9064ec59f6d Bluetooth: btmrvl: Fix btmrvl_send_module_cfg_cmd())
+$ git merge bluetooth/master
+Merge made by the 'recursive' strategy.
+ drivers/bluetooth/btmrvl_drv.h   |   4 +-
+ drivers/bluetooth/btmrvl_main.c  |  19 ++-
+ drivers/bluetooth/btmrvl_sdio.c  | 103 ++++++++++++----
+ drivers/bluetooth/btmrvl_sdio.h  |   3 +
+ include/net/bluetooth/hci.h      |   1 +
+ include/net/bluetooth/hci_core.h |  13 +-
+ net/bluetooth/hci_conn.c         |  90 ++++++++++++--
+ net/bluetooth/hci_core.c         |  20 ++--
+ net/bluetooth/hci_event.c        | 252 +++++++++++++++++++++++++++++----------
+ net/bluetooth/hci_sock.c         |  11 +-
+ net/bluetooth/lib.c              |   1 +
+ net/bluetooth/mgmt.c             |  36 +++---
+ 12 files changed, 419 insertions(+), 134 deletions(-)
+Merging infiniband/for-next (5ae2866f5264 Merge branches 'cxgb4', 'misc', 'mlx5' and 'qib' into for-next)
+$ git merge infiniband/for-next
+Already up-to-date.
+Merging mtd/master (c9eaa447e77e Linux 3.15-rc1)
+$ git merge mtd/master
+Already up-to-date.
+Merging l2-mtd/master (be54f8f1c768 mtd: mtd_oobtest: generate consistent data for verification)
+$ git merge l2-mtd/master
+Merge made by the 'recursive' strategy.
+ .../devicetree/bindings/mtd/fsl-quadspi.txt        |   35 +
+ Documentation/mtd/spi-nor.txt                      |   62 +
+ drivers/mtd/Kconfig                                |    2 +
+ drivers/mtd/Makefile                               |    1 +
+ drivers/mtd/devices/Kconfig                        |    4 +-
+ drivers/mtd/devices/m25p80.c                       | 1303 ++------------------
+ drivers/mtd/devices/serial_flash_cmds.h            |   44 +-
+ drivers/mtd/devices/st_spi_fsm.c                   |  338 +++--
+ drivers/mtd/mtd_blkdevs.c                          |    6 +
+ drivers/mtd/nand/davinci_nand.c                    |    6 +
+ drivers/mtd/nand/gpmi-nand/gpmi-lib.c              |    5 +-
+ drivers/mtd/nand/gpmi-nand/gpmi-nand.c             |   53 +-
+ drivers/mtd/nand/gpmi-nand/gpmi-nand.h             |   28 +-
+ drivers/mtd/nand/nand_base.c                       |    3 +-
+ drivers/mtd/nand/nand_ecc.c                        |    2 +-
+ drivers/mtd/nand/omap2.c                           |    2 +-
+ drivers/mtd/spi-nor/Kconfig                        |   17 +
+ drivers/mtd/spi-nor/Makefile                       |    2 +
+ drivers/mtd/spi-nor/fsl-quadspi.c                  | 1009 +++++++++++++++
+ drivers/mtd/spi-nor/spi-nor.c                      | 1107 +++++++++++++++++
+ drivers/mtd/tests/oobtest.c                        |   17 +-
+ include/linux/mtd/spi-nor.h                        |  214 ++++
+ 22 files changed, 2794 insertions(+), 1466 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/mtd/fsl-quadspi.txt
+ create mode 100644 Documentation/mtd/spi-nor.txt
+ create mode 100644 drivers/mtd/spi-nor/Kconfig
+ create mode 100644 drivers/mtd/spi-nor/Makefile
+ create mode 100644 drivers/mtd/spi-nor/fsl-quadspi.c
+ create mode 100644 drivers/mtd/spi-nor/spi-nor.c
+ create mode 100644 include/linux/mtd/spi-nor.h
+Merging crypto/master (f51f593b3eb1 crypto: omap-des - handle error of pm_runtime_get_sync)
+$ git merge crypto/master
+Resolved 'drivers/char/hw_random/Kconfig' using previous resolution.
+CONFLICT (rename/delete): drivers/crypto/bfin_crc.h deleted in HEAD and renamed in crypto/master. Version crypto/master of drivers/crypto/bfin_crc.h left in tree.
+Removing drivers/char/hw_random/picoxcell-rng.c
+Auto-merging drivers/char/hw_random/Kconfig
+CONFLICT (content): Merge conflict in drivers/char/hw_random/Kconfig
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master 6179b974b1fa] Merge remote-tracking branch 'crypto/master'
+$ git diff -M --stat --summary HEAD^..
+ arch/x86/crypto/ghash-clmulni-intel_asm.S  |   4 +-
+ arch/x86/crypto/ghash-clmulni-intel_glue.c |  12 +-
+ crypto/testmgr.h                           | 775 ++++++++++++++++++++++++++++-
+ drivers/char/hw_random/Kconfig             | 103 ++--
+ drivers/char/hw_random/Makefile            |   1 -
+ drivers/char/hw_random/picoxcell-rng.c     | 181 -------
+ drivers/crypto/bfin_crc.c                  | 103 ++--
+ drivers/crypto/bfin_crc.h                  | 125 +++++
+ drivers/crypto/ccp/ccp-pci.c               |   7 +-
+ drivers/crypto/nx/nx-842.c                 |   4 +-
+ drivers/crypto/omap-des.c                  |  33 +-
+ 11 files changed, 1036 insertions(+), 312 deletions(-)
+ delete mode 100644 drivers/char/hw_random/picoxcell-rng.c
+ create mode 100644 drivers/crypto/bfin_crc.h
+Merging drm/drm-next (c39b06951f1d DRM: armada: fix corruption while loading cursors)
+$ git merge drm/drm-next
+Already up-to-date.
+Merging drm-panel/drm/panel/for-next (810e49d8978f drm/panel: add support for LG LD070WX3-SL01 panel)
+$ git merge drm-panel/drm/panel/for-next
+Merge made by the 'recursive' strategy.
+Merging drm-intel/for-linux-next (f68918de204f drm/i915: Include a little more information about why ring init fails)
+$ git merge drm-intel/for-linux-next
+Resolved 'drivers/gpu/drm/i915/i915_gem_context.c' using previous resolution.
+Auto-merging drivers/gpu/drm/i915/intel_pm.c
+Auto-merging drivers/gpu/drm/i915/intel_panel.c
+Auto-merging drivers/gpu/drm/i915/intel_hdmi.c
+Auto-merging drivers/gpu/drm/i915/intel_dp.c
+Auto-merging drivers/gpu/drm/i915/intel_bios.h
+Auto-merging drivers/gpu/drm/i915/intel_bios.c
+Auto-merging drivers/gpu/drm/i915/i915_gem_execbuffer.c
+Auto-merging drivers/gpu/drm/i915/i915_gem_context.c
+CONFLICT (content): Merge conflict in drivers/gpu/drm/i915/i915_gem_context.c
+Auto-merging drivers/gpu/drm/i915/i915_gem.c
+Auto-merging drivers/gpu/drm/i915/i915_drv.h
+Auto-merging drivers/gpu/drm/i915/Kconfig
+Auto-merging drivers/gpu/drm/drm_cache.c
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master 5199b7d09de6] Merge remote-tracking branch 'drm-intel/for-linux-next'
+$ git diff -M --stat --summary HEAD^..
+ drivers/gpu/drm/drm_cache.c                |   4 +-
+ drivers/gpu/drm/i915/Kconfig               |   2 +-
+ drivers/gpu/drm/i915/dvo_ch7xxx.c          |   2 +-
+ drivers/gpu/drm/i915/dvo_ivch.c            |   2 +-
+ drivers/gpu/drm/i915/dvo_ns2501.c          |  24 +-
+ drivers/gpu/drm/i915/dvo_sil164.c          |   2 +-
+ drivers/gpu/drm/i915/dvo_tfp410.c          |   2 +-
+ drivers/gpu/drm/i915/i915_cmd_parser.c     | 616 +++++++++++++++++++++++++----
+ drivers/gpu/drm/i915/i915_debugfs.c        |  25 +-
+ drivers/gpu/drm/i915/i915_dma.c            |   3 +
+ drivers/gpu/drm/i915/i915_drv.c            |  62 ++-
+ drivers/gpu/drm/i915/i915_drv.h            | 265 +++----------
+ drivers/gpu/drm/i915/i915_gem.c            |  50 ++-
+ drivers/gpu/drm/i915/i915_gem_context.c    |  18 +-
+ drivers/gpu/drm/i915/i915_gem_dmabuf.c     |   6 +-
+ drivers/gpu/drm/i915/i915_gem_execbuffer.c |   3 +-
+ drivers/gpu/drm/i915/i915_gem_gtt.c        |  75 +---
+ drivers/gpu/drm/i915/i915_gem_gtt.h        | 283 +++++++++++++
+ drivers/gpu/drm/i915/i915_gpu_error.c      |  23 +-
+ drivers/gpu/drm/i915/i915_irq.c            | 504 +++++++++++------------
+ drivers/gpu/drm/i915/i915_params.c         |   8 +-
+ drivers/gpu/drm/i915/i915_reg.h            | 117 +++++-
+ drivers/gpu/drm/i915/intel_bios.c          | 242 +++++++++++-
+ drivers/gpu/drm/i915/intel_bios.h          |  60 +++
+ drivers/gpu/drm/i915/intel_display.c       | 283 ++++++-------
+ drivers/gpu/drm/i915/intel_dp.c            | 200 +++++++++-
+ drivers/gpu/drm/i915/intel_drv.h           |  35 +-
+ drivers/gpu/drm/i915/intel_dsi.c           | 125 ++++--
+ drivers/gpu/drm/i915/intel_dsi.h           |   4 +-
+ drivers/gpu/drm/i915/intel_dsi_cmd.c       |   4 +-
+ drivers/gpu/drm/i915/intel_dsi_cmd.h       |   5 +-
+ drivers/gpu/drm/i915/intel_hdmi.c          |  38 +-
+ drivers/gpu/drm/i915/intel_lvds.c          |   7 -
+ drivers/gpu/drm/i915/intel_panel.c         |   8 +-
+ drivers/gpu/drm/i915/intel_pm.c            | 219 ++++++----
+ drivers/gpu/drm/i915/intel_ringbuffer.c    | 288 ++++++++------
+ drivers/gpu/drm/i915/intel_ringbuffer.h    |   6 +-
+ drivers/gpu/drm/i915/intel_sdvo.c          |   4 +-
+ drivers/gpu/drm/i915/intel_sideband.c      |   8 +
+ drivers/gpu/drm/i915/intel_uncore.c        |  24 +-
+ include/drm/drmP.h                         |   2 +-
+ include/uapi/drm/i915_drm.h                |   1 +
+ 42 files changed, 2502 insertions(+), 1157 deletions(-)
+ create mode 100644 drivers/gpu/drm/i915/i915_gem_gtt.h
+Merging drm-tegra/drm/tegra/for-next (1ce91616a989 drm/tegra: hdmi - Add Tegra124 support)
+$ git merge drm-tegra/drm/tegra/for-next
+Merge made by the 'recursive' strategy.
+ .../bindings/gpu/nvidia,tegra20-host1x.txt         |  10 +-
+ arch/arm/boot/dts/tegra114-dalmore.dts             |   2 +-
+ arch/arm/boot/dts/tegra20-colibri-512.dtsi         |   4 +-
+ arch/arm/boot/dts/tegra20-harmony.dts              |   4 +-
+ arch/arm/boot/dts/tegra20-paz00.dts                |   4 +-
+ arch/arm/boot/dts/tegra20-seaboard.dts             |   4 +-
+ arch/arm/boot/dts/tegra20-tamonten.dtsi            |   4 +-
+ arch/arm/boot/dts/tegra20-trimslice.dts            |   4 +-
+ arch/arm/boot/dts/tegra20-ventana.dts              |   4 +-
+ arch/arm/boot/dts/tegra20-whistler.dts             |   4 +-
+ arch/arm/boot/dts/tegra30-beaver.dts               |   2 +-
+ drivers/gpu/drm/tegra/dc.c                         | 536 +++++++++++----------
+ drivers/gpu/drm/tegra/dc.h                         |   3 +-
+ drivers/gpu/drm/tegra/drm.c                        |   1 +
+ drivers/gpu/drm/tegra/drm.h                        |  54 +--
+ drivers/gpu/drm/tegra/dsi.c                        | 244 ++++++----
+ drivers/gpu/drm/tegra/dsi.h                        |  10 +
+ drivers/gpu/drm/tegra/hdmi.c                       | 196 ++++++--
+ drivers/gpu/drm/tegra/hdmi.h                       |   5 +
+ drivers/gpu/drm/tegra/output.c                     |   2 +-
+ drivers/gpu/drm/tegra/rgb.c                        |  31 +-
+ drivers/gpu/drm/tegra/sor.c                        | 192 +++++++-
+ drivers/gpu/drm/tegra/sor.h                        |   4 +
+ 23 files changed, 830 insertions(+), 494 deletions(-)
+Merging sound/for-next (38137a064199 ALSA: lx_core: Translate comments from french to english)
+$ git merge sound/for-next
+Merge made by the 'recursive' strategy.
+ include/sound/atmel-ac97c.h  |   2 -
+ sound/atmel/ac97c.c          |  15 +-
+ sound/core/pcm_lib.c         |   2 +-
+ sound/pci/lx6464es/lx_core.c |  46 ++---
+ sound/usb/Kconfig            |  13 ++
+ sound/usb/Makefile           |   2 +-
+ sound/usb/bcd2000/Makefile   |   3 +
+ sound/usb/bcd2000/bcd2000.c  | 461 +++++++++++++++++++++++++++++++++++++++++++
+ 8 files changed, 497 insertions(+), 47 deletions(-)
+ create mode 100644 sound/usb/bcd2000/Makefile
+ create mode 100644 sound/usb/bcd2000/bcd2000.c
+Merging sound-asoc/for-next (d2a9bb89829d Merge remote-tracking branches 'asoc/topic/intel', 'asoc/topic/jz4740', 'asoc/topic/omap', 'asoc/topic/rt5640', 'asoc/topic/rt5651' and 'asoc/topic/sirf' into asoc-next)
+$ git merge sound-asoc/for-next
+Removing sound/soc/sirf/sirf-audio-port.h
+Merge made by the 'recursive' strategy.
+ Documentation/devicetree/bindings/sound/ak5386.txt |    4 +
+ .../devicetree/bindings/sound/fsl-sai.txt          |   11 +-
+ Documentation/devicetree/bindings/sound/rt5640.txt |   13 +-
+ .../devicetree/bindings/sound/st,sta350.txt        |  107 +
+ .../devicetree/bindings/sound/tlv320aic31xx.txt    |    6 +-
+ include/sound/rt5640.h                             |    4 +
+ include/sound/rt5651.h                             |   21 +
+ include/sound/soc-dapm.h                           |   13 +-
+ include/sound/soc.h                                |  121 +-
+ include/sound/sta350.h                             |   52 +
+ include/trace/events/asoc.h                        |   92 -
+ sound/soc/codecs/88pm860x-codec.c                  |   20 +-
+ sound/soc/codecs/Kconfig                           |   15 +-
+ sound/soc/codecs/Makefile                          |    6 +
+ sound/soc/codecs/ab8500-codec.c                    |   12 +-
+ sound/soc/codecs/adau1373.c                        |    7 +-
+ sound/soc/codecs/adav80x.c                         |   12 +-
+ sound/soc/codecs/ak4641.c                          |    4 +-
+ sound/soc/codecs/ak5386.c                          |   50 +
+ sound/soc/codecs/alc5623.c                         |    2 +-
+ sound/soc/codecs/arizona.h                         |    4 +-
+ sound/soc/codecs/cq93vc.c                          |   10 +-
+ sound/soc/codecs/cs4270.c                          |    2 +-
+ sound/soc/codecs/cs4271.c                          |    4 +-
+ sound/soc/codecs/cs42l51-i2c.c                     |   59 +
+ sound/soc/codecs/cs42l51.c                         |   80 +-
+ sound/soc/codecs/cs42l51.h                         |    6 +
+ sound/soc/codecs/cs42l52.c                         |    6 +-
+ sound/soc/codecs/cs42l73.c                         |    6 +-
+ sound/soc/codecs/da7210.c                          |    4 +-
+ sound/soc/codecs/da7213.c                          |    4 +-
+ sound/soc/codecs/da732x.c                          |    4 +-
+ sound/soc/codecs/da9055.c                          |    2 +-
+ sound/soc/codecs/hdmi.c                            |    1 +
+ sound/soc/codecs/lm4857.c                          |    4 +-
+ sound/soc/codecs/max9768.c                         |    4 +-
+ sound/soc/codecs/max98088.c                        |   12 +-
+ sound/soc/codecs/max98090.c                        |   10 +-
+ sound/soc/codecs/max98095.c                        |   16 +-
+ sound/soc/codecs/mc13783.c                         |   22 +-
+ sound/soc/codecs/pcm1681.c                         |    4 +-
+ sound/soc/codecs/pcm512x.c                         |    4 +-
+ sound/soc/codecs/rt5631.c                          |    4 +-
+ sound/soc/codecs/rt5640.c                          |  419 ++--
+ sound/soc/codecs/rt5640.h                          |   10 +-
+ sound/soc/codecs/rt5651.c                          | 1898 ++++++++++++++++++
+ sound/soc/codecs/rt5651.h                          | 2081 ++++++++++++++++++++
+ sound/soc/codecs/sgtl5000.c                        |    4 +-
+ sound/soc/codecs/si476x.c                          |   14 +-
+ sound/soc/codecs/sirf-audio-codec.c                |   74 +-
+ sound/soc/codecs/sirf-audio-codec.h                |   50 +
+ sound/soc/codecs/sta32x.c                          |    4 +-
+ sound/soc/codecs/sta350.c                          | 1266 ++++++++++++
+ sound/soc/codecs/sta350.h                          |  228 +++
+ sound/soc/codecs/tas5086.c                         |    4 +-
+ sound/soc/codecs/tlv320aic23-i2c.c                 |    1 +
+ sound/soc/codecs/tlv320aic23.c                     |    4 +-
+ sound/soc/codecs/tlv320aic31xx.c                   |    1 +
+ sound/soc/codecs/tlv320aic3x.c                     |    9 +-
+ sound/soc/codecs/tlv320dac33.c                     |    4 +-
+ sound/soc/codecs/tpa6130a2.c                       |    1 +
+ sound/soc/codecs/twl4030.c                         |   10 +-
+ sound/soc/codecs/twl6040.c                         |    8 +-
+ sound/soc/codecs/wl1273.c                          |   12 +-
+ sound/soc/codecs/wm2000.c                          |    8 +-
+ sound/soc/codecs/wm2200.c                          |    4 +-
+ sound/soc/codecs/wm5100.c                          |    4 +-
+ sound/soc/codecs/wm5102.c                          |   26 +-
+ sound/soc/codecs/wm5110.c                          |   35 +-
+ sound/soc/codecs/wm8350.c                          |   14 +-
+ sound/soc/codecs/wm8400.c                          |   12 +-
+ sound/soc/codecs/wm8580.c                          |    2 +-
+ sound/soc/codecs/wm8731.c                          |    4 +-
+ sound/soc/codecs/wm8753.c                          |    4 +-
+ sound/soc/codecs/wm8804.c                          |    4 +-
+ sound/soc/codecs/wm8903.c                          |    4 +-
+ sound/soc/codecs/wm8904.c                          |   14 +-
+ sound/soc/codecs/wm8955.c                          |    4 +-
+ sound/soc/codecs/wm8958-dsp2.c                     |   32 +-
+ sound/soc/codecs/wm8960.c                          |    4 +-
+ sound/soc/codecs/wm8962.c                          |    8 +-
+ sound/soc/codecs/wm8983.c                          |    4 +-
+ sound/soc/codecs/wm8985.c                          |    4 +-
+ sound/soc/codecs/wm8988.c                          |    8 +-
+ sound/soc/codecs/wm8990.c                          |    2 +-
+ sound/soc/codecs/wm8991.c                          |    2 +-
+ sound/soc/codecs/wm8994.c                          |   32 +-
+ sound/soc/codecs/wm8995.c                          |   10 +-
+ sound/soc/codecs/wm8996.c                          |    4 +-
+ sound/soc/codecs/wm8997.c                          |   25 +-
+ sound/soc/codecs/wm9081.c                          |    4 +-
+ sound/soc/codecs/wm_adsp.c                         |    6 +-
+ sound/soc/codecs/wm_hubs.c                         |    2 +-
+ sound/soc/davinci/davinci-i2s.c                    |    1 -
+ sound/soc/davinci/davinci-mcasp.c                  |  260 ++-
+ sound/soc/davinci/davinci-mcasp.h                  |    1 +
+ sound/soc/davinci/davinci-pcm.c                    |    8 +-
+ sound/soc/davinci/davinci-pcm.h                    |    8 +-
+ sound/soc/davinci/davinci-vcif.c                   |    1 -
+ sound/soc/fsl/Kconfig                              |   57 +-
+ sound/soc/fsl/fsl_esai.c                           |    9 +-
+ sound/soc/fsl/fsl_sai.c                            |  255 +--
+ sound/soc/fsl/fsl_sai.h                            |   16 +
+ sound/soc/fsl/fsl_spdif.c                          |    9 +-
+ sound/soc/fsl/fsl_spdif.h                          |    4 +-
+ sound/soc/fsl/fsl_ssi.c                            |  150 +-
+ sound/soc/intel/sst-dsp-priv.h                     |    2 +-
+ sound/soc/intel/sst-firmware.c                     |    4 +-
+ sound/soc/intel/sst-haswell-ipc.c                  |    7 +-
+ sound/soc/intel/sst-haswell-pcm.c                  |    8 +-
+ sound/soc/jz4740/Makefile                          |    2 -
+ sound/soc/jz4740/qi_lb60.c                         |   32 +-
+ sound/soc/omap/am3517evm.c                         |    2 +-
+ sound/soc/omap/ams-delta.c                         |   66 +-
+ sound/soc/omap/n810.c                              |    2 +-
+ sound/soc/omap/omap-abe-twl6040.c                  |    8 +-
+ sound/soc/omap/omap-dmic.c                         |    9 +-
+ sound/soc/omap/omap-hdmi-card.c                    |    2 +-
+ sound/soc/omap/omap-hdmi.c                         |    6 +-
+ sound/soc/omap/omap-mcbsp.c                        |   20 +-
+ sound/soc/omap/omap-mcpdm.c                        |   16 +-
+ sound/soc/omap/omap-pcm.c                          |   25 +-
+ sound/soc/omap/omap-pcm.h                          |   30 +
+ sound/soc/omap/omap-twl4030.c                      |   10 +-
+ sound/soc/omap/omap3pandora.c                      |   35 +-
+ sound/soc/omap/osk5912.c                           |    2 +-
+ sound/soc/omap/rx51.c                              |   49 +-
+ sound/soc/sh/rcar/src.c                            |    4 +-
+ sound/soc/sh/rcar/ssi.c                            |    4 +-
+ sound/soc/sirf/sirf-audio-port.c                   |  107 -
+ sound/soc/sirf/sirf-audio-port.h                   |   62 -
+ sound/soc/soc-cache.c                              |    2 -
+ sound/soc/soc-core.c                               |  822 ++++----
+ sound/soc/soc-dapm.c                               |   92 +-
+ sound/soc/soc-devres.c                             |   35 +
+ sound/soc/soc-io.c                                 |  296 ++-
+ 136 files changed, 7886 insertions(+), 1886 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/sound/st,sta350.txt
+ create mode 100644 include/sound/rt5651.h
+ create mode 100644 include/sound/sta350.h
+ create mode 100644 sound/soc/codecs/cs42l51-i2c.c
+ create mode 100644 sound/soc/codecs/rt5651.c
+ create mode 100644 sound/soc/codecs/rt5651.h
+ create mode 100644 sound/soc/codecs/sta350.c
+ create mode 100644 sound/soc/codecs/sta350.h
+ create mode 100644 sound/soc/omap/omap-pcm.h
+ delete mode 100644 sound/soc/sirf/sirf-audio-port.h
+Merging modules/modules-next (22c9bcad859d staging: fix up speakup kobject mode)
+$ git merge modules/modules-next
+Already up-to-date.
+Merging virtio/virtio-next (fc4324b4597c virtio-blk: base queue-depth on virtqueue ringsize or module param)
+$ git merge virtio/virtio-next
+Already up-to-date.
+Merging input/next (1239128e349b Input: tc3589x-keypad - support probing from device tree)
+$ git merge input/next
+Auto-merging drivers/input/tablet/wacom_wac.c
+Merge made by the 'recursive' strategy.
+ drivers/input/keyboard/tc3589x-keypad.c | 66 ++++++++++++++++++++++++-
+ drivers/input/tablet/wacom_wac.c        | 88 +++++++++++++++++++++++++++------
+ drivers/input/tablet/wacom_wac.h        |  4 +-
+ drivers/input/touchscreen/Kconfig       |  2 +-
+ 4 files changed, 140 insertions(+), 20 deletions(-)
+Merging input-mt/for-next (5e01dc7b26d9 Linux 3.12)
+$ git merge input-mt/for-next
+Already up-to-date.
+Merging block/for-next (35bfe60ae8ba Merge branch 'for-3.16/core' into for-next)
+$ git merge block/for-next
+Auto-merging drivers/mtd/mtd_blkdevs.c
+Merge made by the 'recursive' strategy.
+ block/blk-core.c             |  45 ++--
+ block/blk-flush.c            |  26 +--
+ block/blk-map.c              |   3 -
+ block/blk-mq-cpumap.c        |   6 +-
+ block/blk-mq-sysfs.c         |   8 +-
+ block/blk-mq-tag.c           |  14 --
+ block/blk-mq-tag.h           |  19 +-
+ block/blk-mq.c               | 505 +++++++++++++++++++++++++------------------
+ block/blk-mq.h               |   8 +-
+ block/blk-throttle.c         |   2 +-
+ block/blk-timeout.c          |  15 +-
+ block/bsg.c                  |   2 +-
+ block/cfq-iosched.c          |   2 +-
+ drivers/block/amiflop.c      |   2 +-
+ drivers/block/ataflop.c      |   2 +-
+ drivers/block/cciss.c        |   6 +-
+ drivers/block/floppy.c       |  18 +-
+ drivers/block/hd.c           |  10 +-
+ drivers/block/mg_disk.c      |  12 +-
+ drivers/block/null_blk.c     |  96 ++++----
+ drivers/block/paride/pcd.c   |   2 +-
+ drivers/block/paride/pd.c    |   4 +-
+ drivers/block/paride/pf.c    |   4 +-
+ drivers/block/skd_main.c     |  12 +-
+ drivers/block/swim.c         |   2 +-
+ drivers/block/swim3.c        |   6 +-
+ drivers/block/virtio_blk.c   |  73 ++++---
+ drivers/block/xen-blkfront.c |   4 +-
+ drivers/block/xsysace.c      |   4 +-
+ drivers/block/z2ram.c        |   6 +-
+ drivers/cdrom/gdrom.c        |   2 +-
+ drivers/ide/ide-disk.c       |   5 +-
+ drivers/md/dm.c              |   1 -
+ drivers/mtd/mtd_blkdevs.c    |   3 +-
+ drivers/mtd/ubi/block.c      |   2 +-
+ drivers/sbus/char/jsflash.c  |   2 +-
+ drivers/scsi/scsi_lib.c      |   5 +-
+ drivers/scsi/sd.c            |  13 +-
+ fs/bio-integrity.c           |   2 +-
+ fs/bio.c                     |  11 +-
+ include/linux/bio.h          |   2 +-
+ include/linux/blk-mq.h       |  59 ++---
+ include/linux/blkdev.h       |  21 +-
+ 43 files changed, 587 insertions(+), 459 deletions(-)
+Merging device-mapper/for-next (ec052772958d Merge branch 'for-3.15' into for-next)
+$ git merge device-mapper/for-next
+Auto-merging fs/bio.c
+Merge made by the 'recursive' strategy.
+ drivers/md/dm-crypt.c  | 427 +++++++++++++++++++++++++------------------------
+ drivers/md/dm-thin.c   |  75 ++++++++-
+ drivers/md/dm-verity.c |  15 +-
+ fs/bio.c               |   3 +-
+ 4 files changed, 297 insertions(+), 223 deletions(-)
+Merging embedded/master (4744b43431e8 embedded: fix vc_translate operator precedence)
+$ git merge embedded/master
+Already up-to-date.
+Merging firmware/master (6e03a201bbe8 firmware: speed up request_firmware(), v3)
+$ git merge firmware/master
+Already up-to-date.
+Merging pcmcia/master (80af9e6d7ae6 pcmcia at91_cf: fix raw gpio number usage)
+$ git merge pcmcia/master
+Already up-to-date.
+Merging mmc/mmc-next (865042c01637 mmc: Add realtek USB sdmmc host driver)
+$ git merge mmc/mmc-next
+Merge made by the 'recursive' strategy.
+ .../devicetree/bindings/mmc/synopsys-dw-mshc.txt   |    5 -
+ drivers/mmc/core/core.c                            |    9 +
+ drivers/mmc/core/debugfs.c                         |    3 +
+ drivers/mmc/core/mmc.c                             |   14 +-
+ drivers/mmc/core/sd.c                              |   12 +-
+ drivers/mmc/core/sdio.c                            |   45 +-
+ drivers/mmc/core/sdio_bus.c                        |   14 +-
+ drivers/mmc/core/slot-gpio.c                       |    4 +-
+ drivers/mmc/host/Kconfig                           |    7 +
+ drivers/mmc/host/Makefile                          |    1 +
+ drivers/mmc/host/dw_mmc-exynos.c                   |    7 +-
+ drivers/mmc/host/dw_mmc.c                          |  178 +--
+ drivers/mmc/host/dw_mmc.h                          |    2 -
+ drivers/mmc/host/mmci.c                            |    6 +-
+ drivers/mmc/host/mxcmmc.c                          |  114 +-
+ drivers/mmc/host/omap_hsmmc.c                      |    4 +-
+ drivers/mmc/host/rtsx_pci_sdmmc.c                  |  124 +-
+ drivers/mmc/host/rtsx_usb_sdmmc.c                  | 1455 ++++++++++++++++++++
+ drivers/mmc/host/sdhci-s3c.c                       |    3 -
+ drivers/mmc/host/sdhci.c                           |    4 +-
+ drivers/mmc/host/sh_mmcif.c                        |    9 +-
+ include/linux/mmc/card.h                           |    2 +-
+ include/linux/mmc/dw_mmc.h                         |   14 -
+ include/linux/mmc/host.h                           |    5 +-
+ 24 files changed, 1642 insertions(+), 399 deletions(-)
+ create mode 100644 drivers/mmc/host/rtsx_usb_sdmmc.c
+Merging kgdb/kgdb-next (6bedf31c25dd kdb: Remove unhandled ssb command)
+$ git merge kgdb/kgdb-next
+Merge made by the 'recursive' strategy.
+Merging slab/for-next (34bf6ef94a83 mm: slab/slub: use page->list consistently instead of page->lru)
+$ git merge slab/for-next
+Already up-to-date.
+Merging uclinux/for-next (6dbe51c251a3 Linux 3.9-rc1)
+$ git merge uclinux/for-next
+Already up-to-date.
+Merging md/for-next (e2f23b606b94 md: avoid oops on unload if some process is in poll or select.)
+$ git merge md/for-next
+Already up-to-date.
+Merging mfd/master (90b128ed1557 Merge tag 'mfd-lee-3.13-3' of git://git.linaro.org/people/ljones/mfd)
+$ git merge mfd/master
+Already up-to-date.
+Merging mfd-lj/for-mfd-next (2d28ca731b9b mfd: wm5110: Correct default for HEADPHONE_DETECT_1)
+$ git merge mfd-lj/for-mfd-next
+Already up-to-date.
+Merging battery/master (ac323d8d8070 power: max17040: Fix NULL pointer dereference when there is no platform_data)
+$ git merge battery/master
+Already up-to-date.
+Merging fbdev/for-next (718b90ac4c21 video: xilinxfb: Simplify error path)
+$ git merge fbdev/for-next
+Already up-to-date.
+Merging viafb/viafb-next (838ac785d521 viafb: avoid refresh and mode lookup in set_par)
+$ git merge viafb/viafb-next
+Already up-to-date.
+Merging omap_dss2/for-next (a798c10faf62 Linux 3.15-rc2)
+$ git merge omap_dss2/for-next
+Already up-to-date.
+Merging regulator/for-next (979b29716454 Merge remote-tracking branches 'regulator/topic/arizona', 'regulator/topic/axp20', 'regulator/topic/of', 'regulator/topic/pbias', 'regulator/topic/s2mps11', 'regulator/topic/s5m8767' and 'regulator/topic/tps65217' into regulator-next)
+$ git merge regulator/for-next
+Merge made by the 'recursive' strategy.
+ Documentation/devicetree/bindings/mfd/s2mps11.txt |  14 ++
+ drivers/mfd/arizona-core.c                        |  41 ++--
+ drivers/regulator/Kconfig                         |   7 +
+ drivers/regulator/Makefile                        |   1 +
+ drivers/regulator/arizona-ldo1.c                  |  57 +++++
+ drivers/regulator/arizona-micsupp.c               |  37 +++
+ drivers/regulator/axp20x-regulator.c              | 285 ++++++++++++++++++++++
+ drivers/regulator/core.c                          |   3 +-
+ drivers/regulator/of_regulator.c                  |  31 ++-
+ drivers/regulator/pbias-regulator.c               |  89 ++-----
+ drivers/regulator/s2mps11.c                       |  98 +++++++-
+ drivers/regulator/s5m8767.c                       |  17 +-
+ drivers/regulator/tps65217-regulator.c            |   4 +-
+ include/linux/mfd/arizona/core.h                  |   3 +
+ include/linux/mfd/samsung/s2mps14.h               |   2 +
+ include/linux/mfd/tps65217.h                      |   1 -
+ include/linux/regulator/consumer.h                |   4 +-
+ 17 files changed, 573 insertions(+), 121 deletions(-)
+ create mode 100644 drivers/regulator/axp20x-regulator.c
+Merging security/next (fab71a90edda security: Convert use of typedef ctl_table to struct ctl_table)
+$ git merge security/next
+Auto-merging security/selinux/hooks.c
+Auto-merging security/security.c
+Auto-merging include/linux/security.h
+Merge made by the 'recursive' strategy.
+ include/linux/key.h        | 11 +++++++++++
+ include/linux/security.h   |  6 +++---
+ security/capability.c      |  2 +-
+ security/keys/internal.h   | 11 +----------
+ security/keys/key.c        |  6 +++---
+ security/keys/keyctl.c     | 44 ++++++++++++++++++++++----------------------
+ security/keys/keyring.c    |  8 ++++----
+ security/keys/permission.c |  4 ++--
+ security/keys/persistent.c |  4 ++--
+ security/keys/proc.c       |  2 +-
+ security/keys/sysctl.c     |  2 +-
+ security/security.c        |  2 +-
+ security/selinux/hooks.c   |  2 +-
+ security/smack/smack_lsm.c |  9 +++++++--
+ 14 files changed, 60 insertions(+), 53 deletions(-)
+Merging selinux/next (6d32c850621b Merge tag 'v3.14' into next)
+$ git merge selinux/next
+Merge made by the 'recursive' strategy.
+Merging lblnet/next (d8ec26d7f828 Linux 3.13)
+$ git merge lblnet/next
+Already up-to-date.
+Merging watchdog/master (c9eaa447e77e Linux 3.15-rc1)
+$ git merge watchdog/master
+Already up-to-date.
+Merging iommu/next (57c343bad18f Merge branches 'iommu/fixes' and 'arm/omap' into next)
+$ git merge iommu/next
+Merge made by the 'recursive' strategy.
+ drivers/iommu/omap-iommu.c     | 31 ++++++++++++-------------------
+ drivers/iommu/omap-iopgtable.h |  3 ---
+ 2 files changed, 12 insertions(+), 22 deletions(-)
+Merging dwmw2-iommu/master (5ae0566a0fff iommu/vt-d: fix bug in matching PCI devices with DRHD/RMRR descriptors)
+$ git merge dwmw2-iommu/master
+Already up-to-date.
+Merging vfio/next (4379d2ae1528 vfio: always select ANON_INODES)
+$ git merge vfio/next
+Already up-to-date.
+Merging osd/linux-next (f1f6630b53e7 MAINTAINERS: Update email address for bhalevy)
+$ git merge osd/linux-next
+Already up-to-date.
+Merging jc_docs/docs-next (5c050fb96380 docs: update the development process document)
+$ git merge jc_docs/docs-next
+Already up-to-date.
+Merging trivial/for-next (c800bcd5f53f sparse: fix comment)
+$ git merge trivial/for-next
+Already up-to-date.
+Merging audit/master (66dde9dbae61 sparc: properly conditionalize use of TIF_32BIT)
+$ git merge audit/master
+Resolved 'arch/mips/include/asm/syscall.h' using previous resolution.
+Resolved 'arch/mips/kernel/ptrace.c' using previous resolution.
+Resolved 'arch/x86/Kconfig' using previous resolution.
+Resolved 'kernel/audit.c' using previous resolution.
+Auto-merging kernel/audit.c
+CONFLICT (content): Merge conflict in kernel/audit.c
+Auto-merging arch/x86/kernel/ptrace.c
+Auto-merging arch/x86/Kconfig
+CONFLICT (content): Merge conflict in arch/x86/Kconfig
+Auto-merging arch/um/kernel/ptrace.c
+Auto-merging arch/s390/kernel/ptrace.c
+Auto-merging arch/mips/kernel/ptrace.c
+CONFLICT (content): Merge conflict in arch/mips/kernel/ptrace.c
+Auto-merging arch/mips/include/asm/syscall.h
+CONFLICT (content): Merge conflict in arch/mips/include/asm/syscall.h
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master cf0c38ff5a60] Merge remote-tracking branch 'audit/master'
+$ git diff -M --stat --summary HEAD^..
+ arch/alpha/include/asm/syscall.h      | 11 +++++++++++
+ arch/alpha/kernel/ptrace.c            |  2 +-
+ arch/arm/kernel/ptrace.c              |  4 ++--
+ arch/ia64/include/asm/syscall.h       |  6 ++++++
+ arch/ia64/kernel/ptrace.c             |  2 +-
+ arch/microblaze/include/asm/syscall.h |  5 +++++
+ arch/microblaze/kernel/ptrace.c       |  3 +--
+ arch/mips/include/asm/syscall.h       |  2 +-
+ arch/mips/kernel/ptrace.c             |  4 +---
+ arch/openrisc/include/asm/syscall.h   |  5 +++++
+ arch/openrisc/kernel/ptrace.c         |  3 +--
+ arch/parisc/include/asm/syscall.h     | 11 +++++++++++
+ arch/parisc/kernel/ptrace.c           |  9 +++------
+ arch/powerpc/include/asm/syscall.h    |  6 ++++++
+ arch/powerpc/kernel/ptrace.c          |  7 ++-----
+ arch/s390/kernel/ptrace.c             |  4 +---
+ arch/sh/include/asm/syscall_32.h      | 10 ++++++++++
+ arch/sh/include/asm/syscall_64.h      | 14 ++++++++++++++
+ arch/sh/kernel/ptrace_32.c            | 14 +-------------
+ arch/sh/kernel/ptrace_64.c            | 17 +----------------
+ arch/sparc/include/asm/syscall.h      | 12 ++++++++++++
+ arch/sparc/kernel/ptrace_64.c         |  9 ++-------
+ arch/um/kernel/ptrace.c               |  3 +--
+ arch/x86/kernel/ptrace.c              |  8 ++------
+ arch/x86/um/asm/ptrace.h              |  4 ----
+ arch/x86/um/asm/syscall.h             | 15 +++++++++++++++
+ arch/xtensa/kernel/ptrace.c           |  2 +-
+ include/asm-generic/syscall.h         |  2 +-
+ include/linux/audit.h                 |  8 +++++---
+ include/uapi/linux/audit.h            | 14 +-------------
+ kernel/auditsc.c                      | 11 +++++------
+ 31 files changed, 129 insertions(+), 98 deletions(-)
+ create mode 100644 arch/alpha/include/asm/syscall.h
+ create mode 100644 arch/x86/um/asm/syscall.h
+Merging fsnotify/for-next (1ca39ab9d21a inotify: automatically restart syscalls)
+$ git merge fsnotify/for-next
+Already up-to-date.
+Merging devicetree/devicetree/next (d88cf7d7b424 Merge remote-tracking branch 'robh/for-next' into devicetree/next)
+$ git merge devicetree/devicetree/next
+Already up-to-date.
+Merging dt-rh/for-next (e7a62df8e8b4 of: Clean up of_update_property)
+$ git merge dt-rh/for-next
+Already up-to-date.
+Merging spi/for-next (b36c482da80a Merge remote-tracking branches 'spi/topic/pxa2xx', 'spi/topic/s3c24xx', 'spi/topic/sirf' and 'spi/topic/workqueue' into spi-next)
+$ git merge spi/for-next
+Auto-merging include/linux/spi/adi_spi3.h
+Auto-merging drivers/spi/spi-adi-v3.c
+Auto-merging arch/arm/mach-shmobile/clock-r8a7778.c
+Merge made by the 'recursive' strategy.
+ Documentation/devicetree/bindings/spi/fsl-spi.txt  |   6 +
+ Documentation/devicetree/bindings/spi/spi-bus.txt  |   2 +
+ .../devicetree/bindings/spi/spi-cadence.txt        |  31 +
+ arch/arm/mach-shmobile/clock-r8a7778.c             |   2 +-
+ arch/blackfin/mach-bf609/boards/ezkit.c            |  22 +-
+ arch/blackfin/mach-bf609/clock.c                   |   7 +
+ drivers/spi/Kconfig                                |  11 +-
+ drivers/spi/Makefile                               |   3 +-
+ drivers/spi/{spi-bfin-v3.c => spi-adi-v3.c}        | 433 ++++++-------
+ drivers/spi/spi-ath79.c                            |   1 -
+ drivers/spi/spi-atmel.c                            |   7 +-
+ drivers/spi/spi-bcm63xx-hsspi.c                    |   1 -
+ drivers/spi/spi-bcm63xx.c                          |   1 -
+ drivers/spi/spi-bfin5xx.c                          |   1 +
+ drivers/spi/spi-cadence.c                          | 673 +++++++++++++++++++++
+ drivers/spi/spi-falcon.c                           |   1 -
+ drivers/spi/spi-fsl-espi.c                         |  36 +-
+ drivers/spi/spi-fsl-lib.c                          |   6 -
+ drivers/spi/spi-fsl-lib.h                          |   1 -
+ drivers/spi/spi-fsl-spi.c                          |   2 +-
+ drivers/spi/spi-nuc900.c                           |   1 -
+ drivers/spi/spi-omap-uwire.c                       |   1 -
+ drivers/spi/spi-pxa2xx-pci.c                       |  76 ++-
+ drivers/spi/spi-pxa2xx.c                           |   1 -
+ drivers/spi/spi-s3c24xx.c                          |  11 +-
+ drivers/spi/spi-s3c64xx.c                          |   1 -
+ drivers/spi/spi-sh-hspi.c                          |   4 +-
+ drivers/spi/spi-sh-sci.c                           |   1 -
+ drivers/spi/spi-sirf.c                             | 268 ++++----
+ drivers/spi/spi-sun4i.c                            |   1 -
+ drivers/spi/spi-sun6i.c                            |   1 -
+ drivers/spi/spi.c                                  |   4 +-
+ .../bfin_spi3.h => include/linux/spi/adi_spi3.h    |  20 +-
+ 33 files changed, 1241 insertions(+), 396 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/spi/spi-cadence.txt
+ rename drivers/spi/{spi-bfin-v3.c => spi-adi-v3.c} (60%)
+ create mode 100644 drivers/spi/spi-cadence.c
+ rename arch/blackfin/include/asm/bfin_spi3.h => include/linux/spi/adi_spi3.h (97%)
+Merging tip/auto-latest (158d451df463 Merge branch 'x86/vdso')
+$ git merge tip/auto-latest
+Auto-merging net/ipv4/tcp_output.c
+Auto-merging net/core/dev.c
+Auto-merging net/bluetooth/hci_event.c
+Auto-merging mm/filemap.c
+Auto-merging include/linux/netdevice.h
+Auto-merging fs/nfs/write.c
+Auto-merging fs/nfs/inode.c
+Auto-merging fs/btrfs/inode.c
+Auto-merging drivers/net/ethernet/intel/ixgbe/ixgbe_main.c
+Auto-merging drivers/net/ethernet/intel/i40e/i40e_main.c
+Auto-merging drivers/md/dm.c
+Auto-merging drivers/gpu/drm/i915/i915_irq.c
+Removing arch/hexagon/include/asm/barrier.h
+Merge made by the 'recursive' strategy.
+ Documentation/atomic_ops.txt                      |  31 +-
+ Documentation/memory-barriers.txt                 |  42 +-
+ arch/alpha/include/asm/atomic.h                   |   5 -
+ arch/alpha/include/asm/bitops.h                   |   3 -
+ arch/arc/include/asm/atomic.h                     |   5 -
+ arch/arc/include/asm/bitops.h                     |   5 +-
+ arch/arm/include/asm/atomic.h                     |   5 -
+ arch/arm/include/asm/barrier.h                    |   3 +
+ arch/arm/include/asm/bitops.h                     |   4 +-
+ arch/arm64/include/asm/atomic.h                   |   5 -
+ arch/arm64/include/asm/barrier.h                  |   3 +
+ arch/arm64/include/asm/bitops.h                   |   9 -
+ arch/avr32/include/asm/atomic.h                   |   5 -
+ arch/avr32/include/asm/bitops.h                   |   9 +-
+ arch/blackfin/include/asm/barrier.h               |   3 +
+ arch/blackfin/include/asm/bitops.h                |  14 +-
+ arch/c6x/include/asm/bitops.h                     |   8 +-
+ arch/cris/include/asm/atomic.h                    |   8 +-
+ arch/cris/include/asm/bitops.h                    |   9 +-
+ arch/frv/include/asm/atomic.h                     |   7 +-
+ arch/frv/include/asm/bitops.h                     |   6 -
+ arch/hexagon/include/asm/atomic.h                 |   6 +-
+ arch/hexagon/include/asm/barrier.h                |  37 --
+ arch/hexagon/include/asm/bitops.h                 |   4 +-
+ arch/ia64/include/asm/atomic.h                    |   7 +-
+ arch/ia64/include/asm/barrier.h                   |   3 +
+ arch/ia64/include/asm/bitops.h                    |   9 +-
+ arch/ia64/include/uapi/asm/cmpxchg.h              |   9 +
+ arch/m32r/include/asm/atomic.h                    |   7 +-
+ arch/m32r/include/asm/bitops.h                    |   6 +-
+ arch/m68k/include/asm/atomic.h                    |   8 +-
+ arch/m68k/include/asm/bitops.h                    |   7 +-
+ arch/metag/include/asm/atomic.h                   |   6 +-
+ arch/metag/include/asm/barrier.h                  |   3 +
+ arch/metag/include/asm/bitops.h                   |   6 -
+ arch/mips/cavium-octeon/octeon-irq.c              |   2 +-
+ arch/mips/include/asm/atomic.h                    |   9 -
+ arch/mips/include/asm/barrier.h                   |   3 +
+ arch/mips/include/asm/bitops.h                    |  11 +-
+ arch/mips/kernel/irq.c                            |   4 +-
+ arch/mn10300/include/asm/atomic.h                 |   7 +-
+ arch/mn10300/include/asm/bitops.h                 |   4 +-
+ arch/mn10300/mm/tlb-smp.c                         |   4 +-
+ arch/openrisc/include/asm/bitops.h                |   9 +-
+ arch/parisc/include/asm/atomic.h                  |   6 +-
+ arch/parisc/include/asm/bitops.h                  |   4 +-
+ arch/powerpc/include/asm/atomic.h                 |   6 +-
+ arch/powerpc/include/asm/barrier.h                |   3 +
+ arch/powerpc/include/asm/bitops.h                 |   6 +-
+ arch/powerpc/kernel/crash.c                       |   2 +-
+ arch/s390/include/asm/atomic.h                    |   5 -
+ arch/s390/include/asm/barrier.h                   |   5 +-
+ arch/score/include/asm/bitops.h                   |   7 +-
+ arch/sh/include/asm/atomic.h                      |   6 +-
+ arch/sh/include/asm/bitops.h                      |   7 +-
+ arch/sparc/include/asm/atomic_32.h                |   7 +-
+ arch/sparc/include/asm/atomic_64.h                |   7 +-
+ arch/sparc/include/asm/barrier_64.h               |   3 +
+ arch/sparc/include/asm/bitops_32.h                |   3 -
+ arch/sparc/include/asm/bitops_64.h                |   4 +-
+ arch/tile/include/asm/atomic_32.h                 |  10 -
+ arch/tile/include/asm/atomic_64.h                 |   6 -
+ arch/tile/include/asm/barrier.h                   |  14 +
+ arch/tile/include/asm/bitops.h                    |   1 +
+ arch/tile/include/asm/bitops_32.h                 |   8 +-
+ arch/tile/include/asm/bitops_64.h                 |   4 -
+ arch/x86/Makefile                                 |   4 +-
+ arch/x86/boot/compressed/eboot.c                  |   3 +-
+ arch/x86/boot/compressed/head_64.S                |   2 +-
+ arch/x86/include/asm/atomic.h                     |   7 +-
+ arch/x86/include/asm/barrier.h                    |   4 +
+ arch/x86/include/asm/bitops.h                     |   6 +-
+ arch/x86/include/asm/efi.h                        | 100 ++--
+ arch/x86/include/asm/fpu-internal.h               |  10 +-
+ arch/x86/include/asm/hw_irq.h                     |   4 +-
+ arch/x86/include/asm/sync_bitops.h                |   2 +-
+ arch/x86/include/asm/uprobes.h                    |  16 +-
+ arch/x86/include/asm/uv/uv_hub.h                  |  12 +-
+ arch/x86/include/asm/uv/uv_mmrs.h                 |  42 +-
+ arch/x86/kernel/apic/hw_nmi.c                     |   2 +-
+ arch/x86/kernel/apic/io_apic.c                    |  28 +-
+ arch/x86/kernel/apic/x2apic_uv_x.c                |  26 +-
+ arch/x86/kernel/cpu/mshyperv.c                    |   9 -
+ arch/x86/kernel/cpu/perf_event.c                  |   1 +
+ arch/x86/kernel/i8259.c                           |  20 +-
+ arch/x86/kernel/irq.c                             |  13 +-
+ arch/x86/kernel/uprobes.c                         | 551 ++++++++++++++--------
+ arch/x86/mm/pgtable.c                             |  21 +-
+ arch/x86/platform/efi/efi.c                       |  48 +-
+ arch/x86/platform/efi/efi_stub_64.S               |  81 +---
+ arch/x86/platform/uv/bios_uv.c                    |   2 +-
+ arch/x86/realmode/rm/Makefile                     |   3 +-
+ arch/xtensa/include/asm/atomic.h                  |   7 +-
+ arch/xtensa/include/asm/barrier.h                 |   3 +
+ arch/xtensa/include/asm/bitops.h                  |   4 +-
+ block/blk-iopoll.c                                |   4 +-
+ crypto/chainiv.c                                  |   2 +-
+ drivers/base/power/domain.c                       |   2 +-
+ drivers/block/loop.c                              |   2 +-
+ drivers/block/mtip32xx/mtip32xx.c                 |   4 +-
+ drivers/block/nbd.c                               |   2 +-
+ drivers/block/pktcdvd.c                           |   2 +-
+ drivers/char/ipmi/ipmi_si_intf.c                  |   2 +-
+ drivers/clocksource/exynos_mct.c                  |  12 +-
+ drivers/cpuidle/coupled.c                         |   2 +-
+ drivers/firewire/ohci.c                           |   2 +-
+ drivers/firmware/efi/efi-stub-helper.c            | 144 ++++--
+ drivers/firmware/efi/efivars.c                    | 192 ++++++--
+ drivers/firmware/efi/vars.c                       |  30 +-
+ drivers/gpu/drm/drm_irq.c                         |  10 +-
+ drivers/gpu/drm/i915/i915_irq.c                   |   2 +-
+ drivers/irqchip/irq-gic.c                         |   8 +-
+ drivers/md/bcache/bcache.h                        |   2 +-
+ drivers/md/bcache/closure.h                       |   2 +-
+ drivers/md/dm-bufio.c                             |   8 +-
+ drivers/md/dm-snap.c                              |   4 +-
+ drivers/md/dm.c                                   |   2 +-
+ drivers/md/raid5.c                                |   2 +-
+ drivers/media/usb/dvb-usb-v2/dvb_usb_core.c       |   6 +-
+ drivers/misc/sgi-gru/grufile.c                    |  11 +-
+ drivers/net/ethernet/broadcom/bnx2x/bnx2x_cmn.c   |   6 +-
+ drivers/net/ethernet/broadcom/bnx2x/bnx2x_main.c  |  18 +-
+ drivers/net/ethernet/broadcom/bnx2x/bnx2x_sp.c    |  26 +-
+ drivers/net/ethernet/broadcom/bnx2x/bnx2x_sriov.c |   8 +-
+ drivers/net/ethernet/broadcom/cnic.c              |   8 +-
+ drivers/net/ethernet/brocade/bna/bnad.c           |   6 +-
+ drivers/net/ethernet/chelsio/cxgb/cxgb2.c         |   2 +-
+ drivers/net/ethernet/chelsio/cxgb3/sge.c          |   6 +-
+ drivers/net/ethernet/chelsio/cxgb4/sge.c          |   2 +-
+ drivers/net/ethernet/chelsio/cxgb4vf/sge.c        |   2 +-
+ drivers/net/ethernet/freescale/gianfar.c          |   8 +-
+ drivers/net/ethernet/intel/i40e/i40e_main.c       |   2 +-
+ drivers/net/ethernet/intel/ixgbe/ixgbe_main.c     |   8 +-
+ drivers/net/ethernet/intel/ixgbevf/ixgbevf_main.c |   6 +-
+ drivers/net/wireless/ti/wlcore/main.c             |   2 +-
+ drivers/pci/xen-pcifront.c                        |   4 +-
+ drivers/s390/crypto/ap_bus.c                      |   2 +-
+ drivers/scsi/bnx2fc/bnx2fc_fcoe.c                 |   4 +-
+ drivers/scsi/bnx2i/bnx2i_hwi.c                    |   2 +-
+ drivers/scsi/fcoe/fcoe.c                          |   2 +-
+ drivers/scsi/ibmvscsi/ibmvfc.c                    |   2 +-
+ drivers/scsi/ibmvscsi/ibmvscsi.c                  |   2 +-
+ drivers/scsi/isci/remote_device.c                 |   2 +-
+ drivers/scsi/lpfc/lpfc_hbadisc.c                  |   2 +-
+ drivers/scsi/qla2xxx/qla_os.c                     |   2 +-
+ drivers/staging/android/binder.c                  |   2 +-
+ drivers/staging/lustre/lustre/llite/lloop.c       |   2 +-
+ drivers/target/loopback/tcm_loop.c                |   4 +-
+ drivers/target/target_core_alua.c                 |  26 +-
+ drivers/target/target_core_device.c               |   6 +-
+ drivers/target/target_core_iblock.c               |   2 +-
+ drivers/target/target_core_pr.c                   |  56 +--
+ drivers/target/target_core_transport.c            |  16 +-
+ drivers/target/target_core_ua.c                   |  10 +-
+ drivers/tty/n_tty.c                               |   2 +-
+ drivers/tty/serial/mxs-auart.c                    |   4 +-
+ drivers/usb/gadget/tcm_usb_gadget.c               |   4 +-
+ drivers/usb/serial/usb_wwan.c                     |   2 +-
+ drivers/vhost/scsi.c                              |   2 +-
+ drivers/w1/w1_family.c                            |   4 +-
+ drivers/xen/xen-pciback/pciback_ops.c             |   4 +-
+ fs/btrfs/btrfs_inode.h                            |   2 +-
+ fs/btrfs/extent_io.c                              |   2 +-
+ fs/btrfs/inode.c                                  |   6 +-
+ fs/btrfs/ioctl.c                                  |   2 +-
+ fs/buffer.c                                       |   2 +-
+ fs/ext4/resize.c                                  |   2 +-
+ fs/gfs2/glock.c                                   |   8 +-
+ fs/gfs2/glops.c                                   |   2 +-
+ fs/gfs2/lock_dlm.c                                |   4 +-
+ fs/gfs2/recovery.c                                |   2 +-
+ fs/gfs2/sys.c                                     |   4 +-
+ fs/jbd2/commit.c                                  |   6 +-
+ fs/nfs/dir.c                                      |  12 +-
+ fs/nfs/inode.c                                    |   2 +-
+ fs/nfs/nfs4filelayoutdev.c                        |   4 +-
+ fs/nfs/nfs4state.c                                |   4 +-
+ fs/nfs/pagelist.c                                 |   6 +-
+ fs/nfs/pnfs.c                                     |   2 +-
+ fs/nfs/pnfs.h                                     |   2 +-
+ fs/nfs/write.c                                    |   4 +-
+ fs/ocfs2/cluster/heartbeat.c                      |   2 +-
+ fs/ubifs/lpt_commit.c                             |   4 +-
+ fs/ubifs/tnc_commit.c                             |   4 +-
+ include/asm-generic/atomic.h                      |   7 +-
+ include/asm-generic/barrier.h                     |   8 +
+ include/asm-generic/bitops.h                      |   9 +-
+ include/asm-generic/bitops/atomic.h               |   2 +-
+ include/asm-generic/bitops/lock.h                 |   2 +-
+ include/linux/atomic.h                            |  36 ++
+ include/linux/bitops.h                            |  20 +
+ include/linux/buffer_head.h                       |   2 +-
+ include/linux/compiler-intel.h                    |   3 -
+ include/linux/efi.h                               |  12 +-
+ include/linux/genhd.h                             |   2 +-
+ include/linux/interrupt.h                         |  43 +-
+ include/linux/irq.h                               |   3 +-
+ include/linux/netdevice.h                         |   2 +-
+ include/linux/perf_event.h                        |   1 +
+ include/linux/sched.h                             |   6 +-
+ include/linux/smp.h                               |  11 +
+ include/linux/sunrpc/sched.h                      |   8 +-
+ include/linux/sunrpc/xprt.h                       |   8 +-
+ include/linux/thread_info.h                       |  14 -
+ include/linux/tick.h                              |   2 +
+ include/linux/tracehook.h                         |   2 +-
+ include/net/ip_vs.h                               |   4 +-
+ kernel/debug/debug_core.c                         |   4 +-
+ kernel/events/core.c                              |  15 +
+ kernel/events/uprobes.c                           |  31 +-
+ kernel/futex.c                                    |   4 +-
+ kernel/hrtimer.c                                  |   1 +
+ kernel/irq/manage.c                               |  17 +-
+ kernel/kmod.c                                     |   2 +-
+ kernel/locking/lockdep_internals.h                |   6 +-
+ kernel/locking/locktorture.c                      |   2 +-
+ kernel/rcu/tree.c                                 |  22 +-
+ kernel/rcu/tree_plugin.h                          |   8 +-
+ kernel/sched/core.c                               |  21 +-
+ kernel/sched/cpupri.c                             |   6 +-
+ kernel/sched/fair.c                               |  12 +-
+ kernel/sched/rt.c                                 | 119 ++++-
+ kernel/sched/sched.h                              |  16 +-
+ kernel/sched/wait.c                               |   2 +-
+ kernel/smp.c                                      |  42 ++
+ kernel/time/tick-sched.c                          |  21 +
+ kernel/workqueue.c                                |   6 +-
+ mm/backing-dev.c                                  |   2 +-
+ mm/filemap.c                                      |   4 +-
+ mm/huge_memory.c                                  |   2 +-
+ net/atm/pppoatm.c                                 |   2 +-
+ net/bluetooth/hci_event.c                         |   4 +-
+ net/core/dev.c                                    |   8 +-
+ net/core/link_watch.c                             |   2 +-
+ net/ipv4/inetpeer.c                               |   2 +-
+ net/ipv4/tcp_output.c                             |   4 +-
+ net/netfilter/nf_conntrack_core.c                 |   2 +-
+ net/rds/ib_recv.c                                 |   4 +-
+ net/rds/iw_recv.c                                 |   4 +-
+ net/rds/send.c                                    |   6 +-
+ net/rds/tcp_send.c                                |   2 +-
+ net/sunrpc/auth.c                                 |   2 +-
+ net/sunrpc/auth_gss/auth_gss.c                    |   2 +-
+ net/sunrpc/backchannel_rqst.c                     |   4 +-
+ net/sunrpc/xprt.c                                 |   4 +-
+ net/sunrpc/xprtsock.c                             |  16 +-
+ net/unix/af_unix.c                                |   2 +-
+ sound/pci/bt87x.c                                 |   4 +-
+ tools/perf/Documentation/perf-diff.txt            |  21 +-
+ tools/perf/Documentation/perf-report.txt          |  24 +-
+ tools/perf/Documentation/perf-top.txt             |  18 +-
+ tools/perf/builtin-diff.c                         |  32 +-
+ tools/perf/builtin-kmem.c                         |   8 +-
+ tools/perf/builtin-lock.c                         |  10 +-
+ tools/perf/builtin-mem.c                          |  15 +-
+ tools/perf/builtin-report.c                       |  22 +-
+ tools/perf/builtin-sched.c                        |  10 +-
+ tools/perf/builtin-top.c                          |   8 +-
+ tools/perf/perf-completion.sh                     |   4 +-
+ tools/perf/ui/browsers/hists.c                    |  39 +-
+ tools/perf/ui/gtk/hists.c                         |  11 +-
+ tools/perf/ui/hist.c                              |   8 +-
+ tools/perf/util/config.c                          |   4 +
+ tools/perf/util/hist.c                            |  59 ++-
+ tools/perf/util/hist.h                            |  10 +
+ tools/perf/util/symbol.h                          |   3 +-
+ 266 files changed, 1882 insertions(+), 1412 deletions(-)
+ delete mode 100644 arch/hexagon/include/asm/barrier.h
+Merging clockevents/clockevents/next (09e15176ded1 clocksource: exynos_mct: silence a static checker warning)
+$ git merge clockevents/clockevents/next
+Already up-to-date.
+Merging edac/linux_next (49856dc973cd sb_edac: mark MCE messages as KERN_DEBUG)
+$ git merge edac/linux_next
+Already up-to-date.
+Merging edac-amd/for-next (c045ebdf6079 Merge branch 'edac-for-3.15' into for-next)
+$ git merge edac-amd/for-next
+Already up-to-date!
+Merge made by the 'recursive' strategy.
+Merging ftrace/for-next (6ea6215fe394 tracing/uprobes: Fix uprobe_cpu_buffer memory leak)
+$ git merge ftrace/for-next
+Already up-to-date.
+Merging rcu/rcu/next (27397ab69d38 rcu: Variable name changed in tree_plugin.h and used in tree.c)
+$ git merge rcu/rcu/next
+Auto-merging tools/testing/selftests/rcutorture/bin/parse-torture.sh
+Auto-merging kernel/sched/core.c
+Auto-merging kernel/rcu/tree_plugin.h
+Auto-merging kernel/rcu/tree.c
+Auto-merging kernel/locking/locktorture.c
+Merge made by the 'recursive' strategy.
+ Documentation/RCU/00-INDEX                         |   2 +
+ Documentation/RCU/checklist.txt                    |  12 +-
+ Documentation/RCU/rcu_dereference.txt              | 365 +++++++++++++++++++++
+ Documentation/RCU/stallwarn.txt                    |   2 +-
+ Documentation/RCU/whatisRCU.txt                    |  55 +++-
+ include/linux/percpu.h                             |   2 +-
+ include/linux/rcupdate.h                           |  60 +++-
+ include/linux/rcutiny.h                            |   4 +
+ include/linux/rcutree.h                            |   1 +
+ include/linux/torture.h                            |   8 +-
+ kernel/locking/locktorture.c                       |  10 +-
+ kernel/rcu/rcutorture.c                            | 216 +++++++++---
+ kernel/rcu/tiny_plugin.h                           |   8 +-
+ kernel/rcu/tree.c                                  | 294 +++++++++++------
+ kernel/rcu/tree.h                                  |  11 +-
+ kernel/rcu/tree_plugin.h                           | 136 +++-----
+ kernel/rcu/update.c                                |  18 +
+ kernel/sched/core.c                                |   7 +-
+ kernel/softirq.c                                   |   4 +-
+ kernel/torture.c                                   |  39 ++-
+ .../testing/selftests/rcutorture/bin/configinit.sh |   2 +-
+ .../testing/selftests/rcutorture/bin/functions.sh  |  45 ++-
+ .../testing/selftests/rcutorture/bin/kvm-build.sh  |   6 +-
+ .../selftests/rcutorture/bin/kvm-recheck-lock.sh   |   2 +-
+ .../selftests/rcutorture/bin/kvm-recheck-rcu.sh    |   2 +-
+ .../selftests/rcutorture/bin/kvm-recheck.sh        |  24 +-
+ .../selftests/rcutorture/bin/kvm-test-1-run.sh     |  42 ++-
+ tools/testing/selftests/rcutorture/bin/kvm.sh      | 144 ++++----
+ .../bin/{parse-rcutorture.sh => parse-torture.sh}  |  22 +-
+ .../selftests/rcutorture/configs/rcu/TREE02-T      |  25 ++
+ .../selftests/rcutorture/configs/rcu/TREE08.boot   |   1 +
+ 31 files changed, 1158 insertions(+), 411 deletions(-)
+ create mode 100644 Documentation/RCU/rcu_dereference.txt
+ rename tools/testing/selftests/rcutorture/bin/{parse-rcutorture.sh => parse-torture.sh} (79%)
+ create mode 100644 tools/testing/selftests/rcutorture/configs/rcu/TREE02-T
+ create mode 100644 tools/testing/selftests/rcutorture/configs/rcu/TREE08.boot
+Merging uprobes/for-next (0326f5a94dde uprobes/core: Handle breakpoint and singlestep exceptions)
+$ git merge uprobes/for-next
+Already up-to-date.
+Merging kvm/linux-next (0f689a33ad17 Merge branch 'for-linus' of git://git.kernel.org/pub/scm/linux/kernel/git/s390/linux)
+$ git merge kvm/linux-next
+Already up-to-date.
+Merging kvm-arm/kvm-arm-next (b73117c49364 Merge branch 'kvm-ppc-next' of git://github.com/agraf/linux-2.6 into kvm-queue)
+$ git merge kvm-arm/kvm-arm-next
+Already up-to-date.
+Merging kvm-ppc/kvm-ppc-next (7227fc066660 Merge branch 'kvm-ppchv-next' of git://git.kernel.org/pub/scm/linux/kernel/git/paulus/powerpc into kvm-next)
+$ git merge kvm-ppc/kvm-ppc-next
+Already up-to-date.
+Merging oprofile/for-next (6ce4eac1f600 Linux 3.13-rc1)
+$ git merge oprofile/for-next
+Already up-to-date.
+Merging fw-nohz/nohz/next (74876a98a87a printk: Wake up klogd using irq_work)
+$ git merge fw-nohz/nohz/next
+Already up-to-date.
+Merging xen-tip/linux-next (0a25e113b480 Merge branch 'devel/for-linus-3.15' into linux-next)
+$ git merge xen-tip/linux-next
+Merge made by the 'recursive' strategy.
+ drivers/xen/xen-acpi-processor.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+Merging percpu/for-next (4abee313c9a8 Merge branch 'for-3.16' into for-next)
+$ git merge percpu/for-next
+Auto-merging include/linux/percpu.h
+Merge made by the 'recursive' strategy.
+ include/linux/percpu.h | 2 +-
+ mm/percpu.c            | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+Merging workqueues/for-next (534a3fbb3f37 workqueue: simplify wq_update_unbound_numa() by jumping to use_dfl_pwq if the target cpumask equals wq's)
+$ git merge workqueues/for-next
+Auto-merging kernel/workqueue.c
+Merge made by the 'recursive' strategy.
+ kernel/workqueue.c | 44 ++++++++++++++++++++++++++++++++------------
+ 1 file changed, 32 insertions(+), 12 deletions(-)
+Merging drivers-x86/linux-next (7a70906e55bf alienware-wmi: cover some scenarios where memory allocations would fail)
+$ git merge drivers-x86/linux-next
+Merge made by the 'recursive' strategy.
+Merging chrome-platform/for-next (2b8454a75b90 platform/chrome: unregister platform driver/device when module exit)
+$ git merge chrome-platform/for-next
+Already up-to-date.
+Merging sysctl/master (4e474a00d7ff sysctl: protect poll() in entries that may go away)
+$ git merge sysctl/master
+Already up-to-date.
+Merging regmap/for-next (f624c7e5486b Merge remote-tracking branches 'regmap/topic/le', 'regmap/topic/mmio', 'regmap/topic/rbtree' and 'regmap/topic/smbus' into regmap-next)
+$ git merge regmap/for-next
+Merge made by the 'recursive' strategy.
+ drivers/base/regmap/regcache-rbtree.c |   8 +--
+ drivers/base/regmap/regmap-i2c.c      | 104 +++++++++++++++++++++++++++++++++-
+ drivers/base/regmap/regmap-mmio.c     |  29 ++++++++--
+ drivers/base/regmap/regmap.c          |  78 +++++++++++++++++++++++++
+ include/linux/regmap.h                |   6 ++
+ 5 files changed, 214 insertions(+), 11 deletions(-)
+Merging hsi/for-next (43139a61fc68 HSI: hsi_char: Update ioctl-number.txt)
+$ git merge hsi/for-next
+Already up-to-date.
+Merging leds/for-next (c73bcf7cca71 leds: 88pm860x: Fix missing refcount decrement for parent of_node)
+$ git merge leds/for-next
+Removing include/linux/platform_data/leds-pca9685.h
+Removing drivers/leds/leds-pca9685.c
+Auto-merging drivers/leds/Kconfig
+Merge made by the 'recursive' strategy.
+ .../devicetree/bindings/leds/leds-pwm.txt          |   2 +
+ drivers/leds/Kconfig                               |  10 -
+ drivers/leds/Makefile                              |   1 -
+ drivers/leds/dell-led.c                            | 171 ++++++++++++++++-
+ drivers/leds/leds-88pm860x.c                       |   5 +-
+ drivers/leds/leds-pca9685.c                        | 213 ---------------------
+ drivers/leds/leds-pwm.c                            | 144 +++++++-------
+ include/linux/dell-led.h                           |  10 +
+ include/linux/platform_data/leds-pca9685.h         |  35 ----
+ 9 files changed, 248 insertions(+), 343 deletions(-)
+ delete mode 100644 drivers/leds/leds-pca9685.c
+ create mode 100644 include/linux/dell-led.h
+ delete mode 100644 include/linux/platform_data/leds-pca9685.h
+Merging driver-core/driver-core-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge driver-core/driver-core-next
+Already up-to-date.
+Merging tty/tty-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge tty/tty-next
+Already up-to-date.
+Merging usb/usb-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge usb/usb-next
+Already up-to-date.
+Merging usb-gadget/next (041832565e40 usb: phy: mv-u3d: switch over to writel/readl)
+$ git merge usb-gadget/next
+Merge made by the 'recursive' strategy.
+ drivers/usb/dwc3/core.c          | 120 +++++++++++++++++++++------------------
+ drivers/usb/dwc3/gadget.c        |   4 ++
+ drivers/usb/phy/phy-mv-u3d-usb.c |  20 +++----
+ 3 files changed, 80 insertions(+), 64 deletions(-)
+Merging staging/staging-next (ebb657babfa9 staging: comedi: ni_mio_common: clarify the cmd->start_arg validation and use)
+$ git merge staging/staging-next
+Removing drivers/staging/rtl8723au/include/rtw_p2p.h
+Removing drivers/staging/rtl8723au/include/ethernet.h
+Removing drivers/staging/rtl8723au/core/rtw_p2p.c
+Auto-merging drivers/staging/android/binder.c
+Merge made by the 'recursive' strategy.
+ drivers/staging/Kconfig                            |    2 +
+ drivers/staging/Makefile                           |    1 +
+ drivers/staging/android/binder.c                   |    8 +-
+ drivers/staging/android/uapi/ion.h                 |   12 +-
+ drivers/staging/bcm/CmHost.c                       |   50 +-
+ drivers/staging/bcm/InterfaceMisc.h                |   12 +-
+ drivers/staging/bcm/Qos.c                          |  189 +-
+ drivers/staging/bcm/hostmibs.c                     |   51 +-
+ drivers/staging/comedi/comedi_fops.c               |    9 +-
+ drivers/staging/comedi/drivers.c                   |    1 +
+ drivers/staging/comedi/drivers/8255.c              |    3 +-
+ .../comedi/drivers/addi-data/hwdrv_apci1564.c      |   79 +-
+ .../comedi/drivers/addi-data/hwdrv_apci3120.c      |    4 +-
+ .../comedi/drivers/addi-data/hwdrv_apci3200.c      |   43 +-
+ drivers/staging/comedi/drivers/addi_apci_1032.c    |    5 +-
+ drivers/staging/comedi/drivers/addi_apci_1500.c    |    2 +-
+ drivers/staging/comedi/drivers/addi_apci_1564.c    |    2 +-
+ drivers/staging/comedi/drivers/addi_apci_2032.c    |    2 +-
+ drivers/staging/comedi/drivers/addi_apci_3120.c    |    2 +-
+ drivers/staging/comedi/drivers/addi_apci_3xxx.c    |   40 +-
+ drivers/staging/comedi/drivers/adl_pci9111.c       |  123 +-
+ drivers/staging/comedi/drivers/adl_pci9118.c       |   25 +-
+ .../staging/comedi/drivers/amplc_dio200_common.c   |   27 +-
+ drivers/staging/comedi/drivers/amplc_pc236.c       |    3 +-
+ drivers/staging/comedi/drivers/amplc_pci224.c      |  107 +-
+ drivers/staging/comedi/drivers/amplc_pci230.c      |  327 +-
+ drivers/staging/comedi/drivers/cb_pcidas.c         |   90 +-
+ drivers/staging/comedi/drivers/cb_pcidas64.c       |  126 +-
+ drivers/staging/comedi/drivers/comedi_parport.c    |    3 +-
+ drivers/staging/comedi/drivers/comedi_test.c       |    4 -
+ drivers/staging/comedi/drivers/das16.c             |   51 +-
+ drivers/staging/comedi/drivers/das16m1.c           |   49 +-
+ drivers/staging/comedi/drivers/das1800.c           |   37 +-
+ drivers/staging/comedi/drivers/das6402.c           |    2 +-
+ drivers/staging/comedi/drivers/das800.c            |   52 +-
+ drivers/staging/comedi/drivers/dmm32at.c           |   51 +-
+ drivers/staging/comedi/drivers/dt282x.c            |    8 +-
+ drivers/staging/comedi/drivers/gsc_hpdi.c          |   36 +-
+ drivers/staging/comedi/drivers/me4000.c            |   77 +-
+ drivers/staging/comedi/drivers/ni_6527.c           |    3 +-
+ drivers/staging/comedi/drivers/ni_65xx.c           |    3 +-
+ drivers/staging/comedi/drivers/ni_at_a2150.c       |   74 +-
+ drivers/staging/comedi/drivers/ni_labpc.c          |   92 +-
+ drivers/staging/comedi/drivers/ni_mio_common.c     |  105 +-
+ drivers/staging/comedi/drivers/ni_pcidio.c         |    6 +-
+ drivers/staging/comedi/drivers/ni_tiocmd.c         |   18 +-
+ drivers/staging/comedi/drivers/pcl726.c            |    3 +-
+ drivers/staging/comedi/drivers/pcl812.c            |    4 +-
+ drivers/staging/comedi/drivers/pcmmio.c            |   22 +-
+ drivers/staging/comedi/drivers/pcmuio.c            |   22 +-
+ drivers/staging/comedi/drivers/rtd520.c            |    6 +-
+ drivers/staging/comedi/drivers/s626.c              |   55 +-
+ drivers/staging/comedi/drivers/usbdux.c            |   22 +-
+ drivers/staging/comedi/drivers/usbduxfast.c        |   21 +-
+ drivers/staging/comedi/drivers/usbduxsigma.c       |   12 +-
+ drivers/staging/crystalhd/crystalhd_lnx.c          |   29 +-
+ drivers/staging/cxt1e1/hwprobe.c                   |    8 +-
+ drivers/staging/cxt1e1/linux.c                     |   21 +-
+ drivers/staging/cxt1e1/musycc.c                    |   12 +-
+ drivers/staging/cxt1e1/pmc93x6_eeprom.c            |  550 +-
+ drivers/staging/cxt1e1/pmcc4_drv.c                 |   47 +-
+ drivers/staging/cxt1e1/pmcc4_private.h             |    2 +-
+ drivers/staging/cxt1e1/sbecom_inline_linux.h       |   23 +-
+ drivers/staging/cxt1e1/sbecrc.c                    |    5 +-
+ drivers/staging/cxt1e1/sbeproc.c                   |    2 +-
+ drivers/staging/dgap/dgap.c                        |  191 +-
+ drivers/staging/dgap/dgap.h                        |  423 +-
+ drivers/staging/goldfish/README                    |    1 -
+ drivers/staging/goldfish/goldfish_audio.c          |    1 +
+ drivers/staging/goldfish/goldfish_nand.c           |   16 +-
+ drivers/staging/iio/light/tsl2583.c                |   38 +-
+ .../staging/iio/trigger/iio-trig-periodic-rtc.c    |    3 +-
+ drivers/staging/line6/driver.c                     |    1 +
+ drivers/staging/line6/pcm.c                        |    2 +-
+ drivers/staging/line6/playback.c                   |    5 +
+ drivers/staging/line6/toneport.c                   |    1 +
+ .../lustre/include/linux/libcfs/libcfs_cpu.h       |    4 +-
+ .../lustre/include/linux/libcfs/libcfs_crypto.h    |    2 +-
+ .../lustre/include/linux/libcfs/libcfs_debug.h     |    4 +-
+ .../lustre/include/linux/libcfs/libcfs_hash.h      |    8 +-
+ .../staging/lustre/include/linux/lnet/lib-lnet.h   |    2 +-
+ .../staging/lustre/include/linux/lnet/lib-types.h  |    6 +-
+ drivers/staging/lustre/include/linux/lnet/lnetst.h |    2 +-
+ drivers/staging/lustre/include/linux/lnet/ptllnd.h |    2 +-
+ .../lustre/include/linux/lnet/ptllnd_wire.h        |   14 +-
+ drivers/staging/lustre/include/linux/lnet/types.h  |    8 +-
+ drivers/staging/lustre/lustre/include/linux/obd.h  |    2 +-
+ drivers/staging/lustre/lustre/include/lu_ref.h     |    4 +-
+ drivers/staging/lustre/lustre/include/lustre_dlm.h |    4 +-
+ drivers/staging/lustre/lustre/libcfs/workitem.c    |    2 +-
+ drivers/staging/lustre/lustre/lmv/lproc_lmv.c      |   16 +-
+ drivers/staging/lustre/lustre/obdclass/cl_lock.c   |    2 +-
+ drivers/staging/lustre/lustre/obdclass/genops.c    |    4 +-
+ .../lustre/lustre/obdclass/linux/linux-module.c    |    4 +-
+ drivers/staging/lustre/lustre/obdclass/obd_mount.c |   18 +-
+ .../staging/lustre/lustre/ptlrpc/lproc_ptlrpc.c    |    4 +-
+ drivers/staging/lustre/lustre/ptlrpc/sec.c         |    2 +-
+ drivers/staging/panel/panel.c                      |  226 +-
+ drivers/staging/rtl8188eu/include/xmit_osdep.h     |    4 -
+ drivers/staging/rtl8188eu/os_dep/os_intfs.c        |    6 +-
+ drivers/staging/rtl8188eu/os_dep/usb_intf.c        |   29 -
+ drivers/staging/rtl8723au/Kconfig                  |    8 -
+ drivers/staging/rtl8723au/Makefile                 |    1 -
+ drivers/staging/rtl8723au/core/rtw_ap.c            |  196 +-
+ drivers/staging/rtl8723au/core/rtw_cmd.c           |   76 +-
+ drivers/staging/rtl8723au/core/rtw_ieee80211.c     |  732 +--
+ drivers/staging/rtl8723au/core/rtw_ioctl_set.c     |   17 +-
+ drivers/staging/rtl8723au/core/rtw_mlme.c          | 1362 ++---
+ drivers/staging/rtl8723au/core/rtw_mlme_ext.c      | 5835 +++++---------------
+ drivers/staging/rtl8723au/core/rtw_p2p.c           | 4001 --------------
+ drivers/staging/rtl8723au/core/rtw_pwrctrl.c       |   78 +-
+ drivers/staging/rtl8723au/core/rtw_recv.c          |   40 +-
+ drivers/staging/rtl8723au/core/rtw_sreset.c        |   22 +-
+ drivers/staging/rtl8723au/core/rtw_wlan_util.c     |  452 +-
+ drivers/staging/rtl8723au/core/rtw_xmit.c          |  177 +-
+ drivers/staging/rtl8723au/hal/hal_com.c            |  111 +-
+ drivers/staging/rtl8723au/hal/hal_intf.c           |   12 -
+ .../staging/rtl8723au/hal/rtl8723a_bt-coexist.c    |   18 +-
+ drivers/staging/rtl8723au/hal/rtl8723a_cmd.c       |   91 +-
+ drivers/staging/rtl8723au/hal/rtl8723a_dm.c        |   11 +-
+ drivers/staging/rtl8723au/hal/rtl8723a_hal_init.c  |  303 +-
+ drivers/staging/rtl8723au/hal/rtl8723au_recv.c     |   11 +-
+ drivers/staging/rtl8723au/hal/usb_halinit.c        |   53 +-
+ drivers/staging/rtl8723au/include/drv_types.h      |   26 -
+ drivers/staging/rtl8723au/include/ethernet.h       |   22 -
+ drivers/staging/rtl8723au/include/hal_com.h        |   13 +-
+ drivers/staging/rtl8723au/include/hal_intf.h       |   90 +-
+ drivers/staging/rtl8723au/include/ieee80211.h      |  148 +-
+ drivers/staging/rtl8723au/include/mlme_osdep.h     |    4 -
+ drivers/staging/rtl8723au/include/osdep_service.h  |   21 -
+ drivers/staging/rtl8723au/include/recv_osdep.h     |    9 -
+ drivers/staging/rtl8723au/include/rtl8723a_cmd.h   |    4 -
+ drivers/staging/rtl8723au/include/rtl8723a_hal.h   |   15 -
+ drivers/staging/rtl8723au/include/rtw_ap.h         |    2 -
+ drivers/staging/rtl8723au/include/rtw_cmd.h        |    3 -
+ drivers/staging/rtl8723au/include/rtw_mlme.h       |  131 -
+ drivers/staging/rtl8723au/include/rtw_mlme_ext.h   |   54 +-
+ drivers/staging/rtl8723au/include/rtw_p2p.h        |  158 -
+ drivers/staging/rtl8723au/include/rtw_security.h   |   17 -
+ drivers/staging/rtl8723au/include/wifi.h           |  219 +-
+ drivers/staging/rtl8723au/include/xmit_osdep.h     |   19 -
+ drivers/staging/rtl8723au/os_dep/ioctl_cfg80211.c  |  981 +---
+ drivers/staging/rtl8723au/os_dep/mlme_linux.c      |  105 -
+ drivers/staging/rtl8723au/os_dep/os_intfs.c        |   63 +-
+ drivers/staging/rtl8723au/os_dep/osdep_service.c   |   11 -
+ drivers/staging/rtl8723au/os_dep/recv_linux.c      |   58 -
+ drivers/staging/rtl8723au/os_dep/usb_intf.c        |   28 +-
+ drivers/staging/rtl8723au/os_dep/xmit_linux.c      |   41 -
+ drivers/staging/rtl8821ae/rtl8821ae/hw.h           |   35 +-
+ drivers/staging/sbe-2t3e3/cpld.c                   |    3 +-
+ drivers/staging/skein/Kconfig                      |   32 +
+ drivers/staging/skein/Makefile                     |   13 +
+ drivers/staging/skein/TODO                         |   11 +
+ drivers/staging/skein/include/skein.h              |  344 ++
+ drivers/staging/skein/include/skeinApi.h           |  230 +
+ drivers/staging/skein/include/skein_block.h        |   22 +
+ drivers/staging/skein/include/skein_iv.h           |  186 +
+ drivers/staging/skein/include/threefishApi.h       |  164 +
+ drivers/staging/skein/skein.c                      |  880 +++
+ drivers/staging/skein/skeinApi.c                   |  237 +
+ drivers/staging/skein/skeinBlockNo3F.c             |  175 +
+ drivers/staging/skein/skein_block.c                |  770 +++
+ drivers/staging/skein/threefish1024Block.c         | 4900 ++++++++++++++++
+ drivers/staging/skein/threefish256Block.c          | 1137 ++++
+ drivers/staging/skein/threefish512Block.c          | 2223 ++++++++
+ drivers/staging/skein/threefishApi.c               |   79 +
+ drivers/staging/speakup/kobjects.c                 |    2 +-
+ drivers/staging/vme/devices/vme_user.c             |    9 +-
+ drivers/staging/vt6655/card.c                      |   14 -
+ drivers/staging/vt6655/datarate.c                  |    2 +-
+ drivers/staging/vt6655/device.h                    |   13 +-
+ drivers/staging/vt6655/ioctl.c                     |    6 +-
+ drivers/staging/vt6655/iwctl.c                     |    9 +-
+ drivers/staging/vt6655/wpactl.c                    |   11 +-
+ drivers/staging/vt6656/aes_ccmp.c                  |    1 +
+ drivers/staging/vt6656/firmware.c                  |    3 +-
+ drivers/staging/vt6656/rxtx.c                      |   59 +-
+ drivers/staging/vt6656/rxtx.h                      |    8 +-
+ drivers/staging/vt6656/tether.h                    |    4 -
+ 179 files changed, 16011 insertions(+), 15363 deletions(-)
+ delete mode 100644 drivers/staging/rtl8723au/core/rtw_p2p.c
+ delete mode 100644 drivers/staging/rtl8723au/include/ethernet.h
+ delete mode 100644 drivers/staging/rtl8723au/include/rtw_p2p.h
+ create mode 100644 drivers/staging/skein/Kconfig
+ create mode 100644 drivers/staging/skein/Makefile
+ create mode 100644 drivers/staging/skein/TODO
+ create mode 100644 drivers/staging/skein/include/skein.h
+ create mode 100644 drivers/staging/skein/include/skeinApi.h
+ create mode 100644 drivers/staging/skein/include/skein_block.h
+ create mode 100644 drivers/staging/skein/include/skein_iv.h
+ create mode 100644 drivers/staging/skein/include/threefishApi.h
+ create mode 100644 drivers/staging/skein/skein.c
+ create mode 100644 drivers/staging/skein/skeinApi.c
+ create mode 100644 drivers/staging/skein/skeinBlockNo3F.c
+ create mode 100644 drivers/staging/skein/skein_block.c
+ create mode 100644 drivers/staging/skein/threefish1024Block.c
+ create mode 100644 drivers/staging/skein/threefish256Block.c
+ create mode 100644 drivers/staging/skein/threefish512Block.c
+ create mode 100644 drivers/staging/skein/threefishApi.c
+Merging char-misc/char-misc-next (c9eaa447e77e Linux 3.15-rc1)
+$ git merge char-misc/char-misc-next
+Already up-to-date.
+Merging cgroup/for-next (79d719749d23 device_cgroup: rework device access check and exception checking)
+$ git merge cgroup/for-next
+Merge made by the 'recursive' strategy.
+ kernel/cgroup.c          |   8 +--
+ security/device_cgroup.c | 162 +++++++++++++++++++++++++++++++++++------------
+ 2 files changed, 126 insertions(+), 44 deletions(-)
+Merging scsi/for-next (1a2184c0d747 [SCSI] More USB deadlock fixes)
+$ git merge scsi/for-next
+Auto-merging drivers/scsi/scsi_lib.c
+Merge made by the 'recursive' strategy.
+ drivers/scsi/hpsa.c       |  8 ++++----
+ drivers/scsi/scsi_error.c | 12 ++++++++++++
+ drivers/scsi/scsi_lib.c   |  6 ++++--
+ 3 files changed, 20 insertions(+), 6 deletions(-)
+Merging target-updates/for-next (b076808051f2 ib_srpt: Use correct ib_sg_dma primitives)
+$ git merge target-updates/for-next
+Already up-to-date.
+Merging target-merge/for-next-merge (b28a960c42fc Linux 3.14-rc2)
+$ git merge target-merge/for-next-merge
+Already up-to-date.
+Merging writeback/writeback-for-next (f9b0e058cbd0 writeback: Fix data corruption on NFS)
+$ git merge writeback/writeback-for-next
+Already up-to-date.
+Merging hwspinlock/linux-next (8b37fcfc9b34 hwspinlock: add MAINTAINERS entries)
+$ git merge hwspinlock/linux-next
+Already up-to-date.
+Merging pinctrl/for-next (af797209aa01 Merge branch 'devel' into for-next)
+$ git merge pinctrl/for-next
+Auto-merging arch/arm/Kconfig
+Merge made by the 'recursive' strategy.
+ .../bindings/pinctrl/qcom,apq8064-pinctrl.txt      |  88 ++++
+ arch/arm/Kconfig                                   |   2 +-
+ drivers/pinctrl/Kconfig                            |  14 +-
+ drivers/pinctrl/Makefile                           |   1 +
+ drivers/pinctrl/core.c                             |  17 +-
+ drivers/pinctrl/pinctrl-adi2.c                     |   2 +-
+ drivers/pinctrl/pinctrl-apq8064.c                  | 566 +++++++++++++++++++++
+ drivers/pinctrl/pinctrl-as3722.c                   |  17 +-
+ drivers/pinctrl/pinctrl-at91.c                     | 138 ++---
+ drivers/pinctrl/pinctrl-imx.c                      |   2 +-
+ drivers/pinctrl/pinctrl-lantiq.h                   |   1 +
+ drivers/pinctrl/pinctrl-msm.c                      |   4 +-
+ drivers/pinctrl/pinctrl-msm.h                      |   3 +-
+ drivers/pinctrl/pinctrl-msm8x74.c                  |   3 +-
+ drivers/pinctrl/pinctrl-st.c                       | 130 ++---
+ drivers/pinctrl/pinctrl-sunxi-pins.h               |  74 +++
+ drivers/pinctrl/pinctrl-sunxi.c                    |  55 +-
+ drivers/pinctrl/pinctrl-sunxi.h                    |  69 +++
+ drivers/pinctrl/pinctrl-tb10x.c                    |   3 +-
+ drivers/pinctrl/pinctrl-tegra.c                    |  49 +-
+ drivers/pinctrl/pinctrl-tegra.h                    | 133 +++--
+ drivers/pinctrl/pinctrl-tegra114.c                 | 412 ++++++++-------
+ drivers/pinctrl/pinctrl-tegra124.c                 | 520 +++++++++----------
+ drivers/pinctrl/pinctrl-tegra20.c                  | 244 +++++----
+ drivers/pinctrl/pinctrl-tegra30.c                  | 551 ++++++++++----------
+ drivers/pinctrl/pinmux.c                           |  23 +-
+ drivers/pinctrl/sh-pfc/pfc-r8a7790.c               | 138 ++++-
+ drivers/pinctrl/sh-pfc/pfc-r8a7791.c               | 412 ++++++++++++++-
+ 28 files changed, 2417 insertions(+), 1254 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/pinctrl/qcom,apq8064-pinctrl.txt
+ create mode 100644 drivers/pinctrl/pinctrl-apq8064.c
+Merging vhost/linux-next (d3d665a654a3 vhost-scsi: whitespace tweak)
+$ git merge vhost/linux-next
+Already up-to-date.
+Merging remoteproc/for-next (bd88acba5f98 remoteproc/ste_modem: staticize local symbols)
+$ git merge remoteproc/for-next
+Already up-to-date.
+Merging rpmsg/for-next (397944df3290 rpmsg: fix kconfig dependencies for VIRTIO)
+$ git merge rpmsg/for-next
+Already up-to-date.
+Merging gpio/for-next (bb2439c3d446 Merge branch 'devel' into for-next)
+$ git merge gpio/for-next
+Auto-merging MAINTAINERS
+Merge made by the 'recursive' strategy.
+ .../devicetree/bindings/gpio/renesas,gpio-rcar.txt |   6 +
+ Documentation/gpio/driver.txt                      |  59 +++++++
+ MAINTAINERS                                        |   1 +
+ drivers/gpio/Kconfig                               |  11 +-
+ drivers/gpio/Makefile                              |   2 +-
+ drivers/gpio/gpio-dwapb.c                          |   3 -
+ drivers/gpio/gpio-ge.c                             | 174 +++++++--------------
+ drivers/gpio/gpio-ich.c                            |   4 +
+ drivers/gpio/gpio-kempld.c                         |   2 +-
+ drivers/gpio/gpio-max730x.c                        |   5 +-
+ drivers/gpio/gpio-omap.c                           | 128 ++++++++-------
+ drivers/gpio/gpio-pl061.c                          |   1 -
+ drivers/gpio/gpio-sch.c                            |  26 ++-
+ drivers/gpio/gpio-sch311x.c                        |  16 +-
+ drivers/gpio/gpio-sx150x.c                         |   1 -
+ drivers/gpio/gpio-tc3589x.c                        | 148 ++++--------------
+ drivers/gpio/gpio-zevio.c                          |  12 +-
+ drivers/gpio/gpiolib-of.c                          |   2 +-
+ drivers/gpio/gpiolib.c                             |  19 +++
+ include/linux/gpio/driver.h                        |   5 +-
+ include/linux/mfd/tc3589x.h                        |   1 -
+ 21 files changed, 299 insertions(+), 327 deletions(-)
+Merging dma-mapping/dma-mapping-next (68efd7d2fb32 arm: dma-mapping: remove order parameter from arm_iommu_create_mapping())
+$ git merge dma-mapping/dma-mapping-next
+Already up-to-date.
+Merging pwm/for-next (2ae69a460413 pwm: pxa: Constify OF match table)
+$ git merge pwm/for-next
+Already up-to-date.
+Merging dma-buf/for-next (dcb99fd9b08c Linux 3.14-rc7)
+$ git merge dma-buf/for-next
+Already up-to-date.
+Merging userns/for-next (3efe1ac78e99 vfs: Block intuitively in the case of BSD accounting files)
+$ git merge userns/for-next
+Resolved 'fs/dcache.c' using previous resolution.
+Resolved 'fs/namei.c' using previous resolution.
+Resolved 'fs/namespace.c' using previous resolution.
+Auto-merging include/linux/dcache.h
+Auto-merging fs/proc/fd.c
+Auto-merging fs/proc/base.c
+Auto-merging fs/nfs/dir.c
+Auto-merging fs/namespace.c
+CONFLICT (content): Merge conflict in fs/namespace.c
+Auto-merging fs/namei.c
+CONFLICT (content): Merge conflict in fs/namei.c
+Auto-merging fs/mount.h
+Auto-merging fs/kernfs/dir.c
+Auto-merging fs/fuse/dir.c
+Auto-merging fs/dcache.c
+CONFLICT (content): Merge conflict in fs/dcache.c
+Auto-merging fs/ceph/dir.c
+Auto-merging fs/btrfs/ioctl.c
+Automatic merge failed; fix conflicts and then commit the result.
+$ git commit -v -a
+[master bd1ff2ce0267] Merge remote-tracking branch 'userns/for-next'
+$ git diff -M --stat --summary HEAD^..
+ fs/afs/dir.c           |   5 --
+ fs/btrfs/ioctl.c       |   5 +-
+ fs/ceph/dir.c          |   1 -
+ fs/cifs/readdir.c      |   6 +--
+ fs/dcache.c            | 140 ++++++++++++++++++-------------------------------
+ fs/fuse/dir.c          |   7 +--
+ fs/gfs2/dentry.c       |   3 --
+ fs/kernfs/dir.c        |  11 ----
+ fs/mount.h             |  22 ++++++++
+ fs/namei.c             |  22 ++++----
+ fs/namespace.c         | 130 +++++++++++++++++++++++++++++++++++++++++----
+ fs/nfs/dir.c           |   7 +--
+ fs/proc/base.c         |  10 +---
+ fs/proc/fd.c           |   2 -
+ include/linux/dcache.h |   3 +-
+ kernel/acct.c          |  25 +++++++--
+ 16 files changed, 231 insertions(+), 168 deletions(-)
+Merging ktest/for-next (62183dcac539 ktest: Set CLOSE_CONSOLE_SIGNAL in the kvm.conf)
+$ git merge ktest/for-next
+Already up-to-date.
+Merging signal/for-next (20b4fb485227 Merge branch 'for-linus' of git://git.kernel.org/pub/scm/linux/kernel/git/viro/vfs)
+$ git merge signal/for-next
+Already up-to-date.
+Merging clk/clk-next (31c2c4b8e911 clk: bcm281xx: don't use unnamed structs or unions)
+$ git merge clk/clk-next
+Merge made by the 'recursive' strategy.
+ drivers/clk/bcm/clk-kona-setup.c | 33 +++++++++++----------
+ drivers/clk/bcm/clk-kona.c       | 64 +++++++++++++++++++++-------------------
+ drivers/clk/bcm/clk-kona.h       | 28 +++++++++---------
+ 3 files changed, 64 insertions(+), 61 deletions(-)
+Merging random/dev (7b878d4b48c4 random: Add arch_has_random[_seed]())
+$ git merge random/dev
+Already up-to-date.
+Merging lzo-update/lzo-update (42b775abafaf lib/lzo: huge LZO decompression speedup on ARM by using unaligned access)
+$ git merge lzo-update/lzo-update
+Merge made by the 'recursive' strategy.
+ lib/lzo/lzo1x_decompress_safe.c | 4 ++++
+ lib/lzo/lzodefs.h               | 6 ++++++
+ 2 files changed, 10 insertions(+)
+Merging arm64-hugepages/for-next/hugepages (af07484863e0 ARM64: mm: THP support.)
+$ git merge arm64-hugepages/for-next/hugepages
+Already up-to-date.
+Merging aio/master (d52a8f9ead60 fs/aio.c: Remove ctx parameter in kiocb_cancel)
+$ git merge aio/master
+Auto-merging fs/aio.c
+Merge made by the 'recursive' strategy.
+ fs/aio.c | 42 +++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 35 insertions(+), 7 deletions(-)
+Merging llvmlinux/for-next (752ac52c381b unwind_support)
+$ git merge llvmlinux/for-next
+Auto-merging Makefile
+Merge made by the 'recursive' strategy.
+ Makefile                          |  2 +-
+ arch/arm/include/asm/glue-cache.h | 22 +++++++++++-----------
+ arch/arm/kernel/unwind.c          |  2 +-
+ crypto/shash.c                    |  3 ++-
+ net/netfilter/xt_repldata.h       | 22 +++++++++++++++++-----
+ 5 files changed, 32 insertions(+), 19 deletions(-)
+Merging powernv-cpuidle/powernv-cpuidle (0888839c5b62 cpuidle/powernv: Parse device tree to setup idle states)
+$ git merge powernv-cpuidle/powernv-cpuidle
+Already up-to-date.
+Merging rd-docs/master (596d80c7ceb6 The sample wrapper currently fails on some Java 7 .class files.  This updates the wrapper to properly handle those files.)
+$ git merge rd-docs/master
+Merge made by the 'recursive' strategy.
+ Documentation/email-clients.txt | 15 +++++----------
+ Documentation/java.txt          |  8 ++++++++
+ 2 files changed, 13 insertions(+), 10 deletions(-)
+$ git am -3 ../patches/0001-mwifiex-using-vmallog-requires-including-vmalloc.h.patch
+Applying: mwifiex: using vmallog requires including vmalloc.h
+Merging akpm-current/current (7f6706aa1af1 lib/scatterlist: clean up useless architecture versions of scatterlist.h)
+$ git merge --no-ff akpm-current/current
+Auto-merging mm/vmscan.c
+Auto-merging mm/memblock.c
+Auto-merging mm/huge_memory.c
+Auto-merging mm/filemap.c
+Auto-merging lib/Kconfig.debug
+Auto-merging kernel/kmod.c
+Auto-merging kernel/acct.c
+Auto-merging init/Kconfig
+Auto-merging include/linux/thread_info.h
+Auto-merging include/linux/sched.h
+Auto-merging include/linux/memblock.h
+Auto-merging fs/fat/inode.c
+Auto-merging fs/fat/file.c
+Auto-merging fs/affs/file.c
+Auto-merging drivers/leds/Kconfig
+Removing arch/x86/include/asm/scatterlist.h
+Auto-merging arch/x86/Kconfig
+Removing arch/sparc/include/asm/scatterlist.h
+Removing arch/score/include/asm/scatterlist.h
+Removing arch/s390/include/asm/scatterlist.h
+Auto-merging arch/s390/Kconfig
+Removing arch/powerpc/include/asm/scatterlist.h
+Removing arch/mn10300/include/asm/scatterlist.h
+Removing arch/microblaze/include/asm/scatterlist.h
+Removing arch/m32r/include/asm/scatterlist.h
+Removing arch/ia64/include/asm/scatterlist.h
+Removing arch/frv/include/asm/scatterlist.h
+Removing arch/cris/include/asm/scatterlist.h
+Removing arch/arm/include/asm/scatterlist.h
+Auto-merging arch/arm/Kconfig
+Removing arch/alpha/include/asm/scatterlist.h
+Auto-merging MAINTAINERS
+Auto-merging Documentation/kernel-parameters.txt
+Merge made by the 'recursive' strategy.
+ CREDITS                                            |   7 +
+ Documentation/SubmittingPatches                    |  22 +-
+ Documentation/cgroups/memory.txt                   |  16 +-
+ .../devicetree/bindings/rtc/xgene-rtc.txt          |  28 +
+ Documentation/filesystems/vfat.txt                 |  15 +
+ Documentation/kernel-parameters.txt                |  19 +-
+ Documentation/leds/leds-class.txt                  |   3 -
+ Documentation/memory-hotplug.txt                   | 125 ++--
+ Documentation/printk-formats.txt                   |   6 +
+ Documentation/sysctl/vm.txt                        |  17 +-
+ MAINTAINERS                                        |   5 +-
+ arch/alpha/include/asm/Kbuild                      |   1 +
+ arch/alpha/include/asm/scatterlist.h               |   6 -
+ arch/arc/kernel/troubleshoot.c                     |  10 +-
+ arch/arm/Kconfig                                   |   1 +
+ arch/arm/include/asm/Kbuild                        |   1 +
+ arch/arm/include/asm/fixmap.h                      |  29 +-
+ arch/arm/include/asm/scatterlist.h                 |  12 -
+ arch/arm/mm/init.c                                 |   2 +-
+ arch/arm64/Kconfig                                 |   1 +
+ arch/arm64/boot/dts/apm-storm.dtsi                 |  21 +
+ arch/blackfin/include/asm/unistd.h                 |   1 -
+ arch/cris/include/asm/Kbuild                       |   1 +
+ arch/cris/include/asm/scatterlist.h                |   6 -
+ arch/cris/include/asm/unistd.h                     |   1 -
+ arch/frv/include/asm/Kbuild                        |   1 +
+ arch/frv/include/asm/scatterlist.h                 |   6 -
+ arch/frv/include/asm/unistd.h                      |   1 -
+ arch/ia64/Kconfig                                  |   1 +
+ arch/ia64/include/asm/Kbuild                       |   1 +
+ arch/ia64/include/asm/scatterlist.h                |   7 -
+ arch/ia64/include/asm/topology.h                   |   3 +-
+ arch/m32r/include/asm/Kbuild                       |   1 +
+ arch/m32r/include/asm/scatterlist.h                |   6 -
+ arch/m68k/include/asm/signal.h                     |   9 -
+ arch/m68k/include/asm/unistd.h                     |   1 -
+ arch/m68k/kernel/sys_m68k.c                        |  18 +-
+ arch/microblaze/include/asm/Kbuild                 |   1 +
+ arch/microblaze/include/asm/scatterlist.h          |   1 -
+ arch/microblaze/include/asm/unistd.h               |   1 -
+ arch/mips/dec/Makefile                             |   2 +-
+ arch/mips/dec/platform.c                           |  44 ++
+ arch/mips/include/asm/unistd.h                     |   1 -
+ arch/mips/kernel/traps.c                           |   2 +
+ arch/mips/mm/c-octeon.c                            |   2 +
+ arch/mn10300/include/asm/Kbuild                    |   1 +
+ arch/mn10300/include/asm/scatterlist.h             |  16 -
+ arch/mn10300/include/asm/unistd.h                  |   1 -
+ arch/parisc/include/asm/unistd.h                   |   1 -
+ arch/powerpc/Kconfig                               |   1 +
+ arch/powerpc/include/asm/Kbuild                    |   1 +
+ arch/powerpc/include/asm/pgtable.h                 |   6 +
+ arch/powerpc/include/asm/scatterlist.h             |  17 -
+ arch/powerpc/include/asm/topology.h                |   8 +-
+ arch/powerpc/include/asm/unistd.h                  |   1 -
+ arch/powerpc/mm/dma-noncoherent.c                  |   1 +
+ arch/powerpc/mm/subpage-prot.c                     |   6 +-
+ arch/powerpc/platforms/44x/warp.c                  |   1 +
+ arch/powerpc/platforms/52xx/efika.c                |   1 +
+ arch/powerpc/platforms/amigaone/setup.c            |   1 +
+ arch/s390/Kconfig                                  |   1 +
+ arch/s390/include/asm/Kbuild                       |   1 +
+ arch/s390/include/asm/scatterlist.h                |   3 -
+ arch/score/include/asm/Kbuild                      |   1 +
+ arch/score/include/asm/scatterlist.h               |   6 -
+ arch/sh/include/asm/unistd.h                       |   1 -
+ arch/sparc/Kconfig                                 |   1 +
+ arch/sparc/include/asm/Kbuild                      |   1 +
+ arch/sparc/include/asm/scatterlist.h               |   8 -
+ arch/sparc/include/asm/unistd.h                    |   1 -
+ arch/um/include/asm/Kbuild                         |   1 +
+ arch/x86/Kconfig                                   |   5 +-
+ arch/x86/include/asm/Kbuild                        |   3 +-
+ arch/x86/include/asm/pgtable.h                     |  15 +-
+ arch/x86/include/asm/pgtable_64.h                  |   8 +
+ arch/x86/include/asm/pgtable_types.h               |  66 ++-
+ arch/x86/include/asm/scatterlist.h                 |   8 -
+ arch/x86/include/asm/signal.h                      |   6 -
+ arch/x86/include/asm/swiotlb.h                     |   7 +
+ arch/x86/include/asm/unistd.h                      |   1 -
+ arch/x86/kernel/amd_gart_64.c                      |   2 +-
+ arch/x86/kernel/pci-dma.c                          |  11 +-
+ arch/x86/kernel/pci-swiotlb.c                      |   9 +-
+ arch/x86/kernel/setup.c                            |   2 +-
+ arch/x86/mm/init_64.c                              |  34 +-
+ arch/x86/mm/pageattr-test.c                        |   2 +-
+ arch/x86/pci/sta2x11-fixup.c                       |   6 +-
+ block/genhd.c                                      |   2 +-
+ drivers/base/dma-contiguous.c                      |  42 +-
+ drivers/base/memory.c                              |  12 -
+ drivers/block/zram/zram_drv.c                      |   4 +-
+ drivers/gpu/drm/exynos/exynos_drm_g2d.c            |   6 +
+ drivers/input/Kconfig                              |   9 +
+ drivers/input/Makefile                             |   3 +
+ drivers/input/input.c                              |   6 +
+ drivers/input/leds.c                               | 249 ++++++++
+ drivers/iommu/intel-iommu.c                        |  32 +-
+ drivers/leds/Kconfig                               |   3 -
+ drivers/misc/ti-st/st_core.c                       |   2 +-
+ drivers/net/irda/donauboe.c                        |  15 +-
+ drivers/rtc/Kconfig                                |  13 +-
+ drivers/rtc/Makefile                               |   1 +
+ drivers/rtc/interface.c                            |  15 +-
+ drivers/rtc/rtc-cmos.c                             |  85 ++-
+ drivers/rtc/rtc-efi.c                              |   2 +-
+ drivers/rtc/rtc-m41t80.c                           | 104 ++--
+ drivers/rtc/rtc-pcf8523.c                          |   4 +-
+ drivers/rtc/rtc-xgene.c                            | 278 +++++++++
+ drivers/tty/Kconfig                                |   4 +
+ drivers/tty/vt/keyboard.c                          | 110 +++-
+ drivers/video/backlight/backlight.c                |   2 -
+ fs/affs/affs.h                                     |  16 +-
+ fs/affs/amigaffs.c                                 |  15 +-
+ fs/affs/bitmap.c                                   |  21 +-
+ fs/affs/dir.c                                      |   8 +-
+ fs/affs/file.c                                     |  46 +-
+ fs/affs/inode.c                                    |  14 +-
+ fs/affs/namei.c                                    |  39 +-
+ fs/affs/super.c                                    |  43 +-
+ fs/affs/symlink.c                                  |   2 +-
+ fs/befs/btree.c                                    |   7 +-
+ fs/befs/linuxvfs.c                                 |   5 +-
+ fs/binfmt_elf.c                                    |  25 +-
+ fs/binfmt_flat.c                                   |   2 +-
+ fs/fat/cache.c                                     |  70 ++-
+ fs/fat/fat.h                                       |   9 +-
+ fs/fat/file.c                                      |  78 ++-
+ fs/fat/inode.c                                     | 429 +++++++++++---
+ fs/hfsplus/attributes.c                            |  36 +-
+ fs/hfsplus/catalog.c                               |  89 ++-
+ fs/hfsplus/dir.c                                   |  22 +-
+ fs/hfsplus/hfsplus_fs.h                            |   7 +-
+ fs/hfsplus/super.c                                 |   4 +-
+ fs/hfsplus/xattr.c                                 |  51 +-
+ fs/hfsplus/xattr_security.c                        |  49 +-
+ fs/hfsplus/xattr_trusted.c                         |  32 +-
+ fs/hfsplus/xattr_user.c                            |  32 +-
+ fs/hugetlbfs/inode.c                               |  21 +-
+ fs/jffs2/background.c                              |  12 +-
+ fs/mpage.c                                         |  23 +-
+ fs/notify/fanotify/fanotify_user.c                 |  17 +-
+ fs/notify/mark.c                                   |   2 +-
+ fs/ntfs/compress.c                                 |   2 +-
+ fs/ntfs/super.c                                    |   4 +-
+ fs/ntfs/sysctl.c                                   |   2 +-
+ fs/ocfs2/cluster/tcp.c                             |  33 +-
+ fs/ocfs2/dlm/dlmdebug.c                            |   2 +-
+ fs/ocfs2/dlm/dlmlock.c                             |   2 +-
+ fs/ocfs2/dlm/dlmmaster.c                           |  20 +-
+ fs/ocfs2/journal.c                                 |  17 +-
+ fs/ocfs2/namei.c                                   | 145 ++++-
+ fs/ocfs2/stackglue.c                               |   2 +-
+ fs/ocfs2/super.c                                   |   8 +-
+ fs/ocfs2/uptodate.c                                |   2 +-
+ fs/proc/task_mmu.c                                 | 287 ++++-----
+ fs/readdir.c                                       |   2 +
+ fs/reiserfs/bitmap.c                               |  13 +-
+ include/asm-generic/pgtable.h                      |   8 +-
+ include/linux/crc64_ecma.h                         |  56 ++
+ include/linux/dma-contiguous.h                     |   9 +-
+ include/linux/gfp.h                                |  10 +-
+ include/linux/hugetlb.h                            |  22 +-
+ include/linux/hugetlb_inline.h                     |   7 +
+ include/linux/idr.h                                |  13 +-
+ include/linux/input.h                              |  21 +
+ include/linux/mc146818rtc.h                        |   4 +
+ include/linux/memblock.h                           |   2 +
+ include/linux/memcontrol.h                         |  17 +-
+ include/linux/memory_hotplug.h                     |  14 +-
+ include/linux/mm.h                                 |  43 +-
+ include/linux/mm_types.h                           |   2 +-
+ include/linux/mmdebug.h                            |  15 +-
+ include/linux/mmzone.h                             |   9 +-
+ include/linux/page-flags.h                         |   3 +
+ include/linux/pagemap.h                            |  28 +
+ include/linux/scatterlist.h                        |   2 +-
+ include/linux/sched.h                              |  13 +-
+ include/linux/signal.h                             |  21 +-
+ include/linux/slab.h                               |  11 +-
+ include/linux/string.h                             |   1 +
+ include/linux/swap.h                               |  19 +-
+ include/linux/swapops.h                            |   2 +-
+ include/linux/swiotlb.h                            |   2 +
+ include/linux/thread_info.h                        |   2 -
+ include/linux/topology.h                           |   3 +-
+ include/linux/vm_event_item.h                      |   4 +
+ include/linux/vmstat.h                             |   6 +
+ include/scsi/scsi.h                                |   2 +-
+ include/trace/events/gfpflags.h                    |   1 -
+ init/Kconfig                                       |  23 +-
+ init/main.c                                        |  74 ++-
+ ipc/compat.c                                       |   2 +-
+ ipc/compat_mq.c                                    |   2 +-
+ ipc/msg.c                                          |  42 +-
+ ipc/sem.c                                          |  22 +-
+ ipc/shm.c                                          |  14 +-
+ ipc/util.c                                         |  12 +-
+ ipc/util.h                                         |  10 +-
+ kernel/acct.c                                      |   6 +-
+ kernel/audit.c                                     |   2 +-
+ kernel/exit.c                                      |  43 +-
+ kernel/fork.c                                      |  10 +-
+ kernel/kexec.c                                     |   1 +
+ kernel/kmod.c                                      |   5 +-
+ kernel/panic.c                                     |  23 +-
+ kernel/printk/printk.c                             | 144 ++++-
+ kernel/signal.c                                    |  94 ++-
+ kernel/sys_ni.c                                    |   2 +
+ kernel/time/sched_clock.c                          |   4 +
+ kernel/watchdog.c                                  |  10 +-
+ lib/Kconfig                                        |  14 +
+ lib/Kconfig.debug                                  |  10 +
+ lib/Makefile                                       |   1 +
+ lib/crc64_ecma.c                                   | 341 +++++++++++
+ lib/idr.c                                          |  40 +-
+ lib/scatterlist.c                                  |   4 +-
+ lib/string.c                                       |   8 +-
+ lib/swiotlb.c                                      |   2 +-
+ lib/vsprintf.c                                     |  20 +-
+ lib/xz/Kconfig                                     |  24 +-
+ lib/xz/xz_dec_lzma2.c                              |   4 +
+ mm/Makefile                                        |   2 +-
+ mm/bounce.c                                        |   7 +-
+ mm/compaction.c                                    |  67 +--
+ mm/filemap.c                                       |  49 +-
+ mm/fremap.c                                        |   7 +-
+ mm/gup.c                                           | 640 ++++++++++++++++++++
+ mm/huge_memory.c                                   |  34 +-
+ mm/hugetlb.c                                       | 355 +++++++----
+ mm/kmemleak.c                                      |   4 +-
+ mm/memblock.c                                      |  21 +-
+ mm/memcontrol.c                                    | 151 +++--
+ mm/memory-failure.c                                |  14 +-
+ mm/memory.c                                        | 650 +--------------------
+ mm/memory_hotplug.c                                | 142 +++--
+ mm/mempolicy.c                                     | 264 ++++-----
+ mm/mempool.c                                       |   2 +
+ mm/mmap.c                                          |  30 +-
+ mm/nommu.c                                         |   5 +-
+ mm/page_alloc.c                                    | 106 ++--
+ mm/pagewalk.c                                      | 375 +++++++-----
+ mm/rmap.c                                          |  14 +-
+ mm/slab.c                                          |  33 +-
+ mm/slab.h                                          |  30 +
+ mm/slab_common.c                                   |  59 +-
+ mm/slob.c                                          |   3 +-
+ mm/slub.c                                          |  50 +-
+ mm/swap.c                                          |  31 +-
+ mm/truncate.c                                      |   8 -
+ mm/util.c                                          |  30 +
+ mm/vmacache.c                                      |  19 +-
+ mm/vmscan.c                                        | 106 ++--
+ mm/vmstat.c                                        |   4 +
+ scripts/checkpatch.pl                              |  46 +-
+ usr/Kconfig                                        |  77 ---
+ 255 files changed, 5391 insertions(+), 2937 deletions(-)
+ create mode 100644 Documentation/devicetree/bindings/rtc/xgene-rtc.txt
+ delete mode 100644 arch/alpha/include/asm/scatterlist.h
+ delete mode 100644 arch/arm/include/asm/scatterlist.h
+ delete mode 100644 arch/cris/include/asm/scatterlist.h
+ delete mode 100644 arch/frv/include/asm/scatterlist.h
+ delete mode 100644 arch/ia64/include/asm/scatterlist.h
+ delete mode 100644 arch/m32r/include/asm/scatterlist.h
+ delete mode 100644 arch/microblaze/include/asm/scatterlist.h
+ create mode 100644 arch/mips/dec/platform.c
+ delete mode 100644 arch/mn10300/include/asm/scatterlist.h
+ delete mode 100644 arch/powerpc/include/asm/scatterlist.h
+ delete mode 100644 arch/s390/include/asm/scatterlist.h
+ delete mode 100644 arch/score/include/asm/scatterlist.h
+ delete mode 100644 arch/sparc/include/asm/scatterlist.h
+ delete mode 100644 arch/x86/include/asm/scatterlist.h
+ create mode 100644 drivers/input/leds.c
+ create mode 100644 drivers/rtc/rtc-xgene.c
+ create mode 100644 include/linux/crc64_ecma.h
+ create mode 100644 lib/crc64_ecma.c
+ create mode 100644 mm/gup.c
+$ git am -3 ../patches/0001-hugetlb-ensure-hugepage-access-is-denied-if-hugepage.patch
+Applying: hugetlb: ensure hugepage access is denied if hugepages are not supported -fix
+$ git clone -s -l -n -q . ../rebase-tmp
+$ cd ../rebase-tmp
+$ git checkout -b akpm remotes/origin/akpm/master
+Switched to a new branch 'akpm'
+$ git rebase --onto master remotes/origin/akpm/master-base
+First, rewinding head to replay your work on top of it...
+Applying: drivers/gpio/gpio-zevio.c: fix build
+Applying: arm: convert use of typedef ctl_table to struct ctl_table
+Applying: ia64: convert use of typedef ctl_table to struct ctl_table
+Applying: tile: convert use of typedef ctl_table to struct ctl_table
+Applying: cdrom: convert use of typedef ctl_table to struct ctl_table
+Applying: random: convert use of typedef ctl_table to struct ctl_table
+Applying: parport: convert use of typedef ctl_table to struct ctl_table
+Applying: scsi: convert use of typedef ctl_table to struct ctl_table
+Applying: coda: convert use of typedef ctl_table to struct ctl_table
+Applying: fscache: convert use of typedef ctl_table to struct ctl_table
+Applying: lockd: convert use of typedef ctl_table to struct ctl_table
+Applying: nfs: convert use of typedef ctl_table to struct ctl_table
+Applying: inotify: convert use of typedef ctl_table to struct ctl_table
+Applying: ntfs: convert use of typedef ctl_table to struct ctl_table
+Applying: fs: convert use of typedef ctl_table to struct ctl_table
+Applying: key: convert use of typedef ctl_table to struct ctl_table
+Applying: ipc: convert use of typedef ctl_table to struct ctl_table
+Applying: sysctl: convert use of typedef ctl_table to struct ctl_table
+Applying: mm: convert use of typedef ctl_table to struct ctl_table
+Applying: mfd/rtc: s5m: do not allocate RTC I2C dummy and regmap for unsupported chipsets
+Applying: mfd/rtc: sec/s5m: rename SEC* symbols to S5M
+Applying: rtc: s5m: remove undocumented time init on first boot
+Applying: rtc: s5m: use shorter time of register update
+Applying: rtc: s5m: support different register layout
+Applying: rtc: s5m: add support for S2MPS14 RTC
+Applying: rtc: s5m: consolidate two device type switch statements
+Applying: blackfin/ptrace: call find_vma with the mmap_sem held
+Applying: drivers/w1/w1_int.c: call put_device if device_register fails
+Applying: arm: move arm_dma_limit to setup_dma_zone
+Applying: ufs: sb mutex merge + mutex_destroy
+Applying: mm: add strictlimit knob
+$ cd ../next
+$ git fetch -f ../rebase-tmp akpm:akpm/master
+From ../rebase-tmp
+ + 468fcd51b4bf...7d865ea20ad9 akpm       -> akpm/master  (forced update)
+$ rm -rf ../rebase-tmp
+Merging akpm/master (7d865ea20ad9 mm: add strictlimit knob)
+$ git merge --no-ff akpm/master
+Merge made by the 'recursive' strategy.
+ Documentation/ABI/testing/sysfs-class-bdi |   8 +
+ arch/arm/kernel/isa.c                     |   6 +-
+ arch/arm/mm/init.c                        |   6 +-
+ arch/arm/mm/mm.h                          |   2 -
+ arch/blackfin/kernel/ptrace.c             |   8 +-
+ arch/ia64/kernel/crash.c                  |   4 +-
+ arch/ia64/kernel/perfmon.c                |   6 +-
+ arch/tile/kernel/proc.c                   |   4 +-
+ drivers/cdrom/cdrom.c                     |  10 +-
+ drivers/char/random.c                     |   4 +-
+ drivers/gpio/gpio-zevio.c                 |   4 +
+ drivers/mfd/sec-core.c                    |  53 +----
+ drivers/parport/procfs.c                  |  58 ++---
+ drivers/rtc/Kconfig                       |   4 +-
+ drivers/rtc/rtc-s5m.c                     | 381 +++++++++++++++++++++---------
+ drivers/scsi/scsi_sysctl.c                |   6 +-
+ drivers/w1/w1_int.c                       |   5 +-
+ fs/coda/sysctl.c                          |   4 +-
+ fs/dcache.c                               |   2 +-
+ fs/drop_caches.c                          |   2 +-
+ fs/eventpoll.c                            |   2 +-
+ fs/file_table.c                           |   4 +-
+ fs/fscache/main.c                         |   4 +-
+ fs/inode.c                                |   2 +-
+ fs/lockd/svc.c                            |   6 +-
+ fs/nfs/nfs4sysctl.c                       |   6 +-
+ fs/nfs/sysctl.c                           |   6 +-
+ fs/notify/inotify/inotify_user.c          |   2 +-
+ fs/ntfs/sysctl.c                          |   4 +-
+ fs/ufs/balloc.c                           |  30 +--
+ fs/ufs/ialloc.c                           |  17 +-
+ fs/ufs/super.c                            |  28 +--
+ fs/ufs/ufs.h                              |   1 -
+ include/linux/key.h                       |   2 +-
+ include/linux/mfd/samsung/core.h          |   3 -
+ include/linux/mfd/samsung/rtc.h           |  86 ++++---
+ ipc/ipc_sysctl.c                          |  14 +-
+ ipc/mq_sysctl.c                           |  12 +-
+ kernel/sysctl.c                           |   2 +-
+ kernel/utsname_sysctl.c                   |   6 +-
+ mm/backing-dev.c                          |  35 +++
+ mm/page-writeback.c                       |   2 +-
+ mm/page_alloc.c                           |  12 +-
+ 43 files changed, 509 insertions(+), 354 deletions(-)
