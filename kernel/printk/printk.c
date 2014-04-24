@@ -297,34 +297,106 @@ static u32 log_next(u32 idx)
 	return idx + msg->len;
 }
 
+/*
+ * Check whether there is enough free space for the given message.
+ *
+ * The same values of first_idx and next_idx mean that the buffer
+ * is either empty or full.
+ *
+ * If the buffer is empty, we must respect the position of the indexes.
+ * They cannot be reset to the beginning of the buffer.
+ */
+static int logbuf_has_space(u32 msg_size, bool empty)
+{
+	u32 free;
+
+	if (log_next_idx > log_first_idx || empty)
+		free = max(log_buf_len - log_next_idx, log_first_idx);
+	else
+		free = log_first_idx - log_next_idx;
+
+	/*
+	 * We need space also for an empty header that signalizes wrapping
+	 * of the buffer.
+	 */
+	return free >= msg_size + sizeof(struct printk_log);
+}
+
+static int log_make_free_space(u32 msg_size)
+{
+	while (log_first_seq < log_next_seq) {
+		if (logbuf_has_space(msg_size, false))
+			return 0;
+		/* drop old messages until we have enough continuous space */
+		log_first_idx = log_next(log_first_idx);
+		log_first_seq++;
+	}
+
+	/* sequence numbers are equal, so the log buffer is empty */
+	if (logbuf_has_space(msg_size, true))
+		return 0;
+
+	return -ENOMEM;
+}
+
+/* compute the message size including the padding bytes */
+static u32 msg_used_size(u16 text_len, u16 dict_len, u32 *pad_len)
+{
+	u32 size;
+
+	size = sizeof(struct printk_log) + text_len + dict_len;
+	*pad_len = (-size) & (LOG_ALIGN - 1);
+	size += *pad_len;
+
+	return size;
+}
+
+/*
+ * Define how much of the log buffer we could take at maximum. The value
+ * must be greater than two. Note that only half of the buffer is available
+ * when the index points to the middle.
+ */
+#define MAX_LOG_TAKE_PART 4
+static const char trunc_msg[] = "<truncated>";
+
+static u32 truncate_msg(u16 *text_len, u16 *trunc_msg_len,
+			u16 *dict_len, u32 *pad_len)
+{
+	/*
+	 * The message should not take the whole buffer. Otherwise, it might
+	 * get removed too soon.
+	 */
+	u32 max_text_len = log_buf_len / MAX_LOG_TAKE_PART;
+	if (*text_len > max_text_len)
+		*text_len = max_text_len;
+	/* enable the warning message */
+	*trunc_msg_len = strlen(trunc_msg);
+	/* disable the "dict" completely */
+	*dict_len = 0;
+	/* compute the size again, count also the warning message */
+	return msg_used_size(*text_len + *trunc_msg_len, 0, pad_len);
+}
+
 /* insert record into the buffer, discard old ones, update heads */
-static void log_store(int facility, int level,
-		      enum log_flags flags, u64 ts_nsec,
-		      const char *dict, u16 dict_len,
-		      const char *text, u16 text_len)
+static int log_store(int facility, int level,
+		     enum log_flags flags, u64 ts_nsec,
+		     const char *dict, u16 dict_len,
+		     const char *text, u16 text_len)
 {
 	struct printk_log *msg;
 	u32 size, pad_len;
+	u16 trunc_msg_len = 0;
 
 	/* number of '\0' padding bytes to next message */
-	size = sizeof(struct printk_log) + text_len + dict_len;
-	pad_len = (-size) & (LOG_ALIGN - 1);
-	size += pad_len;
+	size = msg_used_size(text_len, dict_len, &pad_len);
 
-	while (log_first_seq < log_next_seq) {
-		u32 free;
-
-		if (log_next_idx > log_first_idx)
-			free = max(log_buf_len - log_next_idx, log_first_idx);
-		else
-			free = log_first_idx - log_next_idx;
-
-		if (free >= size + sizeof(struct printk_log))
-			break;
-
-		/* drop old messages until we have enough contiuous space */
-		log_first_idx = log_next(log_first_idx);
-		log_first_seq++;
+	if (log_make_free_space(size)) {
+		/* truncate the message if it is too long for empty buffer */
+		size = truncate_msg(&text_len, &trunc_msg_len,
+				    &dict_len, &pad_len);
+		/* survive when the log buffer is too small for trunc_msg */
+		if (log_make_free_space(size))
+			return 0;
 	}
 
 	if (log_next_idx + size + sizeof(struct printk_log) > log_buf_len) {
@@ -341,6 +413,10 @@ static void log_store(int facility, int level,
 	msg = (struct printk_log *)(log_buf + log_next_idx);
 	memcpy(log_text(msg), text, text_len);
 	msg->text_len = text_len;
+	if (trunc_msg_len) {
+		memcpy(log_text(msg) + text_len, trunc_msg, trunc_msg_len);
+		msg->text_len += trunc_msg_len;
+	}
 	memcpy(log_dict(msg), dict, dict_len);
 	msg->dict_len = dict_len;
 	msg->facility = facility;
@@ -356,6 +432,8 @@ static void log_store(int facility, int level,
 	/* insert message */
 	log_next_idx += msg->len;
 	log_next_seq++;
+
+	return msg->text_len;
 }
 
 #ifdef CONFIG_SECURITY_DMESG_RESTRICT
@@ -1530,10 +1608,10 @@ asmlinkage int vprintk_emit(int facility, int level,
 			"BUG: recent printk recursion!";
 
 		recursion_bug = 0;
-		printed_len += strlen(recursion_msg);
+		text_len = strlen(recursion_msg);
 		/* emit KERN_CRIT message */
-		log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
-			  NULL, 0, recursion_msg, printed_len);
+		printed_len += log_store(0, 2, LOG_PREFIX|LOG_NEWLINE, 0,
+					 NULL, 0, recursion_msg, text_len);
 	}
 
 	/*
@@ -1586,9 +1664,12 @@ asmlinkage int vprintk_emit(int facility, int level,
 			cont_flush(LOG_NEWLINE);
 
 		/* buffer line if possible, otherwise store it right away */
-		if (!cont_add(facility, level, text, text_len))
-			log_store(facility, level, lflags | LOG_CONT, 0,
-				  dict, dictlen, text, text_len);
+		if (cont_add(facility, level, text, text_len))
+			printed_len += text_len;
+		else
+			printed_len += log_store(facility, level,
+						 lflags | LOG_CONT, 0,
+						 dict, dictlen, text, text_len);
 	} else {
 		bool stored = false;
 
@@ -1607,11 +1688,12 @@ asmlinkage int vprintk_emit(int facility, int level,
 			cont_flush(LOG_NEWLINE);
 		}
 
-		if (!stored)
-			log_store(facility, level, lflags, 0,
-				  dict, dictlen, text, text_len);
+		if (stored)
+			printed_len += text_len;
+		else
+			printed_len += log_store(facility, level, lflags, 0,
+						 dict, dictlen, text, text_len);
 	}
-	printed_len += text_len;
 
 	/*
 	 * Try to acquire and then immediately release the console semaphore.

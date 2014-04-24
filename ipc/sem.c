@@ -87,7 +87,7 @@
 #include <linux/nsproxy.h>
 #include <linux/ipc_namespace.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include "util.h"
 
 /* One semaphore structure for each semaphore in the system. */
@@ -160,7 +160,7 @@ static int sysvipc_sem_proc_show(struct seq_file *s, void *it);
  *	sem_array.pending{_alter,_cont},
  *	sem_array.sem_undo: global sem_lock() for read/write
  *	sem_undo.proc_next: only "current" is allowed to read/write that field.
- *	
+ *
  *	sem_array.sem_base[i].pending_{const,alter}:
  *		global or semaphore sem_lock() for read/write
  */
@@ -564,17 +564,17 @@ static inline int sem_more_checks(struct kern_ipc_perm *ipcp,
 SYSCALL_DEFINE3(semget, key_t, key, int, nsems, int, semflg)
 {
 	struct ipc_namespace *ns;
-	struct ipc_ops sem_ops;
+	static const struct ipc_ops sem_ops = {
+		.getnew = newary,
+		.associate = sem_security,
+		.more_checks = sem_more_checks,
+	};
 	struct ipc_params sem_params;
 
 	ns = current->nsproxy->ipc_ns;
 
 	if (nsems < 0 || nsems > ns->sc_semmsl)
 		return -EINVAL;
-
-	sem_ops.getnew = newary;
-	sem_ops.associate = sem_security;
-	sem_ops.more_checks = sem_more_checks;
 
 	sem_params.key = key;
 	sem_params.flg = semflg;
@@ -1161,7 +1161,7 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 		err = security_sem_semctl(NULL, cmd);
 		if (err)
 			return err;
-		
+
 		memset(&seminfo, 0, sizeof(seminfo));
 		seminfo.semmni = ns->sc_semmni;
 		seminfo.semmns = ns->sc_semmns;
@@ -1181,7 +1181,7 @@ static int semctl_nolock(struct ipc_namespace *ns, int semid,
 		}
 		max_id = ipc_get_maxid(&sem_ids(ns));
 		up_read(&sem_ids(ns).rwsem);
-		if (copy_to_user(p, &seminfo, sizeof(struct seminfo))) 
+		if (copy_to_user(p, &seminfo, sizeof(struct seminfo)))
 			return -EFAULT;
 		return (max_id < 0) ? 0 : max_id;
 	}
@@ -1883,7 +1883,7 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	/* We need to sleep on this operation, so we put the current
 	 * task into the pending queue and go to sleep.
 	 */
-		
+
 	queue.sops = sops;
 	queue.nsops = nsops;
 	queue.undo = un;
@@ -2016,7 +2016,7 @@ int copy_semundo(unsigned long clone_flags, struct task_struct *tsk)
 			return error;
 		atomic_inc(&undo_list->refcnt);
 		tsk->sysvsem.undo_list = undo_list;
-	} else 
+	} else
 		tsk->sysvsem.undo_list = NULL;
 
 	return 0;
