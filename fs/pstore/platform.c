@@ -455,8 +455,7 @@ int pstore_register(struct pstore_info *psi)
 		add_timer(&pstore_timer);
 	}
 
-	pr_info("pstore: Registered %s as persistent store backend\n",
-		psi->name);
+	pr_info("Registered %s as persistent store backend\n", psi->name);
 
 	return 0;
 }
@@ -502,7 +501,7 @@ void pstore_get_records(int quiet)
 				size = unzipped_len;
 				compressed = false;
 			} else {
-				pr_err("pstore: decompression failed;returned %d\n",
+				pr_err("decompression failed;returned %d\n",
 				       unzipped_len);
 				compressed = true;
 			}
