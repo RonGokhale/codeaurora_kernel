@@ -2277,8 +2277,9 @@ static bool i915_context_is_banned(struct drm_i915_private *dev_priv,
 		if (!i915_gem_context_is_default(ctx)) {
 			DRM_DEBUG("context hanging too fast, banning!\n");
 			return true;
-		} else if (dev_priv->gpu_error.stop_rings == 0) {
-			DRM_ERROR("gpu hanging too fast, banning!\n");
+		} else if (i915_stop_ring_allow_ban(dev_priv)) {
+			if (i915_stop_ring_allow_warn(dev_priv))
+				DRM_ERROR("gpu hanging too fast, banning!\n");
 			return true;
 		}
 	}
@@ -2383,6 +2384,11 @@ static void i915_gem_reset_ring_cleanup(struct drm_i915_private *dev_priv,
 
 		i915_gem_free_request(request);
 	}
+
+	/* These may not have been flush before the reset, do so now */
+	kfree(ring->preallocated_lazy_request);
+	ring->preallocated_lazy_request = NULL;
+	ring->outstanding_lazy_seqno = 0;
 }
 
 void i915_gem_restore_fences(struct drm_device *dev)
@@ -2422,8 +2428,6 @@ void i915_gem_reset(struct drm_device *dev)
 
 	for_each_ring(ring, dev_priv, i)
 		i915_gem_reset_ring_cleanup(dev_priv, ring);
-
-	i915_gem_cleanup_ringbuffer(dev);
 
 	i915_gem_context_reset(dev);
 
@@ -4232,6 +4236,17 @@ void i915_gem_vma_destroy(struct i915_vma *vma)
 	kfree(vma);
 }
 
+static void
+i915_gem_stop_ringbuffers(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_ring_buffer *ring;
+	int i;
+
+	for_each_ring(ring, dev_priv, i)
+		intel_stop_ring_buffer(ring);
+}
+
 int
 i915_gem_suspend(struct drm_device *dev)
 {
@@ -4253,7 +4268,7 @@ i915_gem_suspend(struct drm_device *dev)
 		i915_gem_evict_everything(dev);
 
 	i915_kernel_lost_context(dev);
-	i915_gem_cleanup_ringbuffer(dev);
+	i915_gem_stop_ringbuffers(dev);
 
 	/* Hack!  Don't let anybody do execbuf while we don't control the chip.
 	 * We need to replace this with a semaphore, or something.
@@ -4437,15 +4452,11 @@ i915_gem_init_hw(struct drm_device *dev)
 	 * the do_switch), but before enabling PPGTT. So don't move this.
 	 */
 	ret = i915_gem_context_enable(dev_priv);
-	if (ret) {
+	if (ret && ret != -EIO) {
 		DRM_ERROR("Context enable failed %d\n", ret);
-		goto err_out;
+		i915_gem_cleanup_ringbuffer(dev);
 	}
 
-	return 0;
-
-err_out:
-	i915_gem_cleanup_ringbuffer(dev);
 	return ret;
 }
 
@@ -4472,18 +4483,21 @@ int i915_gem_init(struct drm_device *dev)
 	}
 
 	ret = i915_gem_init_hw(dev);
-	mutex_unlock(&dev->struct_mutex);
-	if (ret) {
-		WARN_ON(dev_priv->mm.aliasing_ppgtt);
-		i915_gem_context_fini(dev);
-		drm_mm_takedown(&dev_priv->gtt.base.mm);
-		return ret;
+	if (ret == -EIO) {
+		/* Allow ring initialisation to fail by marking the GPU as
+		 * wedged. But we only want to do this where the GPU is angry,
+		 * for all other failure, such as an allocation failure, bail.
+		 */
+		DRM_ERROR("Failed to initialize GPU, declaring it wedged\n");
+		atomic_set_mask(I915_WEDGED, &dev_priv->gpu_error.reset_counter);
+		ret = 0;
 	}
+	mutex_unlock(&dev->struct_mutex);
 
 	/* Allow hardware batchbuffers unless told otherwise, but not for KMS. */
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		dev_priv->dri1.allow_batchbuffer = 1;
-	return 0;
+	return ret;
 }
 
 void
