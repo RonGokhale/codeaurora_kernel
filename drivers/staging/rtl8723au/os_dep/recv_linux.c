@@ -21,49 +21,8 @@
 #include <recv_osdep.h>
 
 #include <osdep_intf.h>
-#include <ethernet.h>
 
 #include <usb_ops.h>
-
-/* alloc os related resource in struct recv_frame */
-int rtw_os_recv_resource_alloc23a(struct rtw_adapter *padapter,
-			       struct recv_frame *precvframe)
-{
-	int res = _SUCCESS;
-
-	precvframe->pkt = NULL;
-
-	return res;
-}
-
-/* alloc os related resource in struct recv_buf */
-int rtw_os_recvbuf_resource_alloc23a(struct rtw_adapter *padapter,
-				  struct recv_buf *precvbuf)
-{
-	int res = _SUCCESS;
-
-	precvbuf->purb = usb_alloc_urb(0, GFP_KERNEL);
-	if (precvbuf->purb == NULL)
-		res = _FAIL;
-
-	precvbuf->pskb = NULL;
-
-	return res;
-}
-
-/* free os related resource in struct recv_buf */
-int rtw_os_recvbuf_resource_free23a(struct rtw_adapter *padapter,
-				 struct recv_buf *precvbuf)
-{
-	int ret = _SUCCESS;
-
-	usb_free_urb(precvbuf->purb);
-
-	if (precvbuf->pskb)
-		dev_kfree_skb_any(precvbuf->pskb);
-
-	return ret;
-}
 
 void rtw_handle_tkip_mic_err23a(struct rtw_adapter *padapter, u8 bgroup)
 {
@@ -108,11 +67,6 @@ void rtw_handle_tkip_mic_err23a(struct rtw_adapter *padapter, u8 bgroup)
 
 	memset(&wrqu, 0x00, sizeof(wrqu));
 	wrqu.data.length = sizeof(ev);
-}
-
-void rtw_hostapd_mlme_rx23a(struct rtw_adapter *padapter,
-			 struct recv_frame *precv_frame)
-{
 }
 
 int rtw_recv_indicatepkt23a(struct rtw_adapter *padapter,
@@ -203,18 +157,6 @@ _recv_indicatepkt_drop:
 
 	 rtw_free_recvframe23a(precv_frame, pfree_recv_queue);
 	 return _FAIL;
-}
-
-void rtw_os_read_port23a(struct rtw_adapter *padapter, struct recv_buf *precvbuf)
-{
-	struct recv_priv *precvpriv = &padapter->recvpriv;
-
-	/* free skb in recv_buf */
-	dev_kfree_skb_any(precvbuf->pskb);
-
-	precvbuf->pskb = NULL;
-
-	rtw_read_port(padapter, precvpriv->ff_hwaddr, 0, precvbuf);
 }
 
 void rtw_init_recv_timer23a(struct recv_reorder_ctrl *preorder_ctrl)
