@@ -409,7 +409,7 @@ static const char * const adcl_enum_text[] = {
 static SOC_ENUM_SINGLE_VIRT_DECL(adcl_enum, adcl_enum_text);
 
 static const struct snd_kcontrol_new left_input_mux =
-	SOC_DAPM_ENUM_VIRT("Route", adcl_enum);
+	SOC_DAPM_ENUM("Route", adcl_enum);
 
 static const char * const adcr_enum_text[] = {
 	"MC1R", "MC2", "RXINR", "TXIN",
@@ -418,7 +418,7 @@ static const char * const adcr_enum_text[] = {
 static SOC_ENUM_SINGLE_VIRT_DECL(adcr_enum, adcr_enum_text);
 
 static const struct snd_kcontrol_new right_input_mux =
-	SOC_DAPM_ENUM_VIRT("Route", adcr_enum);
+	SOC_DAPM_ENUM("Route", adcr_enum);
 
 static const struct snd_kcontrol_new samp_ctl =
 	SOC_DAPM_SINGLE("Switch", MC13783_AUDIO_RX0, 3, 1, 0);
@@ -478,9 +478,9 @@ static const struct snd_soc_dapm_widget mc13783_dapm_widgets[] = {
 	SND_SOC_DAPM_SWITCH("MC2 Amp", MC13783_AUDIO_TX, 9, 0, &mc2_amp_ctl),
 	SND_SOC_DAPM_SWITCH("TXIN Amp", MC13783_AUDIO_TX, 11, 0, &atx_amp_ctl),
 
-	SND_SOC_DAPM_VIRT_MUX("PGA Left Input Mux", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_MUX("PGA Left Input Mux", SND_SOC_NOPM, 0, 0,
 			      &left_input_mux),
-	SND_SOC_DAPM_VIRT_MUX("PGA Right Input Mux", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_MUX("PGA Right Input Mux", SND_SOC_NOPM, 0, 0,
 			      &right_input_mux),
 
 	SND_SOC_DAPM_MUX("Speaker Amp Source MUX", SND_SOC_NOPM, 0, 0,
@@ -608,14 +608,6 @@ static struct snd_kcontrol_new mc13783_control_list[] = {
 static int mc13783_probe(struct snd_soc_codec *codec)
 {
 	struct mc13783_priv *priv = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	ret = snd_soc_codec_set_cache_io(codec,
-			dev_get_regmap(codec->dev->parent, NULL));
-	if (ret != 0) {
-		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
-		return ret;
-	}
 
 	/* these are the reset values */
 	mc13xxx_reg_write(priv->mc13xxx, MC13783_AUDIO_RX0, 0x25893);
@@ -735,9 +727,15 @@ static struct snd_soc_dai_driver mc13783_dai_sync[] = {
 	}
 };
 
+static struct regmap *mc13783_get_regmap(struct device *dev)
+{
+	return dev_get_regmap(dev->parent, NULL);
+}
+
 static struct snd_soc_codec_driver soc_codec_dev_mc13783 = {
 	.probe		= mc13783_probe,
 	.remove		= mc13783_remove,
+	.get_regmap	= mc13783_get_regmap,
 	.controls	= mc13783_control_list,
 	.num_controls	= ARRAY_SIZE(mc13783_control_list),
 	.dapm_widgets	= mc13783_dapm_widgets,
