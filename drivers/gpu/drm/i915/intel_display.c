@@ -7208,7 +7208,9 @@ static int intel_crtc_mode_set(struct drm_crtc *crtc,
 			encoder->base.base.id,
 			drm_get_encoder_name(&encoder->base),
 			mode->base.id, mode->name);
-		encoder->mode_set(encoder);
+
+		if (encoder->mode_set)
+			encoder->mode_set(encoder);
 	}
 
 	return 0;
