@@ -121,20 +121,20 @@ static inline int put_dreq(struct nfs_direct_req *dreq)
  * shunt off direct read and write requests before the VFS gets them,
  * so this method is only ever called for swap.
  */
-ssize_t nfs_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov, loff_t pos, unsigned long nr_segs)
+ssize_t nfs_direct_IO(int rw, struct kiocb *iocb, struct iov_iter *iter, loff_t pos)
 {
 #ifndef CONFIG_NFS_SWAP
 	dprintk("NFS: nfs_direct_IO (%pD) off/no(%Ld/%lu) EINVAL\n",
-			iocb->ki_filp, (long long) pos, nr_segs);
+			iocb->ki_filp, (long long) pos, iter->nr_segs);
 
 	return -EINVAL;
 #else
 	VM_BUG_ON(iocb->ki_nbytes != PAGE_SIZE);
 
 	if (rw == READ || rw == KERNEL_READ)
-		return nfs_file_direct_read(iocb, iov, nr_segs, pos,
+		return nfs_file_direct_read(iocb, iter, pos,
 				rw == READ ? true : false);
-	return nfs_file_direct_write(iocb, iov, nr_segs, pos,
+	return nfs_file_direct_write(iocb, iter, pos,
 				rw == WRITE ? true : false);
 #endif /* CONFIG_NFS_SWAP */
 }
@@ -322,60 +322,37 @@ static const struct nfs_pgio_completion_ops nfs_direct_read_completion_ops = {
  * handled automatically by nfs_direct_read_result().  Otherwise, if
  * no requests have been sent, just return an error.
  */
-static ssize_t nfs_direct_read_schedule_segment(struct nfs_pageio_descriptor *desc,
-						const struct iovec *iov,
-						loff_t pos, bool uio)
+
+static ssize_t nfs_direct_read_schedule_iovec(struct nfs_direct_req *dreq,
+					      struct iov_iter *iter,
+					      loff_t pos)
 {
-	struct nfs_direct_req *dreq = desc->pg_dreq;
-	struct nfs_open_context *ctx = dreq->ctx;
-	struct inode *inode = ctx->dentry->d_inode;
-	unsigned long user_addr = (unsigned long)iov->iov_base;
-	size_t count = iov->iov_len;
-	size_t rsize = NFS_SERVER(inode)->rsize;
-	unsigned int pgbase;
-	int result;
-	ssize_t started = 0;
-	struct page **pagevec = NULL;
-	unsigned int npages;
+	struct nfs_pageio_descriptor desc;
+	struct inode *inode = dreq->inode;
+	ssize_t result = -EINVAL;
+	size_t requested_bytes = 0;
+	size_t rsize = max_t(size_t, NFS_SERVER(inode)->rsize, PAGE_SIZE);
 
-	do {
+	NFS_PROTO(dreq->inode)->read_pageio_init(&desc, dreq->inode,
+			     &nfs_direct_read_completion_ops);
+	get_dreq(dreq);
+	desc.pg_dreq = dreq;
+	atomic_inc(&inode->i_dio_count);
+
+	while (iov_iter_count(iter)) {
+		struct page **pagevec;
 		size_t bytes;
-		int i;
+		size_t pgbase;
+		unsigned npages, i;
 
-		pgbase = user_addr & ~PAGE_MASK;
-		bytes = min(max_t(size_t, rsize, PAGE_SIZE), count);
-
-		result = -ENOMEM;
-		npages = nfs_page_array_len(pgbase, bytes);
-		if (!pagevec)
-			pagevec = kmalloc(npages * sizeof(struct page *),
-					  GFP_KERNEL);
-		if (!pagevec)
+		result = iov_iter_get_pages_alloc(iter, &pagevec, 
+						  rsize, &pgbase);
+		if (result < 0)
 			break;
-		if (uio) {
-			down_read(&current->mm->mmap_sem);
-			result = get_user_pages(current, current->mm, user_addr,
-					npages, 1, 0, pagevec, NULL);
-			up_read(&current->mm->mmap_sem);
-			if (result < 0)
-				break;
-		} else {
-			WARN_ON(npages != 1);
-			result = get_kernel_page(user_addr, 1, pagevec);
-			if (WARN_ON(result != 1))
-				break;
-		}
-
-		if ((unsigned)result < npages) {
-			bytes = result * PAGE_SIZE;
-			if (bytes <= pgbase) {
-				nfs_direct_release_pages(pagevec, result);
-				break;
-			}
-			bytes -= pgbase;
-			npages = result;
-		}
-
+	
+		bytes = result;
+		iov_iter_advance(iter, bytes);
+		npages = (result + pgbase + PAGE_SIZE - 1) / PAGE_SIZE;
 		for (i = 0; i < npages; i++) {
 			struct nfs_page *req;
 			unsigned int req_len = min_t(size_t, bytes, PAGE_SIZE - pgbase);
@@ -389,56 +366,21 @@ static ssize_t nfs_direct_read_schedule_segment(struct nfs_pageio_descriptor *de
 			}
 			req->wb_index = pos >> PAGE_SHIFT;
 			req->wb_offset = pos & ~PAGE_MASK;
-			if (!nfs_pageio_add_request(desc, req)) {
-				result = desc->pg_error;
+			if (!nfs_pageio_add_request(&desc, req)) {
+				result = desc.pg_error;
 				nfs_release_request(req);
 				break;
 			}
 			pgbase = 0;
 			bytes -= req_len;
-			started += req_len;
-			user_addr += req_len;
+			requested_bytes += req_len;
 			pos += req_len;
-			count -= req_len;
 			dreq->bytes_left -= req_len;
 		}
-		/* The nfs_page now hold references to these pages */
 		nfs_direct_release_pages(pagevec, npages);
-	} while (count != 0 && result >= 0);
-
-	kfree(pagevec);
-
-	if (started)
-		return started;
-	return result < 0 ? (ssize_t) result : -EFAULT;
-}
-
-static ssize_t nfs_direct_read_schedule_iovec(struct nfs_direct_req *dreq,
-					      const struct iovec *iov,
-					      unsigned long nr_segs,
-					      loff_t pos, bool uio)
-{
-	struct nfs_pageio_descriptor desc;
-	struct inode *inode = dreq->inode;
-	ssize_t result = -EINVAL;
-	size_t requested_bytes = 0;
-	unsigned long seg;
-
-	NFS_PROTO(dreq->inode)->read_pageio_init(&desc, dreq->inode,
-			     &nfs_direct_read_completion_ops);
-	get_dreq(dreq);
-	desc.pg_dreq = dreq;
-	atomic_inc(&inode->i_dio_count);
-
-	for (seg = 0; seg < nr_segs; seg++) {
-		const struct iovec *vec = &iov[seg];
-		result = nfs_direct_read_schedule_segment(&desc, vec, pos, uio);
+		kvfree(pagevec);
 		if (result < 0)
 			break;
-		requested_bytes += result;
-		if ((size_t)result < vec->iov_len)
-			break;
-		pos += vec->iov_len;
 	}
 
 	nfs_pageio_complete(&desc);
@@ -461,8 +403,7 @@ static ssize_t nfs_direct_read_schedule_iovec(struct nfs_direct_req *dreq,
 /**
  * nfs_file_direct_read - file direct read operation for NFS files
  * @iocb: target I/O control block
- * @iov: vector of user buffers into which to read data
- * @nr_segs: size of iov vector
+ * @iter: vector of user buffers into which to read data
  * @pos: byte offset in file where reading starts
  *
  * We use this function for direct reads instead of calling
@@ -479,8 +420,8 @@ static ssize_t nfs_direct_read_schedule_iovec(struct nfs_direct_req *dreq,
  * client must read the updated atime from the server back into its
  * cache.
  */
-ssize_t nfs_file_direct_read(struct kiocb *iocb, const struct iovec *iov,
-				unsigned long nr_segs, loff_t pos, bool uio)
+ssize_t nfs_file_direct_read(struct kiocb *iocb, struct iov_iter *iter,
+				loff_t pos, bool uio)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
@@ -488,9 +429,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, const struct iovec *iov,
 	struct nfs_direct_req *dreq;
 	struct nfs_lock_context *l_ctx;
 	ssize_t result = -EINVAL;
-	size_t count;
-
-	count = iov_length(iov, nr_segs);
+	size_t count = iov_iter_count(iter);
 	nfs_add_stats(mapping->host, NFSIOS_DIRECTREADBYTES, count);
 
 	dfprintk(FILE, "NFS: direct read(%pD2, %zd@%Ld)\n",
@@ -513,7 +452,7 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, const struct iovec *iov,
 		goto out_unlock;
 
 	dreq->inode = inode;
-	dreq->bytes_left = iov_length(iov, nr_segs);
+	dreq->bytes_left = count;
 	dreq->ctx = get_nfs_open_context(nfs_file_open_context(iocb->ki_filp));
 	l_ctx = nfs_get_lock_context(dreq->ctx);
 	if (IS_ERR(l_ctx)) {
@@ -524,8 +463,8 @@ ssize_t nfs_file_direct_read(struct kiocb *iocb, const struct iovec *iov,
 	if (!is_sync_kiocb(iocb))
 		dreq->iocb = iocb;
 
-	NFS_I(inode)->read_io += iov_length(iov, nr_segs);
-	result = nfs_direct_read_schedule_iovec(dreq, iov, nr_segs, pos, uio);
+	NFS_I(inode)->read_io += count;
+	result = nfs_direct_read_schedule_iovec(dreq, iter, pos);
 
 	mutex_unlock(&inode->i_mutex);
 
@@ -681,109 +620,6 @@ static void nfs_direct_write_complete(struct nfs_direct_req *dreq, struct inode 
 }
 #endif
 
-/*
- * NB: Return the value of the first error return code.  Subsequent
- *     errors after the first one are ignored.
- */
-/*
- * For each wsize'd chunk of the user's buffer, dispatch an NFS WRITE
- * operation.  If nfs_writedata_alloc() or get_user_pages() fails,
- * bail and stop sending more writes.  Write length accounting is
- * handled automatically by nfs_direct_write_result().  Otherwise, if
- * no requests have been sent, just return an error.
- */
-static ssize_t nfs_direct_write_schedule_segment(struct nfs_pageio_descriptor *desc,
-						 const struct iovec *iov,
-						 loff_t pos, bool uio)
-{
-	struct nfs_direct_req *dreq = desc->pg_dreq;
-	struct nfs_open_context *ctx = dreq->ctx;
-	struct inode *inode = ctx->dentry->d_inode;
-	unsigned long user_addr = (unsigned long)iov->iov_base;
-	size_t count = iov->iov_len;
-	size_t wsize = NFS_SERVER(inode)->wsize;
-	unsigned int pgbase;
-	int result;
-	ssize_t started = 0;
-	struct page **pagevec = NULL;
-	unsigned int npages;
-
-	do {
-		size_t bytes;
-		int i;
-
-		pgbase = user_addr & ~PAGE_MASK;
-		bytes = min(max_t(size_t, wsize, PAGE_SIZE), count);
-
-		result = -ENOMEM;
-		npages = nfs_page_array_len(pgbase, bytes);
-		if (!pagevec)
-			pagevec = kmalloc(npages * sizeof(struct page *), GFP_KERNEL);
-		if (!pagevec)
-			break;
-
-		if (uio) {
-			down_read(&current->mm->mmap_sem);
-			result = get_user_pages(current, current->mm, user_addr,
-						npages, 0, 0, pagevec, NULL);
-			up_read(&current->mm->mmap_sem);
-			if (result < 0)
-				break;
-		} else {
-			WARN_ON(npages != 1);
-			result = get_kernel_page(user_addr, 0, pagevec);
-			if (WARN_ON(result != 1))
-				break;
-		}
-
-		if ((unsigned)result < npages) {
-			bytes = result * PAGE_SIZE;
-			if (bytes <= pgbase) {
-				nfs_direct_release_pages(pagevec, result);
-				break;
-			}
-			bytes -= pgbase;
-			npages = result;
-		}
-
-		for (i = 0; i < npages; i++) {
-			struct nfs_page *req;
-			unsigned int req_len = min_t(size_t, bytes, PAGE_SIZE - pgbase);
-
-			req = nfs_create_request(dreq->ctx, dreq->inode,
-						 pagevec[i],
-						 pgbase, req_len);
-			if (IS_ERR(req)) {
-				result = PTR_ERR(req);
-				break;
-			}
-			nfs_lock_request(req);
-			req->wb_index = pos >> PAGE_SHIFT;
-			req->wb_offset = pos & ~PAGE_MASK;
-			if (!nfs_pageio_add_request(desc, req)) {
-				result = desc->pg_error;
-				nfs_unlock_and_release_request(req);
-				break;
-			}
-			pgbase = 0;
-			bytes -= req_len;
-			started += req_len;
-			user_addr += req_len;
-			pos += req_len;
-			count -= req_len;
-			dreq->bytes_left -= req_len;
-		}
-		/* The nfs_page now hold references to these pages */
-		nfs_direct_release_pages(pagevec, npages);
-	} while (count != 0 && result >= 0);
-
-	kfree(pagevec);
-
-	if (started)
-		return started;
-	return result < 0 ? (ssize_t) result : -EFAULT;
-}
-
 static void nfs_direct_write_completion(struct nfs_pgio_header *hdr)
 {
 	struct nfs_direct_req *dreq = hdr->dreq;
@@ -863,16 +699,27 @@ static const struct nfs_pgio_completion_ops nfs_direct_write_completion_ops = {
 	.completion = nfs_direct_write_completion,
 };
 
+
+/*
+ * NB: Return the value of the first error return code.  Subsequent
+ *     errors after the first one are ignored.
+ */
+/*
+ * For each wsize'd chunk of the user's buffer, dispatch an NFS WRITE
+ * operation.  If nfs_writedata_alloc() or get_user_pages() fails,
+ * bail and stop sending more writes.  Write length accounting is
+ * handled automatically by nfs_direct_write_result().  Otherwise, if
+ * no requests have been sent, just return an error.
+ */
 static ssize_t nfs_direct_write_schedule_iovec(struct nfs_direct_req *dreq,
-					       const struct iovec *iov,
-					       unsigned long nr_segs,
-					       loff_t pos, bool uio)
+					       struct iov_iter *iter,
+					       loff_t pos)
 {
 	struct nfs_pageio_descriptor desc;
 	struct inode *inode = dreq->inode;
 	ssize_t result = 0;
 	size_t requested_bytes = 0;
-	unsigned long seg;
+	size_t wsize = max_t(size_t, NFS_SERVER(inode)->wsize, PAGE_SIZE);
 
 	NFS_PROTO(inode)->write_pageio_init(&desc, inode, FLUSH_COND_STABLE,
 			      &nfs_direct_write_completion_ops);
@@ -880,16 +727,50 @@ static ssize_t nfs_direct_write_schedule_iovec(struct nfs_direct_req *dreq,
 	get_dreq(dreq);
 	atomic_inc(&inode->i_dio_count);
 
-	NFS_I(dreq->inode)->write_io += iov_length(iov, nr_segs);
-	for (seg = 0; seg < nr_segs; seg++) {
-		const struct iovec *vec = &iov[seg];
-		result = nfs_direct_write_schedule_segment(&desc, vec, pos, uio);
+	NFS_I(inode)->write_io += iov_iter_count(iter);
+	while (iov_iter_count(iter)) {
+		struct page **pagevec;
+		size_t bytes;
+		size_t pgbase;
+		unsigned npages, i;
+
+		result = iov_iter_get_pages_alloc(iter, &pagevec, 
+						  wsize, &pgbase);
 		if (result < 0)
 			break;
-		requested_bytes += result;
-		if ((size_t)result < vec->iov_len)
+
+		bytes = result;
+		iov_iter_advance(iter, bytes);
+		npages = (result + pgbase + PAGE_SIZE - 1) / PAGE_SIZE;
+		for (i = 0; i < npages; i++) {
+			struct nfs_page *req;
+			unsigned int req_len = min_t(size_t, bytes, PAGE_SIZE - pgbase);
+
+			req = nfs_create_request(dreq->ctx, inode,
+						 pagevec[i],
+						 pgbase, req_len);
+			if (IS_ERR(req)) {
+				result = PTR_ERR(req);
+				break;
+			}
+			nfs_lock_request(req);
+			req->wb_index = pos >> PAGE_SHIFT;
+			req->wb_offset = pos & ~PAGE_MASK;
+			if (!nfs_pageio_add_request(&desc, req)) {
+				result = desc.pg_error;
+				nfs_unlock_and_release_request(req);
+				break;
+			}
+			pgbase = 0;
+			bytes -= req_len;
+			requested_bytes += req_len;
+			pos += req_len;
+			dreq->bytes_left -= req_len;
+		}
+		nfs_direct_release_pages(pagevec, npages);
+		kvfree(pagevec);
+		if (result < 0)
 			break;
-		pos += vec->iov_len;
 	}
 	nfs_pageio_complete(&desc);
 
@@ -911,8 +792,7 @@ static ssize_t nfs_direct_write_schedule_iovec(struct nfs_direct_req *dreq,
 /**
  * nfs_file_direct_write - file direct write operation for NFS files
  * @iocb: target I/O control block
- * @iov: vector of user buffers from which to write data
- * @nr_segs: size of iov vector
+ * @iter: vector of user buffers from which to write data
  * @pos: byte offset in file where writing starts
  *
  * We use this function for direct writes instead of calling
@@ -930,8 +810,8 @@ static ssize_t nfs_direct_write_schedule_iovec(struct nfs_direct_req *dreq,
  * Note that O_APPEND is not supported for NFS direct writes, as there
  * is no atomic O_APPEND write facility in the NFS protocol.
  */
-ssize_t nfs_file_direct_write(struct kiocb *iocb, const struct iovec *iov,
-				unsigned long nr_segs, loff_t pos, bool uio)
+ssize_t nfs_file_direct_write(struct kiocb *iocb, struct iov_iter *iter,
+				loff_t pos, bool uio)
 {
 	ssize_t result = -EINVAL;
 	struct file *file = iocb->ki_filp;
@@ -940,9 +820,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, const struct iovec *iov,
 	struct nfs_direct_req *dreq;
 	struct nfs_lock_context *l_ctx;
 	loff_t end;
-	size_t count;
-
-	count = iov_length(iov, nr_segs);
+	size_t count = iov_iter_count(iter);
 	end = (pos + count - 1) >> PAGE_CACHE_SHIFT;
 
 	nfs_add_stats(mapping->host, NFSIOS_DIRECTWRITTENBYTES, count);
@@ -993,7 +871,7 @@ ssize_t nfs_file_direct_write(struct kiocb *iocb, const struct iovec *iov,
 	if (!is_sync_kiocb(iocb))
 		dreq->iocb = iocb;
 
-	result = nfs_direct_write_schedule_iovec(dreq, iov, nr_segs, pos, uio);
+	result = nfs_direct_write_schedule_iovec(dreq, iter, pos);
 
 	if (mapping->nrpages) {
 		invalidate_inode_pages2_range(mapping,
