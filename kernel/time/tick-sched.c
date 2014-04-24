@@ -233,6 +233,27 @@ void tick_nohz_full_kick(void)
 		irq_work_queue(&__get_cpu_var(nohz_full_kick_work));
 }
 
+static void nohz_full_kick_queue(struct queue_single_data *qsd)
+{
+	__tick_nohz_full_check();
+}
+
+static DEFINE_PER_CPU(struct queue_single_data, nohz_full_kick_qsd) = {
+	.func = nohz_full_kick_queue,
+};
+
+void tick_nohz_full_kick_cpu(int cpu)
+{
+	if (!tick_nohz_full_cpu(cpu))
+		return;
+
+	if (cpu == smp_processor_id()) {
+		irq_work_queue(&__get_cpu_var(nohz_full_kick_work));
+	} else {
+		smp_queue_function_single(cpu, &per_cpu(nohz_full_kick_qsd, cpu));
+	}
+}
+
 static void nohz_full_kick_ipi(void *info)
 {
 	__tick_nohz_full_check();
