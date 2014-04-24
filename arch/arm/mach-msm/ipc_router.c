@@ -2523,10 +2523,6 @@ static int __init msm_ipc_router_init(void)
 	struct msm_ipc_routing_table_entry *rt_entry;
 
 	msm_ipc_router_debug_mask |= SMEM_LOG;
-	msm_ipc_router_workqueue =
-		create_singlethread_workqueue("msm_ipc_router");
-	if (!msm_ipc_router_workqueue)
-		return -ENOMEM;
 
 	debugfs_init();
 
@@ -2551,6 +2547,10 @@ static int __init msm_ipc_router_init(void)
 	if (ret < 0)
 		pr_err("%s: Init sockets failed\n", __func__);
 
+	msm_ipc_router_workqueue =
+		create_singlethread_workqueue("msm_ipc_router");
+	if (!msm_ipc_router_workqueue)
+		return -ENOMEM;
 	complete_all(&msm_ipc_local_router_up);
 	return ret;
 }
