@@ -33,6 +33,8 @@
 #define MPEG2_SEQHDR_STARTCODE 0xB3
 
 
+//#define INPUT_FILE_DUMP 0
+
 /*
  * Input Buffer Requirements for Video Decoder.
  */
@@ -69,6 +71,10 @@ struct mpq_dmx_src_data {
 	struct video_data_buffer in_buffer[DVB_VID_NUM_IN_BUFFERS];
 	struct list_head msg_queue;
 	wait_queue_head_t msg_wait;
+#ifdef INPUT_FILE_DUMP
+	wait_queue_head_t msg_wait_capturecomplete;
+	unsigned int capture_complete;
+#endif
 	struct mutex msg_queue_lock;
 	struct task_struct *data_task;
 };
