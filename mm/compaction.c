@@ -662,7 +662,7 @@ static void isolate_freepages(struct zone *zone,
 				struct compact_control *cc)
 {
 	struct page *page;
-	unsigned long high_pfn, low_pfn, pfn, z_end_pfn;
+	unsigned long pfn, low_pfn, next_free_pfn, z_end_pfn;
 	int nr_freepages = cc->nr_freepages;
 	struct list_head *freelist = &cc->freepages;
 
@@ -679,11 +679,10 @@ static void isolate_freepages(struct zone *zone,
 	low_pfn = ALIGN(cc->migrate_pfn + 1, pageblock_nr_pages);
 
 	/*
-	 * Take care that if the migration scanner is at the end of the zone
-	 * that the free scanner does not accidentally move to the next zone
-	 * in the next isolation cycle.
+	 * Seed the value for max(next_free_pfn, pfn) updates. If there are
+	 * none, the pfn < low_pfn check will kick in.
 	 */
-	high_pfn = min(low_pfn, pfn);
+	next_free_pfn = 0;
 
 	z_end_pfn = zone_end_pfn(zone);
 
@@ -744,7 +743,7 @@ static void isolate_freepages(struct zone *zone,
 		 */
 		if (isolated) {
 			cc->finished_update_free = true;
-			high_pfn = max(high_pfn, pfn);
+			next_free_pfn = max(next_free_pfn, pfn);
 		}
 	}
 
@@ -756,9 +755,9 @@ static void isolate_freepages(struct zone *zone,
 	 * so that compact_finished() may detect this
 	 */
 	if (pfn < low_pfn)
-		cc->free_pfn = max(pfn, zone->zone_start_pfn);
-	else
-		cc->free_pfn = high_pfn;
+		next_free_pfn = max(pfn, zone->zone_start_pfn);
+
+	cc->free_pfn = next_free_pfn;
 	cc->nr_freepages = nr_freepages;
 }
 
