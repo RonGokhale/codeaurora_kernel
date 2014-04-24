@@ -28,11 +28,11 @@
 
 /* modf function is always exact for a finite number
 */
-ieee754sp ieee754sp_modf(ieee754sp x, ieee754sp *ip)
+union ieee754sp ieee754sp_modf(union ieee754sp x, union ieee754sp *ip)
 {
 	COMPXSP;
 
-	CLEARCX;
+	ieee754_clearcx();
 
 	EXPLODEXSP;
 

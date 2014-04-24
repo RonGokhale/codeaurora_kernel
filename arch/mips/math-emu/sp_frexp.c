@@ -28,10 +28,10 @@
 
 /* close to ieeep754sp_logb
 */
-ieee754sp ieee754sp_frexp(ieee754sp x, int *eptr)
+union ieee754sp ieee754sp_frexp(union ieee754sp x, int *eptr)
 {
 	COMPXSP;
-	CLEARCX;
+	ieee754_clearcx();
 	EXPLODEXSP;
 
 	switch (xc) {

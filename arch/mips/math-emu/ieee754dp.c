@@ -23,32 +23,33 @@
  * ########################################################################
  */
 
+#include <linux/compiler.h>
 
 #include "ieee754dp.h"
 
-int ieee754dp_class(ieee754dp x)
+int ieee754dp_class(union ieee754dp x)
 {
 	COMPXDP;
 	EXPLODEXDP;
 	return xc;
 }
 
-int ieee754dp_isnan(ieee754dp x)
+int ieee754dp_isnan(union ieee754dp x)
 {
 	return ieee754dp_class(x) >= IEEE754_CLASS_SNAN;
 }
 
-int ieee754dp_issnan(ieee754dp x)
+int ieee754dp_issnan(union ieee754dp x)
 {
 	assert(ieee754dp_isnan(x));
 	return ((DPMANT(x) & DP_MBIT(DP_MBITS-1)) == DP_MBIT(DP_MBITS-1));
 }
 
 
-ieee754dp ieee754dp_xcpt(ieee754dp r, const char *op, ...)
+union ieee754dp __cold ieee754dp_xcpt(union ieee754dp r, const char *op, ...)
 {
 	struct ieee754xctx ax;
-	if (!TSTX())
+	if (!ieee754_tstx())
 		return r;
 
 	ax.op = op;
@@ -60,7 +61,7 @@ ieee754dp ieee754dp_xcpt(ieee754dp r, const char *op, ...)
 	return ax.rv.dp;
 }
 
-ieee754dp ieee754dp_nanxcpt(ieee754dp r, const char *op, ...)
+union ieee754dp __cold ieee754dp_nanxcpt(union ieee754dp r, const char *op, ...)
 {
 	struct ieee754xctx ax;
 
@@ -69,7 +70,7 @@ ieee754dp ieee754dp_nanxcpt(ieee754dp r, const char *op, ...)
 	if (!ieee754dp_issnan(r))	/* QNAN does not cause invalid op !! */
 		return r;
 
-	if (!SETANDTESTCX(IEEE754_INVALID_OPERATION)) {
+	if (!ieee754_setandtestcx(IEEE754_INVALID_OPERATION)) {
 		/* not enabled convert to a quiet NaN */
 		DPMANT(r) &= (~DP_MBIT(DP_MBITS-1));
 		if (ieee754dp_isnan(r))
@@ -87,7 +88,7 @@ ieee754dp ieee754dp_nanxcpt(ieee754dp r, const char *op, ...)
 	return ax.rv.dp;
 }
 
-ieee754dp ieee754dp_bestnan(ieee754dp x, ieee754dp y)
+union ieee754dp ieee754dp_bestnan(union ieee754dp x, union ieee754dp y)
 {
 	assert(ieee754dp_isnan(x));
 	assert(ieee754dp_isnan(y));
@@ -130,7 +131,7 @@ static u64 get_rounding(int sn, u64 xm)
  * xe is an unbiased exponent
  * xm is 3bit extended precision value.
  */
-ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
+union ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 {
 	assert(xm);		/* we don't gen exact zeros (probably should) */
 
@@ -142,20 +143,20 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 		int es = DP_EMIN - xe;
 
 		if (ieee754_csr.nod) {
-			SETCX(IEEE754_UNDERFLOW);
-			SETCX(IEEE754_INEXACT);
+			ieee754_setcx(IEEE754_UNDERFLOW);
+			ieee754_setcx(IEEE754_INEXACT);
 
 			switch(ieee754_csr.rm) {
 			case IEEE754_RN:
 			case IEEE754_RZ:
 				return ieee754dp_zero(sn);
 			case IEEE754_RU:    /* toward +Infinity */
-				if(sn == 0)
+				if (sn == 0)
 					return ieee754dp_min(0);
 				else
 					return ieee754dp_zero(1);
 			case IEEE754_RD:    /* toward -Infinity */
-				if(sn == 0)
+				if (sn == 0)
 					return ieee754dp_zero(0);
 				else
 					return ieee754dp_min(1);
@@ -166,7 +167,7 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 				&& get_rounding(sn, xm) >> (DP_MBITS + 1 + 3))
 		{
 			/* Not tiny after rounding */
-			SETCX(IEEE754_INEXACT);
+			ieee754_setcx(IEEE754_INEXACT);
 			xm = get_rounding(sn, xm);
 			xm >>= 1;
 			/* Clear grs bits */
@@ -183,9 +184,9 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 		}
 	}
 	if (xm & (DP_MBIT(3) - 1)) {
-		SETCX(IEEE754_INEXACT);
+		ieee754_setcx(IEEE754_INEXACT);
 		if ((xm & (DP_HIDDEN_BIT << 3)) == 0) {
-			SETCX(IEEE754_UNDERFLOW);
+			ieee754_setcx(IEEE754_UNDERFLOW);
 		}
 
 		/* inexact must round of 3 bits
@@ -206,8 +207,8 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 	assert(xe >= DP_EMIN);
 
 	if (xe > DP_EMAX) {
-		SETCX(IEEE754_OVERFLOW);
-		SETCX(IEEE754_INEXACT);
+		ieee754_setcx(IEEE754_OVERFLOW);
+		ieee754_setcx(IEEE754_INEXACT);
 		/* -O can be table indexed by (rm,sn) */
 		switch (ieee754_csr.rm) {
 		case IEEE754_RN:
@@ -232,7 +233,7 @@ ieee754dp ieee754dp_format(int sn, int xe, u64 xm)
 		/* we underflow (tiny/zero) */
 		assert(xe == DP_EMIN);
 		if (ieee754_csr.mx & IEEE754_UNDERFLOW)
-			SETCX(IEEE754_UNDERFLOW);
+			ieee754_setcx(IEEE754_UNDERFLOW);
 		return builddp(sn, DP_EMIN - 1 + DP_EBIAS, xm);
 	} else {
 		assert((xm >> (DP_MBITS + 1)) == 0);	/* no execess */

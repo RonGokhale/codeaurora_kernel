@@ -26,11 +26,11 @@
 
 #include "ieee754dp.h"
 
-s64 ieee754dp_tlong(ieee754dp x)
+s64 ieee754dp_tlong(union ieee754dp x)
 {
 	COMPXDP;
 
-	CLEARCX;
+	ieee754_clearcx();
 
 	EXPLODEXDP;
 	FLUSHXDP;
@@ -39,7 +39,7 @@ s64 ieee754dp_tlong(ieee754dp x)
 	case IEEE754_CLASS_SNAN:
 	case IEEE754_CLASS_QNAN:
 	case IEEE754_CLASS_INF:
-		SETCX(IEEE754_INVALID_OPERATION);
+		ieee754_setcx(IEEE754_INVALID_OPERATION);
 		return ieee754di_xcpt(ieee754di_indef(), "dp_tlong", x);
 	case IEEE754_CLASS_ZERO:
 		return 0;
@@ -53,7 +53,7 @@ s64 ieee754dp_tlong(ieee754dp x)
 			return -0x8000000000000000LL;
 		/* Set invalid. We will only use overflow for floating
 		   point overflow */
-		SETCX(IEEE754_INVALID_OPERATION);
+		ieee754_setcx(IEEE754_INVALID_OPERATION);
 		return ieee754di_xcpt(ieee754di_indef(), "dp_tlong", x);
 	}
 	/* oh gawd */
@@ -99,11 +99,11 @@ s64 ieee754dp_tlong(ieee754dp x)
 		}
 		if ((xm >> 63) != 0) {
 			/* This can happen after rounding */
-			SETCX(IEEE754_INVALID_OPERATION);
+			ieee754_setcx(IEEE754_INVALID_OPERATION);
 			return ieee754di_xcpt(ieee754di_indef(), "dp_tlong", x);
 		}
 		if (round || sticky)
-			SETCX(IEEE754_INEXACT);
+			ieee754_setcx(IEEE754_INEXACT);
 	}
 	if (xs)
 		return -xm;
@@ -112,9 +112,9 @@ s64 ieee754dp_tlong(ieee754dp x)
 }
 
 
-u64 ieee754dp_tulong(ieee754dp x)
+u64 ieee754dp_tulong(union ieee754dp x)
 {
-	ieee754dp hb = ieee754dp_1e63();
+	union ieee754dp hb = ieee754dp_1e63();
 
 	/* what if x < 0 ?? */
 	if (ieee754dp_lt(x, hb))

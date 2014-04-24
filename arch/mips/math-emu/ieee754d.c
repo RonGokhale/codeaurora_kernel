@@ -25,7 +25,8 @@
  *  Copyright (C) 2000 MIPS Technologies, Inc. All rights reserved.
  */
 
-#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/printk.h>
 #include "ieee754.h"
 
 #define DP_EBIAS	1023
@@ -56,7 +57,7 @@
 #define DPBEXP(dp)	(dp.parts.bexp)
 #define DPMANT(dp)	(dp.parts.mant)
 
-ieee754dp ieee754dp_dump(char *m, ieee754dp x)
+union ieee754dp ieee754dp_dump(char *m, union ieee754dp x)
 {
 	int i;
 
@@ -96,7 +97,7 @@ ieee754dp ieee754dp_dump(char *m, ieee754dp x)
 	return x;
 }
 
-ieee754sp ieee754sp_dump(char *m, ieee754sp x)
+union ieee754sp ieee754sp_dump(char *m, union ieee754sp x)
 {
 	int i;
 
