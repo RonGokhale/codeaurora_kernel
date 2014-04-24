@@ -82,6 +82,7 @@ static struct request *__blk_mq_alloc_request(struct blk_mq_hw_ctx *hctx,
 	tag = blk_mq_get_tag(hctx->tags, gfp, reserved);
 	if (tag != BLK_MQ_TAG_FAIL) {
 		rq = hctx->tags->rqs[tag];
+		blk_rq_init(hctx->queue, rq);
 		rq->tag = tag;
 
 		return rq;
@@ -186,7 +187,6 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 	if (blk_queue_io_stat(q))
 		rw_flags |= REQ_IO_STAT;
 
-	rq->q = q;
 	rq->mq_ctx = ctx;
 	rq->cmd_flags = rw_flags;
 	rq->start_time = jiffies;
@@ -258,7 +258,6 @@ static void __blk_mq_free_request(struct blk_mq_hw_ctx *hctx,
 	const int tag = rq->tag;
 	struct request_queue *q = rq->q;
 
-	blk_rq_init(hctx->queue, rq);
 	blk_mq_put_tag(hctx->tags, tag);
 	blk_mq_queue_exit(q);
 }
@@ -379,7 +378,15 @@ static void blk_mq_start_request(struct request *rq, bool last)
 	 * REQ_ATOMIC_STARTED is seen.
 	 */
 	rq->deadline = jiffies + q->rq_timeout;
+
+	/*
+	 * Mark us as started and clear complete. Complete might have been
+	 * set if requeue raced with timeout, which then marked it as
+	 * complete. So be sure to clear complete again when we start
+	 * the request, otherwise we'll ignore the completion event.
+	 */
 	set_bit(REQ_ATOM_STARTED, &rq->atomic_flags);
+	clear_bit(REQ_ATOM_COMPLETE, &rq->atomic_flags);
 
 	if (q->dma_drain_size && blk_rq_bytes(rq)) {
 		/*
@@ -486,6 +493,28 @@ static void blk_mq_hw_ctx_check_timeout(struct blk_mq_hw_ctx *hctx,
 	blk_mq_tag_busy_iter(hctx->tags, blk_mq_timeout_check, &data);
 }
 
+static enum blk_eh_timer_return blk_mq_rq_timed_out(struct request *rq)
+{
+	struct request_queue *q = rq->q;
+
+	/*
+	 * We know that complete is set at this point. If STARTED isn't set
+	 * anymore, then the request isn't active and the "timeout" should
+	 * just be ignored. This can happen due to the bitflag ordering.
+	 * Timeout first checks if STARTED is set, and if it is, assumes
+	 * the request is active. But if we race with completion, then
+	 * we both flags will get cleared. So check here again, and ignore
+	 * a timeout event with a request that isn't active.
+	 */
+	if (!test_bit(REQ_ATOM_STARTED, &rq->atomic_flags))
+		return BLK_EH_NOT_HANDLED;
+
+	if (!q->mq_ops->timeout)
+		return BLK_EH_RESET_TIMER;
+
+	return q->mq_ops->timeout(rq);
+}
+
 static void blk_mq_rq_timer(unsigned long data)
 {
 	struct request_queue *q = (struct request_queue *) data;
@@ -537,11 +566,6 @@ static bool blk_mq_attempt_merge(struct request_queue *q,
 	}
 
 	return false;
-}
-
-void blk_mq_add_timer(struct request *rq)
-{
-	__blk_add_timer(rq, NULL);
 }
 
 /*
@@ -800,7 +824,7 @@ static void __blk_mq_insert_request(struct blk_mq_hw_ctx *hctx,
 	/*
 	 * We do this early, to ensure we are on the right CPU.
 	 */
-	blk_mq_add_timer(rq);
+	blk_add_timer(rq);
 }
 
 void blk_mq_insert_request(struct request *rq, bool at_head, bool run_queue,
@@ -1195,7 +1219,6 @@ static struct blk_mq_tags *blk_mq_init_rq_map(struct blk_mq_tag_set *set,
 		left -= to_do * rq_size;
 		for (j = 0; j < to_do; j++) {
 			tags->rqs[i] = p;
-			blk_rq_init(NULL, tags->rqs[i]);
 			if (set->ops->init_request) {
 				if (set->ops->init_request(set->driver_data,
 						tags->rqs[i], hctx_idx, i,
@@ -1402,7 +1425,7 @@ struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *set)
 	q->sg_reserved_size = INT_MAX;
 
 	blk_queue_make_request(q, blk_mq_make_request);
-	blk_queue_rq_timed_out(q, set->ops->timeout);
+	blk_queue_rq_timed_out(q, blk_mq_rq_timed_out);
 	if (set->timeout)
 		blk_queue_rq_timeout(q, set->timeout);
 
@@ -1562,6 +1585,7 @@ void blk_mq_free_tag_set(struct blk_mq_tag_set *set)
 
 	for (i = 0; i < set->nr_hw_queues; i++)
 		blk_mq_free_rq_map(set, set->tags[i], i);
+	kfree(set->tags);
 }
 EXPORT_SYMBOL(blk_mq_free_tag_set);
 
