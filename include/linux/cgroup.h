@@ -21,6 +21,7 @@
 #include <linux/percpu-refcount.h>
 #include <linux/seq_file.h>
 #include <linux/kernfs.h>
+#include <linux/wait.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -164,6 +165,7 @@ struct cgroup {
 
 	struct cgroup *parent;		/* my parent */
 	struct kernfs_node *kn;		/* cgroup kernfs entry */
+	struct kernfs_node *control_kn;	/* kn for "cgroup.subtree_control" */
 
 	/*
 	 * Monotonically increasing unique serial number which defines a
@@ -173,8 +175,8 @@ struct cgroup {
 	 */
 	u64 serial_nr;
 
-	/* The bitmask of subsystems attached to this cgroup */
-	unsigned long subsys_mask;
+	/* the bitmask of subsystems enabled on the child cgroups */
+	unsigned long child_subsys_mask;
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
@@ -186,6 +188,15 @@ struct cgroup {
 	 * cgroup.  Protected by css_set_lock.
 	 */
 	struct list_head cset_links;
+
+	/*
+	 * On the default hierarchy, a css_set for a cgroup with some
+	 * susbsys disabled will point to css's which are associated with
+	 * the closest ancestor which has the subsys enabled.  The
+	 * following lists all css_sets which point to this cgroup's css
+	 * for the given subsystem.
+	 */
+	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 
 	/*
 	 * Linked list running through all cgroups that can
@@ -207,6 +218,9 @@ struct cgroup {
 	/* For css percpu_ref killing and RCU-protected deletion */
 	struct rcu_head rcu_head;
 	struct work_struct destroy_work;
+
+	/* used to wait for offlining of csses */
+	wait_queue_head_t offline_waitq;
 };
 
 #define MAX_CGROUP_ROOT_NAMELEN 64
@@ -282,6 +296,9 @@ enum {
 struct cgroup_root {
 	struct kernfs_root *kf_root;
 
+	/* The bitmask of subsystems attached to this hierarchy */
+	unsigned long subsys_mask;
+
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
 
@@ -342,6 +359,9 @@ struct css_set {
 	 */
 	struct list_head cgrp_links;
 
+	/* the default cgroup associated with this css_set */
+	struct cgroup *dfl_cgrp;
+
 	/*
 	 * Set of subsystem states, one for each subsystem. This array is
 	 * immutable after creation apart from the init_css_set during
@@ -365,6 +385,15 @@ struct css_set {
 	 */
 	struct cgroup *mg_src_cgrp;
 	struct css_set *mg_dst_cset;
+
+	/*
+	 * On the default hierarhcy, ->subsys[ssid] may point to a css
+	 * attached to an ancestor instead of the cgroup this css_set is
+	 * associated with.  The following node is anchored at
+	 * ->subsys[ssid]->cgroup->e_csets[ssid] and provides a way to
+	 * iterate through all css's attached to a given cgroup.
+	 */
+	struct list_head e_cset_node[CGROUP_SUBSYS_COUNT];
 
 	/* For RCU-protected deletion */
 	struct rcu_head rcu_head;
@@ -821,9 +850,14 @@ css_next_descendant_post(struct cgroup_subsys_state *pos,
 
 /* A css_task_iter should be treated as an opaque object */
 struct css_task_iter {
-	struct cgroup_subsys_state	*origin_css;
-	struct list_head		*cset_link;
-	struct list_head		*task;
+	struct cgroup_subsys		*ss;
+
+	struct list_head		*cset_pos;
+	struct list_head		*cset_head;
+
+	struct list_head		*task_pos;
+	struct list_head		*tasks_head;
+	struct list_head		*mg_tasks_head;
 };
 
 void css_task_iter_start(struct cgroup_subsys_state *css,
