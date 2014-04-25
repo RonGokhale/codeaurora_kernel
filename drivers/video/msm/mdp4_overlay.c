@@ -121,6 +121,9 @@ struct mdp4_overlay_perf {
 	u64 mdp_ib_port1_bw;
 
 };
+static u32 cadence_2x11_3[] = {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3};
+static u32 cadence_122[] = {1, 2, 2};
+static u32 cadence_23223[] = {2, 3, 2, 2, 3};
 
 struct mdp4_overlay_perf perf_request;
 struct mdp4_overlay_perf perf_current;
@@ -3952,23 +3955,34 @@ void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
 		}
 	}
 	if (fps_ratio) {
+		u32 target_ratio = 0;
 		if (fps_ratio > FRC_CADENCE_23_RATIO_LOW &&
 			fps_ratio < FRC_CADENCE_23_RATIO_HIGH) {
 			cadence_id = FRC_CADENCE_23;
-			pipe->frc_min_fps_ratio = FRC_CADENCE_23_RATIO *
-				95 / 100;
-			pipe->frc_max_fps_ratio = FRC_CADENCE_23_RATIO *
-				105 / 100;
+			target_ratio = FRC_CADENCE_23_RATIO;
 		} else if (fps_ratio > FRC_CADENCE_22_RATIO_LOW &&
 			fps_ratio < FRC_CADENCE_22_RATIO_HIGH) {
 			cadence_id = FRC_CADENCE_22;
-			pipe->frc_min_fps_ratio = FRC_CADENCE_22_RATIO *
-				95 / 100;
-			pipe->frc_max_fps_ratio = FRC_CADENCE_22_RATIO *
-				105 / 100;
+			target_ratio = FRC_CADENCE_22_RATIO;
+		} else if (fps_ratio > (FRC_CADENCE_2x11_3_RATIO * 98 / 100) &&
+			fps_ratio < (FRC_CADENCE_2x11_3_RATIO * 102 / 100)) {
+			target_ratio = FRC_CADENCE_2x11_3_RATIO;
+			cadence_id = FRC_CADENCE_2x11_3;
+		} else if (fps_ratio > (FRC_CADENCE_23223_RATIO * 98 / 100) &&
+			fps_ratio < (FRC_CADENCE_23223_RATIO * 102 / 100)) {
+			target_ratio = FRC_CADENCE_23223_RATIO;
+			cadence_id = FRC_CADENCE_23223;
+		} else if (fps_ratio > (FRC_CADENCE_122_RATIO * 98 / 100) &&
+			fps_ratio < (FRC_CADENCE_122_RATIO * 102 / 100)) {
+			target_ratio = FRC_CADENCE_122_RATIO;
+			cadence_id = FRC_CADENCE_122;
 		} else {
 			cadence_id = FRC_CADENCE_FREE_RUN;
 		}
+		pipe->frc_min_fps_ratio = target_ratio *
+			95 / 100;
+		pipe->frc_max_fps_ratio = target_ratio *
+			105 / 100;
 		pipe->frame_rate = cur_frc->frame_rate;
 	} else {
 		cadence_id = pipe->frc_cadence;
@@ -4036,6 +4050,15 @@ void mdp4_overlay_frc_update(struct msm_fb_data_type *mfd,
 			cur_repeat = 3;
 	} else if (cadence_id == FRC_CADENCE_22) {
 		cur_repeat = 2;
+	} else if (cadence_id == FRC_CADENCE_23223) {
+		cur_repeat = cadence_23223[cur_frc->frame_cnt %
+			(sizeof(cadence_23223) / sizeof(u32))];
+	} else if (cadence_id == FRC_CADENCE_2x11_3) {
+		cur_repeat = cadence_2x11_3[cur_frc->frame_cnt %
+			(sizeof(cadence_2x11_3) / sizeof(u32))];
+	} else if (cadence_id == FRC_CADENCE_122) {
+		cur_repeat = cadence_122[cur_frc->frame_cnt %
+			(sizeof(cadence_122) / sizeof(u32))];
 	} else {
 		cur_repeat = 1;
 		pipe->frc_last_vsync_cnt = cur_vsync_cnt - 1;
