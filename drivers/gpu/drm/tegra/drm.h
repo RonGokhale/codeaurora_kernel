@@ -196,8 +196,9 @@ struct tegra_output {
 	struct drm_panel *panel;
 	struct i2c_adapter *ddc;
 	const struct edid *edid;
+
+	struct gpio_desc *hpd_gpio;
 	unsigned int hpd_irq;
-	int hpd_gpio;
 
 	struct drm_encoder encoder;
 	struct drm_connector connector;
