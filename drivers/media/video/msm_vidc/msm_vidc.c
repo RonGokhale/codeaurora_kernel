@@ -24,6 +24,10 @@ int msm_vidc_poll(void *instance, struct file *filp,
 {
 	int rc = 0;
 	struct msm_vidc_inst *inst = instance;
+
+        if (!inst)
+            return -EINVAL;
+
 	struct vb2_queue *outq = &inst->vb2_bufq[OUTPUT_PORT];
 	struct vb2_queue *capq = &inst->vb2_bufq[CAPTURE_PORT];
 	struct vb2_buffer *out_vb = NULL;
