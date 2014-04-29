@@ -34,6 +34,7 @@ struct  intel_hw_status_page {
 #define I915_WRITE_IMR(ring, val) I915_WRITE(RING_IMR((ring)->mmio_base), val)
 
 #define I915_READ_MODE(ring) I915_READ(RING_MI_MODE((ring)->mmio_base))
+#define I915_WRITE_MODE(ring, val) I915_WRITE(RING_MI_MODE((ring)->mmio_base), val)
 
 enum intel_ring_hangcheck_action {
 	HANGCHECK_IDLE = 0,
@@ -60,8 +61,10 @@ struct  intel_ring_buffer {
 		VCS,
 		BCS,
 		VECS,
+		VCS2
 	} id;
-#define I915_NUM_RINGS 4
+#define I915_NUM_RINGS 5
+#define LAST_USER_RING (VECS + 1)
 	u32		mmio_base;
 	void		__iomem *virtual_start;
 	struct		drm_device *dev;
@@ -152,10 +155,6 @@ struct  intel_ring_buffer {
 
 	wait_queue_head_t irq_queue;
 
-	/**
-	 * Do an explicit TLB flush before MI_SET_CONTEXT
-	 */
-	bool itlb_before_ctx_switch;
 	struct i915_hw_context *default_context;
 	struct i915_hw_context *last_context;
 
@@ -266,6 +265,7 @@ intel_write_status_page(struct intel_ring_buffer *ring,
 #define I915_GEM_HWS_SCRATCH_INDEX	0x30
 #define I915_GEM_HWS_SCRATCH_ADDR (I915_GEM_HWS_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
 
+void intel_stop_ring_buffer(struct intel_ring_buffer *ring);
 void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring);
 
 int __must_check intel_ring_begin(struct intel_ring_buffer *ring, int n);
@@ -289,6 +289,7 @@ int intel_ring_invalidate_all_caches(struct intel_ring_buffer *ring);
 
 int intel_init_render_ring_buffer(struct drm_device *dev);
 int intel_init_bsd_ring_buffer(struct drm_device *dev);
+int intel_init_bsd2_ring_buffer(struct drm_device *dev);
 int intel_init_blt_ring_buffer(struct drm_device *dev);
 int intel_init_vebox_ring_buffer(struct drm_device *dev);
 
