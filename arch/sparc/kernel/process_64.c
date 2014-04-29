@@ -261,10 +261,12 @@ void arch_trigger_all_cpu_backtrace(bool include_self)
 	smp_fetch_global_regs();
 
 	for_each_online_cpu(cpu) {
+		struct global_reg_snapshot *gp;
+
 		if (!include_self && cpu == this_cpu)
 			continue;
 
-		struct global_reg_snapshot *gp = &global_cpu_snapshot[cpu].reg;
+		gp = &global_cpu_snapshot[cpu].reg;
 
 		__global_reg_poll(gp);
 
