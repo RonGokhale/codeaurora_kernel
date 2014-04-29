@@ -29,6 +29,24 @@
 /***********************misc routines*****************************/
 
 /**
+ * i40e_vc_disable_vf
+ * @pf: pointer to the pf info
+ * @vf: pointer to the vf info
+ *
+ * Disable the VF through a SW reset
+ **/
+static inline void i40e_vc_disable_vf(struct i40e_pf *pf, struct i40e_vf *vf)
+{
+	struct i40e_hw *hw = &pf->hw;
+	u32 reg;
+
+	reg = rd32(hw, I40E_VPGEN_VFRTRIG(vf->vf_id));
+	reg |= I40E_VPGEN_VFRTRIG_VFSWR_MASK;
+	wr32(hw, I40E_VPGEN_VFRTRIG(vf->vf_id), reg);
+	i40e_flush(hw);
+}
+
+/**
  * i40e_vc_isvalid_vsi_id
  * @vf: pointer to the vf info
  * @vsi_id: vf relative vsi id
@@ -415,6 +433,15 @@ static int i40e_alloc_vsi_res(struct i40e_vf *vf, enum i40e_vsi_type type)
 	ret = i40e_sync_vsi_filters(vsi);
 	if (ret)
 		dev_err(&pf->pdev->dev, "Unable to program ucast filters\n");
+
+	/* Set VF bandwidth if specified */
+	if (vf->tx_rate) {
+		ret = i40e_aq_config_vsi_bw_limit(&pf->hw, vsi->seid,
+						  vf->tx_rate / 50, 0, NULL);
+		if (ret)
+			dev_err(&pf->pdev->dev, "Unable to set tx rate, VF %d, error code %d.\n",
+				vf->vf_id, ret);
+	}
 
 error_alloc_vsi_res:
 	return ret;
@@ -2022,10 +2049,11 @@ int i40e_ndo_set_vf_mac(struct net_device *netdev, int vf_id, u8 *mac)
 	}
 
 	/* delete the temporary mac address */
-	i40e_del_filter(vsi, vf->default_lan_addr.addr, 0, true, false);
+	i40e_del_filter(vsi, vf->default_lan_addr.addr, vf->port_vlan_id,
+			true, false);
 
 	/* add the new mac address */
-	f = i40e_add_filter(vsi, mac, 0, true, false);
+	f = i40e_add_filter(vsi, mac, vf->port_vlan_id, true, false);
 	if (!f) {
 		dev_err(&pf->pdev->dev,
 			"Unable to add VF ucast filter\n");
@@ -2088,18 +2116,28 @@ int i40e_ndo_set_vf_port_vlan(struct net_device *netdev,
 		goto error_pvid;
 	}
 
-	if (vsi->info.pvid == 0 && i40e_is_vsi_in_vlan(vsi))
+	if (vsi->info.pvid == 0 && i40e_is_vsi_in_vlan(vsi)) {
 		dev_err(&pf->pdev->dev,
 			"VF %d has already configured VLAN filters and the administrator is requesting a port VLAN override.\nPlease unload and reload the VF driver for this change to take effect.\n",
 			vf_id);
+		/* Administrator Error - knock the VF offline until he does
+		 * the right thing by reconfiguring his network correctly
+		 * and then reloading the VF driver.
+		 */
+		i40e_vc_disable_vf(pf, vf);
+	}
 
 	/* Check for condition where there was already a port VLAN ID
 	 * filter set and now it is being deleted by setting it to zero.
+	 * Additionally check for the condition where there was a port
+	 * VLAN but now there is a new and different port VLAN being set.
 	 * Before deleting all the old VLAN filters we must add new ones
 	 * with -1 (I40E_VLAN_ANY) or otherwise we're left with all our
 	 * MAC addresses deleted.
 	 */
-	if (!(vlan_id || qos) && vsi->info.pvid)
+	if ((!(vlan_id || qos) ||
+	    (vlan_id | qos) != le16_to_cpu(vsi->info.pvid)) &&
+	    vsi->info.pvid)
 		ret = i40e_vsi_add_vlan(vsi, I40E_VLAN_ANY);
 
 	if (vsi->info.pvid) {
@@ -2160,7 +2198,61 @@ error_pvid:
  **/
 int i40e_ndo_set_vf_bw(struct net_device *netdev, int vf_id, int tx_rate)
 {
-	return -EOPNOTSUPP;
+	struct i40e_netdev_priv *np = netdev_priv(netdev);
+	struct i40e_pf *pf = np->vsi->back;
+	struct i40e_vsi *vsi;
+	struct i40e_vf *vf;
+	int speed = 0;
+	int ret = 0;
+
+	/* validate the request */
+	if (vf_id >= pf->num_alloc_vfs) {
+		dev_err(&pf->pdev->dev, "Invalid VF Identifier %d.\n", vf_id);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	vf = &(pf->vf[vf_id]);
+	vsi = pf->vsi[vf->lan_vsi_index];
+	if (!test_bit(I40E_VF_STAT_INIT, &vf->vf_states)) {
+		dev_err(&pf->pdev->dev, "Uninitialized VF %d.\n", vf_id);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	switch (pf->hw.phy.link_info.link_speed) {
+	case I40E_LINK_SPEED_40GB:
+		speed = 40000;
+		break;
+	case I40E_LINK_SPEED_10GB:
+		speed = 10000;
+		break;
+	case I40E_LINK_SPEED_1GB:
+		speed = 1000;
+		break;
+	default:
+		break;
+	}
+
+	if (tx_rate > speed) {
+		dev_err(&pf->pdev->dev, "Invalid tx rate %d specified for vf %d.",
+			tx_rate, vf->vf_id);
+		ret = -EINVAL;
+		goto error;
+	}
+
+	/* Tx rate credits are in values of 50Mbps, 0 is disabled*/
+	ret = i40e_aq_config_vsi_bw_limit(&pf->hw, vsi->seid, tx_rate / 50, 0,
+					  NULL);
+	if (ret) {
+		dev_err(&pf->pdev->dev, "Unable to set tx rate, error code %d.\n",
+			ret);
+		ret = -EIO;
+		goto error;
+	}
+	vf->tx_rate = tx_rate;
+error:
+	return ret;
 }
 
 /**
@@ -2200,10 +2292,17 @@ int i40e_ndo_get_vf_config(struct net_device *netdev,
 
 	memcpy(&ivi->mac, vf->default_lan_addr.addr, ETH_ALEN);
 
-	ivi->tx_rate = 0;
+	ivi->tx_rate = vf->tx_rate;
 	ivi->vlan = le16_to_cpu(vsi->info.pvid) & I40E_VLAN_MASK;
 	ivi->qos = (le16_to_cpu(vsi->info.pvid) & I40E_PRIORITY_MASK) >>
 		   I40E_VLAN_PRIORITY_SHIFT;
+	if (vf->link_forced == false)
+		ivi->linkstate = IFLA_VF_LINK_STATE_AUTO;
+	else if (vf->link_up == true)
+		ivi->linkstate = IFLA_VF_LINK_STATE_ENABLE;
+	else
+		ivi->linkstate = IFLA_VF_LINK_STATE_DISABLE;
+
 	ret = 0;
 
 error_param:
