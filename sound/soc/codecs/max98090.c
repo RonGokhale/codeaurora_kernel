@@ -11,6 +11,7 @@
 #include <linux/delay.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
@@ -426,7 +427,7 @@ static const unsigned int max98090_rcv_lout_tlv[] = {
 static int max98090_get_enab_tlv(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
 	struct max98090_priv *max98090 = snd_soc_codec_get_drvdata(codec);
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
@@ -466,7 +467,7 @@ static int max98090_get_enab_tlv(struct snd_kcontrol *kcontrol,
 static int max98090_put_enab_tlv(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
 	struct max98090_priv *max98090 = snd_soc_codec_get_drvdata(codec);
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
@@ -875,7 +876,7 @@ static const char *dmic_mux_text[] = { "ADC", "DMIC" };
 static SOC_ENUM_SINGLE_VIRT_DECL(dmic_mux_enum, dmic_mux_text);
 
 static const struct snd_kcontrol_new max98090_dmic_mux =
-	SOC_DAPM_ENUM_VIRT("DMIC Mux", dmic_mux_enum);
+	SOC_DAPM_ENUM("DMIC Mux", dmic_mux_enum);
 
 static const char *max98090_micpre_text[] = { "Off", "On" };
 
@@ -1175,8 +1176,7 @@ static const struct snd_soc_dapm_widget max98090_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("MIC2 Mux", SND_SOC_NOPM,
 		0, 0, &max98090_mic2_mux),
 
-	SND_SOC_DAPM_VIRT_MUX("DMIC Mux", SND_SOC_NOPM,
-		0, 0, &max98090_dmic_mux),
+	SND_SOC_DAPM_MUX("DMIC Mux", SND_SOC_NOPM, 0, 0, &max98090_dmic_mux),
 
 	SND_SOC_DAPM_PGA_E("MIC1 Input", M98090_REG_MIC1_INPUT_LEVEL,
 		M98090_MIC_PA1EN_SHIFT, 0, NULL, 0, max98090_micinput_event,
