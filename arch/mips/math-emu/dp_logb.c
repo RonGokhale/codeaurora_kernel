@@ -26,11 +26,11 @@
 
 #include "ieee754dp.h"
 
-ieee754dp ieee754dp_logb(ieee754dp x)
+union ieee754dp ieee754dp_logb(union ieee754dp x)
 {
 	COMPXDP;
 
-	CLEARCX;
+	ieee754_clearcx();
 
 	EXPLODEXDP;
 

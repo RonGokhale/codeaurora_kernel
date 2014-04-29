@@ -26,13 +26,13 @@
 
 #include "ieee754sp.h"
 
-ieee754sp ieee754sp_fint(int x)
+union ieee754sp ieee754sp_fint(int x)
 {
 	unsigned xm;
 	int xe;
 	int xs;
 
-	CLEARCX;
+	ieee754_clearcx();
 
 	if (x == 0)
 		return ieee754sp_zero(0);
@@ -70,7 +70,7 @@ ieee754sp ieee754sp_fint(int x)
 }
 
 
-ieee754sp ieee754sp_funs(unsigned int u)
+union ieee754sp ieee754sp_funs(unsigned int u)
 {
 	if ((int) u < 0)
 		return ieee754sp_add(ieee754sp_1e31(),

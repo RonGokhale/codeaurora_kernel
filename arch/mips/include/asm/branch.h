@@ -8,6 +8,8 @@
 #ifndef _ASM_BRANCH_H
 #define _ASM_BRANCH_H
 
+#include <asm/cpu-features.h>
+#include <asm/mipsregs.h>
 #include <asm/ptrace.h>
 #include <asm/inst.h>
 
@@ -22,6 +24,16 @@ extern int __MIPS16e_compute_return_epc(struct pt_regs *regs);
 static inline int delay_slot(struct pt_regs *regs)
 {
 	return regs->cp0_cause & CAUSEF_BD;
+}
+
+static inline void clear_delay_slot(struct pt_regs *regs)
+{
+	regs->cp0_cause &= ~CAUSEF_BD;
+}
+
+static inline void set_delay_slot(struct pt_regs *regs)
+{
+	regs->cp0_cause |= CAUSEF_BD;
 }
 
 static inline unsigned long exception_epc(struct pt_regs *regs)

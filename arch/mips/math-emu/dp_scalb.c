@@ -26,11 +26,11 @@
 
 #include "ieee754dp.h"
 
-ieee754dp ieee754dp_scalb(ieee754dp x, int n)
+union ieee754dp ieee754dp_scalb(union ieee754dp x, int n)
 {
 	COMPXDP;
 
-	CLEARCX;
+	ieee754_clearcx();
 
 	EXPLODEXDP;
 
@@ -51,7 +51,7 @@ ieee754dp ieee754dp_scalb(ieee754dp x, int n)
 }
 
 
-ieee754dp ieee754dp_ldexp(ieee754dp x, int n)
+union ieee754dp ieee754dp_ldexp(union ieee754dp x, int n)
 {
 	return ieee754dp_scalb(x, n);
 }
