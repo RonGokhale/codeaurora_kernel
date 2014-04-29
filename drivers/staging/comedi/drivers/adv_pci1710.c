@@ -301,7 +301,6 @@ struct pci1710_private {
 	char neverending_ai;	/*  we do unlimited AI */
 	unsigned int CntrlReg;	/*  Control register */
 	unsigned int i8254_osc_base;	/*  frequence of onboard oscilator */
-	unsigned int ai_do;	/*  what do AI? 0=nothing, 1 to 4 mode */
 	unsigned int ai_act_scan;	/*  how many scans we finished */
 	unsigned int ai_act_chan;	/*  actual position in actual scan */
 	unsigned int ai_buf_ptr;	/*  data buffer ptr in samples */
@@ -314,13 +313,6 @@ struct pci1710_private {
 	unsigned char act_chanlist_len;	/*  len of scanlist */
 	unsigned char act_chanlist_pos;	/*  actual position in MUX list */
 	unsigned char da_ranges;	/*  copy of D/A outpit range register */
-	unsigned int ai_scans;	/*  len of scanlist */
-	unsigned int ai_n_chan;	/*  how many channels is measured */
-	unsigned int *ai_chanlist;	/*  actaul chanlist */
-	unsigned int ai_flags;	/*  flaglist */
-	unsigned int ai_data_len;	/*  len of data buffer */
-	unsigned int ai_timer1;	/*  timers */
-	unsigned int ai_timer2;
 	unsigned short ao_data[4];	/*  data output buffer */
 	unsigned int cnt0_write_wait;	/* after a write, wait for update of the
 					 * internal state */
@@ -340,12 +332,14 @@ static const unsigned int muxonechan[] = {
  If it's ok, then program scan/gain logic.
  This works for all cards.
 */
-static int check_channel_list(struct comedi_device *dev,
-			      struct comedi_subdevice *s,
-			      unsigned int *chanlist, unsigned int n_chan)
+static int pci171x_ai_check_chanlist(struct comedi_device *dev,
+				     struct comedi_subdevice *s,
+				     struct comedi_cmd *cmd)
 {
 	unsigned int chansegment[32];
 	unsigned int i, nowmustbechan, seglen, segpos;
+	unsigned int *chanlist = cmd->chanlist;
+	unsigned int n_chan = cmd->chanlist_len;
 
 	/* correct channel and range number check itself comedi/range.c */
 	if (n_chan < 1) {
@@ -733,7 +727,6 @@ static int pci171x_ai_cancel(struct comedi_device *dev,
 		break;
 	}
 
-	devpriv->ai_do = 0;
 	devpriv->ai_act_scan = 0;
 	s->async->cur_chan = 0;
 	devpriv->ai_buf_ptr = 0;
@@ -750,6 +743,7 @@ static void interrupt_pci1710_every_sample(void *d)
 	struct comedi_device *dev = d;
 	struct pci1710_private *devpriv = dev->private;
 	struct comedi_subdevice *s = dev->read_subdev;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int m;
 #ifdef PCI171x_PARANOIDCHECK
 	const struct boardtype *this_board = comedi_board(dev);
@@ -798,14 +792,14 @@ static void interrupt_pci1710_every_sample(void *d)
 #endif
 		++s->async->cur_chan;
 
-		if (s->async->cur_chan >= devpriv->ai_n_chan)
+		if (s->async->cur_chan >= cmd->chanlist_len)
 			s->async->cur_chan = 0;
 
 
 		if (s->async->cur_chan == 0) {	/*  one scan done */
 			devpriv->ai_act_scan++;
 			if ((!devpriv->neverending_ai) &&
-			    (devpriv->ai_act_scan >= devpriv->ai_scans)) {
+			    (devpriv->ai_act_scan >= cmd->stop_arg)) {
 				/*  all data sampled */
 				s->async->events |= COMEDI_CB_EOA;
 				cfc_handle_events(dev, s);
@@ -826,6 +820,7 @@ static int move_block_from_fifo(struct comedi_device *dev,
 				struct comedi_subdevice *s, int n, int turn)
 {
 	struct pci1710_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int i, j;
 #ifdef PCI171x_PARANOIDCHECK
 	const struct boardtype *this_board = comedi_board(dev);
@@ -855,7 +850,7 @@ static int move_block_from_fifo(struct comedi_device *dev,
 			       inw(dev->iobase + PCI171x_AD_DATA) & 0x0fff);
 #endif
 		j++;
-		if (j >= devpriv->ai_n_chan) {
+		if (j >= cmd->chanlist_len) {
 			j = 0;
 			devpriv->ai_act_scan++;
 		}
@@ -873,6 +868,7 @@ static void interrupt_pci1710_half_fifo(void *d)
 	const struct boardtype *this_board = comedi_board(dev);
 	struct pci1710_private *devpriv = dev->private;
 	struct comedi_subdevice *s = dev->read_subdev;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int m, samplesinbuf;
 
 	m = inw(dev->iobase + PCI171x_STATUS);
@@ -891,8 +887,8 @@ static void interrupt_pci1710_half_fifo(void *d)
 	}
 
 	samplesinbuf = this_board->fifo_half_size;
-	if (samplesinbuf * sizeof(short) >= devpriv->ai_data_len) {
-		m = devpriv->ai_data_len / sizeof(short);
+	if (samplesinbuf * sizeof(short) >= s->async->prealloc_bufsz) {
+		m = s->async->prealloc_bufsz / sizeof(short);
 		if (move_block_from_fifo(dev, s, m, 0))
 			return;
 		samplesinbuf -= m;
@@ -904,8 +900,8 @@ static void interrupt_pci1710_half_fifo(void *d)
 	}
 
 	if (!devpriv->neverending_ai)
-		if (devpriv->ai_act_scan >= devpriv->ai_scans) { /* all data
-								    sampled */
+		if (devpriv->ai_act_scan >= cmd->stop_arg) {
+			/* all data sampled */
 			s->async->events |= COMEDI_CB_EOA;
 			cfc_handle_events(dev, s);
 			return;
@@ -951,30 +947,32 @@ static irqreturn_t interrupt_service_pci1710(int irq, void *d)
 	return IRQ_HANDLED;
 }
 
-/*
-==============================================================================
-*/
-static int pci171x_ai_docmd_and_mode(int mode, struct comedi_device *dev,
-				     struct comedi_subdevice *s)
+static int pci171x_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 {
-	const struct boardtype *this_board = comedi_board(dev);
 	struct pci1710_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	unsigned int divisor1 = 0, divisor2 = 0;
 	unsigned int seglen;
+	int mode;
+
+	if (cmd->convert_src == TRIG_TIMER) {
+		if (cmd->start_src == TRIG_EXT)
+			mode = 2;
+		else
+			mode = 1;
+	} else {	/* TRIG_EXT */
+		mode = 3;
+	}
 
 	start_pacer(dev, -1, 0, 0);	/*  stop pacer */
 
-	seglen = check_channel_list(dev, s, devpriv->ai_chanlist,
-				    devpriv->ai_n_chan);
+	seglen = pci171x_ai_check_chanlist(dev, s, cmd);
 	if (seglen < 1)
 		return -EINVAL;
-	setup_channel_list(dev, s, devpriv->ai_chanlist,
-			   devpriv->ai_n_chan, seglen);
+	setup_channel_list(dev, s, cmd->chanlist, cmd->chanlist_len, seglen);
 
 	outb(0, dev->iobase + PCI171x_CLRFIFO);
 	outb(0, dev->iobase + PCI171x_CLRINT);
-
-	devpriv->ai_do = mode;
 
 	devpriv->ai_act_scan = 0;
 	s->async->cur_chan = 0;
@@ -983,14 +981,14 @@ static int pci171x_ai_docmd_and_mode(int mode, struct comedi_device *dev,
 
 	devpriv->CntrlReg &= Control_CNT0;
 	/*  don't we want wake up every scan?  devpriv->ai_eos=1; */
-	if ((devpriv->ai_flags & TRIG_WAKE_EOS)) {
+	if (cmd->flags & TRIG_WAKE_EOS) {
 		devpriv->ai_eos = 1;
 	} else {
 		devpriv->CntrlReg |= Control_ONEFH;
 		devpriv->ai_eos = 0;
 	}
 
-	if ((devpriv->ai_scans == 0) || (devpriv->ai_scans == -1))
+	if (cmd->stop_arg == 0)
 		devpriv->neverending_ai = 1;
 	/* well, user want neverending */
 	else
@@ -999,8 +997,6 @@ static int pci171x_ai_docmd_and_mode(int mode, struct comedi_device *dev,
 	switch (mode) {
 	case 1:
 	case 2:
-		if (devpriv->ai_timer1 < this_board->ai_ns_min)
-			devpriv->ai_timer1 = this_board->ai_ns_min;
 		devpriv->CntrlReg |= Control_PACER | Control_IRQEN;
 		if (mode == 2) {
 			devpriv->ai_et_CntrlReg = devpriv->CntrlReg;
@@ -1013,8 +1009,8 @@ static int pci171x_ai_docmd_and_mode(int mode, struct comedi_device *dev,
 		}
 		i8253_cascade_ns_to_timer(devpriv->i8254_osc_base,
 					  &divisor1, &divisor2,
-					  &devpriv->ai_timer1,
-					  devpriv->ai_flags);
+					  &cmd->convert_arg,
+					  cmd->flags);
 		outw(devpriv->CntrlReg, dev->iobase + PCI171x_CONTROL);
 		if (mode != 2) {
 			/*  start pacer */
@@ -1105,51 +1101,12 @@ static int pci171x_ai_cmdtest(struct comedi_device *dev,
 	if (err)
 		return 4;
 
-	/* step 5: complain about special chanlist considerations */
+	/* Step 5: check channel list */
 
-	if (cmd->chanlist) {
-		if (!check_channel_list(dev, s, cmd->chanlist,
-					cmd->chanlist_len))
-			return 5;	/*  incorrect channels list */
-	}
+	if (!pci171x_ai_check_chanlist(dev, s, cmd))
+		return 5;
 
 	return 0;
-}
-
-/*
-==============================================================================
-*/
-static int pci171x_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
-{
-	struct pci1710_private *devpriv = dev->private;
-	struct comedi_cmd *cmd = &s->async->cmd;
-
-	devpriv->ai_n_chan = cmd->chanlist_len;
-	devpriv->ai_chanlist = cmd->chanlist;
-	devpriv->ai_flags = cmd->flags;
-	devpriv->ai_data_len = s->async->prealloc_bufsz;
-	devpriv->ai_timer1 = 0;
-	devpriv->ai_timer2 = 0;
-
-	if (cmd->stop_src == TRIG_COUNT)
-		devpriv->ai_scans = cmd->stop_arg;
-	else
-		devpriv->ai_scans = 0;
-
-
-	if (cmd->scan_begin_src == TRIG_FOLLOW) {	/*  mode 1, 2, 3 */
-		if (cmd->convert_src == TRIG_TIMER) {	/*  mode 1 and 2 */
-			devpriv->ai_timer1 = cmd->convert_arg;
-			return pci171x_ai_docmd_and_mode(cmd->start_src ==
-							 TRIG_EXT ? 2 : 1, dev,
-							 s);
-		}
-		if (cmd->convert_src == TRIG_EXT) {	/*  mode 3 */
-			return pci171x_ai_docmd_and_mode(3, dev, s);
-		}
-	}
-
-	return -1;
 }
 
 /*
