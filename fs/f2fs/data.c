@@ -652,8 +652,7 @@ static int get_data_block(struct inode *inode, sector_t iblock,
 		goto put_out;
 	}
 
-	end_offset = IS_INODE(dn.node_page) ?
-			ADDRS_PER_INODE(F2FS_I(inode)) : ADDRS_PER_BLOCK;
+	end_offset = ADDRS_PER_PAGE(dn.node_page, F2FS_I(inode));
 	bh_result->b_size = (((size_t)1) << blkbits);
 	dn.ofs_in_node++;
 	pgofs++;
@@ -675,8 +674,7 @@ get_next:
 		if (dn.data_blkaddr == NEW_ADDR)
 			goto put_out;
 
-		end_offset = IS_INODE(dn.node_page) ?
-			ADDRS_PER_INODE(F2FS_I(inode)) : ADDRS_PER_BLOCK;
+		end_offset = ADDRS_PER_PAGE(dn.node_page, F2FS_I(inode));
 	}
 
 	if (maxblocks > (bh_result->b_size >> blkbits)) {
@@ -798,10 +796,8 @@ static int f2fs_write_data_page(struct page *page,
 	 * this page does not have to be written to disk.
 	 */
 	offset = i_size & (PAGE_CACHE_SIZE - 1);
-	if ((page->index >= end_index + 1) || !offset) {
-		inode_dec_dirty_dents(inode);
+	if ((page->index >= end_index + 1) || !offset)
 		goto out;
-	}
 
 	zero_user_segment(page, offset, PAGE_CACHE_SIZE);
 write:
@@ -810,7 +806,6 @@ write:
 
 	/* Dentry blocks are controlled by checkpoint */
 	if (S_ISDIR(inode->i_mode)) {
-		inode_dec_dirty_dents(inode);
 		err = do_write_data_page(page, &fio);
 		goto done;
 	}
@@ -832,15 +827,16 @@ done:
 
 	clear_cold_data(page);
 out:
+	inode_dec_dirty_dents(inode);
 	unlock_page(page);
 	if (need_balance_fs)
 		f2fs_balance_fs(sbi);
+	if (wbc->for_reclaim)
+		f2fs_submit_merged_bio(sbi, DATA, WRITE);
 	return 0;
 
 redirty_out:
-	wbc->pages_skipped++;
-	account_page_redirty(page);
-	set_page_dirty(page);
+	redirty_page_for_writepage(wbc, page);
 	return AOP_WRITEPAGE_ACTIVATE;
 }
 
@@ -867,7 +863,8 @@ static int f2fs_write_data_pages(struct address_space *mapping,
 		return 0;
 
 	if (S_ISDIR(inode->i_mode) && wbc->sync_mode == WB_SYNC_NONE &&
-			get_dirty_dents(inode) < nr_pages_to_skip(sbi, DATA))
+			get_dirty_dents(inode) < nr_pages_to_skip(sbi, DATA) &&
+			available_free_memory(sbi, DIRTY_DENTS))
 		goto skip_write;
 
 	diff = nr_pages_to_write(sbi, DATA, wbc);
@@ -1061,6 +1058,11 @@ static int f2fs_set_data_page_dirty(struct page *page)
 
 static sector_t f2fs_bmap(struct address_space *mapping, sector_t block)
 {
+	struct inode *inode = mapping->host;
+
+	if (f2fs_has_inline_data(inode))
+		return 0;
+
 	return generic_block_bmap(mapping, block, get_data_block);
 }
 
