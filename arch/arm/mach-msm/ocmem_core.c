@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -515,6 +515,23 @@ static int do_unlock(enum ocmem_client id, unsigned long offset,
 	ocmem_clear(offset, len);
 	return 0;
 }
+
+int ocmem_restore_sec_program(int sec_id)
+{
+	return 0;
+}
+
+int ocmem_enable_dump(enum ocmem_client id, unsigned long offset,
+			unsigned long len)
+{
+	return 0;
+}
+
+int ocmem_disable_dump(enum ocmem_client id, unsigned long offset,
+			unsigned long len)
+{
+	return 0;
+}
 #else
 static int ocmem_gfx_mpu_set(unsigned long offset, unsigned long len)
 {
@@ -539,7 +556,88 @@ static int do_lock(enum ocmem_client id, unsigned long offset,
 static int do_unlock(enum ocmem_client id, unsigned long offset,
 			unsigned long len)
 {
-	return 0;
+	int rc;
+	struct ocmem_tz_unlock {
+		u32 id;
+		u32 offset;
+		u32 size;
+	} request;
+
+	request.id = get_tz_id(id);
+	request.offset = offset;
+	request.size = len;
+
+	rc = scm_call(OCMEM_SVC_ID, OCMEM_UNLOCK_CMD_ID, &request,
+				sizeof(request), NULL, 0);
+	if (rc)
+		pr_err("ocmem: Failed to unlock region %s[%lx -- %lx] ret = %d\n",
+				get_name(id), offset, offset + len - 1, rc);
+	return rc;
+}
+
+int ocmem_enable_dump(enum ocmem_client id, unsigned long offset,
+			unsigned long len)
+{
+	int rc;
+	struct ocmem_tz_en_dump {
+		u32 id;
+		u32 offset;
+		u32 size;
+	} request;
+
+	request.id = get_tz_id(id);
+	request.offset = offset;
+	request.size = len;
+
+	rc = scm_call(OCMEM_SVC_ID, OCMEM_ENABLE_DUMP_CMD_ID, &request,
+				sizeof(request), NULL, 0);
+	if (rc)
+		pr_err("ocmem: Failed to enable dump %s[%lx -- %lx] ret = %d\n",
+				get_name(id), offset, offset + len - 1, rc);
+	return rc;
+}
+
+int ocmem_disable_dump(enum ocmem_client id, unsigned long offset,
+			unsigned long len)
+{
+	int rc;
+	struct ocmem_tz_dis_dump {
+		u32 id;
+		u32 offset;
+		u32 size;
+	} request;
+
+	request.id = get_tz_id(id);
+	request.offset = offset;
+	request.size = len;
+
+	rc = scm_call(OCMEM_SVC_ID, OCMEM_DISABLE_DUMP_CMD_ID, &request,
+				sizeof(request), NULL, 0);
+	if (rc)
+		pr_err("ocmem: Failed to disable dump %s[%lx -- %lx] ret = %d\n",
+				get_name(id), offset, offset + len - 1, rc);
+	return rc;
+}
+
+int ocmem_restore_sec_program(int sec_id)
+{
+	int rc, scm_ret = 0;
+	struct msm_scm_sec_cfg {
+		unsigned int id;
+		unsigned int spare;
+	} cfg;
+
+	cfg.id = sec_id;
+
+	rc = scm_call(OCMEM_SECURE_SVC_ID, OCMEM_SECURE_CFG_ID, &cfg,
+			sizeof(cfg), &scm_ret, sizeof(scm_ret));
+
+	if (rc || scm_ret) {
+		pr_err("ocmem: Failed to enable secure programming\n");
+		return rc ? rc : -EINVAL;
+	}
+
+	return rc;
 }
 #endif /* CONFIG_MSM_OCMEM_NONSECURE */
 
@@ -758,7 +856,7 @@ static int switch_power_state(int id, unsigned long offset, unsigned long len,
 	unsigned start_m = num_banks;
 	unsigned end_m = num_banks;
 	unsigned long region_offset = 0;
-	int rc = 0;
+	struct ocmem_hw_region *region;
 
 	if (offset < 0)
 		return -EINVAL;
@@ -778,14 +876,6 @@ static int switch_power_state(int id, unsigned long offset, unsigned long len,
 	if (region_start >= num_regions ||
 		(region_end >= num_regions))
 			return -EINVAL;
-
-	rc = ocmem_enable_core_clock();
-
-	if (rc < 0) {
-		pr_err("ocmem: Power transistion request for client %s (id: %d) failed\n",
-				get_name(id), id);
-		return rc;
-	}
 
 	mutex_lock(&region_ctrl_lock);
 
@@ -837,11 +927,10 @@ static int switch_power_state(int id, unsigned long offset, unsigned long len,
 
 	}
 	mutex_unlock(&region_ctrl_lock);
-	ocmem_disable_core_clock();
+
 	return 0;
 invalid_transition:
 	mutex_unlock(&region_ctrl_lock);
-	ocmem_disable_core_clock();
 	pr_err("ocmem_core: Invalid state transition detected for %d\n", id);
 	pr_err("ocmem_core: Offset %lx Len %lx curr_state %x new_state %x\n",
 			offset, len, curr_state, new_state);
@@ -865,6 +954,109 @@ int ocmem_memory_retain(int id, unsigned long offset, unsigned long len)
 {
 	return switch_power_state(id, offset, len, REGION_DEFAULT_RETENTION);
 }
+
+static int ocmem_power_show_sw_state(struct seq_file *f, void *dummy)
+{
+	unsigned i, j;
+	unsigned m_state;
+	mutex_lock(&region_ctrl_lock);
+
+	seq_printf(f, "OCMEM Aggregated Power States\n");
+	for (i = 0 ; i < num_regions; i++) {
+		struct ocmem_hw_region *region = &region_ctrl[i];
+		seq_printf(f, "Region %u mode %x\n", i, region->mode);
+		for (j = 0; j < num_banks; j++) {
+			m_state = read_macro_state(i, j);
+			if (m_state == MACRO_ON)
+				seq_printf(f, "M%u:%s\t", j, "ON");
+			else if (m_state == MACRO_SLEEP_RETENTION)
+				seq_printf(f, "M%u:%s\t", j, "RETENTION");
+			else
+				seq_printf(f, "M%u:%s\t", j, "OFF");
+		}
+		seq_printf(f, "\n");
+	}
+	mutex_unlock(&region_ctrl_lock);
+	return 0;
+}
+
+#ifdef CONFIG_MSM_OCMEM_POWER_DEBUG
+static int ocmem_power_show_hw_state(struct seq_file *f, void *dummy)
+{
+	unsigned i = 0;
+	unsigned r_state;
+
+	mutex_lock(&region_ctrl_lock);
+
+	seq_printf(f, "OCMEM Hardware Power States\n");
+	for (i = 0 ; i < num_regions; i++) {
+		struct ocmem_hw_region *region = &region_ctrl[i];
+		seq_printf(f, "Region %u mode %x ", i, region->mode);
+		r_state = read_hw_region_state(i);
+		if (r_state == REGION_DEFAULT_ON)
+			seq_printf(f, "state: %s\t", "REGION_ON");
+		else if (r_state == MACRO_SLEEP_RETENTION)
+			seq_printf(f, "state: %s\t", "REGION_RETENTION");
+		else
+			seq_printf(f, "state: %s\t", "REGION_OFF");
+		seq_printf(f, "\n");
+	}
+	mutex_unlock(&region_ctrl_lock);
+	return 0;
+}
+#else
+static int ocmem_power_show_hw_state(struct seq_file *f, void *dummy)
+{
+	return 0;
+}
+#endif
+
+static int ocmem_power_show(struct seq_file *f, void *dummy)
+{
+	int rc = 0;
+
+	rc = ocmem_enable_core_clock();
+
+	if (rc < 0)
+		goto core_clock_fail;
+
+	rc = ocmem_enable_iface_clock();
+
+	if (rc < 0)
+		goto iface_clock_fail;
+
+	rc = ocmem_restore_sec_program(OCMEM_SECURE_DEV_ID);
+	if (rc < 0) {
+		pr_err("ocmem: Failed to restore security programming\n");
+		goto restore_config_fail;
+	}
+	ocmem_power_show_sw_state(f, dummy);
+	ocmem_power_show_hw_state(f, dummy);
+
+	ocmem_disable_iface_clock();
+	ocmem_disable_core_clock();
+
+	return 0;
+
+restore_config_fail:
+	ocmem_disable_iface_clock();
+iface_clock_fail:
+	ocmem_disable_core_clock();
+core_clock_fail:
+	return -EINVAL;
+}
+
+static int ocmem_power_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ocmem_power_show, inode->i_private);
+}
+
+static const struct file_operations power_show_fops = {
+	.open = ocmem_power_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = seq_release,
+};
 
 int ocmem_core_init(struct platform_device *pdev)
 {
