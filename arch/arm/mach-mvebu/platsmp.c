@@ -72,9 +72,17 @@ static void __init set_secondary_cpus_clock(void)
 
 static int armada_xp_boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
+	int ret, hw_cpu;
+
 	pr_info("Booting CPU %d\n", cpu);
 
-	armada_xp_boot_cpu(cpu, armada_xp_secondary_startup);
+	hw_cpu = cpu_logical_map(cpu);
+	mvebu_pmsu_set_cpu_boot_addr(hw_cpu, armada_xp_secondary_startup);
+	ret = mvebu_cpu_reset_deassert(hw_cpu);
+	if (ret) {
+		pr_warn("unable to boot CPU: %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -95,7 +103,7 @@ static void __init armada_xp_smp_prepare_cpus(unsigned int max_cpus)
 
 	set_secondary_cpus_clock();
 	flush_cache_all();
-	set_cpu_coherent(cpu_logical_map(smp_processor_id()), 0);
+	set_cpu_coherent();
 
 	/*
 	 * In order to boot the secondary CPUs we need to ensure
@@ -122,3 +130,6 @@ struct smp_operations armada_xp_smp_ops __initdata = {
 	.cpu_die		= armada_xp_cpu_die,
 #endif
 };
+
+CPU_METHOD_OF_DECLARE(armada_xp_smp, "marvell,armada-xp-smp",
+		      &armada_xp_smp_ops);
