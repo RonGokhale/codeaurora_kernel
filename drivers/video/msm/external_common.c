@@ -2441,11 +2441,18 @@ bool hdmi_common_get_video_format_from_drv_data(struct msm_fb_data_type *mfd)
 {
 	uint32 format =  external_common_state->video_resolution;
 	bool changed = TRUE;
+	struct fb_var_screeninfo *var = &mfd->fbi->var;
+	uint32_t userformat = 0;
+	userformat = var->reserved[3] >> 16;
 
 	if (hdmi_prim_resolution) {
 		format = hdmi_prim_resolution - 1;
 		DEV_INFO("%s: selecting resolution from fastboot param %d\n",
 			__func__, hdmi_prim_resolution);
+	} else if (userformat) {
+		format = userformat;
+		pr_info("%s: selecting resolution from reserved format %d\n",
+			__func__, userformat);
 	} else if (mfd->var_vic) {
 		format = mfd->var_vic;
 		DEV_INFO("%s: selecting resolution from best format %d\n",

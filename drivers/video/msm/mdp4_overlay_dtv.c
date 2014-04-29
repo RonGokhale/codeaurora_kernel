@@ -752,6 +752,7 @@ void mdp4_dtv_mute(u32 enable)
 	} else {
 		MDP_OUTP(MDP_BASE + DTV_BASE + 0x4c, 0);
 	}
+	pr_info("%s: enable: %d\n", __func__, enable);
 }
 
 int mdp4_dtv_off(struct platform_device *pdev)

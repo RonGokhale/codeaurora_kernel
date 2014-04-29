@@ -2432,8 +2432,6 @@ static int msm_fb_set_par(struct fb_info *info)
 		mfd->var_xres = var->xres;
 		mfd->var_yres = var->yres;
 		mfd->var_pixclock = var->pixclock;
-		var->reserved[3] = msm_fb_calc_frame_rate(info);
-		mfd->var_frame_rate = var->reserved[3];
 		mfd->var_vic = var_vic;
 		if (mfd->update_panel_info)
 			mfd->update_panel_info(mfd);
