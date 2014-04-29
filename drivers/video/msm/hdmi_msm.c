@@ -1399,7 +1399,7 @@ static void hdmi_msm_send_event(boolean on)
 	mutex_unlock(&hdmi_msm_power_mutex);
 	if (mfd->ref_cnt && hdmi_prim_display) {
 		if (on)
-			hdmi_msm_power_on_sub(hdmi_msm_pdev, false);
+			hdmi_msm_power_on_sub(hdmi_msm_pdev, true);
 		else
 			hdmi_msm_power_off(hdmi_msm_pdev);
 	}
