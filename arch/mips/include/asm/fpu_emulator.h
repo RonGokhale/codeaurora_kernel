@@ -61,8 +61,6 @@ extern int fpu_emulator_cop1Handler(struct pt_regs *xcp,
 				    struct mips_fpu_struct *ctx, int has_fpu,
 				    void *__user *fault_addr);
 int process_fpemu_return(int sig, void __user *fault_addr);
-int mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
-		     unsigned long *contpc);
 
 /*
  * Instruction inserted following the badinst to further tag the sequence
@@ -86,5 +84,7 @@ static inline void fpu_emulator_init_fpu(void)
 	for (i = 0; i < 32; i++)
 		set_fpr64(&t->thread.fpu.fpr[i], 0, SIGNALLING_NAN);
 }
+
+extern int microMIPS32_to_MIPS32(union mips_instruction *insn_ptr);
 
 #endif /* _ASM_FPU_EMULATOR_H */
