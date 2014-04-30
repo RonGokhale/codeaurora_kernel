@@ -1,0 +1,10 @@
+--- Documentation/devicetree/bindings/clock/qcom,gcc.txt
++++ Documentation/devicetree/bindings/clock/qcom,gcc.txt
+@@ -4,6 +4,7 @@
+ Required properties :
+ - compatible : shall contain only one of the following:
+ 
++			"qcom,gcc-apq8064"
+ 			"qcom,gcc-ipq8064"
+ 			"qcom,gcc-msm8660"
+ 			"qcom,gcc-msm8960"
