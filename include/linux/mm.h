@@ -370,6 +370,17 @@ static inline int is_vmalloc_or_module_addr(const void *x)
 }
 #endif
 
+static inline void kvfree(const void *x)
+{
+	/* include order mess... */
+	extern void kfree(const void *);
+	extern void vfree(const void *);
+	if (is_vmalloc_addr(x))
+		vfree(x);
+	else
+		kfree(x);
+}
+
 static inline void compound_lock(struct page *page)
 {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
