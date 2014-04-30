@@ -825,7 +825,7 @@ static void emulate_load_store_microMIPS(struct pt_regs *regs,
 	mminsn.next_insn = word;
 
 	insn = (union mips_instruction)(mminsn.insn);
-	if (mm_isBranchInstr(regs, mminsn, &contpc))
+	if (mm_isBranchInstr(regs, &mminsn, &contpc))
 		insn = (union mips_instruction)(mminsn.next_insn);
 
 	/*  Parse instruction to find what to do */

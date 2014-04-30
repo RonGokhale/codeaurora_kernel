@@ -28,10 +28,10 @@ extern int __MIPS16e_compute_return_epc(struct pt_regs *regs);
 #define MM_MIPS32_COND_FC	0x30
 
 extern int __mm_isBranchInstr(struct pt_regs *regs,
-	struct mm_decoded_insn dec_insn, unsigned long *contpc);
+	const struct mm_decoded_insn * const dec_insn, unsigned long *contpc);
 
 static inline int mm_isBranchInstr(struct pt_regs *regs,
-	struct mm_decoded_insn dec_insn, unsigned long *contpc)
+	const struct mm_decoded_insn * const dec_insn, unsigned long *contpc)
 {
 	if (!cpu_has_mmips)
 		return 0;
