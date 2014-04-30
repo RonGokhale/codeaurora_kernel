@@ -329,6 +329,23 @@ static const struct pinctrl_ops rockchip_pctrl_ops = {
  * Hardware access
  */
 
+static int rockchip_get_mux(struct rockchip_pin_bank *bank, int pin)
+{
+	struct rockchip_pinctrl *info = bank->drvdata;
+	void __iomem *reg = info->reg_base + info->ctrl->mux_offset;
+	u8 bit;
+
+	if (bank->bank_type == RK3188_BANK0 && pin < 16)
+		return RK_FUNC_GPIO;
+
+	/* get basic quadrupel of mux registers and the correct reg inside */
+	reg += bank->bank_num * 0x10;
+	reg += (pin / 8) * 4;
+	bit = (pin % 8) * 2;
+
+	return ((readl(reg) >> bit) & 3);
+}
+
 /*
  * Set a new mux function for a pin.
  *
@@ -687,6 +704,10 @@ static bool rockchip_pinconf_pull_valid(struct rockchip_pin_ctrl *ctrl,
 	return false;
 }
 
+static int rockchip_gpio_direction_output(struct gpio_chip *gc,
+					  unsigned offset, int value);
+static int rockchip_gpio_get(struct gpio_chip *gc, unsigned offset);
+
 /* set the pin config settings for a specified pin */
 static int rockchip_pinconf_set(struct pinctrl_dev *pctldev, unsigned int pin,
 				unsigned long *configs, unsigned num_configs)
@@ -724,6 +745,13 @@ static int rockchip_pinconf_set(struct pinctrl_dev *pctldev, unsigned int pin,
 			if (rc)
 				return rc;
 			break;
+		case PIN_CONFIG_OUTPUT:
+			rc = rockchip_gpio_direction_output(&bank->gpio_chip,
+							    pin - bank->pin_base,
+							    arg);
+			if (rc)
+				return rc;
+			break;
 		default:
 			return -ENOTSUPP;
 			break;
@@ -740,13 +768,15 @@ static int rockchip_pinconf_get(struct pinctrl_dev *pctldev, unsigned int pin,
 	struct rockchip_pinctrl *info = pinctrl_dev_get_drvdata(pctldev);
 	struct rockchip_pin_bank *bank = pin_to_bank(info, pin);
 	enum pin_config_param param = pinconf_to_config_param(*config);
+	u16 arg;
+	int rc;
 
 	switch (param) {
 	case PIN_CONFIG_BIAS_DISABLE:
 		if (rockchip_get_pull(bank, pin - bank->pin_base) != param)
 			return -EINVAL;
 
-		*config = 0;
+		arg = 0;
 		break;
 	case PIN_CONFIG_BIAS_PULL_UP:
 	case PIN_CONFIG_BIAS_PULL_DOWN:
@@ -758,12 +788,25 @@ static int rockchip_pinconf_get(struct pinctrl_dev *pctldev, unsigned int pin,
 		if (rockchip_get_pull(bank, pin - bank->pin_base) != param)
 			return -EINVAL;
 
-		*config = 1;
+		arg = 1;
+		break;
+	case PIN_CONFIG_OUTPUT:
+		rc = rockchip_get_mux(bank, pin - bank->pin_base);
+		if (rc != RK_FUNC_GPIO)
+			return -EINVAL;
+
+		rc = rockchip_gpio_get(&bank->gpio_chip, pin - bank->pin_base);
+		if (rc < 0)
+			return rc;
+
+		arg = rc ? 1 : 0;
 		break;
 	default:
 		return -ENOTSUPP;
 		break;
 	}
+
+	*config = pinconf_to_config_packed(param, arg);
 
 	return 0;
 }
