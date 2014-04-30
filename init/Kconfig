@@ -1862,6 +1862,17 @@ config STOP_MACHINE
 	help
 	  Need stop_machine() primitive.
 
+config MAX_STACK_SIZE_MB
+	int "Default initial maximum stack size"
+	default 80
+	range 8 2048
+	depends on STACK_GROWSUP
+	help
+	  This is the default initial stack size in Megabytes in the VM layout of user
+	  processes when the stack grows upwards (currently only on parisc and matag
+	  arch).  The stack will be located at the highest memory address minus the
+	  given value. A sane initial value is 80 MB.
+
 source "block/Kconfig"
 
 config PREEMPT_NOTIFIERS

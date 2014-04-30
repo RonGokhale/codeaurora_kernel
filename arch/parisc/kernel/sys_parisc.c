@@ -72,10 +72,10 @@ static unsigned long mmap_upper_limit(void)
 {
 	unsigned long stack_base;
 
-	/* Limit stack size to 1GB - see setup_arg_pages() in fs/exec.c */
+	/* Limit stack size - see setup_arg_pages() in fs/exec.c */
 	stack_base = rlimit_max(RLIMIT_STACK);
-	if (stack_base > (1 << 30))
-		stack_base = 1 << 30;
+	if (stack_base > CONFIG_MAX_STACK_SIZE_MB*1024*1024)
+		stack_base = CONFIG_MAX_STACK_SIZE_MB*1024*1024;
 
 	return PAGE_ALIGN(STACK_TOP - stack_base);
 }
