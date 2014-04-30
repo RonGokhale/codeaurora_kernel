@@ -39,6 +39,9 @@ config PARISC
 config MMU
 	def_bool y
 
+config MMAP_TRACKING
+	def_bool y
+
 config STACK_GROWSUP
 	def_bool y
 
