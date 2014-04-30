@@ -85,10 +85,10 @@ static const unsigned int fpucondbit[8] = {
  * a single subroutine should be used across both
  * modules.
  */
-static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
-			 unsigned long *contpc)
+static int isBranchInstr(struct pt_regs *regs,
+	const struct mm_decoded_insn * const dec_insn, unsigned long *contpc)
 {
-	union mips_instruction insn = (union mips_instruction)dec_insn.insn;
+	union mips_instruction insn = (union mips_instruction)dec_insn->insn;
 	unsigned int fcr31;
 	unsigned int bit = 0;
 
@@ -97,8 +97,8 @@ static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		switch (insn.r_format.func) {
 		case jalr_op:
 			regs->regs[insn.r_format.rd] =
-				regs->cp0_epc + dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				regs->cp0_epc + dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 			/* Fall through */
 		case jr_op:
 			*contpc = regs->regs[insn.r_format.rs];
@@ -110,36 +110,36 @@ static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		case bltzal_op:
 		case bltzall_op:
 			regs->regs[31] = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 			/* Fall through */
 		case bltz_op:
 		case bltzl_op:
 			if ((long)regs->regs[insn.i_format.rs] < 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.i_format.simmediate << 2);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		case bgezal_op:
 		case bgezall_op:
 			regs->regs[31] = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 			/* Fall through */
 		case bgez_op:
 		case bgezl_op:
 			if ((long)regs->regs[insn.i_format.rs] >= 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.i_format.simmediate << 2);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		}
 		break;
@@ -147,11 +147,11 @@ static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		set_isa16_mode(bit);
 	case jal_op:
 		regs->regs[31] = regs->cp0_epc +
-			dec_insn.pc_inc +
-			dec_insn.next_pc_inc;
+			dec_insn->pc_inc +
+			dec_insn->next_pc_inc;
 		/* Fall through */
 	case j_op:
-		*contpc = regs->cp0_epc + dec_insn.pc_inc;
+		*contpc = regs->cp0_epc + dec_insn->pc_inc;
 		*contpc >>= 28;
 		*contpc <<= 28;
 		*contpc |= (insn.j_format.target << 2);
@@ -163,46 +163,46 @@ static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		if (regs->regs[insn.i_format.rs] ==
 		    regs->regs[insn.i_format.rt])
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.i_format.simmediate << 2);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 		return 1;
 	case bne_op:
 	case bnel_op:
 		if (regs->regs[insn.i_format.rs] !=
 		    regs->regs[insn.i_format.rt])
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.i_format.simmediate << 2);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 		return 1;
 	case blez_op:
 	case blezl_op:
 		if ((long)regs->regs[insn.i_format.rs] <= 0)
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.i_format.simmediate << 2);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 		return 1;
 	case bgtz_op:
 	case bgtzl_op:
 		if ((long)regs->regs[insn.i_format.rs] > 0)
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.i_format.simmediate << 2);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 		return 1;
 #ifdef CONFIG_CPU_CAVIUM_OCTEON
 	case lwc2_op: /* This is bbit0 on Octeon */
@@ -250,23 +250,23 @@ static int isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 			case 2:	/* bc1fl */
 				if (~fcr31 & (1 << bit))
 					*contpc = regs->cp0_epc +
-						dec_insn.pc_inc +
+						dec_insn->pc_inc +
 						(insn.i_format.simmediate << 2);
 				else
 					*contpc = regs->cp0_epc +
-						dec_insn.pc_inc +
-						dec_insn.next_pc_inc;
+						dec_insn->pc_inc +
+						dec_insn->next_pc_inc;
 				return 1;
 			case 1:	/* bc1t */
 			case 3:	/* bc1tl */
 				if (fcr31 & (1 << bit))
 					*contpc = regs->cp0_epc +
-						dec_insn.pc_inc +
+						dec_insn->pc_inc +
 						(insn.i_format.simmediate << 2);
 				else
 					*contpc = regs->cp0_epc +
-						dec_insn.pc_inc +
-						dec_insn.next_pc_inc;
+						dec_insn->pc_inc +
+						dec_insn->next_pc_inc;
 				return 1;
 			}
 		}
@@ -365,10 +365,10 @@ static int cop1Emulate(struct pt_regs *xcp, struct mips_fpu_struct *ctx,
 	/* XXX NEC Vr54xx bug workaround */
 	if (delay_slot(xcp)) {
 		if (dec_insn.micro_mips_mode) {
-			if (!mm_isBranchInstr(xcp, dec_insn, &contpc))
+			if (!mm_isBranchInstr(xcp, &dec_insn, &contpc))
 				clear_delay_slot(xcp);
 		} else {
-			if (!isBranchInstr(xcp, dec_insn, &contpc))
+			if (!isBranchInstr(xcp, &dec_insn, &contpc))
 				clear_delay_slot(xcp);
 		}
 	}

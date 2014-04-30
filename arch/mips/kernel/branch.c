@@ -51,10 +51,10 @@ int __isa_exception_epc(struct pt_regs *regs)
 /* (microMIPS) Convert 16-bit register encoding to 32-bit register encoding. */
 static const unsigned int reg16to32map[8] = {16, 17, 2, 3, 4, 5, 6, 7};
 
-int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
-		       unsigned long *contpc)
+int __mm_isBranchInstr(struct pt_regs *regs,
+	const struct mm_decoded_insn * const dec_insn, unsigned long *contpc)
 {
-	union mips_instruction insn = (union mips_instruction)dec_insn.insn;
+	union mips_instruction insn = (union mips_instruction)dec_insn->insn;
 	int bc_false = 0;
 	unsigned int fcr31;
 	unsigned int bit;
@@ -75,8 +75,8 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 				if (insn.mm_i_format.rt != 0)	/* Not mm_jr */
 					regs->regs[insn.mm_i_format.rt] =
 						regs->cp0_epc +
-						dec_insn.pc_inc +
-						dec_insn.next_pc_inc;
+						dec_insn->pc_inc +
+						dec_insn->next_pc_inc;
 				*contpc = regs->regs[insn.mm_i_format.rs];
 				return 1;
 			}
@@ -87,54 +87,54 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		case mm_bltzals_op:
 		case mm_bltzal_op:
 			regs->regs[31] = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 			/* Fall through */
 		case mm_bltz_op:
 			if ((long)regs->regs[insn.mm_i_format.rs] < 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.mm_i_format.simmediate << 1);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		case mm_bgezals_op:
 		case mm_bgezal_op:
 			regs->regs[31] = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			/* Fall through */
 		case mm_bgez_op:
 			if ((long)regs->regs[insn.mm_i_format.rs] >= 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.mm_i_format.simmediate << 1);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		case mm_blez_op:
 			if ((long)regs->regs[insn.mm_i_format.rs] <= 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.mm_i_format.simmediate << 1);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		case mm_bgtz_op:
 			if ((long)regs->regs[insn.mm_i_format.rs] <= 0)
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.mm_i_format.simmediate << 1);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
-					dec_insn.next_pc_inc;
+					dec_insn->pc_inc +
+					dec_insn->next_pc_inc;
 			return 1;
 		case mm_bc2f_op:
 		case mm_bc1f_op:
@@ -157,11 +157,11 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 			bit += 23;
 			if (fcr31 & (1 << bit))
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc +
+					dec_insn->pc_inc +
 					(insn.mm_i_format.simmediate << 1);
 			else
 				*contpc = regs->cp0_epc +
-					dec_insn.pc_inc + dec_insn.next_pc_inc;
+					dec_insn->pc_inc + dec_insn->next_pc_inc;
 			return 1;
 		}
 		break;
@@ -170,7 +170,7 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 		case mm_jalr16_op:
 		case mm_jalrs16_op:
 			regs->regs[31] = regs->cp0_epc +
-				dec_insn.pc_inc + dec_insn.next_pc_inc;
+				dec_insn->pc_inc + dec_insn->next_pc_inc;
 			/* Fall through */
 		case mm_jr16_op:
 			*contpc = regs->regs[insn.mm_i_format.rs];
@@ -180,50 +180,50 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 	case mm_beqz16_op:
 		if ((long)regs->regs[reg16to32map[insn.mm_b1_format.rs]] == 0)
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.mm_b1_format.simmediate << 1);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc + dec_insn.next_pc_inc;
+				dec_insn->pc_inc + dec_insn->next_pc_inc;
 		return 1;
 	case mm_bnez16_op:
 		if ((long)regs->regs[reg16to32map[insn.mm_b1_format.rs]] != 0)
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.mm_b1_format.simmediate << 1);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc + dec_insn.next_pc_inc;
+				dec_insn->pc_inc + dec_insn->next_pc_inc;
 		return 1;
 	case mm_b16_op:
-		*contpc = regs->cp0_epc + dec_insn.pc_inc +
+		*contpc = regs->cp0_epc + dec_insn->pc_inc +
 			 (insn.mm_b0_format.simmediate << 1);
 		return 1;
 	case mm_beq32_op:
 		if (regs->regs[insn.mm_i_format.rs] ==
 		    regs->regs[insn.mm_i_format.rt])
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.mm_i_format.simmediate << 1);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
-				dec_insn.next_pc_inc;
+				dec_insn->pc_inc +
+				dec_insn->next_pc_inc;
 		return 1;
 	case mm_bne32_op:
 		if (regs->regs[insn.mm_i_format.rs] !=
 		    regs->regs[insn.mm_i_format.rt])
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc +
+				dec_insn->pc_inc +
 				(insn.mm_i_format.simmediate << 1);
 		else
 			*contpc = regs->cp0_epc +
-				dec_insn.pc_inc + dec_insn.next_pc_inc;
+				dec_insn->pc_inc + dec_insn->next_pc_inc;
 		return 1;
 	case mm_jalx32_op:
 		regs->regs[31] = regs->cp0_epc +
-			dec_insn.pc_inc + dec_insn.next_pc_inc;
-		*contpc = regs->cp0_epc + dec_insn.pc_inc;
+			dec_insn->pc_inc + dec_insn->next_pc_inc;
+		*contpc = regs->cp0_epc + dec_insn->pc_inc;
 		*contpc >>= 28;
 		*contpc <<= 28;
 		*contpc |= (insn.j_format.target << 2);
@@ -231,10 +231,10 @@ int __mm_isBranchInstr(struct pt_regs *regs, struct mm_decoded_insn dec_insn,
 	case mm_jals32_op:
 	case mm_jal32_op:
 		regs->regs[31] = regs->cp0_epc +
-			dec_insn.pc_inc + dec_insn.next_pc_inc;
+			dec_insn->pc_inc + dec_insn->next_pc_inc;
 		/* Fall through */
 	case mm_j32_op:
-		*contpc = regs->cp0_epc + dec_insn.pc_inc;
+		*contpc = regs->cp0_epc + dec_insn->pc_inc;
 		*contpc >>= 27;
 		*contpc <<= 27;
 		*contpc |= (insn.j_format.target << 1);
@@ -291,7 +291,7 @@ int __microMIPS_compute_return_epc(struct pt_regs *regs)
 	}
 	mminsn.next_insn = word;
 
-	mm_isBranchInstr(regs, mminsn, &contpc);
+	mm_isBranchInstr(regs, &mminsn, &contpc);
 
 	regs->cp0_epc = contpc;
 
