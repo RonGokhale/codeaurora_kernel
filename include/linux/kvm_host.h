@@ -163,6 +163,7 @@ enum kvm_bus {
 	KVM_MMIO_BUS,
 	KVM_PIO_BUS,
 	KVM_VIRTIO_CCW_NOTIFY_BUS,
+	KVM_FAST_MMIO_BUS,
 	KVM_NR_BUSES
 };
 
@@ -410,9 +411,7 @@ struct kvm {
 	unsigned long mmu_notifier_seq;
 	long mmu_notifier_count;
 #endif
-	/* Protected by mmu_lock */
-	bool tlbs_dirty;
-
+	long tlbs_dirty;
 	struct list_head devices;
 };
 
@@ -877,6 +876,13 @@ static inline gfn_t gpa_to_gfn(gpa_t gpa)
 static inline hpa_t pfn_to_hpa(pfn_t pfn)
 {
 	return (hpa_t)pfn << PAGE_SHIFT;
+}
+
+static inline bool kvm_is_error_gpa(struct kvm *kvm, gpa_t gpa)
+{
+	unsigned long hva = gfn_to_hva(kvm, gpa_to_gfn(gpa));
+
+	return kvm_is_error_hva(hva);
 }
 
 static inline void kvm_migrate_timers(struct kvm_vcpu *vcpu)
