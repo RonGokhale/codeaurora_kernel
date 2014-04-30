@@ -711,15 +711,6 @@ static inline int obd_size_diskmd(struct obd_export *exp,
 	return obd_packmd(exp, NULL, mem_src);
 }
 
-/* helper functions */
-static inline int obd_alloc_diskmd(struct obd_export *exp,
-				   struct lov_mds_md **disk_tgt)
-{
-	LASSERT(disk_tgt);
-	LASSERT(*disk_tgt == NULL);
-	return obd_packmd(exp, disk_tgt, NULL);
-}
-
 static inline int obd_free_diskmd(struct obd_export *exp,
 				  struct lov_mds_md **disk_tgt)
 {
@@ -2055,12 +2046,13 @@ static inline ldlm_mode_t md_lock_match(struct obd_export *exp, __u64 flags,
 }
 
 static inline int md_init_ea_size(struct obd_export *exp, int easize,
-				  int def_asize, int cookiesize)
+				  int def_asize, int cookiesize,
+				  int def_cookiesize)
 {
 	EXP_CHECK_MD_OP(exp, init_ea_size);
 	EXP_MD_COUNTER_INCREMENT(exp, init_ea_size);
 	return MDP(exp->exp_obd, init_ea_size)(exp, easize, def_asize,
-					       cookiesize);
+					       cookiesize, def_cookiesize);
 }
 
 static inline int md_get_remote_perm(struct obd_export *exp,
@@ -2133,7 +2125,7 @@ extern struct kmem_cache *obdo_cachep;
 
 #define OBDO_ALLOC(ptr)						       \
 do {									  \
-	OBD_SLAB_ALLOC_PTR_GFP((ptr), obdo_cachep, __GFP_IO);	     \
+	OBD_SLAB_ALLOC_PTR_GFP((ptr), obdo_cachep, GFP_NOFS);             \
 } while(0)
 
 #define OBDO_FREE(ptr)							\

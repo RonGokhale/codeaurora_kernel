@@ -878,6 +878,8 @@ static int rtd_ai_cmdtest(struct comedi_device *dev,
 		err |= cfc_check_trigger_arg_max(&cmd->convert_arg, 9);
 	}
 
+	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
+
 	if (cmd->stop_src == TRIG_COUNT) {
 		/* TODO check for rounding error due to counter wrap */
 	} else {
@@ -891,10 +893,6 @@ static int rtd_ai_cmdtest(struct comedi_device *dev,
 
 	/* step 4: fix up any arguments */
 
-	if (cmd->chanlist_len > RTD_MAX_CHANLIST) {
-		cmd->chanlist_len = RTD_MAX_CHANLIST;
-		err++;
-	}
 	if (cmd->scan_begin_src == TRIG_TIMER) {
 		tmp = cmd->scan_begin_arg;
 		rtd_ns_to_timer(&cmd->scan_begin_arg,

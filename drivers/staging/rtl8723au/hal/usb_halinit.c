@@ -621,7 +621,6 @@ static u32 rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	struct hal_data_8723a *pHalData = GET_HAL_DATA(Adapter);
 	struct pwrctrl_priv *pwrctrlpriv = &Adapter->pwrctrlpriv;
 	struct registry_priv *pregistrypriv = &Adapter->registrypriv;
-	u32 NavUpper = WiFiNavUpperUs;
 
 	unsigned long init_start_time = jiffies;
 
@@ -779,7 +778,7 @@ static u32 rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	_InitDriverInfoSize(Adapter, DRVINFO_SZ);
 
 	_InitInterrupt(Adapter);
-	hal_init_macaddr23a(Adapter);/* set mac_address */
+	hw_var_set_macaddr(Adapter, Adapter->eeprompriv.mac_addr);
 	_InitNetworkType(Adapter);/* set msr */
 	_InitWMACSetting(Adapter);
 	_InitAdaptiveCtrl(Adapter);
@@ -888,7 +887,7 @@ static u32 rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	rtl8723a_InitHalDm(Adapter);
 
 	HAL_INIT_PROFILE_TAG(HAL_INIT_STAGES_MISC31);
-	rtw_hal_set_hwreg23a(Adapter, HW_VAR_NAV_UPPER, (u8 *)&NavUpper);
+	rtl8723a_set_nav_upper(Adapter, WiFiNavUpperUs);
 
 	/*  2011/03/09 MH debug only, UMC-B cut pass 2500 S5 test, but we need to fin root cause. */
 	if (((rtw_read32(Adapter, rFPGA0_RFMOD) & 0xFF000000) != 0x83000000)) {
@@ -1228,14 +1227,14 @@ static unsigned int rtl8723au_inirp_init(struct rtw_adapter *Adapter)
 	u8 i;
 	struct recv_buf *precvbuf;
 	uint	status;
-	struct intf_hdl *pintfhdl = &Adapter->iopriv.intf;
+	struct _io_ops *io_ops = &Adapter->io_ops;
 	struct recv_priv *precvpriv = &Adapter->recvpriv;
-	u32 (*_read_port)(struct intf_hdl *pintfhdl, u32 addr, u32 cnt,
+	u32 (*_read_port)(struct rtw_adapter *padapter, u32 addr, u32 cnt,
 			  struct recv_buf *rbuf);
-	u32 (*_read_interrupt)(struct intf_hdl *pintfhdl, u32 addr);
+	u32 (*_read_interrupt)(struct rtw_adapter *padapter, u32 addr);
 	struct hal_data_8723a	*pHalData = GET_HAL_DATA(Adapter);
 
-	_read_port = pintfhdl->io_ops._read_port;
+	_read_port = io_ops->_read_port;
 
 	status = _SUCCESS;
 
@@ -1246,7 +1245,7 @@ static unsigned int rtl8723au_inirp_init(struct rtw_adapter *Adapter)
 	/* issue Rx irp to receive data */
 	precvbuf = (struct recv_buf *)precvpriv->precv_buf;
 	for (i = 0; i < NR_RECVBUFF; i++) {
-		if (_read_port(pintfhdl, precvpriv->ff_hwaddr, 0, precvbuf) ==
+		if (_read_port(Adapter, precvpriv->ff_hwaddr, 0, precvbuf) ==
 		    false) {
 			RT_TRACE(_module_hci_hal_init_c_, _drv_err_,
 				 ("usb_rx_init: usb_read_port error\n"));
@@ -1256,8 +1255,8 @@ static unsigned int rtl8723au_inirp_init(struct rtw_adapter *Adapter)
 		precvbuf++;
 		precvpriv->free_recv_buf_queue_cnt--;
 	}
-	_read_interrupt = pintfhdl->io_ops._read_interrupt;
-	if (_read_interrupt(pintfhdl, RECV_INT_IN_ADDR) == false) {
+	_read_interrupt = io_ops->_read_interrupt;
+	if (_read_interrupt(Adapter, RECV_INT_IN_ADDR) == false) {
 		RT_TRACE(_module_hci_hal_init_c_, _drv_err_,
 			 ("usb_rx_init: usb_read_interrupt error\n"));
 		status = _FAIL;
@@ -1495,52 +1494,6 @@ static void ReadAdapterInfo8723AU(struct rtw_adapter *Adapter)
 	Adapter->EepromAddressSize = GetEEPROMSize8723A(Adapter);
 
 	_ReadAdapterInfo8723AU(Adapter);
-}
-
-#define GPIO_DEBUG_PORT_NUM 0
-static void rtl8723au_trigger_gpio_0(struct rtw_adapter *padapter)
-{
-	u32 gpioctrl;
-	DBG_8723A("==> trigger_gpio_0...\n");
-	rtw_write16_async(padapter, REG_GPIO_PIN_CTRL, 0);
-	rtw_write8_async(padapter, REG_GPIO_PIN_CTRL+2, 0xFF);
-	gpioctrl = (BIT(GPIO_DEBUG_PORT_NUM) << 24)|
-		(BIT(GPIO_DEBUG_PORT_NUM) << 16);
-	rtw_write32_async(padapter, REG_GPIO_PIN_CTRL, gpioctrl);
-	gpioctrl |= (BIT(GPIO_DEBUG_PORT_NUM)<<8);
-	rtw_write32_async(padapter, REG_GPIO_PIN_CTRL, gpioctrl);
-	DBG_8723A("<=== trigger_gpio_0...\n");
-}
-
-/*
- * If variable not handled here,
- * some variables will be processed in SetHwReg8723A()
- */
-static void SetHwReg8723AU(struct rtw_adapter *Adapter, u8 variable, u8 *val)
-{
-	switch (variable) {
-	case HW_VAR_RXDMA_AGG_PG_TH:
-		break;
-	case HW_VAR_SET_RPWM:
-		rtl8723a_set_rpwm(Adapter, *val);
-		break;
-	case HW_VAR_TRIGGER_GPIO_0:
-		rtl8723au_trigger_gpio_0(Adapter);
-		break;
-	default:
-		SetHwReg8723A(Adapter, variable, val);
-		break;
-	}
-
-}
-
-/*
- * If variable not handled here,
- * some variables will be processed in GetHwReg8723A()
- */
-static void GetHwReg8723AU(struct rtw_adapter *Adapter, u8 variable, u8 *val)
-{
-	GetHwReg8723A(Adapter, variable, val);
 }
 
 /*  */
@@ -1786,12 +1739,6 @@ static void rtl8723au_init_default_value(struct rtw_adapter *padapter)
 	rtl8723a_init_default_value(padapter);
 }
 
-static u8 rtl8192cu_ps_func(struct rtw_adapter *Adapter,
-			    enum hal_intf_ps_func efunc_id, u8 *val)
-{
-	return true;
-}
-
 int rtl8723au_set_hal_ops(struct rtw_adapter *padapter)
 {
 	struct hal_ops	*pHalFunc = &padapter->HalFunc;
@@ -1820,15 +1767,12 @@ int rtl8723au_set_hal_ops(struct rtw_adapter *padapter)
 	pHalFunc->init_default_value = &rtl8723au_init_default_value;
 	pHalFunc->intf_chip_configure = &rtl8723au_interface_configure;
 	pHalFunc->read_adapter_info = &ReadAdapterInfo8723AU;
-	pHalFunc->SetHwRegHandler = &SetHwReg8723AU;
-	pHalFunc->GetHwRegHandler = &GetHwReg8723AU;
 	pHalFunc->GetHalDefVarHandler = &GetHalDefVar8192CUsb;
 	pHalFunc->SetHalDefVarHandler = &SetHalDefVar8192CUsb;
 	pHalFunc->UpdateRAMaskHandler = &UpdateHalRAMask8192CUsb;
 	pHalFunc->hal_xmit = &rtl8723au_hal_xmit;
 	pHalFunc->mgnt_xmit = &rtl8723au_mgnt_xmit;
 	pHalFunc->hal_xmitframe_enqueue = &rtl8723au_hal_xmitframe_enqueue;
-	pHalFunc->interface_ps_func = &rtl8192cu_ps_func;
 	rtl8723a_set_hal_ops(pHalFunc);
 	return 0;
 }
