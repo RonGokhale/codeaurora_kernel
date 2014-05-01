@@ -357,7 +357,7 @@ static int mdss_dsi_parse_dcs_cmds(struct device_node *np,
 	pcmds->link_state = DSI_LP_MODE; /* default */
 
 	data = of_get_property(np, link_key, NULL);
-	if (!strncmp(data, "DSI_HS_MODE", 11))
+	if (data && !strcmp(data, "dsi_hs_mode"))
 		pcmds->link_state = DSI_HS_MODE;
 
 	pr_debug("%s: dcs_cmd=%x len=%d, cmd_cnt=%d link_state=%d\n", __func__,
@@ -405,11 +405,13 @@ static int mdss_panel_parse_dt(struct platform_device *pdev,
 
 	pdest = of_get_property(pdev->dev.of_node,
 				"qcom,mdss-pan-dest", NULL);
-	if (strlen(pdest) != 9) {
-		pr_err("%s: Unknown pdest specified\n", __func__);
-		return -EINVAL;
-	}
-	if (!strncmp(pdest, "display_1", 9))
+
+	if (pdest) {
+		if (strlen(pdest) != 9) {
+			pr_err("%s: Unknown pdest specified\n", __func__);
+			return -EINVAL;
+		}
+		if (!strncmp(pdest, "display_1", 9))
 		panel_data->panel_info.pdest = DISPLAY_1;
 	else if (!strncmp(pdest, "display_2", 9))
 		panel_data->panel_info.pdest = DISPLAY_2;
@@ -418,6 +420,11 @@ static int mdss_panel_parse_dt(struct platform_device *pdev,
 							__func__);
 		panel_data->panel_info.pdest = DISPLAY_1;
 	}
+	} else {
+		pr_err("%s: pdest not specified\n", __func__);
+		return -EINVAL;
+
+}
 
 	panel_data->disp_en_gpio = of_get_named_gpio(np, "qcom,enable-gpio", 0);
 
