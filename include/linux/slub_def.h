@@ -101,4 +101,8 @@ struct kmem_cache {
 	struct kmem_cache_node *node[MAX_NUMNODES];
 };
 
+#ifdef CONFIG_SYSFS
+#define SLAB_SUPPORTS_SYSFS
+#endif
+
 #endif /* _LINUX_SLUB_DEF_H */
