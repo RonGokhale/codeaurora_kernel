@@ -1031,7 +1031,7 @@ static int __init init_hugetlbfs_fs(void)
 	int i;
 
 	if (!hugepages_supported()) {
-		printk(KERN_ERR "hugetlbfs: Disabling because there are no supported hugepage sizes\n");
+		pr_info("hugetlbfs: disabling because there are no supported hugepage sizes\n");
 		return -ENOTSUPP;
 	}
 
