@@ -1,6 +1,8 @@
 #ifndef LINUX_MM_DEBUG_H
 #define LINUX_MM_DEBUG_H 1
 
+#include <linux/stringify.h>
+
 struct page;
 
 extern void dump_page(struct page *page, const char *reason);
