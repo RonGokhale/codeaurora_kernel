@@ -36,12 +36,12 @@
 #include <linux/personality.h>
 #include <linux/random.h>
 
-/* we construct an artificial offset for the mapping based on the physical
- * address of the kernel mapping variable */
+/* the address_space struct holds a field i_mmap_lastmmap with the last mapping
+ * of this file for us */
 #define GET_LAST_MMAP(filp)		\
-	(filp ? ((unsigned long) filp->f_mapping) >> 8 : 0UL)
+	(filp ? filp->f_mapping->i_mmap_lastmmap : 0UL)
 #define SET_LAST_MMAP(filp, val)	\
-	 { /* nothing */ }
+	{ if (filp) filp->f_mapping->i_mmap_lastmmap = (val); }
 
 static int get_offset(unsigned int last_mmap)
 {
@@ -72,10 +72,10 @@ static unsigned long mmap_upper_limit(void)
 {
 	unsigned long stack_base;
 
-	/* Limit stack size to 1GB - see setup_arg_pages() in fs/exec.c */
+	/* Limit stack size - see setup_arg_pages() in fs/exec.c */
 	stack_base = rlimit_max(RLIMIT_STACK);
-	if (stack_base > (1 << 30))
-		stack_base = 1 << 30;
+	if (stack_base > CONFIG_MAX_STACK_SIZE_MB*1024*1024)
+		stack_base = CONFIG_MAX_STACK_SIZE_MB*1024*1024;
 
 	return PAGE_ALIGN(STACK_TOP - stack_base);
 }

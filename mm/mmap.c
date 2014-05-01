@@ -212,8 +212,13 @@ static void __remove_shared_vm_struct(struct vm_area_struct *vma,
 {
 	if (vma->vm_flags & VM_DENYWRITE)
 		atomic_inc(&file_inode(file)->i_writecount);
-	if (vma->vm_flags & VM_SHARED)
+	if (vma->vm_flags & VM_SHARED) {
 		mapping->i_mmap_writable--;
+#ifdef CONFIG_MMAP_TRACKING
+		if (mapping->i_mmap_writable == 0)
+			mapping->i_mmap_lastmmap = 0;
+#endif
+	}
 
 	flush_dcache_mmap_lock(mapping);
 	if (unlikely(vma->vm_flags & VM_NONLINEAR))
