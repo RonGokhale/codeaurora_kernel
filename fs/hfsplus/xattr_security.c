@@ -7,6 +7,8 @@
  */
 
 #include <linux/security.h>
+#include <linux/nls.h>
+
 #include "hfsplus_fs.h"
 #include "xattr.h"
 #include "acl.h"
