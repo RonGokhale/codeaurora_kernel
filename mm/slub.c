@@ -215,8 +215,6 @@ static void memcg_propagate_slab_attrs(struct kmem_cache *s);
 static inline int sysfs_slab_add(struct kmem_cache *s) { return 0; }
 static inline int sysfs_slab_alias(struct kmem_cache *s, const char *p)
 							{ return 0; }
-static inline void sysfs_slab_remove(struct kmem_cache *s) { }
-
 static inline void memcg_propagate_slab_attrs(struct kmem_cache *s) { }
 #endif
 
