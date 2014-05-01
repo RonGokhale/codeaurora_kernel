@@ -338,7 +338,7 @@ lnet_counters_get(lnet_counters_t *counters)
 		counters->send_count   += ctr->send_count;
 		counters->recv_count   += ctr->recv_count;
 		counters->route_count  += ctr->route_count;
-		counters->drop_length  += ctr->drop_length;
+		counters->drop_count   += ctr->drop_count;
 		counters->send_length  += ctr->send_length;
 		counters->recv_length  += ctr->recv_length;
 		counters->route_length += ctr->route_length;
@@ -986,12 +986,11 @@ lnet_shutdown_lndnis (void)
 			break;
 		}
 
-		while (!list_empty(&ni->ni_list)) {
+		if (!list_empty(&ni->ni_list)) {
 			lnet_net_unlock(LNET_LOCK_EX);
 			++i;
 			if ((i & (-i)) == i) {
-				CDEBUG(D_WARNING,
-				       "Waiting for zombie LNI %s\n",
+				CDEBUG(D_WARNING, "Waiting for zombie LNI %s\n",
 				       libcfs_nid2str(ni->ni_nid));
 			}
 			set_current_state(TASK_UNINTERRUPTIBLE);
@@ -1016,6 +1015,8 @@ lnet_shutdown_lndnis (void)
 			       libcfs_nid2str(ni->ni_nid));
 
 		lnet_ni_free(ni);
+		i = 2;
+
 		lnet_net_lock(LNET_LOCK_EX);
 	}
 

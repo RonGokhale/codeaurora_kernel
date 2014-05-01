@@ -21,8 +21,6 @@
 #include <recv_osdep.h>
 #include <linux/vmalloc.h>
 
-#define RT_TAG	('1178')
-
 /*
 * Translate the OS dependent @param error_code to OS independent RTW_STATUS_CODE23a
 * @return: one of RTW_STATUS_CODE23a
@@ -69,17 +67,6 @@ u32 _rtw_queue_empty23a(struct rtw_queue *pqueue)
 		return true;
 	else
 		return false;
-}
-
-u64 rtw_modular6423a(u64 x, u64 y)
-{
-	return do_div(x, y);
-}
-
-u64 rtw_division6423a(u64 x, u64 y)
-{
-	do_div(x, y);
-	return x;
 }
 
 /* rtw_cbuf_full23a - test if cbuf is full
