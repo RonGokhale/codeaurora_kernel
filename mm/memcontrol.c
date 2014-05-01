@@ -686,10 +686,10 @@ mem_cgroup_zoneinfo(struct mem_cgroup *memcg, int nid, int zid)
 static struct mem_cgroup_per_zone *
 mem_cgroup_zoneinfo_zone(struct mem_cgroup *memcg, struct zone *zone)
 {
-       int nid = zone_to_nid(zone);
-       int zid = zone_idx(zone);
+	int nid = zone_to_nid(zone);
+	int zid = zone_idx(zone);
 
-       return mem_cgroup_zoneinfo(memcg, nid, zid);
+	return mem_cgroup_zoneinfo(memcg, nid, zid);
 }
 
 struct cgroup_subsys_state *mem_cgroup_css(struct mem_cgroup *memcg)
