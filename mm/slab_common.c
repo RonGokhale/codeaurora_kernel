@@ -361,7 +361,7 @@ void kmem_cache_destroy(struct kmem_cache *s)
 #ifdef SLAB_SUPPORTS_SYSFS
 	sysfs_slab_remove(s);
 #else
-	slab_kmem_cache_release();
+	slab_kmem_cache_release(s);
 #endif
 	goto out_put_cpus;
 
