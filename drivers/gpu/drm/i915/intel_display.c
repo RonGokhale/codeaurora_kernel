@@ -10522,6 +10522,8 @@ void intel_modeset_init(struct drm_device *dev)
 		}
 	}
 
+	intel_init_dpio(dev);
+
 	intel_cpu_pll_init(dev);
 	intel_shared_dpll_init(dev);
 
