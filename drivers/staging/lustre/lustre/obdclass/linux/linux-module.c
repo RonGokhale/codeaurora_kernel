@@ -122,6 +122,8 @@ int obd_ioctl_getdata(char **buf, int *len, void *arg)
 		OBD_FREE_LARGE(*buf, hdr.ioc_len);
 		return err;
 	}
+	if (hdr.ioc_len != data->ioc_len)
+		return -EINVAL;
 
 	if (obd_ioctl_is_invalid(data)) {
 		CERROR("ioctl not correctly formatted\n");
@@ -244,7 +246,7 @@ static int obd_proc_health_seq_show(struct seq_file *m, void *v)
 		if (obd->obd_stopping)
 			continue;
 
-		class_incref(obd, __FUNCTION__, current);
+		class_incref(obd, __func__, current);
 		read_unlock(&obd_dev_lock);
 
 		if (obd_health_check(NULL, obd)) {
@@ -252,7 +254,7 @@ static int obd_proc_health_seq_show(struct seq_file *m, void *v)
 				      obd->obd_name);
 			rc++;
 		}
-		class_decref(obd, __FUNCTION__, current);
+		class_decref(obd, __func__, current);
 		read_lock(&obd_dev_lock);
 	}
 	read_unlock(&obd_dev_lock);
@@ -277,8 +279,15 @@ static ssize_t obd_proc_jobid_var_seq_write(struct file *file, const char *buffe
 		return -EINVAL;
 
 	memset(obd_jobid_var, 0, JOBSTATS_JOBID_VAR_MAX_LEN + 1);
+
+	/* This might leave the var invalid on error, which is probably fine.*/
+	if (copy_from_user(obd_jobid_var, buffer, count))
+		return -EFAULT;
+
 	/* Trim the trailing '\n' if any */
-	memcpy(obd_jobid_var, buffer, count - (buffer[count - 1] == '\n'));
+	if (obd_jobid_var[count - 1] == '\n')
+		obd_jobid_var[count - 1] = 0;
+
 	return count;
 }
 LPROC_SEQ_FOPS(obd_proc_jobid_var);
