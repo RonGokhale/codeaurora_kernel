@@ -13,18 +13,18 @@
  * kind, whether express or implied.
  */
 
-#include <linux/module.h>
+#include <linux/bitrev.h>
 #include <linux/clk.h>
 #include <linux/clk-private.h>
-#include <linux/bitrev.h>
-#include <linux/regmap.h>
+#include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
+#include <linux/regmap.h>
 
 #include <sound/asoundef.h>
-#include <sound/soc.h>
 #include <sound/dmaengine_pcm.h>
+#include <sound/soc.h>
 
 #include "fsl_spdif.h"
 #include "imx-pcm.h"
@@ -80,6 +80,8 @@ struct fsl_spdif_priv {
 	u8 rxclk_src;
 	struct clk *txclk[SPDIF_TXRATE_MAX];
 	struct clk *rxclk;
+	struct clk *coreclk;
+	struct clk *sysclk;
 	struct snd_dmaengine_dai_dma_data dma_params_tx;
 	struct snd_dmaengine_dai_dma_data dma_params_rx;
 
@@ -423,10 +425,16 @@ static int fsl_spdif_startup(struct snd_pcm_substream *substream,
 
 	/* Reset module and interrupts only for first initialization */
 	if (!cpu_dai->active) {
+		ret = clk_prepare_enable(spdif_priv->coreclk);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to enable core clock\n");
+			return ret;
+		}
+
 		ret = spdif_softreset(spdif_priv);
 		if (ret) {
 			dev_err(&pdev->dev, "failed to soft reset\n");
-			return ret;
+			goto err;
 		}
 
 		/* Disable all the interrupts */
@@ -454,6 +462,11 @@ static int fsl_spdif_startup(struct snd_pcm_substream *substream,
 	regmap_update_bits(regmap, REG_SPDIF_SCR, SCR_LOW_POWER, 0);
 
 	return 0;
+
+err:
+	clk_disable_unprepare(spdif_priv->coreclk);
+
+	return ret;
 }
 
 static void fsl_spdif_shutdown(struct snd_pcm_substream *substream,
@@ -484,6 +497,7 @@ static void fsl_spdif_shutdown(struct snd_pcm_substream *substream,
 		spdif_intr_status_clear(spdif_priv);
 		regmap_update_bits(regmap, REG_SPDIF_SCR,
 				SCR_LOW_POWER, SCR_LOW_POWER);
+		clk_disable_unprepare(spdif_priv->coreclk);
 	}
 }
 
@@ -754,7 +768,7 @@ static int spdif_get_rxclk_rate(struct fsl_spdif_priv *spdif_priv,
 	clksrc = (phaseconf >> SRPC_CLKSRC_SEL_OFFSET) & 0xf;
 	if (srpc_dpll_locked[clksrc] && (phaseconf & SRPC_DPLL_LOCKED)) {
 		/* Get bus clock from system */
-		busclk_freq = clk_get_rate(spdif_priv->rxclk);
+		busclk_freq = clk_get_rate(spdif_priv->sysclk);
 	}
 
 	/* FreqMeas_CLK = (BUS_CLK * FreqMeas) / 2 ^ 10 / GAINSEL / 128 */
@@ -1134,6 +1148,20 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	/* Get system clock for rx clock rate calculation */
+	spdif_priv->sysclk = devm_clk_get(&pdev->dev, "rxtx5");
+	if (IS_ERR(spdif_priv->sysclk)) {
+		dev_err(&pdev->dev, "no sys clock (rxtx5) in devicetree\n");
+		return PTR_ERR(spdif_priv->sysclk);
+	}
+
+	/* Get core clock for data register access via DMA */
+	spdif_priv->coreclk = devm_clk_get(&pdev->dev, "core");
+	if (IS_ERR(spdif_priv->coreclk)) {
+		dev_err(&pdev->dev, "no core clock in devicetree\n");
+		return PTR_ERR(spdif_priv->coreclk);
+	}
+
 	/* Select clock source for rx/tx clock */
 	spdif_priv->rxclk = devm_clk_get(&pdev->dev, "rxtx1");
 	if (IS_ERR(spdif_priv->rxclk)) {
@@ -1186,6 +1214,7 @@ static int fsl_spdif_probe(struct platform_device *pdev)
 
 static const struct of_device_id fsl_spdif_dt_ids[] = {
 	{ .compatible = "fsl,imx35-spdif", },
+	{ .compatible = "fsl,vf610-spdif", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_spdif_dt_ids);
