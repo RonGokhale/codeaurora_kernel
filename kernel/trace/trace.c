@@ -275,7 +275,7 @@ int call_filter_check_discard(struct ftrace_event_call *call, void *rec,
 }
 EXPORT_SYMBOL_GPL(call_filter_check_discard);
 
-cycle_t buffer_ftrace_now(struct trace_buffer *buf, int cpu)
+static cycle_t buffer_ftrace_now(struct trace_buffer *buf, int cpu)
 {
 	u64 ts;
 
@@ -599,7 +599,7 @@ static int alloc_snapshot(struct trace_array *tr)
 	return 0;
 }
 
-void free_snapshot(struct trace_array *tr)
+static void free_snapshot(struct trace_array *tr)
 {
 	/*
 	 * We don't free the ring buffer. instead, resize it because
@@ -963,27 +963,9 @@ static ssize_t trace_seq_to_buffer(struct trace_seq *s, void *buf, size_t cnt)
 	return cnt;
 }
 
-/*
- * ftrace_max_lock is used to protect the swapping of buffers
- * when taking a max snapshot. The buffers themselves are
- * protected by per_cpu spinlocks. But the action of the swap
- * needs its own lock.
- *
- * This is defined as a arch_spinlock_t in order to help
- * with performance when lockdep debugging is enabled.
- *
- * It is also used in other places outside the update_max_tr
- * so it needs to be defined outside of the
- * CONFIG_TRACER_MAX_TRACE.
- */
-static arch_spinlock_t ftrace_max_lock =
-	(arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
-
 unsigned long __read_mostly	tracing_thresh;
 
 #ifdef CONFIG_TRACER_MAX_TRACE
-unsigned long __read_mostly	tracing_max_latency;
-
 /*
  * Copy the new maximum trace into the separate maximum-trace
  * structure. (this way the maximum trace is permanently saved,
@@ -1000,7 +982,7 @@ __update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu)
 	max_buf->cpu = cpu;
 	max_buf->time_start = data->preempt_timestamp;
 
-	max_data->saved_latency = tracing_max_latency;
+	max_data->saved_latency = tr->max_latency;
 	max_data->critical_start = data->critical_start;
 	max_data->critical_end = data->critical_end;
 
@@ -1048,14 +1030,14 @@ update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu)
 		return;
 	}
 
-	arch_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&tr->max_lock);
 
 	buf = tr->trace_buffer.buffer;
 	tr->trace_buffer.buffer = tr->max_buffer.buffer;
 	tr->max_buffer.buffer = buf;
 
 	__update_max_tr(tr, tsk, cpu);
-	arch_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&tr->max_lock);
 }
 
 /**
@@ -1081,7 +1063,7 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 		return;
 	}
 
-	arch_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&tr->max_lock);
 
 	ret = ring_buffer_swap_cpu(tr->max_buffer.buffer, tr->trace_buffer.buffer, cpu);
 
@@ -1099,11 +1081,11 @@ update_max_tr_single(struct trace_array *tr, struct task_struct *tsk, int cpu)
 	WARN_ON_ONCE(ret && ret != -EAGAIN && ret != -EBUSY);
 
 	__update_max_tr(tr, tsk, cpu);
-	arch_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&tr->max_lock);
 }
 #endif /* CONFIG_TRACER_MAX_TRACE */
 
-static void default_wait_pipe(struct trace_iterator *iter)
+static void wait_on_pipe(struct trace_iterator *iter)
 {
 	/* Iterators are static, they should be filled or empty */
 	if (trace_buffer_iter(iter, iter->cpu_file))
@@ -1220,8 +1202,6 @@ int register_tracer(struct tracer *type)
 	else
 		if (!type->flags->opts)
 			type->flags->opts = dummy_tracer_opt;
-	if (!type->wait_pipe)
-		type->wait_pipe = default_wait_pipe;
 
 	ret = run_tracer_selftest(type);
 	if (ret < 0)
@@ -1353,7 +1333,7 @@ void tracing_start(void)
 	}
 
 	/* Prevent the buffers from switching */
-	arch_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&global_trace.max_lock);
 
 	buffer = global_trace.trace_buffer.buffer;
 	if (buffer)
@@ -1365,7 +1345,7 @@ void tracing_start(void)
 		ring_buffer_record_enable(buffer);
 #endif
 
-	arch_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&global_trace.max_lock);
 
 	ftrace_start();
  out:
@@ -1420,7 +1400,7 @@ void tracing_stop(void)
 		goto out;
 
 	/* Prevent the buffers from switching */
-	arch_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&global_trace.max_lock);
 
 	buffer = global_trace.trace_buffer.buffer;
 	if (buffer)
@@ -1432,7 +1412,7 @@ void tracing_stop(void)
 		ring_buffer_record_disable(buffer);
 #endif
 
-	arch_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&global_trace.max_lock);
 
  out:
 	raw_spin_unlock_irqrestore(&global_trace.start_lock, flags);
@@ -3333,7 +3313,7 @@ tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 	mutex_lock(&tracing_cpumask_update_lock);
 
 	local_irq_disable();
-	arch_spin_lock(&ftrace_max_lock);
+	arch_spin_lock(&tr->max_lock);
 	for_each_tracing_cpu(cpu) {
 		/*
 		 * Increase/decrease the disabled counter if we are
@@ -3350,7 +3330,7 @@ tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 			ring_buffer_record_enable_cpu(tr->trace_buffer.buffer, cpu);
 		}
 	}
-	arch_spin_unlock(&ftrace_max_lock);
+	arch_spin_unlock(&tr->max_lock);
 	local_irq_enable();
 
 	cpumask_copy(tr->tracing_cpumask, tracing_cpumask_new);
@@ -4225,25 +4205,6 @@ tracing_poll_pipe(struct file *filp, poll_table *poll_table)
 	return trace_poll(iter, filp, poll_table);
 }
 
-/*
- * This is a make-shift waitqueue.
- * A tracer might use this callback on some rare cases:
- *
- *  1) the current tracer might hold the runqueue lock when it wakes up
- *     a reader, hence a deadlock (sched, function, and function graph tracers)
- *  2) the function tracers, trace all functions, we don't want
- *     the overhead of calling wake_up and friends
- *     (and tracing them too)
- *
- *     Anyway, this is really very primitive wakeup.
- */
-void poll_wait_pipe(struct trace_iterator *iter)
-{
-	set_current_state(TASK_INTERRUPTIBLE);
-	/* sleep for 100 msecs, and try again. */
-	schedule_timeout(HZ / 10);
-}
-
 /* Must be called with trace_types_lock mutex held. */
 static int tracing_wait_pipe(struct file *filp)
 {
@@ -4254,15 +4215,6 @@ static int tracing_wait_pipe(struct file *filp)
 		if ((filp->f_flags & O_NONBLOCK)) {
 			return -EAGAIN;
 		}
-
-		mutex_unlock(&iter->mutex);
-
-		iter->trace->wait_pipe(iter);
-
-		mutex_lock(&iter->mutex);
-
-		if (signal_pending(current))
-			return -EINTR;
 
 		/*
 		 * We block until we read something and tracing is disabled.
@@ -4275,6 +4227,15 @@ static int tracing_wait_pipe(struct file *filp)
 		 */
 		if (!tracing_is_on() && iter->pos)
 			break;
+
+		mutex_unlock(&iter->mutex);
+
+		wait_on_pipe(iter);
+
+		mutex_lock(&iter->mutex);
+
+		if (signal_pending(current))
+			return -EINTR;
 	}
 
 	return 1;
@@ -5197,7 +5158,7 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 				goto out_unlock;
 			}
 			mutex_unlock(&trace_types_lock);
-			iter->trace->wait_pipe(iter);
+			wait_on_pipe(iter);
 			mutex_lock(&trace_types_lock);
 			if (signal_pending(current)) {
 				size = -EINTR;
@@ -5408,7 +5369,7 @@ tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 			goto out;
 		}
 		mutex_unlock(&trace_types_lock);
-		iter->trace->wait_pipe(iter);
+		wait_on_pipe(iter);
 		mutex_lock(&trace_types_lock);
 		if (signal_pending(current)) {
 			ret = -EINTR;
@@ -6131,6 +6092,8 @@ static int new_instance_create(const char *name)
 
 	raw_spin_lock_init(&tr->start_lock);
 
+	tr->max_lock = (arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
+
 	tr->current_trace = &nop_trace;
 
 	INIT_LIST_HEAD(&tr->systems);
@@ -6328,6 +6291,11 @@ init_tracer_debugfs(struct trace_array *tr, struct dentry *d_tracer)
 	trace_create_file("tracing_on", 0644, d_tracer,
 			  tr, &rb_simple_fops);
 
+#ifdef CONFIG_TRACER_MAX_TRACE
+	trace_create_file("tracing_max_latency", 0644, d_tracer,
+			&tr->max_latency, &tracing_max_lat_fops);
+#endif
+
 	if (ftrace_create_function_files(tr, d_tracer))
 		WARN(1, "Could not allocate function filter files");
 
@@ -6352,11 +6320,6 @@ static __init int tracer_init_debugfs(void)
 		return 0;
 
 	init_tracer_debugfs(&global_trace, d_tracer);
-
-#ifdef CONFIG_TRACER_MAX_TRACE
-	trace_create_file("tracing_max_latency", 0644, d_tracer,
-			&tracing_max_latency, &tracing_max_lat_fops);
-#endif
 
 	trace_create_file("tracing_thresh", 0644, d_tracer,
 			&tracing_thresh, &tracing_max_lat_fops);
@@ -6628,6 +6591,10 @@ __init static int tracer_alloc_buffers(void)
 	 * just a bootstrap of current_trace anyway.
 	 */
 	global_trace.current_trace = &nop_trace;
+
+	global_trace.max_lock = (arch_spinlock_t)__ARCH_SPIN_LOCK_UNLOCKED;
+
+	ftrace_init_global_array_ops(&global_trace);
 
 	register_tracer(&nop_trace);
 
