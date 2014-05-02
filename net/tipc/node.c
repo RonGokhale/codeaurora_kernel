@@ -144,11 +144,13 @@ void tipc_node_stop(void)
 void tipc_node_link_up(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
 	struct tipc_link **active = &n_ptr->active_links[0];
+	u32 addr = n_ptr->addr;
 
 	n_ptr->working_links++;
-
+	tipc_nametbl_publish(TIPC_LINK_STATE, addr, addr, TIPC_NODE_SCOPE,
+			     l_ptr->bearer_id, addr);
 	pr_info("Established link <%s> on network plane %c\n",
-		l_ptr->name, l_ptr->b_ptr->net_plane);
+		l_ptr->name, l_ptr->net_plane);
 
 	if (!active[0]) {
 		active[0] = active[1] = l_ptr;
@@ -203,16 +205,18 @@ static void node_select_active_links(struct tipc_node *n_ptr)
 void tipc_node_link_down(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
 	struct tipc_link **active;
+	u32 addr = n_ptr->addr;
 
 	n_ptr->working_links--;
+	tipc_nametbl_withdraw(TIPC_LINK_STATE, addr, l_ptr->bearer_id, addr);
 
 	if (!tipc_link_is_active(l_ptr)) {
 		pr_info("Lost standby link <%s> on network plane %c\n",
-			l_ptr->name, l_ptr->b_ptr->net_plane);
+			l_ptr->name, l_ptr->net_plane);
 		return;
 	}
 	pr_info("Lost link <%s> on network plane %c\n",
-		l_ptr->name, l_ptr->b_ptr->net_plane);
+		l_ptr->name, l_ptr->net_plane);
 
 	active = &n_ptr->active_links[0];
 	if (active[0] == l_ptr)
@@ -239,7 +243,7 @@ int tipc_node_is_up(struct tipc_node *n_ptr)
 
 void tipc_node_attach_link(struct tipc_node *n_ptr, struct tipc_link *l_ptr)
 {
-	n_ptr->links[l_ptr->b_ptr->identity] = l_ptr;
+	n_ptr->links[l_ptr->bearer_id] = l_ptr;
 	spin_lock_bh(&node_list_lock);
 	tipc_num_links++;
 	spin_unlock_bh(&node_list_lock);
@@ -273,14 +277,12 @@ static void node_name_purge_complete(unsigned long node_addr)
 {
 	struct tipc_node *n_ptr;
 
-	read_lock_bh(&tipc_net_lock);
 	n_ptr = tipc_node_find(node_addr);
 	if (n_ptr) {
 		tipc_node_lock(n_ptr);
 		n_ptr->block_setup &= ~WAIT_NAMES_GONE;
 		tipc_node_unlock(n_ptr);
 	}
-	read_unlock_bh(&tipc_net_lock);
 }
 
 static void node_lost_contact(struct tipc_node *n_ptr)
@@ -435,4 +437,31 @@ struct sk_buff *tipc_node_get_links(const void *req_tlv_area, int req_tlv_space)
 	}
 	rcu_read_unlock();
 	return buf;
+}
+
+/**
+ * tipc_node_get_linkname - get the name of a link
+ *
+ * @bearer_id: id of the bearer
+ * @node: peer node address
+ * @linkname: link name output buffer
+ *
+ * Returns 0 on success
+ */
+int tipc_node_get_linkname(u32 bearer_id, u32 addr, char *linkname, size_t len)
+{
+	struct tipc_link *link;
+	struct tipc_node *node = tipc_node_find(addr);
+
+	if ((bearer_id >= MAX_BEARERS) || !node)
+		return -EINVAL;
+	tipc_node_lock(node);
+	link = node->links[bearer_id];
+	if (link) {
+		strncpy(linkname, link->name, len);
+		tipc_node_unlock(node);
+		return 0;
+	}
+	tipc_node_unlock(node);
+	return -EINVAL;
 }
