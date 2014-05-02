@@ -52,8 +52,16 @@
 #define MPC_DMA_DESCRIPTORS	64
 
 /* Macro definitions */
-#define MPC_DMA_CHANNELS	64
 #define MPC_DMA_TCD_OFFSET	0x1000
+
+/*
+ * Maximum channel counts for individual hardware variants
+ * and the maximum channel count over all supported controllers,
+ * used for data structure size
+ */
+#define MPC8308_DMACHAN_MAX	16
+#define MPC512x_DMACHAN_MAX	64
+#define MPC_DMA_CHANNELS	64
 
 /* Arbitration mode of group and channel */
 #define MPC_DMA_DMACR_EDCG	(1 << 31)
@@ -649,13 +657,15 @@ static int mpc_dma_probe(struct platform_device *op)
 	mdma = devm_kzalloc(dev, sizeof(struct mpc_dma), GFP_KERNEL);
 	if (!mdma) {
 		dev_err(dev, "Memory exhausted!\n");
-		return -ENOMEM;
+		retval = -ENOMEM;
+		goto err;
 	}
 
 	mdma->irq = irq_of_parse_and_map(dn, 0);
 	if (mdma->irq == NO_IRQ) {
 		dev_err(dev, "Error mapping IRQ!\n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto err;
 	}
 
 	if (of_device_is_compatible(dn, "fsl,mpc8308-dma")) {
@@ -663,14 +673,15 @@ static int mpc_dma_probe(struct platform_device *op)
 		mdma->irq2 = irq_of_parse_and_map(dn, 1);
 		if (mdma->irq2 == NO_IRQ) {
 			dev_err(dev, "Error mapping IRQ!\n");
-			return -EINVAL;
+			retval = -EINVAL;
+			goto err_dispose1;
 		}
 	}
 
 	retval = of_address_to_resource(dn, 0, &res);
 	if (retval) {
 		dev_err(dev, "Error parsing memory region!\n");
-		return retval;
+		goto err_dispose2;
 	}
 
 	regs_start = res.start;
@@ -678,31 +689,34 @@ static int mpc_dma_probe(struct platform_device *op)
 
 	if (!devm_request_mem_region(dev, regs_start, regs_size, DRV_NAME)) {
 		dev_err(dev, "Error requesting memory region!\n");
-		return -EBUSY;
+		retval = -EBUSY;
+		goto err_dispose2;
 	}
 
 	mdma->regs = devm_ioremap(dev, regs_start, regs_size);
 	if (!mdma->regs) {
 		dev_err(dev, "Error mapping memory region!\n");
-		return -ENOMEM;
+		retval = -ENOMEM;
+		goto err_dispose2;
 	}
 
 	mdma->tcd = (struct mpc_dma_tcd *)((u8 *)(mdma->regs)
 							+ MPC_DMA_TCD_OFFSET);
 
-	retval = devm_request_irq(dev, mdma->irq, &mpc_dma_irq, 0, DRV_NAME,
-									mdma);
+	retval = request_irq(mdma->irq, &mpc_dma_irq, 0, DRV_NAME, mdma);
 	if (retval) {
 		dev_err(dev, "Error requesting IRQ!\n");
-		return -EINVAL;
+		retval = -EINVAL;
+		goto err_dispose2;
 	}
 
 	if (mdma->is_mpc8308) {
-		retval = devm_request_irq(dev, mdma->irq2, &mpc_dma_irq, 0,
-				DRV_NAME, mdma);
+		retval = request_irq(mdma->irq2, &mpc_dma_irq, 0,
+							DRV_NAME, mdma);
 		if (retval) {
 			dev_err(dev, "Error requesting IRQ2!\n");
-			return -EINVAL;
+			retval = -EINVAL;
+			goto err_free1;
 		}
 	}
 
@@ -710,10 +724,10 @@ static int mpc_dma_probe(struct platform_device *op)
 
 	dma = &mdma->dma;
 	dma->dev = dev;
-	if (!mdma->is_mpc8308)
-		dma->chancnt = MPC_DMA_CHANNELS;
+	if (mdma->is_mpc8308)
+		dma->chancnt = MPC8308_DMACHAN_MAX;
 	else
-		dma->chancnt = 16; /* MPC8308 DMA has only 16 channels */
+		dma->chancnt = MPC512x_DMACHAN_MAX;
 	dma->device_alloc_chan_resources = mpc_dma_alloc_chan_resources;
 	dma->device_free_chan_resources = mpc_dma_free_chan_resources;
 	dma->device_issue_pending = mpc_dma_issue_pending;
@@ -747,7 +761,19 @@ static int mpc_dma_probe(struct platform_device *op)
 	 * - Round-robin group arbitration,
 	 * - Round-robin channel arbitration.
 	 */
-	if (!mdma->is_mpc8308) {
+	if (mdma->is_mpc8308) {
+		/* MPC8308 has 16 channels and lacks some registers */
+		out_be32(&mdma->regs->dmacr, MPC_DMA_DMACR_ERCA);
+
+		/* enable snooping */
+		out_be32(&mdma->regs->dmagpor, MPC_DMA_DMAGPOR_SNOOP_ENABLE);
+		/* Disable error interrupts */
+		out_be32(&mdma->regs->dmaeeil, 0);
+
+		/* Clear interrupts status */
+		out_be32(&mdma->regs->dmaintl, 0xFFFF);
+		out_be32(&mdma->regs->dmaerrl, 0xFFFF);
+	} else {
 		out_be32(&mdma->regs->dmacr, MPC_DMA_DMACR_EDCG |
 					MPC_DMA_DMACR_ERGA | MPC_DMA_DMACR_ERCA);
 
@@ -768,28 +794,27 @@ static int mpc_dma_probe(struct platform_device *op)
 		/* Route interrupts to IPIC */
 		out_be32(&mdma->regs->dmaihsa, 0);
 		out_be32(&mdma->regs->dmailsa, 0);
-	} else {
-		/* MPC8308 has 16 channels and lacks some registers */
-		out_be32(&mdma->regs->dmacr, MPC_DMA_DMACR_ERCA);
-
-		/* enable snooping */
-		out_be32(&mdma->regs->dmagpor, MPC_DMA_DMAGPOR_SNOOP_ENABLE);
-		/* Disable error interrupts */
-		out_be32(&mdma->regs->dmaeeil, 0);
-
-		/* Clear interrupts status */
-		out_be32(&mdma->regs->dmaintl, 0xFFFF);
-		out_be32(&mdma->regs->dmaerrl, 0xFFFF);
 	}
 
 	/* Register DMA engine */
 	dev_set_drvdata(dev, mdma);
 	retval = dma_async_device_register(dma);
-	if (retval) {
-		devm_free_irq(dev, mdma->irq, mdma);
-		irq_dispose_mapping(mdma->irq);
-	}
+	if (retval)
+		goto err_free2;
 
+	return retval;
+
+err_free2:
+	if (mdma->is_mpc8308)
+		free_irq(mdma->irq2, mdma);
+err_free1:
+	free_irq(mdma->irq, mdma);
+err_dispose2:
+	if (mdma->is_mpc8308)
+		irq_dispose_mapping(mdma->irq2);
+err_dispose1:
+	irq_dispose_mapping(mdma->irq);
+err:
 	return retval;
 }
 
@@ -799,7 +824,11 @@ static int mpc_dma_remove(struct platform_device *op)
 	struct mpc_dma *mdma = dev_get_drvdata(dev);
 
 	dma_async_device_unregister(&mdma->dma);
-	devm_free_irq(dev, mdma->irq, mdma);
+	if (mdma->is_mpc8308) {
+		free_irq(mdma->irq2, mdma);
+		irq_dispose_mapping(mdma->irq2);
+	}
+	free_irq(mdma->irq, mdma);
 	irq_dispose_mapping(mdma->irq);
 
 	return 0;
@@ -807,6 +836,7 @@ static int mpc_dma_remove(struct platform_device *op)
 
 static struct of_device_id mpc_dma_match[] = {
 	{ .compatible = "fsl,mpc5121-dma", },
+	{ .compatible = "fsl,mpc8308-dma", },
 	{},
 };
 
