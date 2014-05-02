@@ -244,8 +244,7 @@ static int block_alloc(struct sst_module *module,
 		/* do we span > 1 blocks */
 		if (data->size > block->size) {
 			ret = block_alloc_contiguous(module, data,
-				block->offset + block->size,
-				data->size - block->size);
+				block->offset, data->size);
 			if (ret == 0)
 				return ret;
 		}
@@ -341,7 +340,7 @@ static int block_alloc_fixed(struct sst_module *module,
 
 			err = block_alloc_contiguous(module, data,
 				block->offset + block->size,
-				data->size - block->size + data->offset - block->offset);
+				data->size - block->size);
 			if (err < 0)
 				return -ENOMEM;
 
@@ -368,8 +367,7 @@ static int block_alloc_fixed(struct sst_module *module,
 		if (data->offset >= block->offset && data->offset < block_end) {
 
 			err = block_alloc_contiguous(module, data,
-				block->offset + block->size,
-				data->size - block->size);
+				block->offset, data->size);
 			if (err < 0)
 				return -ENOMEM;
 
@@ -498,9 +496,7 @@ struct sst_module *sst_mem_block_alloc_scratch(struct sst_dsp *dsp)
 
 	/* calculate required scratch size */
 	list_for_each_entry(sst_module, &dsp->module_list, list) {
-		if (scratch->s.size > sst_module->s.size)
-			scratch->s.size = scratch->s.size;
-		else
+		if (scratch->s.size < sst_module->s.size)
 			scratch->s.size = sst_module->s.size;
 	}
 
