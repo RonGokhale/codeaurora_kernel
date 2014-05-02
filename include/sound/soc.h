@@ -266,6 +266,13 @@
 		{.base = xbase, .num_regs = xregs,	      \
 		 .mask = xmask }) }
 
+#define SND_SOC_BYTES_EXT(xname, xcount, xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_bytes_info_ext, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct soc_bytes_ext) \
+		{.max = xcount} }
+
 #define SOC_SINGLE_XR_SX(xname, xregbase, xregcount, xnbits, \
 		xmin, xmax, xinvert) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
@@ -393,12 +400,6 @@ int devm_snd_soc_register_component(struct device *dev,
 			 const struct snd_soc_component_driver *cmpnt_drv,
 			 struct snd_soc_dai_driver *dai_drv, int num_dai);
 void snd_soc_unregister_component(struct device *dev);
-int snd_soc_codec_volatile_register(struct snd_soc_codec *codec,
-				    unsigned int reg);
-int snd_soc_codec_readable_register(struct snd_soc_codec *codec,
-				    unsigned int reg);
-int snd_soc_codec_writable_register(struct snd_soc_codec *codec,
-				    unsigned int reg);
 int snd_soc_codec_set_cache_io(struct snd_soc_codec *codec,
 			       struct regmap *regmap);
 int snd_soc_cache_sync(struct snd_soc_codec *codec);
@@ -469,12 +470,12 @@ static inline void snd_soc_jack_free_gpios(struct snd_soc_jack *jack, int count,
 #endif
 
 /* codec register bit access */
-int snd_soc_update_bits(struct snd_soc_codec *codec, unsigned short reg,
+int snd_soc_update_bits(struct snd_soc_codec *codec, unsigned int reg,
 				unsigned int mask, unsigned int value);
 int snd_soc_update_bits_locked(struct snd_soc_codec *codec,
-			       unsigned short reg, unsigned int mask,
+			       unsigned int reg, unsigned int mask,
 			       unsigned int value);
-int snd_soc_test_bits(struct snd_soc_codec *codec, unsigned short reg,
+int snd_soc_test_bits(struct snd_soc_codec *codec, unsigned int reg,
 				unsigned int mask, unsigned int value);
 
 int snd_soc_new_ac97_codec(struct snd_soc_codec *codec,
@@ -540,6 +541,8 @@ int snd_soc_bytes_get(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol);
 int snd_soc_bytes_put(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol);
+int snd_soc_bytes_info_ext(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_info *ucontrol);
 int snd_soc_info_xr_sx(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo);
 int snd_soc_get_xr_sx(struct snd_kcontrol *kcontrol,
@@ -668,6 +671,7 @@ struct snd_soc_component {
 	unsigned int active;
 
 	unsigned int ignore_pmdown_time:1; /* pmdown_time is ignored at stop */
+	unsigned int registered_as_component:1;
 
 	struct list_head list;
 
@@ -692,9 +696,6 @@ struct snd_soc_codec {
 	struct list_head list;
 	struct list_head card_list;
 	int num_dai;
-	int (*volatile_register)(struct snd_soc_codec *, unsigned int);
-	int (*readable_register)(struct snd_soc_codec *, unsigned int);
-	int (*writable_register)(struct snd_soc_codec *, unsigned int);
 
 	/* runtime */
 	struct snd_ac97 *ac97;  /* for ad-hoc ac97 devices */
@@ -756,11 +757,6 @@ struct snd_soc_codec_driver {
 	/* codec IO */
 	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
 	int (*write)(struct snd_soc_codec *, unsigned int, unsigned int);
-	int (*display_register)(struct snd_soc_codec *, char *,
-				size_t, unsigned int);
-	int (*volatile_register)(struct snd_soc_codec *, unsigned int);
-	int (*readable_register)(struct snd_soc_codec *, unsigned int);
-	int (*writable_register)(struct snd_soc_codec *, unsigned int);
 	unsigned int reg_cache_size;
 	short reg_cache_step;
 	short reg_word_size;
@@ -791,6 +787,7 @@ struct snd_soc_platform_driver {
 	int (*remove)(struct snd_soc_platform *);
 	int (*suspend)(struct snd_soc_dai *dai);
 	int (*resume)(struct snd_soc_dai *dai);
+	struct snd_soc_component_driver component_driver;
 
 	/* pcm creation and destruction */
 	int (*pcm_new)(struct snd_soc_pcm_runtime *);
@@ -843,6 +840,8 @@ struct snd_soc_platform {
 	struct snd_soc_card *card;
 	struct list_head list;
 	struct list_head card_list;
+
+	struct snd_soc_component component;
 
 	struct snd_soc_dapm_context dapm;
 
@@ -1090,6 +1089,10 @@ struct soc_bytes {
 	u32 mask;
 };
 
+struct soc_bytes_ext {
+	int max;
+};
+
 /* multi register control */
 struct soc_mreg_control {
 	long min, max;
@@ -1120,10 +1123,23 @@ static inline struct snd_soc_codec *snd_soc_component_to_codec(
 	return container_of(component, struct snd_soc_codec, component);
 }
 
+/**
+ * snd_soc_component_to_platform() - Casts a component to the platform it is embedded in
+ * @component: The component to cast to a platform
+ *
+ * This function must only be used on components that are known to be platforms.
+ * Otherwise the behavior is undefined.
+ */
+static inline struct snd_soc_platform *snd_soc_component_to_platform(
+	struct snd_soc_component *component)
+{
+	return container_of(component, struct snd_soc_platform, component);
+}
+
 /* codec IO */
 unsigned int snd_soc_read(struct snd_soc_codec *codec, unsigned int reg);
-unsigned int snd_soc_write(struct snd_soc_codec *codec,
-			   unsigned int reg, unsigned int val);
+int snd_soc_write(struct snd_soc_codec *codec, unsigned int reg,
+	unsigned int val);
 
 /* device driver data */
 
@@ -1226,6 +1242,34 @@ static inline bool snd_soc_component_is_active(
 static inline bool snd_soc_codec_is_active(struct snd_soc_codec *codec)
 {
 	return snd_soc_component_is_active(&codec->component);
+}
+
+/**
+ * snd_soc_kcontrol_codec() - Returns the CODEC that registered the control
+ * @kcontrol: The control for which to get the CODEC
+ *
+ * Note: This function will only work correctly if the control has been
+ * registered with snd_soc_add_codec_controls() or via table based setup of
+ * snd_soc_codec_driver. Otherwise the behavior is undefined.
+ */
+static inline struct snd_soc_codec *snd_soc_kcontrol_codec(
+	struct snd_kcontrol *kcontrol)
+{
+	return snd_kcontrol_chip(kcontrol);
+}
+
+/**
+ * snd_soc_kcontrol_platform() - Returns the platform that registerd the control
+ * @kcontrol: The control for which to get the platform
+ *
+ * Note: This function will only work correctly if the control has been
+ * registered with snd_soc_add_platform_controls() or via table based setup of
+ * a snd_soc_platform_driver. Otherwise the behavior is undefined.
+ */
+static inline struct snd_soc_codec *snd_soc_kcontrol_platform(
+	struct snd_kcontrol *kcontrol)
+{
+	return snd_kcontrol_chip(kcontrol);
 }
 
 int snd_soc_util_init(void);
