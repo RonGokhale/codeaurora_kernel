@@ -62,7 +62,13 @@ struct cgroup_subsys_state {
 	/* the parent css */
 	struct cgroup_subsys_state *parent;
 
-	unsigned long flags;
+	/*
+	 * Subsys-unique ID.  0 is unused and root is always 1.  The
+	 * matching css can be looked up using css_from_id().
+	 */
+	int id;
+
+	unsigned int flags;
 
 	/* percpu_ref killing and RCU release */
 	struct rcu_head rcu_head;
@@ -144,8 +150,8 @@ struct cgroup {
 	/*
 	 * idr allocated in-hierarchy ID.
 	 *
-	 * The ID of the root cgroup is always 0, and a new cgroup
-	 * will be assigned with a smallest available ID.
+	 * ID 0 is not used, the ID of the root cgroup is always 1, and a
+	 * new cgroup will be assigned with a smallest available ID.
 	 *
 	 * Allocating/Removing ID must be protected by cgroup_mutex.
 	 */
@@ -185,7 +191,7 @@ struct cgroup {
 	u64 serial_nr;
 
 	/* the bitmask of subsystems enabled on the child cgroups */
-	unsigned long child_subsys_mask;
+	unsigned int child_subsys_mask;
 
 	/* Private pointers for each registered subsystem */
 	struct cgroup_subsys_state __rcu *subsys[CGROUP_SUBSYS_COUNT];
@@ -312,7 +318,7 @@ struct cgroup_root {
 	struct kernfs_root *kf_root;
 
 	/* The bitmask of subsystems attached to this hierarchy */
-	unsigned long subsys_mask;
+	unsigned int subsys_mask;
 
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
@@ -327,7 +333,7 @@ struct cgroup_root {
 	struct list_head root_list;
 
 	/* Hierarchy-specific flags */
-	unsigned long flags;
+	unsigned int flags;
 
 	/* IDs for cgroups in this hierarchy */
 	struct idr cgroup_idr;
@@ -654,6 +660,9 @@ struct cgroup_subsys {
 
 	/* link to parent, protected by cgroup_lock() */
 	struct cgroup_root *root;
+
+	/* idr for css->id */
+	struct idr css_idr;
 
 	/*
 	 * List of cftypes.  Each entry is the first entry of an array
