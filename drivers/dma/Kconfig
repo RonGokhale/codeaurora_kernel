@@ -354,6 +354,7 @@ config DMA_AXI_DMAC
 	tristate "AXI DMAC driver"
 	select DMA_VIRTUAL_CHANNELS
 	select REGMAP_MMIO
+	select DMA_ENGINE
 
 config DMA_ENGINE
 	bool
