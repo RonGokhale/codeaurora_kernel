@@ -1,0 +1,7 @@
+if ARCH_BERLIN
+
+config PINCTRL_BERLIN
+	bool
+	select PINMUX
+
+endif
