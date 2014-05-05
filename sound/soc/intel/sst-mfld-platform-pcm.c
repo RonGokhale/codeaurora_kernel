@@ -156,7 +156,7 @@ static const struct snd_soc_component_driver sst_component = {
 };
 
 /* helper functions */
-static inline void sst_set_stream_status(struct sst_runtime_stream *stream,
+void sst_set_stream_status(struct sst_runtime_stream *stream,
 					int state)
 {
 	unsigned long flags;
