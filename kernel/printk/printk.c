@@ -2147,10 +2147,13 @@ void console_unlock(void)
 again:
 	for (;;) {
 		struct printk_log *msg;
+		u64 console_end_seq;
 		size_t len;
 		int level;
 
 		raw_spin_lock_irqsave(&logbuf_lock, flags);
+		console_end_seq = log_next_seq;
+again_noirq:
 		if (seen_seq != log_next_seq) {
 			wake_klogd = true;
 			seen_seq = log_next_seq;
@@ -2195,6 +2198,12 @@ skip:
 		stop_critical_timings();	/* don't trace print latency */
 		call_console_drivers(level, text, len);
 		start_critical_timings();
+
+		if (console_seq < console_end_seq) {
+			raw_spin_lock(&logbuf_lock);
+			goto again_noirq;
+		}
+
 		local_irq_restore(flags);
 	}
 	console_locked = 0;
