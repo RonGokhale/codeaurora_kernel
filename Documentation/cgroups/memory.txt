@@ -57,6 +57,7 @@ Brief summary of control files.
  memory.memsw.usage_in_bytes	 # show current res_counter usage for memory+Swap
 				 (See 5.5 for details)
  memory.limit_in_bytes		 # set/show limit of memory usage
+ memory.low_limit_in_bytes	 # set/show low limit for memory reclaim
  memory.memsw.limit_in_bytes	 # set/show limit of memory+Swap usage
  memory.failcnt			 # show the number of memory usage hits limits
  memory.memsw.failcnt		 # show the number of memory+Swap hits limits
@@ -248,6 +249,14 @@ Global and hard-limit reclaims share the same code the only difference
 is the objective of the reclaim. The global reclaim aims at balancing
 zones' watermarks while the limit reclaim frees some memory to allow new
 charges.
+
+Groups might be also protected from both global and limit reclaim by
+low_limit_in_bytes knob. If the limit is non-zero the reclaim logic
+doesn't include groups (and their subgroups - see 6. Hierarchy support)
+which are bellow the low limit if there is other eligible cgroup in the
+reclaimed hierarchy. If all groups which participate reclaim are under
+their low limits then all of them are reclaimed and the low limit is
+ignored.
 
 NOTE: Hard limit reclaim does not work for the root cgroup, since we cannot set
 any limits on the root cgroup.
