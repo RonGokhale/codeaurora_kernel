@@ -160,7 +160,6 @@ do_kmem_cache_create(char *name, size_t object_size, size_t size, size_t align,
 
 	s->refcount = 1;
 	list_add(&s->list, &slab_caches);
-	memcg_register_cache(s);
 out:
 	if (err)
 		return ERR_PTR(err);
@@ -205,6 +204,8 @@ kmem_cache_create(const char *name, size_t size, size_t align,
 	int err;
 
 	get_online_cpus();
+	get_online_mems();
+
 	mutex_lock(&slab_mutex);
 
 	err = kmem_cache_sanity_check(name, size);
@@ -239,6 +240,8 @@ kmem_cache_create(const char *name, size_t size, size_t align,
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
+
+	put_online_mems();
 	put_online_cpus();
 
 	if (err) {
@@ -266,21 +269,16 @@ EXPORT_SYMBOL(kmem_cache_create);
  * requests going from @memcg to @root_cache. The new cache inherits properties
  * from its parent.
  */
-void kmem_cache_create_memcg(struct mem_cgroup *memcg, struct kmem_cache *root_cache)
+struct kmem_cache *kmem_cache_create_memcg(struct mem_cgroup *memcg,
+					   struct kmem_cache *root_cache)
 {
-	struct kmem_cache *s;
+	struct kmem_cache *s = NULL;
 	char *cache_name;
 
 	get_online_cpus();
-	mutex_lock(&slab_mutex);
+	get_online_mems();
 
-	/*
-	 * Since per-memcg caches are created asynchronously on first
-	 * allocation (see memcg_kmem_get_cache()), several threads can try to
-	 * create the same cache, but only one of them may succeed.
-	 */
-	if (cache_from_memcg_idx(root_cache, memcg_cache_id(memcg)))
-		goto out_unlock;
+	mutex_lock(&slab_mutex);
 
 	cache_name = memcg_create_cache_name(memcg, root_cache);
 	if (!cache_name)
@@ -292,14 +290,16 @@ void kmem_cache_create_memcg(struct mem_cgroup *memcg, struct kmem_cache *root_c
 				 memcg, root_cache);
 	if (IS_ERR(s)) {
 		kfree(cache_name);
-		goto out_unlock;
+		s = NULL;
 	}
-
-	s->allocflags |= __GFP_KMEMCG;
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
+
+	put_online_mems();
 	put_online_cpus();
+
+	return s;
 }
 
 static int kmem_cache_destroy_memcg_children(struct kmem_cache *s)
@@ -323,9 +323,17 @@ static int kmem_cache_destroy_memcg_children(struct kmem_cache *s)
 }
 #endif /* CONFIG_MEMCG_KMEM */
 
+void slab_kmem_cache_release(struct kmem_cache *s)
+{
+	kfree(s->name);
+	kmem_cache_free(kmem_cache, s);
+}
+
 void kmem_cache_destroy(struct kmem_cache *s)
 {
 	get_online_cpus();
+	get_online_mems();
+
 	mutex_lock(&slab_mutex);
 
 	s->refcount--;
@@ -336,11 +344,8 @@ void kmem_cache_destroy(struct kmem_cache *s)
 		goto out_unlock;
 
 	list_del(&s->list);
-	memcg_unregister_cache(s);
-
 	if (__kmem_cache_shutdown(s) != 0) {
 		list_add(&s->list, &slab_caches);
-		memcg_register_cache(s);
 		printk(KERN_ERR "kmem_cache_destroy %s: "
 		       "Slab cache still has objects\n", s->name);
 		dump_stack();
@@ -352,16 +357,40 @@ void kmem_cache_destroy(struct kmem_cache *s)
 		rcu_barrier();
 
 	memcg_free_cache_params(s);
-	kfree(s->name);
-	kmem_cache_free(kmem_cache, s);
-	goto out_put_cpus;
+#ifdef SLAB_SUPPORTS_SYSFS
+	sysfs_slab_remove(s);
+#else
+	slab_kmem_cache_release(s);
+#endif
+	goto out;
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
-out_put_cpus:
+out:
+	put_online_mems();
 	put_online_cpus();
 }
 EXPORT_SYMBOL(kmem_cache_destroy);
+
+/**
+ * kmem_cache_shrink - Shrink a cache.
+ * @cachep: The cache to shrink.
+ *
+ * Releases as many slabs as possible for a cache.
+ * To help debugging, a zero exit status indicates all slabs were released.
+ */
+int kmem_cache_shrink(struct kmem_cache *cachep)
+{
+	int ret;
+
+	get_online_cpus();
+	get_online_mems();
+	ret = __kmem_cache_shrink(cachep);
+	put_online_mems();
+	put_online_cpus();
+	return ret;
+}
+EXPORT_SYMBOL(kmem_cache_shrink);
 
 int slab_is_available(void)
 {
@@ -576,6 +605,24 @@ void __init create_kmalloc_caches(unsigned long flags)
 #endif
 }
 #endif /* !CONFIG_SLOB */
+
+/*
+ * To avoid unnecessary overhead, we pass through large allocation requests
+ * directly to the page allocator. We use __GFP_COMP, because we will need to
+ * know the allocation order to free the pages properly in kfree.
+ */
+void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
+{
+	void *ret;
+	struct page *page;
+
+	flags |= __GFP_COMP;
+	page = alloc_kmem_pages(flags, order);
+	ret = page ? page_address(page) : NULL;
+	kmemleak_alloc(ret, size, 1, flags);
+	return ret;
+}
+EXPORT_SYMBOL(kmalloc_order);
 
 #ifdef CONFIG_TRACING
 void *kmalloc_order_trace(size_t size, gfp_t flags, unsigned int order)
