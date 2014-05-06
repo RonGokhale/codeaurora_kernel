@@ -1324,7 +1324,8 @@ static int pio_in_emulated(struct x86_emulate_ctxt *ctxt,
 		rc->end = n * size;
 	}
 
-	if (ctxt->rep_prefix && !(ctxt->eflags & EFLG_DF)) {
+	if (ctxt->rep_prefix && (ctxt->d & String) &&
+	    !(ctxt->eflags & EFLG_DF)) {
 		ctxt->dst.data = rc->data + rc->pos;
 		ctxt->dst.type = OP_MEM_STR;
 		ctxt->dst.count = (rc->end - rc->pos) / size;
@@ -2496,7 +2497,7 @@ static int task_switch_16(struct x86_emulate_ctxt *ctxt,
 static void save_state_to_tss32(struct x86_emulate_ctxt *ctxt,
 				struct tss_segment_32 *tss)
 {
-	tss->cr3 = ctxt->ops->get_cr(ctxt, 3);
+	/* CR3 and ldt selector are not saved intentionally */
 	tss->eip = ctxt->_eip;
 	tss->eflags = ctxt->eflags;
 	tss->eax = reg_read(ctxt, VCPU_REGS_RAX);
@@ -2514,7 +2515,6 @@ static void save_state_to_tss32(struct x86_emulate_ctxt *ctxt,
 	tss->ds = get_segment_selector(ctxt, VCPU_SREG_DS);
 	tss->fs = get_segment_selector(ctxt, VCPU_SREG_FS);
 	tss->gs = get_segment_selector(ctxt, VCPU_SREG_GS);
-	tss->ldt_selector = get_segment_selector(ctxt, VCPU_SREG_LDTR);
 }
 
 static int load_state_from_tss32(struct x86_emulate_ctxt *ctxt,
@@ -2604,6 +2604,8 @@ static int task_switch_32(struct x86_emulate_ctxt *ctxt,
 	struct tss_segment_32 tss_seg;
 	int ret;
 	u32 new_tss_base = get_desc_base(new_desc);
+	u32 eip_offset = offsetof(struct tss_segment_32, eip);
+	u32 ldt_sel_offset = offsetof(struct tss_segment_32, ldt_selector);
 
 	ret = ops->read_std(ctxt, old_tss_base, &tss_seg, sizeof tss_seg,
 			    &ctxt->exception);
@@ -2613,8 +2615,9 @@ static int task_switch_32(struct x86_emulate_ctxt *ctxt,
 
 	save_state_to_tss32(ctxt, &tss_seg);
 
-	ret = ops->write_std(ctxt, old_tss_base, &tss_seg, sizeof tss_seg,
-			     &ctxt->exception);
+	/* Only GP registers and segment selectors are saved */
+	ret = ops->write_std(ctxt, old_tss_base + eip_offset, &tss_seg.eip,
+			     ldt_sel_offset - eip_offset, &ctxt->exception);
 	if (ret != X86EMUL_CONTINUE)
 		/* FIXME: need to provide precise fault address */
 		return ret;
@@ -3386,10 +3389,6 @@ static int check_cr_write(struct x86_emulate_ctxt *ctxt)
 		ctxt->ops->get_msr(ctxt, MSR_EFER, &efer);
 		if (efer & EFER_LMA)
 			rsvd = CR3_L_MODE_RESERVED_BITS;
-		else if (ctxt->ops->get_cr(ctxt, 4) & X86_CR4_PAE)
-			rsvd = CR3_PAE_RESERVED_BITS;
-		else if (ctxt->ops->get_cr(ctxt, 0) & X86_CR0_PG)
-			rsvd = CR3_NONPAE_RESERVED_BITS;
 
 		if (new_val & rsvd)
 			return emulate_gp(ctxt, 0);
