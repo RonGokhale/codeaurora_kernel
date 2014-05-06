@@ -46,15 +46,17 @@ static int recover_dentry(struct page *ipage, struct inode *inode)
 	struct inode *dir, *einode;
 	int err = 0;
 
-	dir = check_dirty_dir_inode(F2FS_SB(inode->i_sb), pino);
-	if (!dir) {
-		dir = f2fs_iget(inode->i_sb, pino);
-		if (IS_ERR(dir)) {
-			err = PTR_ERR(dir);
-			goto out;
-		}
-		set_inode_flag(F2FS_I(dir), FI_DELAY_IPUT);
+	dir = f2fs_iget(inode->i_sb, pino);
+	if (IS_ERR(dir)) {
+		err = PTR_ERR(dir);
+		goto out;
+	}
+
+	if (is_inode_flag_set(F2FS_I(dir), FI_DIRTY_DIR)) {
+		iput(dir);
+	} else {
 		add_dirty_dir_inode(dir);
+		set_inode_flag(F2FS_I(dir), FI_DELAY_IPUT);
 	}
 
 	name.len = le32_to_cpu(raw_inode->i_namelen);
@@ -73,7 +75,8 @@ retry:
 		einode = f2fs_iget(inode->i_sb, le32_to_cpu(de->ino));
 		if (IS_ERR(einode)) {
 			WARN_ON(1);
-			if (PTR_ERR(einode) == -ENOENT)
+			err = PTR_ERR(einode);
+			if (err == -ENOENT)
 				err = -EEXIST;
 			goto out_unmap_put;
 		}
@@ -299,10 +302,7 @@ static int do_recover_data(struct f2fs_sb_info *sbi, struct inode *inode,
 		goto out;
 
 	start = start_bidx_of_node(ofs_of_node(page), fi);
-	if (IS_INODE(page))
-		end = start + ADDRS_PER_INODE(fi);
-	else
-		end = start + ADDRS_PER_BLOCK;
+	end = start + ADDRS_PER_PAGE(page, fi);
 
 	f2fs_lock_op(sbi);
 
