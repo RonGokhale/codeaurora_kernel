@@ -333,7 +333,7 @@ static void rtw_dev_unload(struct rtw_adapter *padapter)
 
 		/* s4. */
 		if (!padapter->pwrctrlpriv.bInternalAutoSuspend)
-			rtw_stop_drv_threads23a(padapter);
+			flush_workqueue(padapter->cmdpriv.wq);
 
 		/* s5. */
 		if (!padapter->bSurpriseRemoved) {
@@ -353,6 +353,7 @@ int rtw_hw_suspend23a(struct rtw_adapter *padapter)
 {
 	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
 	struct net_device *pnetdev = padapter->pnetdev;
+	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 
 	if ((!padapter->bup) || (padapter->bDriverStopped) ||
 	    (padapter->bSurpriseRemoved)) {
@@ -380,26 +381,22 @@ int rtw_hw_suspend23a(struct rtw_adapter *padapter)
 
 		/* s2-2.  indicate disconnect to os */
 		/* rtw_indicate_disconnect23a(padapter); */
-		{
-			struct	mlme_priv *pmlmepriv = &padapter->mlmepriv;
+		if (check_fwstate(pmlmepriv, _FW_LINKED)) {
+			_clr_fwstate_(pmlmepriv, _FW_LINKED);
 
-			if (check_fwstate(pmlmepriv, _FW_LINKED)) {
-				_clr_fwstate_(pmlmepriv, _FW_LINKED);
+			rtw_led_control(padapter, LED_CTL_NO_LINK);
 
-				rtw_led_control(padapter, LED_CTL_NO_LINK);
+			rtw_os_indicate_disconnect23a(padapter);
 
-				rtw_os_indicate_disconnect23a(padapter);
-
-				/* donnot enqueue cmd */
-				rtw_lps_ctrl_wk_cmd23a(padapter,
-						    LPS_CTRL_DISCONNECT, 0);
-			}
+			/* donnot enqueue cmd */
+			rtw_lps_ctrl_wk_cmd23a(padapter,
+					       LPS_CTRL_DISCONNECT, 0);
 		}
 		/* s2-3. */
 		rtw_free_assoc_resources23a(padapter, 1);
 
 		/* s2-4. */
-		rtw_free_network_queue23a(padapter, true);
+		rtw_free_network_queue23a(padapter);
 		rtw_ips_dev_unload23a(padapter);
 		pwrpriv->rf_pwrstate = rf_off;
 		pwrpriv->bips_processing = false;
@@ -503,13 +500,14 @@ static int rtw_suspend(struct usb_interface *pusb_intf, pm_message_t message)
 	/* s2-3. */
 	rtw_free_assoc_resources23a(padapter, 1);
 	/* s2-4. */
-	rtw_free_network_queue23a(padapter, true);
+	rtw_free_network_queue23a(padapter);
 
 	rtw_dev_unload(padapter);
 	up(&pwrpriv->lock);
 
 	if (check_fwstate(pmlmepriv, _FW_UNDER_SURVEY))
-		rtw_indicate_scan_done23a(padapter, 1);
+		rtw_cfg80211_indicate_scan_done(
+			wdev_to_priv(padapter->rtw_wdev), true);
 
 	if (check_fwstate(pmlmepriv, _FW_UNDER_LINKING))
 		rtw_indicate_disconnect23a(padapter);
@@ -565,7 +563,7 @@ int rtw_resume_process23a(struct rtw_adapter *padapter)
 
 	if (padapter->pid[1] != 0) {
 		DBG_8723A("pid[1]:%d\n", padapter->pid[1]);
-		rtw_signal_process(padapter->pid[1], SIGUSR2);
+		kill_pid(find_vpid(padapter->pid[1]), SIGUSR2, 1);
 	}
 
 	rtw23a_roaming(padapter, NULL);
@@ -624,8 +622,7 @@ static struct rtw_adapter *rtw_usb_if1_init(struct dvobj_priv *dvobj,
 	padapter->intf_start = &usb_intf_start;
 	padapter->intf_stop = &usb_intf_stop;
 
-	/* step init_io_priv */
-	rtw_init_io_priv23a(padapter, usb_set_intf_ops);
+	rtl8723au_set_intf_ops(padapter);
 
 	/* step read_chip_version */
 	rtw_hal_read_chip_version23a(padapter);
@@ -664,10 +661,6 @@ static struct rtw_adapter *rtw_usb_if1_init(struct dvobj_priv *dvobj,
 
 	/*  set mac addr */
 	rtw_macaddr_cfg23a(padapter->eeprompriv.mac_addr);
-#ifdef CONFIG_8723AU_P2P
-	rtw_init_wifidirect_addrs23a(padapter, padapter->eeprompriv.mac_addr,
-				  padapter->eeprompriv.mac_addr);
-#endif
 
 	DBG_8723A("bDriverStopped:%d, bSurpriseRemoved:%d, bup:%d, hw_init_completed:%d\n",
 		  padapter->bDriverStopped, padapter->bSurpriseRemoved,

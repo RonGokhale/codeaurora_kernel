@@ -17,7 +17,6 @@
 #include <osdep_service.h>
 #include <drv_types.h>
 #include <recv_osdep.h>
-#include <cmd_osdep.h>
 #include <mlme_osdep.h>
 #include <rtw_ioctl_set.h>
 #include <rtl8723a_hal.h>
@@ -203,7 +202,7 @@ void rtl8723a_set_FwPwrMode_cmd(struct rtw_adapter *padapter, u8 Mode)
 static void ConstructBeacon(struct rtw_adapter *padapter, u8 *pframe, u32 *pLength)
 {
 	struct ieee80211_hdr *pwlanhdr;
-	u16 *fctrl;
+	__le16 *fctrl;
 	u32 rate_len, pktlen;
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
@@ -255,30 +254,36 @@ static void ConstructBeacon(struct rtw_adapter *padapter, u8 *pframe, u32 *pLeng
 	/* below for ad-hoc mode */
 
 	/*  SSID */
-	pframe = rtw_set_ie23a(pframe, _SSID_IE_, cur_network->Ssid.ssid_len,
-			    cur_network->Ssid.ssid, &pktlen);
+	pframe = rtw_set_ie23a(pframe, WLAN_EID_SSID,
+			       cur_network->Ssid.ssid_len,
+			       cur_network->Ssid.ssid, &pktlen);
 
 	/*  supported rates... */
 	rate_len = rtw_get_rateset_len23a(cur_network->SupportedRates);
-	pframe = rtw_set_ie23a(pframe, _SUPPORTEDRATES_IE_, ((rate_len > 8) ?
+	pframe = rtw_set_ie23a(pframe, WLAN_EID_SUPP_RATES, ((rate_len > 8) ?
 			       8 : rate_len), cur_network->SupportedRates, &pktlen);
 
 	/*  DS parameter set */
-	pframe = rtw_set_ie23a(pframe, _DSSET_IE_, 1, (unsigned char *)&cur_network->Configuration.DSConfig, &pktlen);
+	pframe = rtw_set_ie23a(pframe, WLAN_EID_DS_PARAMS, 1, (unsigned char *)
+			       &cur_network->Configuration.DSConfig, &pktlen);
 
 	if ((pmlmeinfo->state&0x03) == WIFI_FW_ADHOC_STATE) {
 		u32 ATIMWindow;
 		/*  IBSS Parameter Set... */
 		/* ATIMWindow = cur->Configuration.ATIMWindow; */
 		ATIMWindow = 0;
-		pframe = rtw_set_ie23a(pframe, _IBSS_PARA_IE_, 2, (unsigned char *)(&ATIMWindow), &pktlen);
+		pframe = rtw_set_ie23a(pframe, WLAN_EID_IBSS_PARAMS, 2,
+				       (unsigned char *)(&ATIMWindow), &pktlen);
 	}
 
 	/* todo: ERP IE */
 
 	/*  EXTERNDED SUPPORTED RATE */
 	if (rate_len > 8)
-		pframe = rtw_set_ie23a(pframe, _EXT_SUPPORTEDRATES_IE_, (rate_len - 8), (cur_network->SupportedRates + 8), &pktlen);
+		pframe = rtw_set_ie23a(pframe, WLAN_EID_EXT_SUPP_RATES,
+				       (rate_len - 8),
+				       (cur_network->SupportedRates + 8),
+				       &pktlen);
 
 	/* todo:HT for adhoc */
 
@@ -298,7 +303,7 @@ _ConstructBeacon:
 static void ConstructPSPoll(struct rtw_adapter *padapter, u8 *pframe, u32 *pLength)
 {
 	struct ieee80211_hdr *pwlanhdr;
-	u16 *fctrl;
+	__le16 *fctrl;
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
 	struct mlme_ext_info *pmlmeinfo = &pmlmeext->mlmext_info;
 
@@ -333,7 +338,7 @@ static void ConstructNullFunctionData(
 	u8 bForcePowerSave)
 {
 	struct ieee80211_hdr *pwlanhdr;
-	u16 *fctrl;
+	__le16 *fctrl;
 	u32 pktlen;
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 	struct wlan_network		*cur_network = &pmlmepriv->cur_network;
@@ -397,7 +402,7 @@ static void ConstructNullFunctionData(
 static void ConstructProbeRsp(struct rtw_adapter *padapter, u8 *pframe, u32 *pLength, u8 *StaAddr, bool bHideSSID)
 {
 	struct ieee80211_hdr *pwlanhdr;
-	u16 *fctrl;
+	__le16 *fctrl;
 	u8 *mac, *bssid;
 	u32 pktlen;
 	struct mlme_ext_priv *pmlmeext = &padapter->mlmeextpriv;
@@ -770,76 +775,3 @@ void rtl8723a_set_BTCoex_AP_mode_FwRsvdPkt_cmd(struct rtw_adapter *padapter)
 	}
 }
 #endif
-
-#ifdef CONFIG_8723AU_P2P
-void rtl8723a_set_p2p_ps_offload_cmd(struct rtw_adapter *padapter, u8 p2p_ps_state)
-{
-	struct hal_data_8723a	*pHalData = GET_HAL_DATA(padapter);
-	struct wifidirect_info *pwdinfo = &padapter->wdinfo;
-	struct P2P_PS_Offload_t	*p2p_ps_offload = &pHalData->p2p_ps_offload;
-	u8 i;
-
-	switch (p2p_ps_state) {
-	case P2P_PS_DISABLE:
-		DBG_8723A("P2P_PS_DISABLE \n");
-		memset(p2p_ps_offload, 0, 1);
-		break;
-	case P2P_PS_ENABLE:
-		DBG_8723A("P2P_PS_ENABLE \n");
-		/*  update CTWindow value. */
-		if (pwdinfo->ctwindow > 0) {
-			p2p_ps_offload->CTWindow_En = 1;
-			rtw_write8(padapter, REG_P2P_CTWIN, pwdinfo->ctwindow);
-		}
-
-		/*  hw only support 2 set of NoA */
-		for (i = 0; i < pwdinfo->noa_num; i++) {
-			/*  To control the register setting for which NOA */
-			rtw_write8(padapter, REG_NOA_DESC_SEL, (i << 4));
-			if (i == 0)
-				p2p_ps_offload->NoA0_En = 1;
-			else
-				p2p_ps_offload->NoA1_En = 1;
-
-			/*  config P2P NoA Descriptor Register */
-			rtw_write32(padapter, REG_NOA_DESC_DURATION, pwdinfo->noa_duration[i]);
-
-			rtw_write32(padapter, REG_NOA_DESC_INTERVAL, pwdinfo->noa_interval[i]);
-
-			rtw_write32(padapter, REG_NOA_DESC_START, pwdinfo->noa_start_time[i]);
-
-			rtw_write8(padapter, REG_NOA_DESC_COUNT, pwdinfo->noa_count[i]);
-		}
-
-		if ((pwdinfo->opp_ps == 1) || (pwdinfo->noa_num > 0)) {
-			/*  rst p2p circuit */
-			rtw_write8(padapter, REG_DUAL_TSF_RST, BIT(4));
-
-			p2p_ps_offload->Offload_En = 1;
-
-			if (rtw_p2p_chk_role(pwdinfo, P2P_ROLE_GO)) {
-				p2p_ps_offload->role = 1;
-				p2p_ps_offload->AllStaSleep = 0;
-			} else {
-				p2p_ps_offload->role = 0;
-			}
-
-			p2p_ps_offload->discovery = 0;
-		}
-		break;
-	case P2P_PS_SCAN:
-		DBG_8723A("P2P_PS_SCAN \n");
-		p2p_ps_offload->discovery = 1;
-		break;
-	case P2P_PS_SCAN_DONE:
-		DBG_8723A("P2P_PS_SCAN_DONE \n");
-		p2p_ps_offload->discovery = 0;
-		pwdinfo->p2p_ps_state = P2P_PS_ENABLE;
-		break;
-	default:
-		break;
-	}
-
-	FillH2CCmd(padapter, P2P_PS_OFFLOAD_EID, 1, (u8 *)p2p_ps_offload);
-}
-#endif /* CONFIG_8723AU_P2P */
