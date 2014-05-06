@@ -1,0 +1,40 @@
+next/fixes-non-critical
+
+next/cleanup
+	versatile/leds
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-leds
+	cleanup/kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/robh/linux tags/kconfig-cleanups
+		contains randconfig-fixes
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.16
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.16
+	renesas/clock
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-for-v3.16
+
+next/boards
+	shmobile/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.16
+	patch
+		ARM: multi_v7: enable AT24C EEPROM driver
+		ARM: multi_v7_defconfig: select CONFIG_GPIO_DWAPB
+		ARM: multi_v7_defconfig: Select CONFIG_MACH_BERLIN_BG2Q
+	renesas/clock
+		Merge branch 'renesas/clock' into next/boards
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.16
+	patch
+		ARM: configs: add CONFIG_MMC_SDHCI_PXAV3 to the multi_v7_defconfig
+
+next/dt
+	at91/dt
+		git://github.com/at91linux/linux-at91 tags/at91-dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.16
+
+next/drivers
+	socfpga/reset-driver
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga-driver-update-for-3.16
