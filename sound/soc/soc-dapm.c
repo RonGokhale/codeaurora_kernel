@@ -2791,22 +2791,19 @@ int snd_soc_dapm_put_volsw(struct snd_kcontrol *kcontrol,
 	mutex_lock_nested(&card->dapm_mutex, SND_SOC_DAPM_CLASS_RUNTIME);
 
 	change = dapm_kcontrol_set_value(kcontrol, val);
-
-	if (reg != SND_SOC_NOPM) {
-		mask = mask << shift;
-		val = val << shift;
-
-		change = snd_soc_test_bits(codec, reg, mask, val);
-	}
-
 	if (change) {
 		if (reg != SND_SOC_NOPM) {
-			update.kcontrol = kcontrol;
-			update.reg = reg;
-			update.mask = mask;
-			update.val = val;
+			mask = mask << shift;
+			val = val << shift;
 
-			card->update = &update;
+			if (snd_soc_test_bits(codec, reg, mask, val)) {
+				update.kcontrol = kcontrol;
+				update.reg = reg;
+				update.mask = mask;
+				update.val = val;
+				card->update = &update;
+			}
+
 		}
 
 		ret = soc_dapm_mixer_update_power(card, kcontrol, connect);
@@ -3446,59 +3443,40 @@ void snd_soc_dapm_connect_dai_link_widgets(struct snd_soc_card *card)
 	}
 }
 
+static void soc_dapm_dai_stream_event(struct snd_soc_dai *dai, int stream,
+	int event)
+{
+	struct snd_soc_dapm_widget *w;
+
+	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
+		w = dai->playback_widget;
+	else
+		w = dai->capture_widget;
+
+	if (w) {
+		dapm_mark_dirty(w, "stream event");
+
+		switch (event) {
+		case SND_SOC_DAPM_STREAM_START:
+			w->active = 1;
+			break;
+		case SND_SOC_DAPM_STREAM_STOP:
+			w->active = 0;
+			break;
+		case SND_SOC_DAPM_STREAM_SUSPEND:
+		case SND_SOC_DAPM_STREAM_RESUME:
+		case SND_SOC_DAPM_STREAM_PAUSE_PUSH:
+		case SND_SOC_DAPM_STREAM_PAUSE_RELEASE:
+			break;
+		}
+	}
+}
+
 static void soc_dapm_stream_event(struct snd_soc_pcm_runtime *rtd, int stream,
 	int event)
 {
-
-	struct snd_soc_dapm_widget *w_cpu, *w_codec;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		w_cpu = cpu_dai->playback_widget;
-		w_codec = codec_dai->playback_widget;
-	} else {
-		w_cpu = cpu_dai->capture_widget;
-		w_codec = codec_dai->capture_widget;
-	}
-
-	if (w_cpu) {
-
-		dapm_mark_dirty(w_cpu, "stream event");
-
-		switch (event) {
-		case SND_SOC_DAPM_STREAM_START:
-			w_cpu->active = 1;
-			break;
-		case SND_SOC_DAPM_STREAM_STOP:
-			w_cpu->active = 0;
-			break;
-		case SND_SOC_DAPM_STREAM_SUSPEND:
-		case SND_SOC_DAPM_STREAM_RESUME:
-		case SND_SOC_DAPM_STREAM_PAUSE_PUSH:
-		case SND_SOC_DAPM_STREAM_PAUSE_RELEASE:
-			break;
-		}
-	}
-
-	if (w_codec) {
-
-		dapm_mark_dirty(w_codec, "stream event");
-
-		switch (event) {
-		case SND_SOC_DAPM_STREAM_START:
-			w_codec->active = 1;
-			break;
-		case SND_SOC_DAPM_STREAM_STOP:
-			w_codec->active = 0;
-			break;
-		case SND_SOC_DAPM_STREAM_SUSPEND:
-		case SND_SOC_DAPM_STREAM_RESUME:
-		case SND_SOC_DAPM_STREAM_PAUSE_PUSH:
-		case SND_SOC_DAPM_STREAM_PAUSE_RELEASE:
-			break;
-		}
-	}
+	soc_dapm_dai_stream_event(rtd->cpu_dai, stream, event);
+	soc_dapm_dai_stream_event(rtd->codec_dai, stream, event);
 
 	dapm_power_widgets(rtd->card, event);
 }
