@@ -391,7 +391,9 @@ static int of_platform_bus_create(struct device_node *bus,
 	}
 
 	dev = of_platform_device_create_pdata(bus, bus_id, platform_data, parent);
-	if (!dev || !of_match_node(matches, bus))
+	if (!dev)
+		return -ENODEV;
+	if (!of_match_node(matches, bus))
 		return 0;
 
 	for_each_child_of_node(bus, child) {
