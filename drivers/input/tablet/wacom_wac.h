@@ -93,9 +93,9 @@ enum {
 	DTK,
 	WACOM_24HD,
 	CINTIQ_HYBRID,
+	WACOM_13HD,
 	CINTIQ,
 	WACOM_BEE,
-	WACOM_13HD,
 	WACOM_MO,
 	WIRELESS,
 	BAMBOO_PT,
@@ -148,6 +148,8 @@ struct wacom_wac {
 	int tool[2];
 	int id[2];
 	__u32 serial[2];
+	unsigned int x_mapped;
+	unsigned int y_mapped;
 	struct wacom_features features;
 	struct wacom_shared *shared;
 	struct input_dev *input;
