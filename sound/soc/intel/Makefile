@@ -2,7 +2,7 @@
 snd-soc-sst-dsp-objs := sst-dsp.o sst-firmware.o
 snd-soc-sst-acpi-objs := sst-acpi.o
 
-snd-soc-sst-mfld-platform-objs := sst-mfld-platform.o
+snd-soc-sst-mfld-platform-objs := sst-mfld-platform-pcm.o sst-mfld-platform-compress.o
 snd-soc-mfld-machine-objs := mfld_machine.o
 
 obj-$(CONFIG_SND_SST_MFLD_PLATFORM) += snd-soc-sst-mfld-platform.o
@@ -26,3 +26,15 @@ snd-soc-sst-byt-rt5640-mach-objs := byt-rt5640.o
 
 obj-$(CONFIG_SND_SOC_INTEL_HASWELL_MACH) += snd-soc-sst-haswell.o
 obj-$(CONFIG_SND_SOC_INTEL_BYT_RT5640_MACH) += snd-soc-sst-byt-rt5640-mach.o
+
+# SST Platform Driver
+PLATFORM_LIBS = platform-libs/controls_v2_dpcm.o
+
+snd-soc-sst-platform-objs := pcm.o compress.o $(PLATFORM_LIBS)
+obj-$(CONFIG_SND_SST_PLATFORM) += snd-soc-sst-platform.o
+
+# Relevant Machine driver
+obj-$(CONFIG_SND_SST_MACHINE) += board/
+
+# IPC driver
+obj-$(CONFIG_SND_INTEL_SST) += sst/
