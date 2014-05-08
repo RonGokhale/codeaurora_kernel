@@ -381,8 +381,6 @@ static struct blk_mq_tags *blk_mq_init_bitmap_tags(struct blk_mq_tags *tags,
 	if (bt_alloc(&tags->breserved_tags, tags->nr_reserved_tags, node, true))
 		goto enomem;
 
-	tags->use_bitmap_tags = 1;
-	printk(KERN_ERR "blk-mq: using bitmap tags\n");
 	return tags;
 enomem:
 	bt_free(&tags->bitmap_tags);
@@ -424,15 +422,9 @@ void blk_mq_free_tags(struct blk_mq_tags *tags)
 
 void blk_mq_tag_init_last_tag(struct blk_mq_tags *tags, unsigned int *tag)
 {
-	unsigned int rand_tag = 0;
+	unsigned int depth = tags->nr_tags - tags->nr_reserved_tags;
 
-	if (tags->use_bitmap_tags) {
-		unsigned int depth = tags->nr_tags - tags->nr_reserved_tags;
-
-		rand_tag = prandom_u32() % (depth - 1);
-	}
-
-	*tag = rand_tag;
+	*tag = prandom_u32() % (depth - 1);
 }
 
 ssize_t blk_mq_tag_sysfs_show(struct blk_mq_tags *tags, char *page)
