@@ -10,6 +10,7 @@ struct blk_mq_ctx {
 	}  ____cacheline_aligned_in_smp;
 
 	unsigned int		cpu;
+	unsigned int		online;
 	unsigned int		index_hw;
 
 	/* incremented at dispatch time */

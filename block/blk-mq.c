@@ -338,7 +338,7 @@ void __blk_mq_complete_request(struct request *rq)
 	if (!test_bit(QUEUE_FLAG_SAME_FORCE, &rq->q->queue_flags))
 		shared = cpus_share_cache(cpu, ctx->cpu);
 
-	if (cpu != ctx->cpu && !shared && cpu_online(ctx->cpu)) {
+	if (cpu != ctx->cpu && !shared && ctx->online) {
 		rq->csd.func = __blk_mq_complete_request_remote;
 		rq->csd.info = rq;
 		rq->csd.flags = 0;
@@ -846,7 +846,7 @@ void blk_mq_insert_request(struct request *rq, bool at_head, bool run_queue,
 	struct blk_mq_ctx *ctx = rq->mq_ctx, *current_ctx;
 
 	current_ctx = blk_mq_get_ctx(q);
-	if (!cpu_online(ctx->cpu))
+	if (!ctx->online)
 		rq->mq_ctx = ctx = current_ctx;
 
 	hctx = q->mq_ops->map_queue(q, ctx->cpu);
@@ -880,7 +880,7 @@ static void blk_mq_insert_requests(struct request_queue *q,
 
 	current_ctx = blk_mq_get_ctx(q);
 
-	if (!cpu_online(ctx->cpu))
+	if (!ctx->online)
 		ctx = current_ctx;
 	hctx = q->mq_ops->map_queue(q, ctx->cpu);
 
@@ -1353,6 +1353,7 @@ static void blk_mq_init_cpu_queues(struct request_queue *q,
 		if (!cpu_online(i))
 			continue;
 
+		__ctx->online = 1;
 		hctx = q->mq_ops->map_queue(q, i);
 		cpumask_set_cpu(i, hctx->cpumask);
 		hctx->nr_ctx++;
@@ -1382,9 +1383,12 @@ static void blk_mq_map_swqueue(struct request_queue *q)
 	 */
 	queue_for_each_ctx(q, ctx, i) {
 		/* If the cpu isn't online, the cpu is mapped to first hctx */
-		if (!cpu_online(i))
+		if (!cpu_online(i)) {
+			ctx->online = 0;
 			continue;
+		}
 
+		ctx->online = 1;
 		hctx = q->mq_ops->map_queue(q, i);
 		cpumask_set_cpu(i, hctx->cpumask);
 		ctx->index_hw = hctx->nr_ctx;
