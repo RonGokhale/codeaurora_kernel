@@ -186,9 +186,12 @@ static bool make_all_cpus_request(struct kvm *kvm, unsigned int req)
 
 void kvm_flush_remote_tlbs(struct kvm *kvm)
 {
+	long dirty_count = kvm->tlbs_dirty;
+
+	smp_mb();
 	if (make_all_cpus_request(kvm, KVM_REQ_TLB_FLUSH))
 		++kvm->stat.remote_tlb_flush;
-	kvm->tlbs_dirty = false;
+	cmpxchg(&kvm->tlbs_dirty, dirty_count, 0);
 }
 EXPORT_SYMBOL_GPL(kvm_flush_remote_tlbs);
 
@@ -637,14 +640,12 @@ static int kvm_vm_release(struct inode *inode, struct file *filp)
  */
 static int kvm_create_dirty_bitmap(struct kvm_memory_slot *memslot)
 {
-#ifndef CONFIG_S390
 	unsigned long dirty_bytes = 2 * kvm_dirty_bitmap_bytes(memslot);
 
 	memslot->dirty_bitmap = kvm_kvzalloc(dirty_bytes);
 	if (!memslot->dirty_bitmap)
 		return -ENOMEM;
 
-#endif /* !CONFIG_S390 */
 	return 0;
 }
 
@@ -2922,6 +2923,7 @@ static int __kvm_io_bus_read(struct kvm_io_bus *bus, struct kvm_io_range *range,
 
 	return -EOPNOTSUPP;
 }
+EXPORT_SYMBOL_GPL(kvm_io_bus_write);
 
 /* kvm_io_bus_read - called under kvm->slots_lock */
 int kvm_io_bus_read(struct kvm *kvm, enum kvm_bus bus_idx, gpa_t addr,
