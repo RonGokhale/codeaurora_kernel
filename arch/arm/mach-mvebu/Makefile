@@ -2,6 +2,7 @@ ccflags-$(CONFIG_ARCH_MULTIPLATFORM) := -I$(srctree)/$(src)/include \
 	-I$(srctree)/arch/arm/plat-orion/include
 
 AFLAGS_coherency_ll.o		:= -Wa,-march=armv7-a
+CFLAGS_pmsu.o			:= -march=armv7-a
 
 obj-y				 += system-controller.o mvebu-soc-id.o
 
@@ -13,4 +14,3 @@ endif
 
 obj-$(CONFIG_MACH_DOVE)		 += dove.o
 obj-$(CONFIG_MACH_KIRKWOOD)	 += kirkwood.o kirkwood-pm.o
-obj-$(CONFIG_MACH_T5325)	 += board-t5325.o
