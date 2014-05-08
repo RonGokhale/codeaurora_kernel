@@ -1094,8 +1094,7 @@ struct tpm_chip *tpm_register_hardware(struct device *dev,
 	if (tpm_sysfs_add_device(chip))
 		goto del_misc;
 
-	if (tpm_add_ppi(&dev->kobj))
-		goto del_misc;
+	tpm_add_ppi(&dev->kobj);
 
 	chip->bios_dir = tpm_bios_log_setup(chip->devname);
 
