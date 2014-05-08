@@ -213,9 +213,10 @@ static irqreturn_t timer_irq_handler(int irq, void *dev_id)
 /*
  * Setup the local event timer for @cpu
  */
-void arc_local_timer_setup(unsigned int cpu)
+void arc_local_timer_setup()
 {
-	struct clock_event_device *evt = per_cpu_ptr(&arc_clockevent_device, cpu);
+	struct clock_event_device *evt = this_cpu_ptr(&arc_clockevent_device);
+	int cpu = smp_processor_id();
 
 	evt->cpumask = cpumask_of(cpu);
 	clockevents_config_and_register(evt, arc_get_core_freq(),
@@ -248,7 +249,7 @@ void __init time_init(void)
 		clocksource_register_hz(&arc_counter, arc_get_core_freq());
 
 	/* sets up the periodic event timer */
-	arc_local_timer_setup(smp_processor_id());
+	arc_local_timer_setup();
 
 	if (machine_desc->init_time)
 		machine_desc->init_time();
