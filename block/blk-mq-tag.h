@@ -36,7 +36,6 @@ struct blk_mq_bitmap_tags {
 struct blk_mq_tags {
 	unsigned int nr_tags;
 	unsigned int nr_reserved_tags;
-	unsigned int use_bitmap_tags;
 
 	struct blk_mq_bitmap_tags bitmap_tags;
 	struct blk_mq_bitmap_tags breserved_tags;
