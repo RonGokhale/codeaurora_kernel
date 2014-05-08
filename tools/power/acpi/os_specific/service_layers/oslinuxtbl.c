@@ -505,6 +505,28 @@ static acpi_status osl_load_rsdp(void)
 
 /******************************************************************************
  *
+ * FUNCTION:    osl_can_use_xsdt
+ *
+ * PARAMETERS:  None
+ *
+ * RETURN:      TRUE if XSDT is allowed to be used.
+ *
+ * DESCRIPTION: This function collects logic that can be used to determine if
+ *              XSDT should be used instead of RSDT.
+ *
+ *****************************************************************************/
+
+static u8 osl_can_use_xsdt(void)
+{
+	if (gbl_revision && !acpi_gbl_do_not_use_xsdt) {
+		return (TRUE);
+	} else {
+		return (FALSE);
+	}
+}
+
+/******************************************************************************
+ *
  * FUNCTION:    osl_table_initialize
  *
  * PARAMETERS:  None
@@ -535,7 +557,7 @@ static acpi_status osl_table_initialize(void)
 
 	/* Get XSDT from memory */
 
-	if (gbl_rsdp.revision) {
+	if (gbl_rsdp.revision && !gbl_do_not_dump_xsdt) {
 		if (gbl_xsdt) {
 			free(gbl_xsdt);
 			gbl_xsdt = NULL;
@@ -668,7 +690,7 @@ static acpi_status osl_list_bios_tables(void)
 	acpi_status status = AE_OK;
 	u32 i;
 
-	if (gbl_revision) {
+	if (osl_can_use_xsdt()) {
 		item_size = sizeof(u64);
 		table_data =
 		    ACPI_CAST8(gbl_xsdt) + sizeof(struct acpi_table_header);
@@ -690,12 +712,18 @@ static acpi_status osl_list_bios_tables(void)
 	/* Search RSDT/XSDT for the requested table */
 
 	for (i = 0; i < number_of_tables; ++i, table_data += item_size) {
-		if (gbl_revision) {
+		if (osl_can_use_xsdt()) {
 			table_address =
 			    (acpi_physical_address) (*ACPI_CAST64(table_data));
 		} else {
 			table_address =
 			    (acpi_physical_address) (*ACPI_CAST32(table_data));
+		}
+
+		/* Skip NULL entries in RSDT/XSDT */
+
+		if (!table_address) {
+			continue;
 		}
 
 		status = osl_map_table(table_address, NULL, &mapped_table);
@@ -809,7 +837,7 @@ osl_get_bios_table(char *signature,
 		table_length = ap_get_table_length(mapped_table);
 	} else {		/* Case for a normal ACPI table */
 
-		if (gbl_revision) {
+		if (osl_can_use_xsdt()) {
 			item_size = sizeof(u64);
 			table_data =
 			    ACPI_CAST8(gbl_xsdt) +
@@ -833,7 +861,7 @@ osl_get_bios_table(char *signature,
 		/* Search RSDT/XSDT for the requested table */
 
 		for (i = 0; i < number_of_tables; ++i, table_data += item_size) {
-			if (gbl_revision) {
+			if (osl_can_use_xsdt()) {
 				table_address =
 				    (acpi_physical_address) (*ACPI_CAST64
 							     (table_data));
@@ -841,6 +869,12 @@ osl_get_bios_table(char *signature,
 				table_address =
 				    (acpi_physical_address) (*ACPI_CAST32
 							     (table_data));
+			}
+
+			/* Skip NULL entries in RSDT/XSDT */
+
+			if (!table_address) {
+				continue;
 			}
 
 			status =
@@ -996,10 +1030,21 @@ osl_map_table(acpi_size address,
 
 	/* If specified, signature must match */
 
-	if (signature && !ACPI_COMPARE_NAME(signature, mapped_table->signature)) {
-		acpi_os_unmap_memory(mapped_table,
-				     sizeof(struct acpi_table_header));
-		return (AE_BAD_SIGNATURE);
+	if (signature) {
+		if (ACPI_VALIDATE_RSDP_SIG(signature)) {
+			if (!ACPI_VALIDATE_RSDP_SIG(mapped_table->signature)) {
+				acpi_os_unmap_memory(mapped_table,
+						     sizeof(struct
+							    acpi_table_header));
+				return (AE_BAD_SIGNATURE);
+			}
+		} else
+		    if (!ACPI_COMPARE_NAME(signature, mapped_table->signature))
+		{
+			acpi_os_unmap_memory(mapped_table,
+					     sizeof(struct acpi_table_header));
+			return (AE_BAD_SIGNATURE);
+		}
 	}
 
 	/* Map the entire table */
@@ -1112,7 +1157,6 @@ osl_read_table_from_file(char *filename,
 	struct acpi_table_header *local_table = NULL;
 	u32 table_length;
 	s32 count;
-	u32 total = 0;
 	acpi_status status = AE_OK;
 
 	/* Open the file */
@@ -1136,12 +1180,22 @@ osl_read_table_from_file(char *filename,
 
 	/* If signature is specified, it must match the table */
 
-	if (signature && !ACPI_COMPARE_NAME(signature, header.signature)) {
-		fprintf(stderr,
-			"Incorrect signature: Expecting %4.4s, found %4.4s\n",
-			signature, header.signature);
-		status = AE_BAD_SIGNATURE;
-		goto exit;
+	if (signature) {
+		if (ACPI_VALIDATE_RSDP_SIG(signature)) {
+			if (!ACPI_VALIDATE_RSDP_SIG(header.signature)) {
+				fprintf(stderr,
+					"Incorrect RSDP signature: found %8.8s\n",
+					header.signature);
+				status = AE_BAD_SIGNATURE;
+				goto exit;
+			}
+		} else if (!ACPI_COMPARE_NAME(signature, header.signature)) {
+			fprintf(stderr,
+				"Incorrect signature: Expecting %4.4s, found %4.4s\n",
+				signature, header.signature);
+			status = AE_BAD_SIGNATURE;
+			goto exit;
+		}
 	}
 
 	table_length = ap_get_table_length(&header);
@@ -1163,16 +1217,12 @@ osl_read_table_from_file(char *filename,
 
 	fseek(table_file, file_offset, SEEK_SET);
 
-	while (!feof(table_file) && total < table_length) {
-		count = fread(local_table + total, 1, table_length - total, table_file);
-		if (count < 0) {
-			fprintf(stderr, "%4.4s: Could not read table content\n",
-				header.signature);
-			status = AE_INVALID_TABLE_LENGTH;
-			goto exit;
-		}
-
-		total += count;
+	count = fread(local_table, 1, table_length, table_file);
+	if (count != table_length) {
+		fprintf(stderr, "%4.4s: Could not read table content\n",
+			header.signature);
+		status = AE_INVALID_TABLE_LENGTH;
+		goto exit;
 	}
 
 	/* Validate checksum */
