@@ -188,7 +188,8 @@ int wpa_set_wpadev(PSDevice pDevice, int val)
  *
  */
 
-int wpa_set_keys(PSDevice pDevice, void *ctx, bool fcpfkernel)
+int wpa_set_keys(PSDevice pDevice, void *ctx,
+		 bool fcpfkernel) __must_hold(&pDevice->lock)
 {
 	struct viawget_wpa_param *param = ctx;
 	PSMgmtObject pMgmt = pDevice->pMgmt;
@@ -593,7 +594,7 @@ static int wpa_get_scan(PSDevice pDevice,
 
 	unsigned char *ptempBSS;
 
-	ptempBSS = kmalloc(sizeof(KnownBSS), (int)GFP_ATOMIC);
+	ptempBSS = kmalloc(sizeof(KnownBSS), GFP_ATOMIC);
 
 	if (ptempBSS == NULL) {
 		printk(KERN_ERR "bubble sort kmalloc memory fail@@@\n");
@@ -635,7 +636,7 @@ static int wpa_get_scan(PSDevice pDevice,
 		count++;
 	}
 
-	pBuf = kcalloc(count, sizeof(struct viawget_scan_result), (int)GFP_ATOMIC);
+	pBuf = kcalloc(count, sizeof(struct viawget_scan_result), GFP_ATOMIC);
 
 	if (pBuf == NULL) {
 		ret = -ENOMEM;
@@ -679,7 +680,7 @@ static int wpa_get_scan(PSDevice pDevice,
 		ret = -EFAULT;
 	}
 	param->u.scan_results.scan_count = count;
-	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO " param->u.scan_results.scan_count = %d\n", count)
+	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO " param->u.scan_results.scan_count = %d\n", count);
 
 		kfree(pBuf);
 	return ret;
@@ -857,7 +858,7 @@ int wpa_ioctl(PSDevice pDevice, struct iw_point *p)
 	    p->length > VIAWGET_WPA_MAX_BUF_SIZE || !p->pointer)
 		return -EINVAL;
 
-	param = kmalloc((int)p->length, (int)GFP_KERNEL);
+	param = kmalloc((int)p->length, GFP_KERNEL);
 	if (param == NULL)
 		return -ENOMEM;
 

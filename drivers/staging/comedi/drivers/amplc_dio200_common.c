@@ -281,21 +281,17 @@ static int dio200_start_intr(struct comedi_device *dev,
 	return retval;
 }
 
-/*
- * Internal trigger function to start acquisition for an 'INTERRUPT' subdevice.
- */
-static int
-dio200_inttrig_start_intr(struct comedi_device *dev, struct comedi_subdevice *s,
-			  unsigned int trignum)
+static int dio200_inttrig_start_intr(struct comedi_device *dev,
+				     struct comedi_subdevice *s,
+				     unsigned int trig_num)
 {
-	struct dio200_subdev_intr *subpriv;
+	struct dio200_subdev_intr *subpriv = s->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	unsigned long flags;
 	int event = 0;
 
-	if (trignum != 0)
+	if (trig_num != cmd->start_arg)
 		return -EINVAL;
-
-	subpriv = s->private;
 
 	spin_lock_irqsave(&subpriv->spinlock, flags);
 	s->async->inttrig = NULL;
@@ -528,16 +524,11 @@ static int dio200_subdev_intr_cmd(struct comedi_device *dev,
 		break;
 	}
 
-	/* Set up start of acquisition. */
-	switch (cmd->start_src) {
-	case TRIG_INT:
+	if (cmd->start_src == TRIG_INT)
 		s->async->inttrig = dio200_inttrig_start_intr;
-		break;
-	default:
-		/* TRIG_NOW */
+	else	/* TRIG_NOW */
 		event = dio200_start_intr(dev, s);
-		break;
-	}
+
 	spin_unlock_irqrestore(&subpriv->spinlock, flags);
 
 	if (event)
@@ -829,7 +820,7 @@ dio200_subdev_8254_config(struct comedi_device *dev, struct comedi_subdevice *s,
 	spin_lock_irqsave(&subpriv->spinlock, flags);
 	switch (data[0]) {
 	case INSN_CONFIG_SET_COUNTER_MODE:
-		if (data[1] > (I8254_MODE5 | I8254_BINARY))
+		if (data[1] > (I8254_MODE5 | I8254_BCD))
 			ret = -EINVAL;
 		else
 			dio200_subdev_8254_set_mode(dev, s, chan, data[1]);
