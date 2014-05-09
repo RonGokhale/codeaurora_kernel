@@ -15,19 +15,15 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- *
  */
 
 #ifndef __SST_PLATFORMDRV_H__
 #define __SST_PLATFORMDRV_H__
 
 #include "sst-mfld-dsp.h"
+
+extern struct sst_device *sst;
 
 #define SST_MONO		1
 #define SST_STEREO		2
@@ -148,6 +144,7 @@ struct sst_device {
 	struct compress_sst_ops *compr_ops;
 };
 
+void sst_set_stream_status(struct sst_runtime_stream *stream, int state);
 int sst_register_dsp(struct sst_device *sst);
 int sst_unregister_dsp(struct sst_device *sst);
 #endif
