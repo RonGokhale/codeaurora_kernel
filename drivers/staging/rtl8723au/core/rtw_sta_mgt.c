@@ -21,7 +21,7 @@
 #include <mlme_osdep.h>
 #include <sta_info.h>
 
-void _rtw_init_stainfo(struct sta_info *psta)
+static void _rtw_init_stainfo(struct sta_info *psta)
 {
 	memset((u8 *)psta, 0, sizeof (struct sta_info));
 	spin_lock_init(&psta->lock);
@@ -109,7 +109,7 @@ inline struct sta_info *rtw_get_stainfo23a_by_offset23a(struct sta_priv *stapriv
 }
 
 /*  this function is used to free the memory of lock || sema for all stainfos */
-void rtw_mfree_all_stainfo(struct sta_priv *pstapriv)
+static void rtw_mfree_all_stainfo(struct sta_priv *pstapriv)
 {
 	struct list_head *plist, *phead;
 	struct sta_info *psta;
@@ -124,7 +124,7 @@ void rtw_mfree_all_stainfo(struct sta_priv *pstapriv)
 	spin_unlock_bh(&pstapriv->sta_hash_lock);
 }
 
-void rtw_mfree_sta_priv_lock(struct	sta_priv *pstapriv)
+static void rtw_mfree_sta_priv_lock(struct sta_priv *pstapriv)
 {
 	rtw_mfree_all_stainfo(pstapriv); /* be done before free sta_hash_lock */
 }
@@ -405,12 +405,12 @@ void rtw_free_all_stainfo23a(struct rtw_adapter *padapter)
 }
 
 /* any station allocated can be searched by hash list */
-struct sta_info *rtw_get_stainfo23a(struct sta_priv *pstapriv, u8 *hwaddr)
+struct sta_info *rtw_get_stainfo23a(struct sta_priv *pstapriv, const u8 *hwaddr)
 {
 	struct list_head *plist, *phead;
 	struct sta_info *psta = NULL;
 	u32	index;
-	u8 *addr;
+	const u8 *addr;
 	u8 bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 	if (hwaddr == NULL)

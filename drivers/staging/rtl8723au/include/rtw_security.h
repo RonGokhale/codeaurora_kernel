@@ -30,7 +30,6 @@
 
 #define is_wep_enc(alg) (((alg) == _WEP40_) || ((alg) == _WEP104_))
 
-#define _WPA_IE_ID_	0xdd
 #define _WPA2_IE_ID_	0x30
 
 #define SHA256_MAC_LEN 32
@@ -315,22 +314,6 @@ static const unsigned long K[64] = {
 	0x682e6ff3UL, 0x748f82eeUL, 0x78a5636fUL, 0x84c87814UL, 0x8cc70208UL,
 	0x90befffaUL, 0xa4506cebUL, 0xbef9a3f7UL, 0xc67178f2UL
 };
-
-/* Various logical functions */
-#define RORc(x, y) \
-(((((unsigned long)(x) & 0xFFFFFFFFUL) >> (unsigned long) ((y) & 31)) | \
-((unsigned long)(x) << (unsigned long) (32 - ((y) & 31)))) & 0xFFFFFFFFUL)
-#define Ch(x, y, z)     (z ^ (x & (y ^ z)))
-#define Maj(x, y, z)    (((x | y) & z) | (x & y))
-#define S(x, n)         RORc((x), (n))
-#define R(x, n)         (((x)&0xFFFFFFFFUL)>>(n))
-#define Sigma0(x)       (S(x, 2) ^ S(x, 13) ^ S(x, 22))
-#define Sigma1(x)       (S(x, 6) ^ S(x, 11) ^ S(x, 25))
-#define Gamma0(x)       (S(x, 7) ^ S(x, 18) ^ R(x, 3))
-#define Gamma1(x)       (S(x, 17) ^ S(x, 19) ^ R(x, 10))
-#ifndef MIN
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-#endif
 
 void rtw_secmicsetkey23a(struct mic_data *pmicdata, u8 *key);
 void rtw_secmicappend23abyte23a(struct mic_data *pmicdata, u8 b);

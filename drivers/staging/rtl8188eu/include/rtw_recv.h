@@ -235,22 +235,8 @@ struct sta_recv_priv {
 };
 
 struct recv_buf {
-	struct list_head list;
-	spinlock_t recvbuf_lock;
-	u32	ref_cnt;
 	struct adapter *adapter;
-	u8	*pbuf;
-	u8	*pallocated_buf;
-	u32	len;
-	u8	*phead;
-	u8	*pdata;
-	u8	*ptail;
-	u8	*pend;
 	struct urb *purb;
-	dma_addr_t dma_transfer_addr;	/* (in) dma addr for transfer_buffer */
-	u32 alloc_sz;
-	u8  irp_pending;
-	int  transfer_len;
 	struct sk_buff *pskb;
 	u8	reuse;
 };
@@ -302,9 +288,6 @@ int rtw_enqueue_recvframe(struct recv_frame *precvframe, struct __queue *queue);
 void rtw_free_recvframe_queue(struct __queue *pframequeue,
 			      struct __queue *pfree_recv_queue);
 u32 rtw_free_uc_swdec_pending_queue(struct adapter *adapter);
-int rtw_enqueue_recvbuf_to_head(struct recv_buf *buf, struct __queue *queue);
-int rtw_enqueue_recvbuf(struct recv_buf *precvbuf, struct __queue *queue);
-struct recv_buf *rtw_dequeue_recvbuf(struct __queue *queue);
 
 void rtw_reordering_ctrl_timeout_handler(void *pcontext);
 

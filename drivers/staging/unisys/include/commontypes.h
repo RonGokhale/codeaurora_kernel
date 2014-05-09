@@ -1,4 +1,4 @@
-/* Copyright © 2010 - 2013 UNISYS CORPORATION
+/* Copyright (C) 2010 - 2013 UNISYS CORPORATION
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
 #define _COMMONTYPES_H_
 
 /* define the following to prevent include nesting in kernel header files of
- * similar abreviated content */
+ * similar abbreviated content */
 #define _SUPERVISOR_COMMONTYPES_H_
 
 #ifdef __KERNEL__
