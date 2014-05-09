@@ -734,7 +734,7 @@ static int spi_qup_remove(struct platform_device *pdev)
 	int ret;
 
 	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret)
+	if (ret < 0)
 		return ret;
 
 	ret = spi_qup_set_state(controller, QUP_STATE_RESET);
@@ -749,7 +749,7 @@ static int spi_qup_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id spi_qup_dt_match[] = {
+static const struct of_device_id spi_qup_dt_match[] = {
 	{ .compatible = "qcom,spi-qup-v2.1.1", },
 	{ .compatible = "qcom,spi-qup-v2.2.1", },
 	{ }
