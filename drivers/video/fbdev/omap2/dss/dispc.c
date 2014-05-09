@@ -2577,9 +2577,9 @@ int dispc_ovl_setup(enum omap_plane plane, const struct omap_overlay_info *oi,
 
 	channel = dispc_ovl_get_channel_out(plane);
 
-	DSSDBG("dispc_ovl_setup %d, pa %x, pa_uv %x, sw %d, %d,%d, %dx%d -> "
-		"%dx%d, cmode %x, rot %d, mir %d, chan %d repl %d\n",
-		plane, oi->paddr, oi->p_uv_addr, oi->screen_width, oi->pos_x,
+	DSSDBG("dispc_ovl_setup %d, pa %pad, pa_uv %pad, sw %d, %d,%d, %dx%d ->"
+		" %dx%d, cmode %x, rot %d, mir %d, chan %d repl %d\n",
+		plane, &oi->paddr, &oi->p_uv_addr, oi->screen_width, oi->pos_x,
 		oi->pos_y, oi->width, oi->height, oi->out_width, oi->out_height,
 		oi->color_mode, oi->rotation, oi->mirror, channel, replication);
 
@@ -3656,6 +3656,7 @@ static int __init dispc_init_features(struct platform_device *pdev)
 	case OMAPDSS_VER_OMAP34xx_ES3:
 	case OMAPDSS_VER_OMAP3630:
 	case OMAPDSS_VER_AM35xx:
+	case OMAPDSS_VER_AM43xx:
 		src = &omap34xx_rev3_0_dispc_feats;
 		break;
 
@@ -3829,6 +3830,7 @@ static const struct of_device_id dispc_of_match[] = {
 	{ .compatible = "ti,omap2-dispc", },
 	{ .compatible = "ti,omap3-dispc", },
 	{ .compatible = "ti,omap4-dispc", },
+	{ .compatible = "ti,omap5-dispc", },
 	{},
 };
 
