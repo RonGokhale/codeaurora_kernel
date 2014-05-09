@@ -26,6 +26,8 @@
  *  distribution for more details.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/cgroup.h>
 #include <linux/cred.h>
 #include <linux/ctype.h>
@@ -96,6 +98,12 @@ EXPORT_SYMBOL_GPL(css_set_rwsem);
 static DEFINE_MUTEX(cgroup_mutex);
 static DECLARE_RWSEM(css_set_rwsem);
 #endif
+
+/*
+ * Protects cgroup_idr and css_idr so that IDs can be released without
+ * grabbing cgroup_mutex.
+ */
+static DEFINE_SPINLOCK(cgroup_idr_lock);
 
 /*
  * Protects cgroup_subsys->release_agent_path.  Modifying it also requires
@@ -179,12 +187,45 @@ static struct cftype cgroup_base_files[];
 
 static void cgroup_put(struct cgroup *cgrp);
 static int rebind_subsystems(struct cgroup_root *dst_root,
-			     unsigned long ss_mask);
+			     unsigned int ss_mask);
 static void cgroup_destroy_css_killed(struct cgroup *cgrp);
 static int cgroup_destroy_locked(struct cgroup *cgrp);
+static int create_css(struct cgroup *cgrp, struct cgroup_subsys *ss);
+static void kill_css(struct cgroup_subsys_state *css);
 static int cgroup_addrm_files(struct cgroup *cgrp, struct cftype cfts[],
 			      bool is_add);
 static void cgroup_pidlist_destroy_all(struct cgroup *cgrp);
+
+/* IDR wrappers which synchronize using cgroup_idr_lock */
+static int cgroup_idr_alloc(struct idr *idr, void *ptr, int start, int end,
+			    gfp_t gfp_mask)
+{
+	int ret;
+
+	idr_preload(gfp_mask);
+	spin_lock(&cgroup_idr_lock);
+	ret = idr_alloc(idr, ptr, start, end, gfp_mask);
+	spin_unlock(&cgroup_idr_lock);
+	idr_preload_end();
+	return ret;
+}
+
+static void *cgroup_idr_replace(struct idr *idr, void *ptr, int id)
+{
+	void *ret;
+
+	spin_lock(&cgroup_idr_lock);
+	ret = idr_replace(idr, ptr, id);
+	spin_unlock(&cgroup_idr_lock);
+	return ret;
+}
+
+static void cgroup_idr_remove(struct idr *idr, int id)
+{
+	spin_lock(&cgroup_idr_lock);
+	idr_remove(idr, id);
+	spin_unlock(&cgroup_idr_lock);
+}
 
 /**
  * cgroup_css - obtain a cgroup's css for the specified subsystem
@@ -206,6 +247,34 @@ static struct cgroup_subsys_state *cgroup_css(struct cgroup *cgrp,
 					lockdep_is_held(&cgroup_mutex));
 	else
 		return &cgrp->dummy_css;
+}
+
+/**
+ * cgroup_e_css - obtain a cgroup's effective css for the specified subsystem
+ * @cgrp: the cgroup of interest
+ * @ss: the subsystem of interest (%NULL returns the dummy_css)
+ *
+ * Similar to cgroup_css() but returns the effctive css, which is defined
+ * as the matching css of the nearest ancestor including self which has @ss
+ * enabled.  If @ss is associated with the hierarchy @cgrp is on, this
+ * function is guaranteed to return non-NULL css.
+ */
+static struct cgroup_subsys_state *cgroup_e_css(struct cgroup *cgrp,
+						struct cgroup_subsys *ss)
+{
+	lockdep_assert_held(&cgroup_mutex);
+
+	if (!ss)
+		return &cgrp->dummy_css;
+
+	if (!(cgrp->root->subsys_mask & (1 << ss->id)))
+		return NULL;
+
+	while (cgrp->parent &&
+	       !(cgrp->parent->child_subsys_mask & (1 << ss->id)))
+		cgrp = cgrp->parent;
+
+	return cgroup_css(cgrp, ss);
 }
 
 /* convenient tests for these bits */
@@ -273,7 +342,7 @@ static int notify_on_release(const struct cgroup *cgrp)
  * @ssid: the index of the subsystem, CGROUP_SUBSYS_COUNT after reaching the end
  * @cgrp: the target cgroup to iterate css's of
  *
- * Should be called under cgroup_mutex.
+ * Should be called under cgroup_[tree_]mutex.
  */
 #define for_each_css(css, ssid, cgrp)					\
 	for ((ssid) = 0; (ssid) < CGROUP_SUBSYS_COUNT; (ssid)++)	\
@@ -281,6 +350,20 @@ static int notify_on_release(const struct cgroup *cgrp)
 				(cgrp)->subsys[(ssid)],			\
 				lockdep_is_held(&cgroup_tree_mutex) ||	\
 				lockdep_is_held(&cgroup_mutex)))) { }	\
+		else
+
+/**
+ * for_each_e_css - iterate all effective css's of a cgroup
+ * @css: the iteration cursor
+ * @ssid: the index of the subsystem, CGROUP_SUBSYS_COUNT after reaching the end
+ * @cgrp: the target cgroup to iterate css's of
+ *
+ * Should be called under cgroup_[tree_]mutex.
+ */
+#define for_each_e_css(css, ssid, cgrp)					\
+	for ((ssid) = 0; (ssid) < CGROUP_SUBSYS_COUNT; (ssid)++)	\
+		if (!((css) = cgroup_e_css(cgrp, cgroup_subsys[(ssid)]))) \
+			;						\
 		else
 
 /**
@@ -295,6 +378,14 @@ static int notify_on_release(const struct cgroup *cgrp)
 /* iterate across the hierarchies */
 #define for_each_root(root)						\
 	list_for_each_entry((root), &cgroup_roots, root_list)
+
+/* iterate over child cgrps, lock should be held throughout iteration */
+#define cgroup_for_each_live_child(child, cgrp)				\
+	list_for_each_entry((child), &(cgrp)->children, sibling)	\
+		if (({ lockdep_assert_held(&cgroup_tree_mutex);		\
+		       cgroup_is_dead(child); }))			\
+			;						\
+		else
 
 /**
  * cgroup_lock_live_group - take cgroup_mutex and check that cgrp is alive.
@@ -359,6 +450,43 @@ static struct css_set init_css_set = {
 
 static int css_set_count	= 1;	/* 1 for init_css_set */
 
+/**
+ * cgroup_update_populated - updated populated count of a cgroup
+ * @cgrp: the target cgroup
+ * @populated: inc or dec populated count
+ *
+ * @cgrp is either getting the first task (css_set) or losing the last.
+ * Update @cgrp->populated_cnt accordingly.  The count is propagated
+ * towards root so that a given cgroup's populated_cnt is zero iff the
+ * cgroup and all its descendants are empty.
+ *
+ * @cgrp's interface file "cgroup.populated" is zero if
+ * @cgrp->populated_cnt is zero and 1 otherwise.  When @cgrp->populated_cnt
+ * changes from or to zero, userland is notified that the content of the
+ * interface file has changed.  This can be used to detect when @cgrp and
+ * its descendants become populated or empty.
+ */
+static void cgroup_update_populated(struct cgroup *cgrp, bool populated)
+{
+	lockdep_assert_held(&css_set_rwsem);
+
+	do {
+		bool trigger;
+
+		if (populated)
+			trigger = !cgrp->populated_cnt++;
+		else
+			trigger = !--cgrp->populated_cnt;
+
+		if (!trigger)
+			break;
+
+		if (cgrp->populated_kn)
+			kernfs_notify(cgrp->populated_kn);
+		cgrp = cgrp->parent;
+	} while (cgrp);
+}
+
 /*
  * hash table for cgroup groups. This improves the performance to find
  * an existing css_set. This hash doesn't (currently) take into
@@ -383,6 +511,8 @@ static unsigned long css_set_hash(struct cgroup_subsys_state *css[])
 static void put_css_set_locked(struct css_set *cset, bool taskexit)
 {
 	struct cgrp_cset_link *link, *tmp_link;
+	struct cgroup_subsys *ss;
+	int ssid;
 
 	lockdep_assert_held(&css_set_rwsem);
 
@@ -390,6 +520,8 @@ static void put_css_set_locked(struct css_set *cset, bool taskexit)
 		return;
 
 	/* This css_set is dead. unlink it and release cgroup refcounts */
+	for_each_subsys(ss, ssid)
+		list_del(&cset->e_cset_node[ssid]);
 	hash_del(&cset->hlist);
 	css_set_count--;
 
@@ -400,10 +532,13 @@ static void put_css_set_locked(struct css_set *cset, bool taskexit)
 		list_del(&link->cgrp_link);
 
 		/* @cgrp can't go away while we're holding css_set_rwsem */
-		if (list_empty(&cgrp->cset_links) && notify_on_release(cgrp)) {
-			if (taskexit)
-				set_bit(CGRP_RELEASABLE, &cgrp->flags);
-			check_for_release(cgrp);
+		if (list_empty(&cgrp->cset_links)) {
+			cgroup_update_populated(cgrp, false);
+			if (notify_on_release(cgrp)) {
+				if (taskexit)
+					set_bit(CGRP_RELEASABLE, &cgrp->flags);
+				check_for_release(cgrp);
+			}
 		}
 
 		kfree(link);
@@ -452,20 +587,20 @@ static bool compare_css_sets(struct css_set *cset,
 {
 	struct list_head *l1, *l2;
 
-	if (memcmp(template, cset->subsys, sizeof(cset->subsys))) {
-		/* Not all subsystems matched */
+	/*
+	 * On the default hierarchy, there can be csets which are
+	 * associated with the same set of cgroups but different csses.
+	 * Let's first ensure that csses match.
+	 */
+	if (memcmp(template, cset->subsys, sizeof(cset->subsys)))
 		return false;
-	}
 
 	/*
 	 * Compare cgroup pointers in order to distinguish between
-	 * different cgroups in heirarchies with no subsystems. We
-	 * could get by with just this check alone (and skip the
-	 * memcmp above) but on most setups the memcmp check will
-	 * avoid the need for this more expensive check on almost all
-	 * candidates.
+	 * different cgroups in hierarchies.  As different cgroups may
+	 * share the same effective css, this comparison is always
+	 * necessary.
 	 */
-
 	l1 = &cset->cgrp_links;
 	l2 = &old_cset->cgrp_links;
 	while (1) {
@@ -529,14 +664,17 @@ static struct css_set *find_existing_css_set(struct css_set *old_cset,
 	 * won't change, so no need for locking.
 	 */
 	for_each_subsys(ss, i) {
-		if (root->cgrp.subsys_mask & (1UL << i)) {
-			/* Subsystem is in this hierarchy. So we want
-			 * the subsystem state from the new
-			 * cgroup */
-			template[i] = cgroup_css(cgrp, ss);
+		if (root->subsys_mask & (1UL << i)) {
+			/*
+			 * @ss is in this hierarchy, so we want the
+			 * effective css from @cgrp.
+			 */
+			template[i] = cgroup_e_css(cgrp, ss);
 		} else {
-			/* Subsystem is not in this hierarchy, so we
-			 * don't want to change the subsystem state */
+			/*
+			 * @ss is not in this hierarchy, so we don't want
+			 * to change the css.
+			 */
 			template[i] = old_cset->subsys[i];
 		}
 	}
@@ -602,10 +740,18 @@ static void link_css_set(struct list_head *tmp_links, struct css_set *cset,
 	struct cgrp_cset_link *link;
 
 	BUG_ON(list_empty(tmp_links));
+
+	if (cgroup_on_dfl(cgrp))
+		cset->dfl_cgrp = cgrp;
+
 	link = list_first_entry(tmp_links, struct cgrp_cset_link, cset_link);
 	link->cset = cset;
 	link->cgrp = cgrp;
+
+	if (list_empty(&cgrp->cset_links))
+		cgroup_update_populated(cgrp, true);
 	list_move(&link->cset_link, &cgrp->cset_links);
+
 	/*
 	 * Always add links to the tail of the list so that the list
 	 * is sorted by order of hierarchy creation
@@ -628,7 +774,9 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 	struct css_set *cset;
 	struct list_head tmp_links;
 	struct cgrp_cset_link *link;
+	struct cgroup_subsys *ss;
 	unsigned long key;
+	int ssid;
 
 	lockdep_assert_held(&cgroup_mutex);
 
@@ -679,9 +827,13 @@ static struct css_set *find_css_set(struct css_set *old_cset,
 
 	css_set_count++;
 
-	/* Add this cgroup group to the hash table */
+	/* Add @cset to the hash table */
 	key = css_set_hash(cset->subsys);
 	hash_add(css_set_table, &cset->hlist, key);
+
+	for_each_subsys(ss, ssid)
+		list_add_tail(&cset->e_cset_node[ssid],
+			      &cset->subsys[ssid]->cgroup->e_csets[ssid]);
 
 	up_write(&css_set_rwsem);
 
@@ -742,7 +894,7 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	BUG_ON(!list_empty(&cgrp->children));
 
 	/* Rebind all subsystems back to the default hierarchy */
-	rebind_subsystems(&cgrp_dfl_root, cgrp->subsys_mask);
+	rebind_subsystems(&cgrp_dfl_root, root->subsys_mask);
 
 	/*
 	 * Release all the links from cset_links to this hierarchy's
@@ -848,7 +1000,7 @@ static struct cgroup *task_cgroup_from_root(struct task_struct *task,
  * update of a tasks cgroup pointer by cgroup_attach_task()
  */
 
-static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask);
+static int cgroup_populate_dir(struct cgroup *cgrp, unsigned int subsys_mask);
 static struct kernfs_syscall_ops cgroup_kf_syscall_ops;
 static const struct file_operations proc_cgroupstats_operations;
 
@@ -937,15 +1089,7 @@ static void cgroup_put(struct cgroup *cgrp)
 	if (WARN_ON_ONCE(cgrp->parent && !cgroup_is_dead(cgrp)))
 		return;
 
-	/*
-	 * XXX: cgrp->id is only used to look up css's.  As cgroup and
-	 * css's lifetimes will be decoupled, it should be made
-	 * per-subsystem and moved to css->id so that lookups are
-	 * successful until the target css is released.
-	 */
-	mutex_lock(&cgroup_mutex);
-	idr_remove(&cgrp->root->cgroup_idr, cgrp->id);
-	mutex_unlock(&cgroup_mutex);
+	cgroup_idr_remove(&cgrp->root->cgroup_idr, cgrp->id);
 	cgrp->id = -1;
 
 	call_rcu(&cgrp->rcu_head, cgroup_free_rcu);
@@ -964,7 +1108,7 @@ static void cgroup_rm_file(struct cgroup *cgrp, const struct cftype *cft)
  * @cgrp: target cgroup
  * @subsys_mask: mask of the subsystem ids whose files should be removed
  */
-static void cgroup_clear_dir(struct cgroup *cgrp, unsigned long subsys_mask)
+static void cgroup_clear_dir(struct cgroup *cgrp, unsigned int subsys_mask)
 {
 	struct cgroup_subsys *ss;
 	int i;
@@ -972,18 +1116,17 @@ static void cgroup_clear_dir(struct cgroup *cgrp, unsigned long subsys_mask)
 	for_each_subsys(ss, i) {
 		struct cftype *cfts;
 
-		if (!test_bit(i, &subsys_mask))
+		if (!(subsys_mask & (1 << i)))
 			continue;
 		list_for_each_entry(cfts, &ss->cfts, node)
 			cgroup_addrm_files(cgrp, cfts, false);
 	}
 }
 
-static int rebind_subsystems(struct cgroup_root *dst_root,
-			     unsigned long ss_mask)
+static int rebind_subsystems(struct cgroup_root *dst_root, unsigned int ss_mask)
 {
 	struct cgroup_subsys *ss;
-	int ssid, ret;
+	int ssid, i, ret;
 
 	lockdep_assert_held(&cgroup_tree_mutex);
 	lockdep_assert_held(&cgroup_mutex);
@@ -992,16 +1135,12 @@ static int rebind_subsystems(struct cgroup_root *dst_root,
 		if (!(ss_mask & (1 << ssid)))
 			continue;
 
-		/* if @ss is on the dummy_root, we can always move it */
-		if (ss->root == &cgrp_dfl_root)
-			continue;
-
-		/* if @ss has non-root cgroups attached to it, can't move */
-		if (!list_empty(&ss->root->cgrp.children))
+		/* if @ss has non-root csses attached to it, can't move */
+		if (css_next_child(NULL, cgroup_css(&ss->root->cgrp, ss)))
 			return -EBUSY;
 
 		/* can't move between two non-dummy roots either */
-		if (dst_root != &cgrp_dfl_root)
+		if (ss->root != &cgrp_dfl_root && dst_root != &cgrp_dfl_root)
 			return -EBUSY;
 	}
 
@@ -1017,9 +1156,9 @@ static int rebind_subsystems(struct cgroup_root *dst_root,
 		 * Just warn about it and continue.
 		 */
 		if (cgrp_dfl_root_visible) {
-			pr_warning("cgroup: failed to create files (%d) while rebinding 0x%lx to default root\n",
-				   ret, ss_mask);
-			pr_warning("cgroup: you may retry by moving them to a different hierarchy and unbinding\n");
+			pr_warn("failed to create files (%d) while rebinding 0x%x to default root\n",
+				ret, ss_mask);
+			pr_warn("you may retry by moving them to a different hierarchy and unbinding\n");
 		}
 	}
 
@@ -1036,6 +1175,7 @@ static int rebind_subsystems(struct cgroup_root *dst_root,
 	for_each_subsys(ss, ssid) {
 		struct cgroup_root *src_root;
 		struct cgroup_subsys_state *css;
+		struct css_set *cset;
 
 		if (!(ss_mask & (1 << ssid)))
 			continue;
@@ -1050,8 +1190,19 @@ static int rebind_subsystems(struct cgroup_root *dst_root,
 		ss->root = dst_root;
 		css->cgroup = &dst_root->cgrp;
 
-		src_root->cgrp.subsys_mask &= ~(1 << ssid);
-		dst_root->cgrp.subsys_mask |= 1 << ssid;
+		down_write(&css_set_rwsem);
+		hash_for_each(css_set_table, i, cset, hlist)
+			list_move_tail(&cset->e_cset_node[ss->id],
+				       &dst_root->cgrp.e_csets[ss->id]);
+		up_write(&css_set_rwsem);
+
+		src_root->subsys_mask &= ~(1 << ssid);
+		src_root->cgrp.child_subsys_mask &= ~(1 << ssid);
+
+		/* default hierarchy doesn't enable controllers by default */
+		dst_root->subsys_mask |= 1 << ssid;
+		if (dst_root != &cgrp_dfl_root)
+			dst_root->cgrp.child_subsys_mask |= 1 << ssid;
 
 		if (ss->bind)
 			ss->bind(css);
@@ -1069,7 +1220,7 @@ static int cgroup_show_options(struct seq_file *seq,
 	int ssid;
 
 	for_each_subsys(ss, ssid)
-		if (root->cgrp.subsys_mask & (1 << ssid))
+		if (root->subsys_mask & (1 << ssid))
 			seq_printf(seq, ",%s", ss->name);
 	if (root->flags & CGRP_ROOT_SANE_BEHAVIOR)
 		seq_puts(seq, ",sane_behavior");
@@ -1091,8 +1242,8 @@ static int cgroup_show_options(struct seq_file *seq,
 }
 
 struct cgroup_sb_opts {
-	unsigned long subsys_mask;
-	unsigned long flags;
+	unsigned int subsys_mask;
+	unsigned int flags;
 	char *release_agent;
 	bool cpuset_clone_children;
 	char *name;
@@ -1100,24 +1251,16 @@ struct cgroup_sb_opts {
 	bool none;
 };
 
-/*
- * Convert a hierarchy specifier into a bitmask of subsystems and
- * flags. Call with cgroup_mutex held to protect the cgroup_subsys[]
- * array. This function takes refcounts on subsystems to be used, unless it
- * returns error, in which case no refcounts are taken.
- */
 static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 {
 	char *token, *o = data;
 	bool all_ss = false, one_ss = false;
-	unsigned long mask = (unsigned long)-1;
+	unsigned int mask = -1U;
 	struct cgroup_subsys *ss;
 	int i;
 
-	BUG_ON(!mutex_is_locked(&cgroup_mutex));
-
 #ifdef CONFIG_CPUSETS
-	mask = ~(1UL << cpuset_cgrp_id);
+	mask = ~(1U << cpuset_cgrp_id);
 #endif
 
 	memset(opts, 0, sizeof(*opts));
@@ -1198,7 +1341,7 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 			/* Mutually exclusive option 'all' + subsystem name */
 			if (all_ss)
 				return -EINVAL;
-			set_bit(i, &opts->subsys_mask);
+			opts->subsys_mask |= (1 << i);
 			one_ss = true;
 
 			break;
@@ -1210,12 +1353,12 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	/* Consistency checks */
 
 	if (opts->flags & CGRP_ROOT_SANE_BEHAVIOR) {
-		pr_warning("cgroup: sane_behavior: this is still under development and its behaviors will change, proceed at your own risk\n");
+		pr_warn("sane_behavior: this is still under development and its behaviors will change, proceed at your own risk\n");
 
 		if ((opts->flags & (CGRP_ROOT_NOPREFIX | CGRP_ROOT_XATTR)) ||
 		    opts->cpuset_clone_children || opts->release_agent ||
 		    opts->name) {
-			pr_err("cgroup: sane_behavior: noprefix, xattr, clone_children, release_agent and name are not allowed\n");
+			pr_err("sane_behavior: noprefix, xattr, clone_children, release_agent and name are not allowed\n");
 			return -EINVAL;
 		}
 	} else {
@@ -1227,7 +1370,7 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 		if (all_ss || (!one_ss && !opts->none && !opts->name))
 			for_each_subsys(ss, i)
 				if (!ss->disabled)
-					set_bit(i, &opts->subsys_mask);
+					opts->subsys_mask |= (1 << i);
 
 		/*
 		 * We either have to specify by name or by subsystems. (So
@@ -1258,10 +1401,10 @@ static int cgroup_remount(struct kernfs_root *kf_root, int *flags, char *data)
 	int ret = 0;
 	struct cgroup_root *root = cgroup_root_from_kf(kf_root);
 	struct cgroup_sb_opts opts;
-	unsigned long added_mask, removed_mask;
+	unsigned int added_mask, removed_mask;
 
 	if (root->flags & CGRP_ROOT_SANE_BEHAVIOR) {
-		pr_err("cgroup: sane_behavior: remount is not allowed\n");
+		pr_err("sane_behavior: remount is not allowed\n");
 		return -EINVAL;
 	}
 
@@ -1273,17 +1416,17 @@ static int cgroup_remount(struct kernfs_root *kf_root, int *flags, char *data)
 	if (ret)
 		goto out_unlock;
 
-	if (opts.subsys_mask != root->cgrp.subsys_mask || opts.release_agent)
-		pr_warning("cgroup: option changes via remount are deprecated (pid=%d comm=%s)\n",
-			   task_tgid_nr(current), current->comm);
+	if (opts.subsys_mask != root->subsys_mask || opts.release_agent)
+		pr_warn("option changes via remount are deprecated (pid=%d comm=%s)\n",
+			task_tgid_nr(current), current->comm);
 
-	added_mask = opts.subsys_mask & ~root->cgrp.subsys_mask;
-	removed_mask = root->cgrp.subsys_mask & ~opts.subsys_mask;
+	added_mask = opts.subsys_mask & ~root->subsys_mask;
+	removed_mask = root->subsys_mask & ~opts.subsys_mask;
 
 	/* Don't allow flags or name to change at remount */
 	if (((opts.flags ^ root->flags) & CGRP_ROOT_OPTION_MASK) ||
 	    (opts.name && strcmp(opts.name, root->name))) {
-		pr_err("cgroup: option or name mismatch, new: 0x%lx \"%s\", old: 0x%lx \"%s\"\n",
+		pr_err("option or name mismatch, new: 0x%x \"%s\", old: 0x%x \"%s\"\n",
 		       opts.flags & CGRP_ROOT_OPTION_MASK, opts.name ?: "",
 		       root->flags & CGRP_ROOT_OPTION_MASK, root->name);
 		ret = -EINVAL;
@@ -1369,6 +1512,9 @@ out_unlock:
 
 static void init_cgroup_housekeeping(struct cgroup *cgrp)
 {
+	struct cgroup_subsys *ss;
+	int ssid;
+
 	atomic_set(&cgrp->refcnt, 1);
 	INIT_LIST_HEAD(&cgrp->sibling);
 	INIT_LIST_HEAD(&cgrp->children);
@@ -1377,6 +1523,11 @@ static void init_cgroup_housekeeping(struct cgroup *cgrp)
 	INIT_LIST_HEAD(&cgrp->pidlists);
 	mutex_init(&cgrp->pidlist_mutex);
 	cgrp->dummy_css.cgroup = cgrp;
+
+	for_each_subsys(ss, ssid)
+		INIT_LIST_HEAD(&cgrp->e_csets[ssid]);
+
+	init_waitqueue_head(&cgrp->offline_waitq);
 }
 
 static void init_cgroup_root(struct cgroup_root *root,
@@ -1399,7 +1550,7 @@ static void init_cgroup_root(struct cgroup_root *root,
 		set_bit(CGRP_CPUSET_CLONE_CHILDREN, &root->cgrp.flags);
 }
 
-static int cgroup_setup_root(struct cgroup_root *root, unsigned long ss_mask)
+static int cgroup_setup_root(struct cgroup_root *root, unsigned int ss_mask)
 {
 	LIST_HEAD(tmp_links);
 	struct cgroup *root_cgrp = &root->cgrp;
@@ -1409,7 +1560,7 @@ static int cgroup_setup_root(struct cgroup_root *root, unsigned long ss_mask)
 	lockdep_assert_held(&cgroup_tree_mutex);
 	lockdep_assert_held(&cgroup_mutex);
 
-	ret = idr_alloc(&root->cgroup_idr, root_cgrp, 0, 1, GFP_KERNEL);
+	ret = cgroup_idr_alloc(&root->cgroup_idr, root_cgrp, 1, 2, GFP_NOWAIT);
 	if (ret < 0)
 		goto out;
 	root_cgrp->id = ret;
@@ -1495,7 +1646,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	 */
 	if (!use_task_css_set_links)
 		cgroup_enable_task_cg_lists();
-retry:
+
 	mutex_lock(&cgroup_tree_mutex);
 	mutex_lock(&cgroup_mutex);
 
@@ -1503,7 +1654,7 @@ retry:
 	ret = parse_cgroupfs_options(data, &opts);
 	if (ret)
 		goto out_unlock;
-
+retry:
 	/* look for a matching existing root */
 	if (!opts.subsys_mask && !opts.none && !opts.name) {
 		cgrp_dfl_root_visible = true;
@@ -1535,7 +1686,7 @@ retry:
 		 * subsystems) then they must match.
 		 */
 		if ((opts.subsys_mask || opts.none) &&
-		    (opts.subsys_mask != root->cgrp.subsys_mask)) {
+		    (opts.subsys_mask != root->subsys_mask)) {
 			if (!name_match)
 				continue;
 			ret = -EBUSY;
@@ -1544,11 +1695,11 @@ retry:
 
 		if ((root->flags ^ opts.flags) & CGRP_ROOT_OPTION_MASK) {
 			if ((root->flags | opts.flags) & CGRP_ROOT_SANE_BEHAVIOR) {
-				pr_err("cgroup: sane_behavior: new mount options should match the existing superblock\n");
+				pr_err("sane_behavior: new mount options should match the existing superblock\n");
 				ret = -EINVAL;
 				goto out_unlock;
 			} else {
-				pr_warning("cgroup: new mount options do not match the existing superblock, will be ignored\n");
+				pr_warn("new mount options do not match the existing superblock, will be ignored\n");
 			}
 		}
 
@@ -1562,9 +1713,9 @@ retry:
 		if (!atomic_inc_not_zero(&root->cgrp.refcnt)) {
 			mutex_unlock(&cgroup_mutex);
 			mutex_unlock(&cgroup_tree_mutex);
-			kfree(opts.release_agent);
-			kfree(opts.name);
 			msleep(10);
+			mutex_lock(&cgroup_tree_mutex);
+			mutex_lock(&cgroup_mutex);
 			goto retry;
 		}
 
@@ -1737,7 +1888,7 @@ struct task_struct *cgroup_taskset_next(struct cgroup_taskset *tset)
 
 /**
  * cgroup_task_migrate - move a task from one cgroup to another.
- * @old_cgrp; the cgroup @tsk is being migrated from
+ * @old_cgrp: the cgroup @tsk is being migrated from
  * @tsk: the task being migrated
  * @new_cset: the new css_set @tsk is being attached to
  *
@@ -1829,10 +1980,6 @@ static void cgroup_migrate_add_src(struct css_set *src_cset,
 
 	src_cgrp = cset_cgroup_from_root(src_cset, dst_cgrp->root);
 
-	/* nothing to do if this cset already belongs to the cgroup */
-	if (src_cgrp == dst_cgrp)
-		return;
-
 	if (!list_empty(&src_cset->mg_preload_node))
 		return;
 
@@ -1847,13 +1994,14 @@ static void cgroup_migrate_add_src(struct css_set *src_cset,
 
 /**
  * cgroup_migrate_prepare_dst - prepare destination css_sets for migration
- * @dst_cgrp: the destination cgroup
+ * @dst_cgrp: the destination cgroup (may be %NULL)
  * @preloaded_csets: list of preloaded source css_sets
  *
  * Tasks are about to be moved to @dst_cgrp and all the source css_sets
  * have been preloaded to @preloaded_csets.  This function looks up and
- * pins all destination css_sets, links each to its source, and put them on
- * @preloaded_csets.
+ * pins all destination css_sets, links each to its source, and append them
+ * to @preloaded_csets.  If @dst_cgrp is %NULL, the destination of each
+ * source css_set is assumed to be its cgroup on the default hierarchy.
  *
  * This function must be called after cgroup_migrate_add_src() has been
  * called on each migration source css_set.  After migration is performed
@@ -1864,19 +2012,42 @@ static int cgroup_migrate_prepare_dst(struct cgroup *dst_cgrp,
 				      struct list_head *preloaded_csets)
 {
 	LIST_HEAD(csets);
-	struct css_set *src_cset;
+	struct css_set *src_cset, *tmp_cset;
 
 	lockdep_assert_held(&cgroup_mutex);
 
+	/*
+	 * Except for the root, child_subsys_mask must be zero for a cgroup
+	 * with tasks so that child cgroups don't compete against tasks.
+	 */
+	if (dst_cgrp && cgroup_on_dfl(dst_cgrp) && dst_cgrp->parent &&
+	    dst_cgrp->child_subsys_mask)
+		return -EBUSY;
+
 	/* look up the dst cset for each src cset and link it to src */
-	list_for_each_entry(src_cset, preloaded_csets, mg_preload_node) {
+	list_for_each_entry_safe(src_cset, tmp_cset, preloaded_csets, mg_preload_node) {
 		struct css_set *dst_cset;
 
-		dst_cset = find_css_set(src_cset, dst_cgrp);
+		dst_cset = find_css_set(src_cset,
+					dst_cgrp ?: src_cset->dfl_cgrp);
 		if (!dst_cset)
 			goto err;
 
 		WARN_ON_ONCE(src_cset->mg_dst_cset || dst_cset->mg_dst_cset);
+
+		/*
+		 * If src cset equals dst, it's noop.  Drop the src.
+		 * cgroup_migrate() will skip the cset too.  Note that we
+		 * can't handle src == dst as some nodes are used by both.
+		 */
+		if (src_cset == dst_cset) {
+			src_cset->mg_src_cgrp = NULL;
+			list_del_init(&src_cset->mg_preload_node);
+			put_css_set(src_cset, false);
+			put_css_set(dst_cset, false);
+			continue;
+		}
+
 		src_cset->mg_dst_cset = dst_cset;
 
 		if (list_empty(&dst_cset->mg_preload_node))
@@ -1885,7 +2056,7 @@ static int cgroup_migrate_prepare_dst(struct cgroup *dst_cgrp,
 			put_css_set(dst_cset, false);
 	}
 
-	list_splice(&csets, preloaded_csets);
+	list_splice_tail(&csets, preloaded_csets);
 	return 0;
 err:
 	cgroup_migrate_finish(&csets);
@@ -1966,7 +2137,7 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 		return 0;
 
 	/* check that we can legitimately attach to the cgroup */
-	for_each_css(css, i, cgrp) {
+	for_each_e_css(css, i, cgrp) {
 		if (css->ss->can_attach) {
 			ret = css->ss->can_attach(css, &tset);
 			if (ret) {
@@ -1996,7 +2167,7 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 	 */
 	tset.csets = &tset.dst_csets;
 
-	for_each_css(css, i, cgrp)
+	for_each_e_css(css, i, cgrp)
 		if (css->ss->attach)
 			css->ss->attach(css, &tset);
 
@@ -2004,7 +2175,7 @@ static int cgroup_migrate(struct cgroup *cgrp, struct task_struct *leader,
 	goto out_release_tset;
 
 out_cancel_attach:
-	for_each_css(css, i, cgrp) {
+	for_each_e_css(css, i, cgrp) {
 		if (css == failed_css)
 			break;
 		if (css->ss->cancel_attach)
@@ -2218,6 +2389,332 @@ static int cgroup_sane_behavior_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
+static void cgroup_print_ss_mask(struct seq_file *seq, unsigned int ss_mask)
+{
+	struct cgroup_subsys *ss;
+	bool printed = false;
+	int ssid;
+
+	for_each_subsys(ss, ssid) {
+		if (ss_mask & (1 << ssid)) {
+			if (printed)
+				seq_putc(seq, ' ');
+			seq_printf(seq, "%s", ss->name);
+			printed = true;
+		}
+	}
+	if (printed)
+		seq_putc(seq, '\n');
+}
+
+/* show controllers which are currently attached to the default hierarchy */
+static int cgroup_root_controllers_show(struct seq_file *seq, void *v)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	cgroup_print_ss_mask(seq, cgrp->root->subsys_mask);
+	return 0;
+}
+
+/* show controllers which are enabled from the parent */
+static int cgroup_controllers_show(struct seq_file *seq, void *v)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	cgroup_print_ss_mask(seq, cgrp->parent->child_subsys_mask);
+	return 0;
+}
+
+/* show controllers which are enabled for a given cgroup's children */
+static int cgroup_subtree_control_show(struct seq_file *seq, void *v)
+{
+	struct cgroup *cgrp = seq_css(seq)->cgroup;
+
+	cgroup_print_ss_mask(seq, cgrp->child_subsys_mask);
+	return 0;
+}
+
+/**
+ * cgroup_update_dfl_csses - update css assoc of a subtree in default hierarchy
+ * @cgrp: root of the subtree to update csses for
+ *
+ * @cgrp's child_subsys_mask has changed and its subtree's (self excluded)
+ * css associations need to be updated accordingly.  This function looks up
+ * all css_sets which are attached to the subtree, creates the matching
+ * updated css_sets and migrates the tasks to the new ones.
+ */
+static int cgroup_update_dfl_csses(struct cgroup *cgrp)
+{
+	LIST_HEAD(preloaded_csets);
+	struct cgroup_subsys_state *css;
+	struct css_set *src_cset;
+	int ret;
+
+	lockdep_assert_held(&cgroup_tree_mutex);
+	lockdep_assert_held(&cgroup_mutex);
+
+	/* look up all csses currently attached to @cgrp's subtree */
+	down_read(&css_set_rwsem);
+	css_for_each_descendant_pre(css, cgroup_css(cgrp, NULL)) {
+		struct cgrp_cset_link *link;
+
+		/* self is not affected by child_subsys_mask change */
+		if (css->cgroup == cgrp)
+			continue;
+
+		list_for_each_entry(link, &css->cgroup->cset_links, cset_link)
+			cgroup_migrate_add_src(link->cset, cgrp,
+					       &preloaded_csets);
+	}
+	up_read(&css_set_rwsem);
+
+	/* NULL dst indicates self on default hierarchy */
+	ret = cgroup_migrate_prepare_dst(NULL, &preloaded_csets);
+	if (ret)
+		goto out_finish;
+
+	list_for_each_entry(src_cset, &preloaded_csets, mg_preload_node) {
+		struct task_struct *last_task = NULL, *task;
+
+		/* src_csets precede dst_csets, break on the first dst_cset */
+		if (!src_cset->mg_src_cgrp)
+			break;
+
+		/*
+		 * All tasks in src_cset need to be migrated to the
+		 * matching dst_cset.  Empty it process by process.  We
+		 * walk tasks but migrate processes.  The leader might even
+		 * belong to a different cset but such src_cset would also
+		 * be among the target src_csets because the default
+		 * hierarchy enforces per-process membership.
+		 */
+		while (true) {
+			down_read(&css_set_rwsem);
+			task = list_first_entry_or_null(&src_cset->tasks,
+						struct task_struct, cg_list);
+			if (task) {
+				task = task->group_leader;
+				WARN_ON_ONCE(!task_css_set(task)->mg_src_cgrp);
+				get_task_struct(task);
+			}
+			up_read(&css_set_rwsem);
+
+			if (!task)
+				break;
+
+			/* guard against possible infinite loop */
+			if (WARN(last_task == task,
+				 "cgroup: update_dfl_csses failed to make progress, aborting in inconsistent state\n"))
+				goto out_finish;
+			last_task = task;
+
+			threadgroup_lock(task);
+			/* raced against de_thread() from another thread? */
+			if (!thread_group_leader(task)) {
+				threadgroup_unlock(task);
+				put_task_struct(task);
+				continue;
+			}
+
+			ret = cgroup_migrate(src_cset->dfl_cgrp, task, true);
+
+			threadgroup_unlock(task);
+			put_task_struct(task);
+
+			if (WARN(ret, "cgroup: failed to update controllers for the default hierarchy (%d), further operations may crash or hang\n", ret))
+				goto out_finish;
+		}
+	}
+
+out_finish:
+	cgroup_migrate_finish(&preloaded_csets);
+	return ret;
+}
+
+/* change the enabled child controllers for a cgroup in the default hierarchy */
+static int cgroup_subtree_control_write(struct cgroup_subsys_state *dummy_css,
+					struct cftype *cft, char *buffer)
+{
+	unsigned int enable_req = 0, disable_req = 0, enable, disable;
+	struct cgroup *cgrp = dummy_css->cgroup, *child;
+	struct cgroup_subsys *ss;
+	char *tok, *p;
+	int ssid, ret;
+
+	/*
+	 * Parse input - white space separated list of subsystem names
+	 * prefixed with either + or -.
+	 */
+	p = buffer;
+	while ((tok = strsep(&p, " \t\n"))) {
+		for_each_subsys(ss, ssid) {
+			if (ss->disabled || strcmp(tok + 1, ss->name))
+				continue;
+
+			if (*tok == '+') {
+				enable_req |= 1 << ssid;
+				disable_req &= ~(1 << ssid);
+			} else if (*tok == '-') {
+				disable_req |= 1 << ssid;
+				enable_req &= ~(1 << ssid);
+			} else {
+				return -EINVAL;
+			}
+			break;
+		}
+		if (ssid == CGROUP_SUBSYS_COUNT)
+			return -EINVAL;
+	}
+
+	/*
+	 * We're gonna grab cgroup_tree_mutex which nests outside kernfs
+	 * active_ref.  cgroup_lock_live_group() already provides enough
+	 * protection.  Ensure @cgrp stays accessible and break the
+	 * active_ref protection.
+	 */
+	cgroup_get(cgrp);
+	kernfs_break_active_protection(cgrp->control_kn);
+retry:
+	enable = enable_req;
+	disable = disable_req;
+
+	mutex_lock(&cgroup_tree_mutex);
+
+	for_each_subsys(ss, ssid) {
+		if (enable & (1 << ssid)) {
+			if (cgrp->child_subsys_mask & (1 << ssid)) {
+				enable &= ~(1 << ssid);
+				continue;
+			}
+
+			/*
+			 * Because css offlining is asynchronous, userland
+			 * might try to re-enable the same controller while
+			 * the previous instance is still around.  In such
+			 * cases, wait till it's gone using offline_waitq.
+			 */
+			cgroup_for_each_live_child(child, cgrp) {
+				wait_queue_t wait;
+
+				if (!cgroup_css(child, ss))
+					continue;
+
+				prepare_to_wait(&child->offline_waitq, &wait,
+						TASK_UNINTERRUPTIBLE);
+				mutex_unlock(&cgroup_tree_mutex);
+				schedule();
+				finish_wait(&child->offline_waitq, &wait);
+				goto retry;
+			}
+
+			/* unavailable or not enabled on the parent? */
+			if (!(cgrp_dfl_root.subsys_mask & (1 << ssid)) ||
+			    (cgrp->parent &&
+			     !(cgrp->parent->child_subsys_mask & (1 << ssid)))) {
+				ret = -ENOENT;
+				goto out_unlock_tree;
+			}
+		} else if (disable & (1 << ssid)) {
+			if (!(cgrp->child_subsys_mask & (1 << ssid))) {
+				disable &= ~(1 << ssid);
+				continue;
+			}
+
+			/* a child has it enabled? */
+			cgroup_for_each_live_child(child, cgrp) {
+				if (child->child_subsys_mask & (1 << ssid)) {
+					ret = -EBUSY;
+					goto out_unlock_tree;
+				}
+			}
+		}
+	}
+
+	if (!enable && !disable) {
+		ret = 0;
+		goto out_unlock_tree;
+	}
+
+	if (!cgroup_lock_live_group(cgrp)) {
+		ret = -ENODEV;
+		goto out_unlock_tree;
+	}
+
+	/*
+	 * Except for the root, child_subsys_mask must be zero for a cgroup
+	 * with tasks so that child cgroups don't compete against tasks.
+	 */
+	if (enable && cgrp->parent && !list_empty(&cgrp->cset_links)) {
+		ret = -EBUSY;
+		goto out_unlock;
+	}
+
+	/*
+	 * Create csses for enables and update child_subsys_mask.  This
+	 * changes cgroup_e_css() results which in turn makes the
+	 * subsequent cgroup_update_dfl_csses() associate all tasks in the
+	 * subtree to the updated csses.
+	 */
+	for_each_subsys(ss, ssid) {
+		if (!(enable & (1 << ssid)))
+			continue;
+
+		cgroup_for_each_live_child(child, cgrp) {
+			ret = create_css(child, ss);
+			if (ret)
+				goto err_undo_css;
+		}
+	}
+
+	cgrp->child_subsys_mask |= enable;
+	cgrp->child_subsys_mask &= ~disable;
+
+	ret = cgroup_update_dfl_csses(cgrp);
+	if (ret)
+		goto err_undo_css;
+
+	/* all tasks are now migrated away from the old csses, kill them */
+	for_each_subsys(ss, ssid) {
+		if (!(disable & (1 << ssid)))
+			continue;
+
+		cgroup_for_each_live_child(child, cgrp)
+			kill_css(cgroup_css(child, ss));
+	}
+
+	kernfs_activate(cgrp->kn);
+	ret = 0;
+out_unlock:
+	mutex_unlock(&cgroup_mutex);
+out_unlock_tree:
+	mutex_unlock(&cgroup_tree_mutex);
+	kernfs_unbreak_active_protection(cgrp->control_kn);
+	cgroup_put(cgrp);
+	return ret;
+
+err_undo_css:
+	cgrp->child_subsys_mask &= ~enable;
+	cgrp->child_subsys_mask |= disable;
+
+	for_each_subsys(ss, ssid) {
+		if (!(enable & (1 << ssid)))
+			continue;
+
+		cgroup_for_each_live_child(child, cgrp) {
+			struct cgroup_subsys_state *css = cgroup_css(child, ss);
+			if (css)
+				kill_css(css);
+		}
+	}
+	goto out_unlock;
+}
+
+static int cgroup_populated_show(struct seq_file *seq, void *v)
+{
+	seq_printf(seq, "%d\n", (bool)seq_css(seq)->cgroup->populated_cnt);
+	return 0;
+}
+
 static ssize_t cgroup_file_write(struct kernfs_open_file *of, char *buf,
 				 size_t nbytes, loff_t off)
 {
@@ -2377,9 +2874,16 @@ static int cgroup_add_file(struct cgroup *cgrp, struct cftype *cft)
 		return PTR_ERR(kn);
 
 	ret = cgroup_kn_set_ugid(kn);
-	if (ret)
+	if (ret) {
 		kernfs_remove(kn);
-	return ret;
+		return ret;
+	}
+
+	if (cft->seq_show == cgroup_subtree_control_show)
+		cgrp->control_kn = kn;
+	else if (cft->seq_show == cgroup_populated_show)
+		cgrp->populated_kn = kn;
+	return 0;
 }
 
 /**
@@ -2415,8 +2919,8 @@ static int cgroup_addrm_files(struct cgroup *cgrp, struct cftype cfts[],
 		if (is_add) {
 			ret = cgroup_add_file(cgrp, cft);
 			if (ret) {
-				pr_warn("cgroup_addrm_files: failed to add %s, err=%d\n",
-					cft->name, ret);
+				pr_warn("%s: failed to add %s, err=%d\n",
+					__func__, cft->name, ret);
 				return ret;
 			}
 		} else {
@@ -2435,10 +2939,6 @@ static int cgroup_apply_cftypes(struct cftype *cfts, bool is_add)
 	int ret = 0;
 
 	lockdep_assert_held(&cgroup_tree_mutex);
-
-	/* don't bother if @ss isn't attached */
-	if (ss->root == &cgrp_dfl_root)
-		return 0;
 
 	/* add/rm files for all cgroups created before */
 	css_for_each_descendant_pre(css, cgroup_css(root, ss)) {
@@ -2641,10 +3141,19 @@ css_next_child(struct cgroup_subsys_state *pos_css,
 				break;
 	}
 
-	if (&next->sibling == &cgrp->children)
-		return NULL;
+	/*
+	 * @next, if not pointing to the head, can be dereferenced and is
+	 * the next sibling; however, it might have @ss disabled.  If so,
+	 * fast-forward to the next enabled one.
+	 */
+	while (&next->sibling != &cgrp->children) {
+		struct cgroup_subsys_state *next_css = cgroup_css(next, parent_css->ss);
 
-	return cgroup_css(next, parent_css->ss);
+		if (next_css)
+			return next_css;
+		next = list_entry_rcu(next->sibling.next, struct cgroup, sibling);
+	}
+	return NULL;
 }
 
 /**
@@ -2781,27 +3290,36 @@ css_next_descendant_post(struct cgroup_subsys_state *pos,
  */
 static void css_advance_task_iter(struct css_task_iter *it)
 {
-	struct list_head *l = it->cset_link;
+	struct list_head *l = it->cset_pos;
 	struct cgrp_cset_link *link;
 	struct css_set *cset;
 
 	/* Advance to the next non-empty css_set */
 	do {
 		l = l->next;
-		if (l == &it->origin_css->cgroup->cset_links) {
-			it->cset_link = NULL;
+		if (l == it->cset_head) {
+			it->cset_pos = NULL;
 			return;
 		}
-		link = list_entry(l, struct cgrp_cset_link, cset_link);
-		cset = link->cset;
+
+		if (it->ss) {
+			cset = container_of(l, struct css_set,
+					    e_cset_node[it->ss->id]);
+		} else {
+			link = list_entry(l, struct cgrp_cset_link, cset_link);
+			cset = link->cset;
+		}
 	} while (list_empty(&cset->tasks) && list_empty(&cset->mg_tasks));
 
-	it->cset_link = l;
+	it->cset_pos = l;
 
 	if (!list_empty(&cset->tasks))
-		it->task = cset->tasks.next;
+		it->task_pos = cset->tasks.next;
 	else
-		it->task = cset->mg_tasks.next;
+		it->task_pos = cset->mg_tasks.next;
+
+	it->tasks_head = &cset->tasks;
+	it->mg_tasks_head = &cset->mg_tasks;
 }
 
 /**
@@ -2827,8 +3345,14 @@ void css_task_iter_start(struct cgroup_subsys_state *css,
 
 	down_read(&css_set_rwsem);
 
-	it->origin_css = css;
-	it->cset_link = &css->cgroup->cset_links;
+	it->ss = css->ss;
+
+	if (it->ss)
+		it->cset_pos = &css->cgroup->e_csets[css->ss->id];
+	else
+		it->cset_pos = &css->cgroup->cset_links;
+
+	it->cset_head = it->cset_pos;
 
 	css_advance_task_iter(it);
 }
@@ -2844,12 +3368,10 @@ void css_task_iter_start(struct cgroup_subsys_state *css,
 struct task_struct *css_task_iter_next(struct css_task_iter *it)
 {
 	struct task_struct *res;
-	struct list_head *l = it->task;
-	struct cgrp_cset_link *link = list_entry(it->cset_link,
-					struct cgrp_cset_link, cset_link);
+	struct list_head *l = it->task_pos;
 
 	/* If the iterator cg is NULL, we have no tasks */
-	if (!it->cset_link)
+	if (!it->cset_pos)
 		return NULL;
 	res = list_entry(l, struct task_struct, cg_list);
 
@@ -2860,13 +3382,13 @@ struct task_struct *css_task_iter_next(struct css_task_iter *it)
 	 */
 	l = l->next;
 
-	if (l == &link->cset->tasks)
-		l = link->cset->mg_tasks.next;
+	if (l == it->tasks_head)
+		l = it->mg_tasks_head->next;
 
-	if (l == &link->cset->mg_tasks)
+	if (l == it->mg_tasks_head)
 		css_advance_task_iter(it);
 	else
-		it->task = l;
+		it->task_pos = l;
 
 	return res;
 }
@@ -3388,17 +3910,6 @@ static int cgroup_pidlist_show(struct seq_file *s, void *v)
 	return seq_printf(s, "%d\n", *(int *)v);
 }
 
-/*
- * seq_operations functions for iterating on pidlists through seq_file -
- * independent of whether it's tasks or procs
- */
-static const struct seq_operations cgroup_pidlist_seq_operations = {
-	.start = cgroup_pidlist_start,
-	.stop = cgroup_pidlist_stop,
-	.next = cgroup_pidlist_next,
-	.show = cgroup_pidlist_show,
-};
-
 static u64 cgroup_read_notify_on_release(struct cgroup_subsys_state *css,
 					 struct cftype *cft)
 {
@@ -3454,6 +3965,27 @@ static struct cftype cgroup_base_files[] = {
 		.flags = CFTYPE_ONLY_ON_ROOT,
 		.seq_show = cgroup_sane_behavior_show,
 	},
+	{
+		.name = "cgroup.controllers",
+		.flags = CFTYPE_ONLY_ON_DFL | CFTYPE_ONLY_ON_ROOT,
+		.seq_show = cgroup_root_controllers_show,
+	},
+	{
+		.name = "cgroup.controllers",
+		.flags = CFTYPE_ONLY_ON_DFL | CFTYPE_NOT_ON_ROOT,
+		.seq_show = cgroup_controllers_show,
+	},
+	{
+		.name = "cgroup.subtree_control",
+		.flags = CFTYPE_ONLY_ON_DFL,
+		.seq_show = cgroup_subtree_control_show,
+		.write_string = cgroup_subtree_control_write,
+	},
+	{
+		.name = "cgroup.populated",
+		.flags = CFTYPE_ONLY_ON_DFL | CFTYPE_NOT_ON_ROOT,
+		.seq_show = cgroup_populated_show,
+	},
 
 	/*
 	 * Historical crazy stuff.  These don't have "cgroup."  prefix and
@@ -3494,7 +4026,7 @@ static struct cftype cgroup_base_files[] = {
  *
  * On failure, no file is added.
  */
-static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask)
+static int cgroup_populate_dir(struct cgroup *cgrp, unsigned int subsys_mask)
 {
 	struct cgroup_subsys *ss;
 	int i, ret = 0;
@@ -3503,7 +4035,7 @@ static int cgroup_populate_dir(struct cgroup *cgrp, unsigned long subsys_mask)
 	for_each_subsys(ss, i) {
 		struct cftype *cfts;
 
-		if (!test_bit(i, &subsys_mask))
+		if (!(subsys_mask & (1 << i)))
 			continue;
 
 		list_for_each_entry(cfts, &ss->cfts, node) {
@@ -3566,22 +4098,29 @@ static void css_release(struct percpu_ref *ref)
 {
 	struct cgroup_subsys_state *css =
 		container_of(ref, struct cgroup_subsys_state, refcnt);
+	struct cgroup_subsys *ss = css->ss;
 
-	RCU_INIT_POINTER(css->cgroup->subsys[css->ss->id], NULL);
+	RCU_INIT_POINTER(css->cgroup->subsys[ss->id], NULL);
+	cgroup_idr_remove(&ss->css_idr, css->id);
+
 	call_rcu(&css->rcu_head, css_free_rcu_fn);
 }
 
-static void init_css(struct cgroup_subsys_state *css, struct cgroup_subsys *ss,
-		     struct cgroup *cgrp)
+static void init_and_link_css(struct cgroup_subsys_state *css,
+			      struct cgroup_subsys *ss, struct cgroup *cgrp)
 {
+	cgroup_get(cgrp);
+
 	css->cgroup = cgrp;
 	css->ss = ss;
 	css->flags = 0;
 
-	if (cgrp->parent)
+	if (cgrp->parent) {
 		css->parent = cgroup_css(cgrp->parent, ss);
-	else
+		css_get(css->parent);
+	} else {
 		css->flags |= CSS_ROOT;
+	}
 
 	BUG_ON(cgroup_css(cgrp, ss));
 }
@@ -3621,7 +4160,9 @@ static void offline_css(struct cgroup_subsys_state *css)
 
 	css->flags &= ~CSS_ONLINE;
 	css->cgroup->nr_css--;
-	RCU_INIT_POINTER(css->cgroup->subsys[ss->id], css);
+	RCU_INIT_POINTER(css->cgroup->subsys[ss->id], NULL);
+
+	wake_up_all(&css->cgroup->offline_waitq);
 }
 
 /**
@@ -3645,31 +4186,34 @@ static int create_css(struct cgroup *cgrp, struct cgroup_subsys *ss)
 	if (IS_ERR(css))
 		return PTR_ERR(css);
 
+	init_and_link_css(css, ss, cgrp);
+
 	err = percpu_ref_init(&css->refcnt, css_release);
 	if (err)
 		goto err_free_css;
 
-	init_css(css, ss, cgrp);
+	err = cgroup_idr_alloc(&ss->css_idr, NULL, 2, 0, GFP_NOWAIT);
+	if (err < 0)
+		goto err_free_percpu_ref;
+	css->id = err;
 
 	err = cgroup_populate_dir(cgrp, 1 << ss->id);
 	if (err)
-		goto err_free_percpu_ref;
+		goto err_free_id;
+
+	/* @css is ready to be brought online now, make it visible */
+	cgroup_idr_replace(&ss->css_idr, css, css->id);
 
 	err = online_css(css);
 	if (err)
 		goto err_clear_dir;
 
-	cgroup_get(cgrp);
-	css_get(css->parent);
-
-	cgrp->subsys_mask |= 1 << ss->id;
-
 	if (ss->broken_hierarchy && !ss->warned_broken_hierarchy &&
 	    parent->parent) {
-		pr_warning("cgroup: %s (%d) created nested cgroup for controller \"%s\" which has incomplete hierarchy support. Nested cgroups may change behavior in the future.\n",
-			   current->comm, current->pid, ss->name);
+		pr_warn("%s (%d) created nested cgroup for controller \"%s\" which has incomplete hierarchy support. Nested cgroups may change behavior in the future.\n",
+			current->comm, current->pid, ss->name);
 		if (!strcmp(ss->name, "memory"))
-			pr_warning("cgroup: \"memory\" requires setting use_hierarchy to 1 on the root.\n");
+			pr_warn("\"memory\" requires setting use_hierarchy to 1 on the root\n");
 		ss->warned_broken_hierarchy = true;
 	}
 
@@ -3677,10 +4221,12 @@ static int create_css(struct cgroup *cgrp, struct cgroup_subsys *ss)
 
 err_clear_dir:
 	cgroup_clear_dir(css->cgroup, 1 << css->ss->id);
+err_free_id:
+	cgroup_idr_remove(&ss->css_idr, css->id);
 err_free_percpu_ref:
 	percpu_ref_cancel_init(&css->refcnt);
 err_free_css:
-	ss->css_free(css);
+	call_rcu(&css->rcu_head, css_free_rcu_fn);
 	return err;
 }
 
@@ -3698,13 +4244,6 @@ static long cgroup_create(struct cgroup *parent, const char *name,
 	int ssid, err;
 	struct cgroup_subsys *ss;
 	struct kernfs_node *kn;
-
-	/*
-	 * XXX: The default hierarchy isn't fully implemented yet.  Block
-	 * !root cgroup creation on it for now.
-	 */
-	if (root == &cgrp_dfl_root)
-		return -EINVAL;
 
 	/* allocate the cgroup and its ID, 0 is reserved for the root */
 	cgrp = kzalloc(sizeof(*cgrp), GFP_KERNEL);
@@ -3729,7 +4268,7 @@ static long cgroup_create(struct cgroup *parent, const char *name,
 	 * Temporarily set the pointer to NULL, so idr_find() won't return
 	 * a half-baked cgroup.
 	 */
-	cgrp->id = idr_alloc(&root->cgroup_idr, NULL, 1, 0, GFP_KERNEL);
+	cgrp->id = cgroup_idr_alloc(&root->cgroup_idr, NULL, 2, 0, GFP_NOWAIT);
 	if (cgrp->id < 0) {
 		err = -ENOMEM;
 		goto err_unlock;
@@ -3772,7 +4311,7 @@ static long cgroup_create(struct cgroup *parent, const char *name,
 	 * @cgrp is now fully operational.  If something fails after this
 	 * point, it'll be released via the normal destruction path.
 	 */
-	idr_replace(&root->cgroup_idr, cgrp, cgrp->id);
+	cgroup_idr_replace(&root->cgroup_idr, cgrp, cgrp->id);
 
 	err = cgroup_kn_set_ugid(kn);
 	if (err)
@@ -3784,12 +4323,19 @@ static long cgroup_create(struct cgroup *parent, const char *name,
 
 	/* let's create and online css's */
 	for_each_subsys(ss, ssid) {
-		if (root->cgrp.subsys_mask & (1 << ssid)) {
+		if (parent->child_subsys_mask & (1 << ssid)) {
 			err = create_css(cgrp, ss);
 			if (err)
 				goto err_destroy;
 		}
 	}
+
+	/*
+	 * On the default hierarchy, a child doesn't automatically inherit
+	 * child_subsys_mask from the parent.  Each is configured manually.
+	 */
+	if (!cgroup_on_dfl(cgrp))
+		cgrp->child_subsys_mask = parent->child_subsys_mask;
 
 	kernfs_activate(kn);
 
@@ -3799,7 +4345,7 @@ static long cgroup_create(struct cgroup *parent, const char *name,
 	return 0;
 
 err_free_id:
-	idr_remove(&root->cgroup_idr, cgrp->id);
+	cgroup_idr_remove(&root->cgroup_idr, cgrp->id);
 err_unlock:
 	mutex_unlock(&cgroup_mutex);
 err_unlock_tree:
@@ -3886,7 +4432,16 @@ static void css_killed_ref_fn(struct percpu_ref *ref)
 	queue_work(cgroup_destroy_wq, &css->destroy_work);
 }
 
-static void __kill_css(struct cgroup_subsys_state *css)
+/**
+ * kill_css - destroy a css
+ * @css: css to destroy
+ *
+ * This function initiates destruction of @css by removing cgroup interface
+ * files and putting its base reference.  ->css_offline() will be invoked
+ * asynchronously once css_tryget() is guaranteed to fail and when the
+ * reference count reaches zero, @css will be released.
+ */
+static void kill_css(struct cgroup_subsys_state *css)
 {
 	lockdep_assert_held(&cgroup_tree_mutex);
 
@@ -3913,28 +4468,6 @@ static void __kill_css(struct cgroup_subsys_state *css)
 	 * css is confirmed to be seen as killed on all CPUs.
 	 */
 	percpu_ref_kill_and_confirm(&css->refcnt, css_killed_ref_fn);
-}
-
-/**
- * kill_css - destroy a css
- * @css: css to destroy
- *
- * This function initiates destruction of @css by removing cgroup interface
- * files and putting its base reference.  ->css_offline() will be invoked
- * asynchronously once css_tryget() is guaranteed to fail and when the
- * reference count reaches zero, @css will be released.
- */
-static void kill_css(struct cgroup_subsys_state *css)
-{
-	struct cgroup *cgrp = css->cgroup;
-
-	lockdep_assert_held(&cgroup_tree_mutex);
-
-	/* if already killed, noop */
-	if (cgrp->subsys_mask & (1 << css->ss->id)) {
-		cgrp->subsys_mask &= ~(1 << css->ss->id);
-		__kill_css(css);
-	}
 }
 
 /**
@@ -4053,7 +4586,7 @@ static int cgroup_destroy_locked(struct cgroup *cgrp)
 
 /**
  * cgroup_destroy_css_killed - the second step of cgroup destruction
- * @work: cgroup->destroy_free_work
+ * @cgrp: the cgroup whose csses have just finished offlining
  *
  * This function is invoked from a work item for a cgroup which is being
  * destroyed after all css's are offlined and performs the rest of
@@ -4116,7 +4649,7 @@ static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.rename			= cgroup_rename,
 };
 
-static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
+static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
 {
 	struct cgroup_subsys_state *css;
 
@@ -4125,6 +4658,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
 	mutex_lock(&cgroup_tree_mutex);
 	mutex_lock(&cgroup_mutex);
 
+	idr_init(&ss->css_idr);
 	INIT_LIST_HEAD(&ss->cfts);
 
 	/* Create the root cgroup state for this subsystem */
@@ -4132,7 +4666,14 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
 	css = ss->css_alloc(cgroup_css(&cgrp_dfl_root.cgrp, ss));
 	/* We don't handle early failures gracefully */
 	BUG_ON(IS_ERR(css));
-	init_css(css, ss, &cgrp_dfl_root.cgrp);
+	init_and_link_css(css, ss, &cgrp_dfl_root.cgrp);
+	if (early) {
+		/* idr_alloc() can't be called safely during early init */
+		css->id = 1;
+	} else {
+		css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2, GFP_KERNEL);
+		BUG_ON(css->id < 0);
+	}
 
 	/* Update the init_css_set to contain a subsys
 	 * pointer to this state - since the subsystem is
@@ -4149,7 +4690,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss)
 
 	BUG_ON(online_css(css));
 
-	cgrp_dfl_root.cgrp.subsys_mask |= 1 << ss->id;
+	cgrp_dfl_root.subsys_mask |= 1 << ss->id;
 
 	mutex_unlock(&cgroup_mutex);
 	mutex_unlock(&cgroup_tree_mutex);
@@ -4183,7 +4724,7 @@ int __init cgroup_init_early(void)
 		ss->name = cgroup_subsys_name[i];
 
 		if (ss->early_init)
-			cgroup_init_subsys(ss);
+			cgroup_init_subsys(ss, true);
 	}
 	return 0;
 }
@@ -4215,8 +4756,19 @@ int __init cgroup_init(void)
 	mutex_unlock(&cgroup_tree_mutex);
 
 	for_each_subsys(ss, ssid) {
-		if (!ss->early_init)
-			cgroup_init_subsys(ss);
+		if (ss->early_init) {
+			struct cgroup_subsys_state *css =
+				init_css_set.subsys[ss->id];
+
+			css->id = cgroup_idr_alloc(&ss->css_idr, css, 1, 2,
+						   GFP_KERNEL);
+			BUG_ON(css->id < 0);
+		} else {
+			cgroup_init_subsys(ss, false);
+		}
+
+		list_add_tail(&init_css_set.e_cset_node[ssid],
+			      &cgrp_dfl_root.cgrp.e_csets[ssid]);
 
 		/*
 		 * cftype registration needs kmalloc and can't be done
@@ -4306,7 +4858,7 @@ int proc_cgroup_show(struct seq_file *m, void *v)
 
 		seq_printf(m, "%d:", root->hierarchy_id);
 		for_each_subsys(ss, ssid)
-			if (root->cgrp.subsys_mask & (1 << ssid))
+			if (root->subsys_mask & (1 << ssid))
 				seq_printf(m, "%s%s", count++ ? "," : "", ss->name);
 		if (strlen(root->name))
 			seq_printf(m, "%sname=%s", count ? "," : "",
@@ -4667,14 +5219,8 @@ struct cgroup_subsys_state *css_tryget_from_dir(struct dentry *dentry,
  */
 struct cgroup_subsys_state *css_from_id(int id, struct cgroup_subsys *ss)
 {
-	struct cgroup *cgrp;
-
-	cgroup_assert_mutexes_or_rcu_locked();
-
-	cgrp = idr_find(&ss->root->cgroup_idr, id);
-	if (cgrp)
-		return cgroup_css(cgrp, ss);
-	return NULL;
+	WARN_ON_ONCE(!rcu_read_lock_held());
+	return idr_find(&ss->css_idr, id);
 }
 
 #ifdef CONFIG_CGROUP_DEBUG
