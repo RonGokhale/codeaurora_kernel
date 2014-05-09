@@ -2283,7 +2283,7 @@ static __init void nested_vmx_setup_ctls_msrs(void)
 	rdmsr(MSR_IA32_VMX_EXIT_CTLS,
 		nested_vmx_exit_ctls_low, nested_vmx_exit_ctls_high);
 	nested_vmx_exit_ctls_low = VM_EXIT_ALWAYSON_WITHOUT_TRUE_MSR;
-	/* Note that guest use of VM_EXIT_ACK_INTR_ON_EXIT is not supported. */
+
 	nested_vmx_exit_ctls_high &=
 #ifdef CONFIG_X86_64
 		VM_EXIT_HOST_ADDR_SPACE_SIZE |
@@ -2291,7 +2291,8 @@ static __init void nested_vmx_setup_ctls_msrs(void)
 		VM_EXIT_LOAD_IA32_PAT | VM_EXIT_SAVE_IA32_PAT;
 	nested_vmx_exit_ctls_high |= VM_EXIT_ALWAYSON_WITHOUT_TRUE_MSR |
 		VM_EXIT_LOAD_IA32_EFER | VM_EXIT_SAVE_IA32_EFER |
-		VM_EXIT_SAVE_VMX_PREEMPTION_TIMER;
+		VM_EXIT_SAVE_VMX_PREEMPTION_TIMER | VM_EXIT_ACK_INTR_ON_EXIT;
+
 	if (vmx_mpx_supported())
 		nested_vmx_exit_ctls_high |= VM_EXIT_CLEAR_BNDCFGS;
 
@@ -2353,12 +2354,11 @@ static __init void nested_vmx_setup_ctls_msrs(void)
 			 VMX_EPT_INVEPT_BIT;
 		nested_vmx_ept_caps &= vmx_capability.ept;
 		/*
-		 * Since invept is completely emulated we support both global
-		 * and context invalidation independent of what host cpu
-		 * supports
+		 * For nested guests, we don't do anything specific
+		 * for single context invalidation. Hence, only advertise
+		 * support for global context invalidation.
 		 */
-		nested_vmx_ept_caps |= VMX_EPT_EXTENT_GLOBAL_BIT |
-			VMX_EPT_EXTENT_CONTEXT_BIT;
+		nested_vmx_ept_caps |= VMX_EPT_EXTENT_GLOBAL_BIT;
 	} else
 		nested_vmx_ept_caps = 0;
 
@@ -4564,6 +4564,16 @@ static bool nested_exit_on_intr(struct kvm_vcpu *vcpu)
 		PIN_BASED_EXT_INTR_MASK;
 }
 
+/*
+ * In nested virtualization, check if L1 has set
+ * VM_EXIT_ACK_INTR_ON_EXIT
+ */
+static bool nested_exit_intr_ack_set(struct kvm_vcpu *vcpu)
+{
+	return get_vmcs12(vcpu)->vm_exit_controls &
+		VM_EXIT_ACK_INTR_ON_EXIT;
+}
+
 static bool nested_exit_on_nmi(struct kvm_vcpu *vcpu)
 {
 	return get_vmcs12(vcpu)->pin_based_vm_exec_control &
@@ -4878,6 +4888,9 @@ static int handle_exception(struct kvm_vcpu *vcpu)
 		      (KVM_GUESTDBG_SINGLESTEP | KVM_GUESTDBG_USE_HW_BP))) {
 			vcpu->arch.dr6 &= ~15;
 			vcpu->arch.dr6 |= dr6;
+			if (!(dr6 & ~DR6_RESERVED)) /* icebp */
+				skip_emulated_instruction(vcpu);
+
 			kvm_queue_exception(vcpu, DB_VECTOR);
 			return 1;
 		}
@@ -5565,6 +5578,10 @@ static int handle_ept_misconfig(struct kvm_vcpu *vcpu)
 	gpa_t gpa;
 
 	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+	if (!kvm_io_bus_write(vcpu->kvm, KVM_FAST_MMIO_BUS, gpa, 0, NULL)) {
+		skip_emulated_instruction(vcpu);
+		return 1;
+	}
 
 	ret = handle_mmio_page_fault_common(vcpu, gpa, true);
 	if (likely(ret == RET_MMIO_PF_EMULATE))
@@ -6471,7 +6488,6 @@ static int handle_invept(struct kvm_vcpu *vcpu)
 	struct {
 		u64 eptp, gpa;
 	} operand;
-	u64 eptp_mask = ((1ull << 51) - 1) & PAGE_MASK;
 
 	if (!(nested_vmx_secondary_ctls_high & SECONDARY_EXEC_ENABLE_EPT) ||
 	    !(nested_vmx_ept_caps & VMX_EPT_INVEPT_BIT)) {
@@ -6511,16 +6527,13 @@ static int handle_invept(struct kvm_vcpu *vcpu)
 	}
 
 	switch (type) {
-	case VMX_EPT_EXTENT_CONTEXT:
-		if ((operand.eptp & eptp_mask) !=
-				(nested_ept_get_cr3(vcpu) & eptp_mask))
-			break;
 	case VMX_EPT_EXTENT_GLOBAL:
 		kvm_mmu_sync_roots(vcpu);
 		kvm_mmu_flush_tlb(vcpu);
 		nested_vmx_succeed(vcpu);
 		break;
 	default:
+		/* Trap single context invalidation invept calls */
 		BUG_ON(1);
 		break;
 	}
@@ -8597,6 +8610,14 @@ static void nested_vmx_vmexit(struct kvm_vcpu *vcpu, u32 exit_reason,
 	leave_guest_mode(vcpu);
 	prepare_vmcs12(vcpu, vmcs12, exit_reason, exit_intr_info,
 		       exit_qualification);
+
+	if ((exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT)
+	    && nested_exit_intr_ack_set(vcpu)) {
+		int irq = kvm_cpu_get_interrupt(vcpu);
+		WARN_ON(irq < 0);
+		vmcs12->vm_exit_intr_info = irq |
+			INTR_INFO_VALID_MASK | INTR_TYPE_EXT_INTR;
+	}
 
 	trace_kvm_nested_vmexit_inject(vmcs12->vm_exit_reason,
 				       vmcs12->exit_qualification,

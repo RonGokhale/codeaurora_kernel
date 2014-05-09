@@ -1,7 +1,7 @@
 /*
  * in-kernel handling for sie intercepts
  *
- * Copyright IBM Corp. 2008, 2009
+ * Copyright IBM Corp. 2008, 2014
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License (version 2 only)
@@ -16,6 +16,7 @@
 #include <linux/pagemap.h>
 
 #include <asm/kvm_host.h>
+#include <asm/asm-offsets.h>
 
 #include "kvm-s390.h"
 #include "gaccess.h"
@@ -29,6 +30,7 @@ static const intercept_handler_t instruction_handlers[256] = {
 	[0x83] = kvm_s390_handle_diag,
 	[0xae] = kvm_s390_handle_sigp,
 	[0xb2] = kvm_s390_handle_b2,
+	[0xb6] = kvm_s390_handle_stctl,
 	[0xb7] = kvm_s390_handle_lctl,
 	[0xb9] = kvm_s390_handle_b9,
 	[0xe5] = kvm_s390_handle_e5,
@@ -63,8 +65,7 @@ static int handle_stop(struct kvm_vcpu *vcpu)
 	trace_kvm_s390_stop_request(vcpu->arch.local_int.action_bits);
 
 	if (vcpu->arch.local_int.action_bits & ACTION_STOP_ON_STOP) {
-		atomic_set_mask(CPUSTAT_STOPPED,
-				&vcpu->arch.sie_block->cpuflags);
+		kvm_s390_vcpu_stop(vcpu);
 		vcpu->arch.local_int.action_bits &= ~ACTION_STOP_ON_STOP;
 		VCPU_EVENT(vcpu, 3, "%s", "cpu stopped");
 		rc = -EOPNOTSUPP;
@@ -109,22 +110,112 @@ static int handle_instruction(struct kvm_vcpu *vcpu)
 	return -EOPNOTSUPP;
 }
 
+static void __extract_prog_irq(struct kvm_vcpu *vcpu,
+			       struct kvm_s390_pgm_info *pgm_info)
+{
+	memset(pgm_info, 0, sizeof(struct kvm_s390_pgm_info));
+	pgm_info->code = vcpu->arch.sie_block->iprcc;
+
+	switch (vcpu->arch.sie_block->iprcc & ~PGM_PER) {
+	case PGM_AFX_TRANSLATION:
+	case PGM_ASX_TRANSLATION:
+	case PGM_EX_TRANSLATION:
+	case PGM_LFX_TRANSLATION:
+	case PGM_LSTE_SEQUENCE:
+	case PGM_LSX_TRANSLATION:
+	case PGM_LX_TRANSLATION:
+	case PGM_PRIMARY_AUTHORITY:
+	case PGM_SECONDARY_AUTHORITY:
+	case PGM_SPACE_SWITCH:
+		pgm_info->trans_exc_code = vcpu->arch.sie_block->tecmc;
+		break;
+	case PGM_ALEN_TRANSLATION:
+	case PGM_ALE_SEQUENCE:
+	case PGM_ASTE_INSTANCE:
+	case PGM_ASTE_SEQUENCE:
+	case PGM_ASTE_VALIDITY:
+	case PGM_EXTENDED_AUTHORITY:
+		pgm_info->exc_access_id = vcpu->arch.sie_block->eai;
+		break;
+	case PGM_ASCE_TYPE:
+	case PGM_PAGE_TRANSLATION:
+	case PGM_REGION_FIRST_TRANS:
+	case PGM_REGION_SECOND_TRANS:
+	case PGM_REGION_THIRD_TRANS:
+	case PGM_SEGMENT_TRANSLATION:
+		pgm_info->trans_exc_code = vcpu->arch.sie_block->tecmc;
+		pgm_info->exc_access_id  = vcpu->arch.sie_block->eai;
+		pgm_info->op_access_id  = vcpu->arch.sie_block->oai;
+		break;
+	case PGM_MONITOR:
+		pgm_info->mon_class_nr = vcpu->arch.sie_block->mcn;
+		pgm_info->mon_code = vcpu->arch.sie_block->tecmc;
+		break;
+	case PGM_DATA:
+		pgm_info->data_exc_code = vcpu->arch.sie_block->dxc;
+		break;
+	case PGM_PROTECTION:
+		pgm_info->trans_exc_code = vcpu->arch.sie_block->tecmc;
+		pgm_info->exc_access_id  = vcpu->arch.sie_block->eai;
+		break;
+	default:
+		break;
+	}
+
+	if (vcpu->arch.sie_block->iprcc & PGM_PER) {
+		pgm_info->per_code = vcpu->arch.sie_block->perc;
+		pgm_info->per_atmid = vcpu->arch.sie_block->peratmid;
+		pgm_info->per_address = vcpu->arch.sie_block->peraddr;
+		pgm_info->per_access_id = vcpu->arch.sie_block->peraid;
+	}
+}
+
+/*
+ * restore ITDB to program-interruption TDB in guest lowcore
+ * and set TX abort indication if required
+*/
+static int handle_itdb(struct kvm_vcpu *vcpu)
+{
+	struct kvm_s390_itdb *itdb;
+	int rc;
+
+	if (!IS_TE_ENABLED(vcpu) || !IS_ITDB_VALID(vcpu))
+		return 0;
+	if (current->thread.per_flags & PER_FLAG_NO_TE)
+		return 0;
+	itdb = (struct kvm_s390_itdb *)vcpu->arch.sie_block->itdba;
+	rc = write_guest_lc(vcpu, __LC_PGM_TDB, itdb, sizeof(*itdb));
+	if (rc)
+		return rc;
+	memset(itdb, 0, sizeof(*itdb));
+
+	return 0;
+}
+
+#define per_event(vcpu) (vcpu->arch.sie_block->iprcc & PGM_PER)
+
 static int handle_prog(struct kvm_vcpu *vcpu)
 {
+	struct kvm_s390_pgm_info pgm_info;
+	int rc;
+
 	vcpu->stat.exit_program_interruption++;
 
-	/* Restore ITDB to Program-Interruption TDB in guest memory */
-	if (IS_TE_ENABLED(vcpu) &&
-	    !(current->thread.per_flags & PER_FLAG_NO_TE) &&
-	    IS_ITDB_VALID(vcpu)) {
-		copy_to_guest(vcpu, TDB_ADDR, vcpu->arch.sie_block->itdba,
-			      sizeof(struct kvm_s390_itdb));
-		memset((void *) vcpu->arch.sie_block->itdba, 0,
-		       sizeof(struct kvm_s390_itdb));
+	if (guestdbg_enabled(vcpu) && per_event(vcpu)) {
+		kvm_s390_handle_per_event(vcpu);
+		/* the interrupt might have been filtered out completely */
+		if (vcpu->arch.sie_block->iprcc == 0)
+			return 0;
 	}
 
 	trace_kvm_s390_intercept_prog(vcpu, vcpu->arch.sie_block->iprcc);
-	return kvm_s390_inject_program_int(vcpu, vcpu->arch.sie_block->iprcc);
+
+	rc = handle_itdb(vcpu);
+	if (rc)
+		return rc;
+
+	__extract_prog_irq(vcpu, &pgm_info);
+	return kvm_s390_inject_prog_irq(vcpu, &pgm_info);
 }
 
 static int handle_instruction_and_prog(struct kvm_vcpu *vcpu)
@@ -142,6 +233,58 @@ static int handle_instruction_and_prog(struct kvm_vcpu *vcpu)
 	return rc2;
 }
 
+/**
+ * Handle MOVE PAGE partial execution interception.
+ *
+ * This interception can only happen for guests with DAT disabled and
+ * addresses that are currently not mapped in the host. Thus we try to
+ * set up the mappings for the corresponding user pages here (or throw
+ * addressing exceptions in case of illegal guest addresses).
+ */
+static int handle_mvpg_pei(struct kvm_vcpu *vcpu)
+{
+	unsigned long hostaddr, srcaddr, dstaddr;
+	psw_t *psw = &vcpu->arch.sie_block->gpsw;
+	struct mm_struct *mm = current->mm;
+	int reg1, reg2, rc;
+
+	kvm_s390_get_regs_rre(vcpu, &reg1, &reg2);
+	srcaddr = kvm_s390_real_to_abs(vcpu, vcpu->run->s.regs.gprs[reg2]);
+	dstaddr = kvm_s390_real_to_abs(vcpu, vcpu->run->s.regs.gprs[reg1]);
+
+	/* Make sure that the source is paged-in */
+	hostaddr = gmap_fault(srcaddr, vcpu->arch.gmap);
+	if (IS_ERR_VALUE(hostaddr))
+		return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
+	down_read(&mm->mmap_sem);
+	rc = get_user_pages(current, mm, hostaddr, 1, 0, 0, NULL, NULL);
+	up_read(&mm->mmap_sem);
+	if (rc < 0)
+		return rc;
+
+	/* Make sure that the destination is paged-in */
+	hostaddr = gmap_fault(dstaddr, vcpu->arch.gmap);
+	if (IS_ERR_VALUE(hostaddr))
+		return kvm_s390_inject_program_int(vcpu, PGM_ADDRESSING);
+	down_read(&mm->mmap_sem);
+	rc = get_user_pages(current, mm, hostaddr, 1, 1, 0, NULL, NULL);
+	up_read(&mm->mmap_sem);
+	if (rc < 0)
+		return rc;
+
+	psw->addr = __rewind_psw(*psw, 4);
+
+	return 0;
+}
+
+static int handle_partial_execution(struct kvm_vcpu *vcpu)
+{
+	if (vcpu->arch.sie_block->ipa == 0xb254)	/* MVPG */
+		return handle_mvpg_pei(vcpu);
+
+	return -EOPNOTSUPP;
+}
+
 static const intercept_handler_t intercept_funcs[] = {
 	[0x00 >> 2] = handle_noop,
 	[0x04 >> 2] = handle_instruction,
@@ -153,6 +296,7 @@ static const intercept_handler_t intercept_funcs[] = {
 	[0x1C >> 2] = kvm_s390_handle_wait,
 	[0x20 >> 2] = handle_validity,
 	[0x28 >> 2] = handle_stop,
+	[0x38 >> 2] = handle_partial_execution,
 };
 
 int kvm_handle_sie_intercept(struct kvm_vcpu *vcpu)

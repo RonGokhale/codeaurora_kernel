@@ -600,7 +600,15 @@ ioeventfd_in_range(struct _ioeventfd *p, gpa_t addr, int len, const void *val)
 {
 	u64 _val;
 
-	if (!(addr == p->addr && len == p->length))
+	if (addr != p->addr)
+		/* address must be precise for a hit */
+		return false;
+
+	if (!p->length)
+		/* length = 0 means only look at the address, so always a hit */
+		return true;
+
+	if (len != p->length)
 		/* address-range must be precise for a hit */
 		return false;
 
@@ -671,9 +679,11 @@ ioeventfd_check_collision(struct kvm *kvm, struct _ioeventfd *p)
 
 	list_for_each_entry(_p, &kvm->ioeventfds, list)
 		if (_p->bus_idx == p->bus_idx &&
-		    _p->addr == p->addr && _p->length == p->length &&
-		    (_p->wildcard || p->wildcard ||
-		     _p->datamatch == p->datamatch))
+		    _p->addr == p->addr &&
+		    (!_p->length || !p->length ||
+		     (_p->length == p->length &&
+		      (_p->wildcard || p->wildcard ||
+		       _p->datamatch == p->datamatch))))
 			return true;
 
 	return false;
@@ -697,8 +707,9 @@ kvm_assign_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 	int                       ret;
 
 	bus_idx = ioeventfd_bus_from_flags(args->flags);
-	/* must be natural-word sized */
+	/* must be natural-word sized, or 0 to ignore length */
 	switch (args->len) {
+	case 0:
 	case 1:
 	case 2:
 	case 4:
@@ -714,6 +725,12 @@ kvm_assign_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 
 	/* check for extra flags that we don't understand */
 	if (args->flags & ~KVM_IOEVENTFD_VALID_FLAG_MASK)
+		return -EINVAL;
+
+	/* ioeventfd with no length can't be combined with DATAMATCH */
+	if (!args->len &&
+	    args->flags & (KVM_IOEVENTFD_FLAG_PIO |
+			   KVM_IOEVENTFD_FLAG_DATAMATCH))
 		return -EINVAL;
 
 	eventfd = eventfd_ctx_fdget(args->fd);
@@ -753,6 +770,16 @@ kvm_assign_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 	if (ret < 0)
 		goto unlock_fail;
 
+	/* When length is ignored, MMIO is also put on a separate bus, for
+	 * faster lookups.
+	 */
+	if (!args->len && !(args->flags & KVM_IOEVENTFD_FLAG_PIO)) {
+		ret = kvm_io_bus_register_dev(kvm, KVM_FAST_MMIO_BUS,
+					      p->addr, 0, &p->dev);
+		if (ret < 0)
+			goto register_fail;
+	}
+
 	kvm->buses[bus_idx]->ioeventfd_count++;
 	list_add_tail(&p->list, &kvm->ioeventfds);
 
@@ -760,6 +787,8 @@ kvm_assign_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 
 	return 0;
 
+register_fail:
+	kvm_io_bus_unregister_dev(kvm, bus_idx, &p->dev);
 unlock_fail:
 	mutex_unlock(&kvm->slots_lock);
 
@@ -799,6 +828,10 @@ kvm_deassign_ioeventfd(struct kvm *kvm, struct kvm_ioeventfd *args)
 			continue;
 
 		kvm_io_bus_unregister_dev(kvm, bus_idx, &p->dev);
+		if (!p->length) {
+			kvm_io_bus_unregister_dev(kvm, KVM_FAST_MMIO_BUS,
+						  &p->dev);
+		}
 		kvm->buses[bus_idx]->ioeventfd_count--;
 		ioeventfd_release(p);
 		ret = 0;
