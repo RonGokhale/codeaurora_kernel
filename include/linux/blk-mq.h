@@ -21,6 +21,8 @@ struct blk_mq_hw_ctx {
 	struct delayed_work	run_work;
 	struct delayed_work	delay_work;
 	cpumask_var_t		cpumask;
+	int			next_cpu;
+	int			next_cpu_batch;
 
 	unsigned long		flags;		/* BLK_MQ_F_* flags */
 
@@ -29,10 +31,12 @@ struct blk_mq_hw_ctx {
 
 	void			*driver_data;
 
-	unsigned int		nr_ctx;
-	struct blk_mq_ctx	**ctxs;
 	unsigned int 		nr_ctx_map;
 	unsigned long		*ctx_map;
+	unsigned int		nr_ctx;
+	struct blk_mq_ctx	**ctxs;
+
+	unsigned int		wait_index;
 
 	struct blk_mq_tags	*tags;
 
@@ -122,11 +126,12 @@ enum {
 
 	BLK_MQ_F_SHOULD_MERGE	= 1 << 0,
 	BLK_MQ_F_SHOULD_SORT	= 1 << 1,
-	BLK_MQ_F_SHOULD_IPI	= 1 << 2,
 
 	BLK_MQ_S_STOPPED	= 0,
 
 	BLK_MQ_MAX_DEPTH	= 2048,
+
+	BLK_MQ_CPU_WORK_BATCH	= 8,
 };
 
 struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *);

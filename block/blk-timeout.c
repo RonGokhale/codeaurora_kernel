@@ -96,11 +96,7 @@ static void blk_rq_timed_out(struct request *req)
 			__blk_complete_request(req);
 		break;
 	case BLK_EH_RESET_TIMER:
-		if (q->mq_ops)
-			blk_mq_add_timer(req);
-		else
-			blk_add_timer(req);
-
+		blk_add_timer(req);
 		blk_clear_rq_complete(req);
 		break;
 	case BLK_EH_NOT_HANDLED:
@@ -170,7 +166,15 @@ void blk_abort_request(struct request *req)
 }
 EXPORT_SYMBOL_GPL(blk_abort_request);
 
-void __blk_add_timer(struct request *req, struct list_head *timeout_list)
+/**
+ * blk_add_timer - Start timeout timer for a single request
+ * @req:	request that is about to start running.
+ *
+ * Notes:
+ *    Each request has its own timer, and as it is added to the queue, we
+ *    set up the timer. When the request completes, we cancel the timer.
+ */
+void blk_add_timer(struct request *req)
 {
 	struct request_queue *q = req->q;
 	unsigned long expiry;
@@ -188,8 +192,8 @@ void __blk_add_timer(struct request *req, struct list_head *timeout_list)
 		req->timeout = q->rq_timeout;
 
 	req->deadline = jiffies + req->timeout;
-	if (timeout_list)
-		list_add_tail(&req->timeout_list, timeout_list);
+	if (!q->mq_ops)
+		list_add_tail(&req->timeout_list, &req->q->timeout_list);
 
 	/*
 	 * If the timer isn't already pending or this timeout is earlier
@@ -214,17 +218,3 @@ void __blk_add_timer(struct request *req, struct list_head *timeout_list)
 	}
 
 }
-
-/**
- * blk_add_timer - Start timeout timer for a single request
- * @req:	request that is about to start running.
- *
- * Notes:
- *    Each request has its own timer, and as it is added to the queue, we
- *    set up the timer. When the request completes, we cancel the timer.
- */
-void blk_add_timer(struct request *req)
-{
-	__blk_add_timer(req, &req->q->timeout_list);
-}
-

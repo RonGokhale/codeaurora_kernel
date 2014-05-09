@@ -11,7 +11,8 @@ struct blk_mq_ctx {
 
 	unsigned int		cpu;
 	unsigned int		index_hw;
-	unsigned int		ipi_redirect;
+
+	unsigned int		last_tag ____cacheline_aligned_in_smp;
 
 	/* incremented at dispatch time */
 	unsigned long		rq_dispatched[2];
@@ -22,7 +23,7 @@ struct blk_mq_ctx {
 
 	struct request_queue	*queue;
 	struct kobject		kobj;
-};
+} ____cacheline_aligned_in_smp;
 
 void __blk_mq_complete_request(struct request *rq);
 void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async);
@@ -50,7 +51,5 @@ void blk_mq_disable_hotplug(void);
  */
 extern unsigned int *blk_mq_make_queue_map(struct blk_mq_tag_set *set);
 extern int blk_mq_update_queue_map(unsigned int *map, unsigned int nr_queues);
-
-void blk_mq_add_timer(struct request *rq);
 
 #endif
