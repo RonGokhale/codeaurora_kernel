@@ -1,6 +1,8 @@
 #ifndef INT_BLK_MQ_H
 #define INT_BLK_MQ_H
 
+struct blk_mq_tag_set;
+
 struct blk_mq_ctx {
 	struct {
 		spinlock_t		lock;
@@ -8,8 +10,10 @@ struct blk_mq_ctx {
 	}  ____cacheline_aligned_in_smp;
 
 	unsigned int		cpu;
+	unsigned int		online;
 	unsigned int		index_hw;
-	unsigned int		ipi_redirect;
+
+	unsigned int		last_tag ____cacheline_aligned_in_smp;
 
 	/* incremented at dispatch time */
 	unsigned long		rq_dispatched[2];
@@ -20,14 +24,15 @@ struct blk_mq_ctx {
 
 	struct request_queue	*queue;
 	struct kobject		kobj;
-};
+} ____cacheline_aligned_in_smp;
 
 void __blk_mq_complete_request(struct request *rq);
 void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async);
 void blk_mq_init_flush(struct request_queue *q);
 void blk_mq_drain_queue(struct request_queue *q);
 void blk_mq_free_queue(struct request_queue *q);
-void blk_mq_rq_init(struct blk_mq_hw_ctx *hctx, struct request *rq);
+void blk_mq_clone_flush_request(struct request *flush_rq,
+		struct request *orig_rq);
 
 /*
  * CPU hotplug helpers
@@ -45,10 +50,7 @@ void blk_mq_disable_hotplug(void);
 /*
  * CPU -> queue mappings
  */
-struct blk_mq_reg;
-extern unsigned int *blk_mq_make_queue_map(struct blk_mq_reg *reg);
+extern unsigned int *blk_mq_make_queue_map(struct blk_mq_tag_set *set);
 extern int blk_mq_update_queue_map(unsigned int *map, unsigned int nr_queues);
-
-void blk_mq_add_timer(struct request *rq);
 
 #endif
