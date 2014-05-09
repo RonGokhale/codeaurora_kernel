@@ -68,7 +68,6 @@ xfs_attr3_rmt_blocks(
  */
 static bool
 xfs_attr3_rmt_hdr_ok(
-	struct xfs_mount	*mp,
 	void			*ptr,
 	xfs_ino_t		ino,
 	uint32_t		offset,
@@ -251,7 +250,7 @@ xfs_attr_rmtval_copyout(
 		byte_cnt = min(*valuelen, byte_cnt);
 
 		if (xfs_sb_version_hascrc(&mp->m_sb)) {
-			if (!xfs_attr3_rmt_hdr_ok(mp, src, ino, *offset,
+			if (!xfs_attr3_rmt_hdr_ok(src, ino, *offset,
 						  byte_cnt, bno)) {
 				xfs_alert(mp,
 "remote attribute header mismatch bno/off/len/owner (0x%llx/0x%x/Ox%x/0x%llx)",
@@ -337,7 +336,7 @@ xfs_attr_rmtval_get(
 	struct xfs_buf		*bp;
 	xfs_dablk_t		lblkno = args->rmtblkno;
 	__uint8_t		*dst = args->value;
-	int			valuelen = args->valuelen;
+	int			valuelen;
 	int			nmap;
 	int			error;
 	int			blkcnt = args->rmtblkcnt;
@@ -347,7 +346,9 @@ xfs_attr_rmtval_get(
 	trace_xfs_attr_rmtval_get(args);
 
 	ASSERT(!(args->flags & ATTR_KERNOVAL));
+	ASSERT(args->rmtvaluelen == args->valuelen);
 
+	valuelen = args->rmtvaluelen;
 	while (valuelen > 0) {
 		nmap = ATTR_RMTVALUE_MAPSIZE;
 		error = xfs_bmapi_read(args->dp, (xfs_fileoff_t)lblkno,
@@ -415,7 +416,7 @@ xfs_attr_rmtval_set(
 	 * attributes have headers, we can't just do a straight byte to FSB
 	 * conversion and have to take the header space into account.
 	 */
-	blkcnt = xfs_attr3_rmt_blocks(mp, args->valuelen);
+	blkcnt = xfs_attr3_rmt_blocks(mp, args->rmtvaluelen);
 	error = xfs_bmap_first_unused(args->trans, args->dp, blkcnt, &lfileoff,
 						   XFS_ATTR_FORK);
 	if (error)
@@ -480,7 +481,7 @@ xfs_attr_rmtval_set(
 	 */
 	lblkno = args->rmtblkno;
 	blkcnt = args->rmtblkcnt;
-	valuelen = args->valuelen;
+	valuelen = args->rmtvaluelen;
 	while (valuelen > 0) {
 		struct xfs_buf	*bp;
 		xfs_daddr_t	dblkno;
