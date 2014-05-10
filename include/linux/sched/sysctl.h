@@ -26,8 +26,8 @@ enum { sysctl_hung_task_timeout_secs = 0 };
  * generating coredump, we need some margin. The number of extra sections is
  * 1-3 now and depends on arch. We use "5" as safe margin, here.
  *
- * ELF extended numbering allows more then 65535 sections, so 16-bit bound is
- * not hard limit any more. Although some userspace tools can be surprised by
+ * ELF extended numbering allows more than 65535 sections, so 16-bit bound is
+ * not a hard limit any more. Although some userspace tools can be surprised by
  * that.
  */
 #define MAPCOUNT_ELF_CORE_MARGIN	(5)
