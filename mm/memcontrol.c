@@ -1571,7 +1571,7 @@ static void mem_cgroup_end_move(struct mem_cgroup *memcg)
  * A routine for checking "mem" is under move_account() or not.
  *
  * Checking a cgroup is mc.from or mc.to or under hierarchy of
- * moving cgroups. This is for waiting at hith-memory pressure
+ * moving cgroups. This is for waiting at high-memory pressure
  * caused by "move".
  */
 static bool mem_cgroup_under_move(struct mem_cgroup *memcg)
