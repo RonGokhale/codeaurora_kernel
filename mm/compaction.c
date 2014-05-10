@@ -758,7 +758,7 @@ static void isolate_freepages(struct zone *zone,
 	 * so that compact_finished() may detect this
 	 */
 	if (pfn < low_pfn)
-		next_free_pfn = max(pfn, zone->zone_start_pfn);
+		next_free_pfn = cc->migrate_pfn;
 
 	cc->free_pfn = next_free_pfn;
 	cc->nr_freepages = nr_freepages;
