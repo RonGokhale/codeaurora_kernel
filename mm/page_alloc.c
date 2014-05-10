@@ -700,7 +700,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 			/* must delete as __free_one_page list manipulates */
 			list_del(&page->lru);
 
-			VM_BUG_ON(!check_freepage_migratetype(page));
+			VM_BUG_ON_PAGE(!check_freepage_migratetype(page), page);
 			mt = get_freepage_migratetype(page);
 			/* MIGRATE_MOVABLE list may include MIGRATE_RESERVEs */
 			__free_one_page(page, zone, 0, mt);
@@ -1194,7 +1194,7 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 		struct page *page = __rmqueue(zone, order, migratetype);
 		if (unlikely(page == NULL))
 			break;
-		VM_BUG_ON(!check_freepage_migratetype(page));
+		VM_BUG_ON_PAGE(!check_freepage_migratetype(page), page);
 
 		/*
 		 * Split buddy pages returned by expand() are received here
