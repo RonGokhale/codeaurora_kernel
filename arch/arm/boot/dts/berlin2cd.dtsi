@@ -12,6 +12,7 @@
  */
 
 #include "skeleton.dtsi"
+#include <dt-bindings/clock/berlin2.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
 / {
@@ -30,24 +31,18 @@
 		};
 	};
 
-	clocks {
-		smclk: sysmgr-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <25000000>;
-		};
+	refclk: oscillator {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+	};
 
-		cfgclk: cfg-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <75000000>;
-		};
-
-		sysclk: system-clock {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <300000000>;
-		};
+	twdclk: twdclk {
+		compatible = "fixed-factor-clock";
+		#clock-cells = <0>;
+		clocks = <&coreclk CLKID_CPU>;
+		clock-mult = <1>;
+		clock-div = <3>;
 	};
 
 	soc {
@@ -76,7 +71,7 @@
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xad0600 0x20>;
 			interrupts = <GIC_PPI 13 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&sysclk>;
+			clocks = <&twdclk>;
 		};
 
 		apb@e80000 {
@@ -91,7 +86,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c00 0x14>;
 				interrupts = <8>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "okay";
 			};
@@ -100,7 +95,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c14 0x14>;
 				interrupts = <9>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "okay";
 			};
@@ -109,7 +104,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c28 0x14>;
 				interrupts = <10>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -118,7 +113,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c3c 0x14>;
 				interrupts = <11>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -127,7 +122,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c50 0x14>;
 				interrupts = <12>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -136,7 +131,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c64 0x14>;
 				interrupts = <13>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -145,7 +140,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c78 0x14>;
 				interrupts = <14>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -154,7 +149,7 @@
 				compatible = "snps,dw-apb-timer";
 				reg = <0x2c8c 0x14>;
 				interrupts = <15>;
-				clocks = <&cfgclk>;
+				clocks = <&coreclk CLKID_CFG>;
 				clock-names = "timer";
 				status = "disabled";
 			};
@@ -167,6 +162,153 @@
 				interrupt-parent = <&gic>;
 				interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
 			};
+		};
+
+		syspll: pll@ea0014 {
+			compatible = "marvell,berlin2-pll";
+			#clock-cells = <0>;
+			reg = <0xea0014 0x14>;
+			clocks = <&refclk>;
+		};
+
+		mempll: pll@ea0028 {
+			compatible = "marvell,berlin2-pll";
+			#clock-cells = <0>;
+			reg = <0xea0028 0x14>;
+			clocks = <&refclk>;
+		};
+
+		cpupll: pll@ea003c {
+			compatible = "marvell,berlin2-pll";
+			#clock-cells = <0>;
+			reg = <0xea003c 0x14>;
+			clocks = <&refclk>;
+		};
+
+		avpll: pll@ea0040 {
+			compatible = "marvell,berlin2-avpll";
+			#clock-cells = <2>;
+			reg = <0xea0050 0x100>;
+			clocks = <&refclk>;
+		};
+
+		coreclk: clock@ea0150 {
+			compatible = "marvell,berlin2-core-clocks";
+			#clock-cells = <1>;
+			reg = <0xea0150 0x1c>;
+			clocks = <&refclk>, <&syspll>, <&mempll>, <&cpupll>,
+				<&avpll 0 1>, <&avpll 0 2>,
+				<&avpll 0 3>, <&avpll 0 4>,
+				<&avpll 0 5>, <&avpll 0 6>,
+				<&avpll 0 7>, <&avpll 0 8>,
+				<&avpll 1 1>, <&avpll 1 2>,
+				<&avpll 1 3>, <&avpll 1 4>,
+				<&avpll 1 5>, <&avpll 1 6>,
+				<&avpll 1 7>, <&avpll 1 8>;
+			clock-names = "refclk", "syspll", "mempll", "cpupll",
+				"avpll_a1", "avpll_a2", "avpll_a3", "avpll_a4",
+				"avpll_a5", "avpll_a6", "avpll_a7", "avpll_a8",
+				"avpll_b1", "avpll_b2", "avpll_b3", "avpll_b4",
+				"avpll_b5", "avpll_b6", "avpll_b7", "avpll_b8";
+		};
+
+		gfx3dcore_clk: clock@ea022c {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea0022c 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		gfx3dsys_clk: clock@ea0230 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00230 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		arc_clk: clock@ea0234 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00234 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		vip_clk: clock@ea0238 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00238 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		sdio0xin_clk: clock@ea023c {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea0023c 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		sdio1xin_clk: clock@ea0240 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00240 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		gfx3dextra_clk: clock@ea0244 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00244 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		gc360_clk: clock@ea024c {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea0024c 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
+		};
+
+		sdio_dllmst_clk: clock@ea0250 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea00250 0x4>;
+			clocks = <&syspll>,
+				<&avpll 1 4>, <&avpll 1 5>,
+				<&avpll 1 6>, <&avpll 1 7>;
+			clock-names = "mux_bypass",
+				"mux0", "mux1", "mux2", "mux3";
 		};
 
 		apb@fc0000 {
@@ -183,7 +325,7 @@
 				reg-shift = <2>;
 				reg-io-width = <1>;
 				interrupts = <8>;
-				clocks = <&smclk>;
+				clocks = <&refclk>;
 				status = "disabled";
 			};
 
@@ -193,7 +335,7 @@
 				reg-shift = <2>;
 				reg-io-width = <1>;
 				interrupts = <9>;
-				clocks = <&smclk>;
+				clocks = <&refclk>;
 				status = "disabled";
 			};
 
