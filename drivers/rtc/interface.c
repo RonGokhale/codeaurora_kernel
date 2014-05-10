@@ -292,8 +292,7 @@ int __rtc_read_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm)
 		dev_dbg(&rtc->dev, "alarm rollover: %s\n", "year");
 		do {
 			alarm->time.tm_year++;
-		} while (alarm->time.tm_mon == 1
-			&& is_leap_year(alarm->time.tm_year + 1900)
+		} while (!is_leap_year(alarm->time.tm_year + 1900)
 			&& rtc_valid_tm(&alarm->time) != 0);
 		break;
 
