@@ -726,6 +726,7 @@ ssize_t hfsplus_listxattr(struct dentry *dentry, char *buffer, size_t size)
 
 end_listxattr:
 	kfree(strbuf);
+out:
 	hfs_find_exit(&fd);
 	return res;
 }
