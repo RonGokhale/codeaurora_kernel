@@ -6,6 +6,8 @@
  * Handler for trusted extended attributes.
  */
 
+#include <linux/nls.h>
+
 #include "hfsplus_fs.h"
 #include "xattr.h"
 
