@@ -2119,6 +2119,7 @@ static inline int node_match(struct page *page, int node)
 	return 1;
 }
 
+#ifdef CONFIG_SLUB_DEBUG
 static int count_free(struct page *page)
 {
 	return page->objects - page->inuse;
@@ -2140,12 +2141,16 @@ static unsigned long count_partial(struct kmem_cache_node *n,
 
 static inline unsigned long node_nr_objs(struct kmem_cache_node *n)
 {
-#ifdef CONFIG_SLUB_DEBUG
 	return atomic_long_read(&n->total_objects);
-#else
-	return 0;
-#endif
 }
+
+#else	/* CONFIG_SLUB_DEBUG */
+
+static inline unsigned long node_nr_objs(struct kmem_cache_node *n)
+{
+	return 0;
+}
+#endif	/* CONFIG_SLUB_DEBUG */
 
 static noinline void
 slab_out_of_memory(struct kmem_cache *s, gfp_t gfpflags, int nid)
