@@ -2575,7 +2575,17 @@ rebalance:
 					&did_some_progress);
 	if (page)
 		goto got_pg;
-	migration_mode = MIGRATE_SYNC_LIGHT;
+
+	if (gfp_mask & __GFP_NO_KSWAPD) {
+		/*
+		 * Khugepaged is allowed to try MIGRATE_SYNC_LIGHT, the latency
+		 * of this allocation isn't critical.  Everything else, however,
+		 * should only be allowed to do MIGRATE_ASYNC to avoid excessive
+		 * stalls during fault.
+		 */
+		if ((current->flags & (PF_KTHREAD | PF_KSWAPD)) == PF_KTHREAD)
+			migration_mode = MIGRATE_SYNC_LIGHT;
+	}
 
 	/*
 	 * If compaction is deferred for high-order allocations, it is because
