@@ -1784,7 +1784,7 @@ static int _proc_do_string(char *data, int maxlen, int write,
 static void warn_sysctl_write(struct ctl_table *table)
 {
 	pr_warn("%s wrote to %s when file position was not 0!\n",
-		current->task_comm, table->procname);
+		current->comm, table->procname);
 	pr_warn("This will not be supported in the future.\n");
 	pr_warn("To silence warning, set kernel.sysctl_writes_strict = -1\n");
 }
