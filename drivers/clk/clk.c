@@ -17,6 +17,7 @@
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/sched.h>
@@ -2542,6 +2543,34 @@ const char *of_clk_get_parent_name(struct device_node *np, int index)
 	return clk_name;
 }
 EXPORT_SYMBOL_GPL(of_clk_get_parent_name);
+
+/**
+ * of_clk_create_name() - Allocate and create a unique clock name
+ * @np: Device node pointer of the clock node
+ *
+ * This will allocate and create a unique clock name based on the
+ * reg property value. As a last resort, it will use the node name
+ * followed by a unique number. The caller has to deallocate the
+ * buffer.
+ */
+char *of_clk_create_name(struct device_node *np)
+{
+	static atomic_t clk_no_reg_magic;
+	const __be32 *reg;
+	u64 addr;
+	int magic;
+
+	reg = of_get_property(np, "reg", NULL);
+	if (reg) {
+		addr = of_translate_address(np, reg);
+		return kasprintf(GFP_KERNEL, "%llx.%s",
+				 (unsigned long long)addr, np->name);
+	}
+
+	magic = atomic_add_return(1, &clk_no_reg_magic);
+	return kasprintf(GFP_KERNEL, "%s.%d", np->name, magic);
+}
+EXPORT_SYMBOL_GPL(of_clk_create_name);
 
 struct clock_provider {
 	of_clk_init_cb_t clk_init_cb;
