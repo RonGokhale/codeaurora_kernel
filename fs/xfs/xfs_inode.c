@@ -655,7 +655,6 @@ xfs_ialloc(
 	uint		flags;
 	int		error;
 	timespec_t	tv;
-	int		filestreams = 0;
 
 	/*
 	 * Call the space management code to pick
@@ -772,13 +771,6 @@ xfs_ialloc(
 		flags |= XFS_ILOG_DEV;
 		break;
 	case S_IFREG:
-		/*
-		 * we can't set up filestreams until after the VFS inode
-		 * is set up properly.
-		 */
-		if (pip && xfs_inode_is_filestream(pip))
-			filestreams = 1;
-		/* fall through */
 	case S_IFDIR:
 		if (pip && (pip->i_d.di_flags & XFS_DIFLAG_ANY)) {
 			uint	di_flags = 0;
@@ -843,15 +835,6 @@ xfs_ialloc(
 
 	/* now that we have an i_mode we can setup inode ops and unlock */
 	xfs_setup_inode(ip);
-
-	/* now we have set up the vfs inode we can associate the filestream */
-	if (filestreams) {
-		error = xfs_filestream_associate(pip, ip);
-		if (error < 0)
-			return -error;
-		if (!error)
-			xfs_iflags_set(ip, XFS_IFILESTREAM);
-	}
 
 	*ipp = ip;
 	return 0;
@@ -1699,16 +1682,6 @@ xfs_release(
 		int truncated;
 
 		/*
-		 * If we are using filestreams, and we have an unlinked
-		 * file that we are processing the last close on, then nothing
-		 * will be able to reopen and write to this file. Purge this
-		 * inode from the filestreams cache so that it doesn't delay
-		 * teardown of the inode.
-		 */
-		if ((ip->i_d.di_nlink == 0) && xfs_inode_is_filestream(ip))
-			xfs_filestream_deassociate(ip);
-
-		/*
 		 * If we previously truncated this file and removed old data
 		 * in the process, we want to initiate "early" writeout on
 		 * the last close.  This is an attempt to combat the notorious
@@ -1838,9 +1811,33 @@ xfs_inactive_ifree(
 	int			error;
 
 	tp = xfs_trans_alloc(mp, XFS_TRANS_INACTIVE);
-	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_ifree, 0, 0);
+
+	/*
+	 * The ifree transaction might need to allocate blocks for record
+	 * insertion to the finobt. We don't want to fail here at ENOSPC, so
+	 * allow ifree to dip into the reserved block pool if necessary.
+	 *
+	 * Freeing large sets of inodes generally means freeing inode chunks,
+	 * directory and file data blocks, so this should be relatively safe.
+	 * Only under severe circumstances should it be possible to free enough
+	 * inodes to exhaust the reserve block pool via finobt expansion while
+	 * at the same time not creating free space in the filesystem.
+	 *
+	 * Send a warning if the reservation does happen to fail, as the inode
+	 * now remains allocated and sits on the unlinked list until the fs is
+	 * repaired.
+	 */
+	tp->t_flags |= XFS_TRANS_RESERVE;
+	error = xfs_trans_reserve(tp, &M_RES(mp)->tr_ifree,
+				  XFS_IFREE_SPACE_RES(mp), 0);
 	if (error) {
-		ASSERT(XFS_FORCED_SHUTDOWN(mp));
+		if (error == ENOSPC) {
+			xfs_warn_ratelimited(mp,
+			"Failed to remove inode(s) from unlinked list. "
+			"Please free space, unmount and run xfs_repair.");
+		} else {
+			ASSERT(XFS_FORCED_SHUTDOWN(mp));
+		}
 		xfs_trans_cancel(tp, XFS_TRANS_RELEASE_LOG_RES);
 		return error;
 	}
@@ -2664,13 +2661,7 @@ xfs_remove(
 	if (error)
 		goto std_return;
 
-	/*
-	 * If we are using filestreams, kill the stream association.
-	 * If the file is still open it may get a new one but that
-	 * will get killed on last close in xfs_close() so we don't
-	 * have to worry about that.
-	 */
-	if (!is_dir && link_zero && xfs_inode_is_filestream(ip))
+	if (is_dir && xfs_inode_is_filestream(ip))
 		xfs_filestream_deassociate(ip);
 
 	return 0;
@@ -3372,9 +3363,9 @@ xfs_iflush_int(
 		}
 	}
 
-	xfs_iflush_fork(ip, dip, iip, XFS_DATA_FORK, bp);
+	xfs_iflush_fork(ip, dip, iip, XFS_DATA_FORK);
 	if (XFS_IFORK_Q(ip))
-		xfs_iflush_fork(ip, dip, iip, XFS_ATTR_FORK, bp);
+		xfs_iflush_fork(ip, dip, iip, XFS_ATTR_FORK);
 	xfs_inobp_check(mp, bp);
 
 	/*
