@@ -62,25 +62,24 @@ static inline void sd_clear_error(struct realtek_pci_sdmmc *host)
 }
 
 #ifdef DEBUG
+static inline void sd_print_reg(struct realtek_pci_sdmmc *host, u16 reg)
+{
+	u8 val = 0;
+
+	if (rtsx_pci_read_register(host->pcr, reg, &val) < 0)
+		dev_dbg(sdmmc_dev(host), "read 0x%04x failed\n", reg);
+	else
+		dev_dbg(sdmmc_dev(host), "0x%04X: 0x%02x\n", reg, val);
+}
+
 static void sd_print_debug_regs(struct realtek_pci_sdmmc *host)
 {
-	struct rtsx_pcr *pcr = host->pcr;
 	u16 i;
-	u8 *ptr;
 
-	/* Print SD host internal registers */
-	rtsx_pci_init_cmd(pcr);
 	for (i = 0xFDA0; i <= 0xFDAE; i++)
-		rtsx_pci_add_cmd(pcr, READ_REG_CMD, i, 0, 0);
+		sd_print_reg(host, i);
 	for (i = 0xFD52; i <= 0xFD69; i++)
-		rtsx_pci_add_cmd(pcr, READ_REG_CMD, i, 0, 0);
-	rtsx_pci_send_cmd(pcr, 100);
-
-	ptr = rtsx_pci_get_cmd_data(pcr);
-	for (i = 0xFDA0; i <= 0xFDAE; i++)
-		dev_dbg(sdmmc_dev(host), "0x%04X: 0x%02x\n", i, *(ptr++));
-	for (i = 0xFD52; i <= 0xFD69; i++)
-		dev_dbg(sdmmc_dev(host), "0x%04X: 0x%02x\n", i, *(ptr++));
+		sd_print_reg(host, i);
 }
 #else
 #define sd_print_debug_regs(host)
@@ -236,6 +235,9 @@ static void sd_send_cmd_get_rsp(struct realtek_pci_sdmmc *host,
 	case MMC_RSP_R1:
 		rsp_type = SD_RSP_TYPE_R1;
 		break;
+	case MMC_RSP_R1 & ~MMC_RSP_CRC:
+		rsp_type = SD_RSP_TYPE_R1 | SD_NO_CHECK_CRC7;
+		break;
 	case MMC_RSP_R1B:
 		rsp_type = SD_RSP_TYPE_R1b;
 		break;
@@ -258,8 +260,11 @@ static void sd_send_cmd_get_rsp(struct realtek_pci_sdmmc *host,
 	if (cmd->opcode == SD_SWITCH_VOLTAGE) {
 		err = rtsx_pci_write_register(pcr, SD_BUS_STAT,
 				0xFF, SD_CLK_TOGGLE_EN);
-		if (err < 0)
+		if (err < 0) {
+			rtsx_pci_write_register(pcr, SD_BUS_STAT,
+				SD_CLK_TOGGLE_EN | SD_CLK_FORCE_STOP, 0);
 			goto out;
+		}
 
 		clock_toggled = true;
 	}
@@ -816,6 +821,7 @@ static int sd_set_timing(struct realtek_pci_sdmmc *host, unsigned char timing)
 		rtsx_pci_add_cmd(pcr, WRITE_REG_CMD, CLK_CTL, CLK_LOW_FREQ, 0);
 		break;
 
+	case MMC_TIMING_MMC_DDR52:
 	case MMC_TIMING_UHS_DDR50:
 		rtsx_pci_add_cmd(pcr, WRITE_REG_CMD, SD_CFG1,
 				0x0C | SD_ASYNC_FIFO_NOT_RST,
@@ -896,6 +902,7 @@ static void sdmmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 		host->vpclk = true;
 		host->double_clk = false;
 		break;
+	case MMC_TIMING_MMC_DDR52:
 	case MMC_TIMING_UHS_DDR50:
 	case MMC_TIMING_UHS_SDR25:
 		host->ssc_depth = RTSX_SSC_DEPTH_1M;
