@@ -493,12 +493,7 @@ static void icmp6_send(struct sk_buff *skb, u8 type, u8 code, __u32 info)
 	if (IS_ERR(dst))
 		goto out;
 
-	if (ipv6_addr_is_multicast(&fl6.daddr))
-		hlimit = np->mcast_hops;
-	else
-		hlimit = np->hop_limit;
-	if (hlimit < 0)
-		hlimit = ip6_dst_hoplimit(dst);
+	hlimit = ip6_sk_dst_hoplimit(np, &fl6, dst);
 
 	msg.skb = skb;
 	msg.offset = skb_network_offset(skb);
@@ -593,12 +588,7 @@ static void icmpv6_echo_reply(struct sk_buff *skb)
 	if (IS_ERR(dst))
 		goto out;
 
-	if (ipv6_addr_is_multicast(&fl6.daddr))
-		hlimit = np->mcast_hops;
-	else
-		hlimit = np->hop_limit;
-	if (hlimit < 0)
-		hlimit = ip6_dst_hoplimit(dst);
+	hlimit = ip6_sk_dst_hoplimit(np, &fl6, dst);
 
 	idev = __in6_dev_get(skb->dev);
 
@@ -702,22 +692,11 @@ static int icmpv6_rcv(struct sk_buff *skb)
 	saddr = &ipv6_hdr(skb)->saddr;
 	daddr = &ipv6_hdr(skb)->daddr;
 
-	/* Perform checksum. */
-	switch (skb->ip_summed) {
-	case CHECKSUM_COMPLETE:
-		if (!csum_ipv6_magic(saddr, daddr, skb->len, IPPROTO_ICMPV6,
-				     skb->csum))
-			break;
-		/* fall through */
-	case CHECKSUM_NONE:
-		skb->csum = ~csum_unfold(csum_ipv6_magic(saddr, daddr, skb->len,
-					     IPPROTO_ICMPV6, 0));
-		if (__skb_checksum_complete(skb)) {
-			LIMIT_NETDEBUG(KERN_DEBUG
-				       "ICMPv6 checksum failed [%pI6c > %pI6c]\n",
-				       saddr, daddr);
-			goto csum_error;
-		}
+	if (skb_checksum_validate(skb, IPPROTO_ICMPV6, ip6_compute_pseudo)) {
+		LIMIT_NETDEBUG(KERN_DEBUG
+			       "ICMPv6 checksum failed [%pI6c > %pI6c]\n",
+			       saddr, daddr);
+		goto csum_error;
 	}
 
 	if (!pskb_pull(skb, sizeof(*hdr)))

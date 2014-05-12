@@ -196,27 +196,15 @@ void ip_send_unicast_reply(struct net *net, struct sk_buff *skb, __be32 daddr,
 #define NET_ADD_STATS_BH(net, field, adnd) SNMP_ADD_STATS_BH((net)->mib.net_statistics, field, adnd)
 #define NET_ADD_STATS_USER(net, field, adnd) SNMP_ADD_STATS_USER((net)->mib.net_statistics, field, adnd)
 
-unsigned long snmp_fold_field(void __percpu *mib[], int offt);
+unsigned long snmp_fold_field(void __percpu *mib, int offt);
 #if BITS_PER_LONG==32
-u64 snmp_fold_field64(void __percpu *mib[], int offt, size_t sync_off);
+u64 snmp_fold_field64(void __percpu *mib, int offt, size_t sync_off);
 #else
-static inline u64 snmp_fold_field64(void __percpu *mib[], int offt, size_t syncp_off)
+static inline u64 snmp_fold_field64(void __percpu *mib, int offt, size_t syncp_off)
 {
 	return snmp_fold_field(mib, offt);
 }
 #endif
-int snmp_mib_init(void __percpu *ptr[2], size_t mibsize, size_t align);
-
-static inline void snmp_mib_free(void __percpu *ptr[SNMP_ARRAY_SZ])
-{
-	int i;
-
-	BUG_ON(ptr == NULL);
-	for (i = 0; i < SNMP_ARRAY_SZ; i++) {
-		free_percpu(ptr[i]);
-		ptr[i] = NULL;
-	}
-}
 
 void inet_get_local_port_range(struct net *net, int *low, int *high);
 
@@ -340,6 +328,12 @@ static inline void ip_select_ident_more(struct sk_buff *skb, struct dst_entry *d
 			iph->id = 0;
 	} else
 		__ip_select_ident(iph, dst, more);
+}
+
+static inline __wsum inet_compute_pseudo(struct sk_buff *skb, int proto)
+{
+	return csum_tcpudp_nofold(ip_hdr(skb)->saddr, ip_hdr(skb)->daddr,
+				  skb->len, proto, 0);
 }
 
 /*
