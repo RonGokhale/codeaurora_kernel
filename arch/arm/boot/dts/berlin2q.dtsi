@@ -47,7 +47,7 @@
 		};
 	};
 
-	smclk: sysmgr-clock {
+	refclk: oscillator {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <25000000>;
@@ -59,16 +59,10 @@
 		clock-frequency = <100000000>;
 	};
 
-	cpuclk: cpu-clock {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <1200000000>;
-	};
-
 	twdclk: twdclk {
 		compatible = "fixed-factor-clock";
 		#clock-cells = <0>;
-		clocks = <&cpuclk>;
+		clocks = <&cpupll>;
 		clock-mult = <1>;
 		clock-div = <3>;
 	};
@@ -105,6 +99,13 @@
 			interrupt-controller;
 			#interrupt-cells = <3>;
 		};
+
+	        cpupll: cpupll@dd0170 {
+	                compatible = "marvell,berlin2q-pll";
+	                clocks = <&refclk>;
+	                #clock-cells = <0>;
+	                reg = <0xdd0170 0x8>;
+	        };
 
 		apb@e80000 {
 			compatible = "simple-bus";
@@ -290,9 +291,32 @@
 			};
 		};
 
+		syspll: syspll@ea0030 {
+			compatible = "marvell,berlin2q-pll";
+			clocks = <&refclk>;
+			#clock-cells = <0>;
+			reg = <0xea0030 0x8>;
+		};
+
 		generic-regs@ea0110 {
 			compatible = "marvell,berlin-generic-regs", "syscon";
 			reg = <0xea0110 0x10>;
+		};
+
+		sdio0xin_clk: sdio0xinclk@ea0158 {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea0158 0x4>;
+			clocks = <&syspll>;
+			clock-names = "mux_bypass";
+		};
+
+		sdio1xin_clk: sdio1xinclk@ea015c {
+			compatible = "marvell,berlin2-clk-div";
+			#clock-cells = <0>;
+			reg = <0xea015c 0x4>;
+			clocks = <&syspll>;
+			clock-names = "mux_bypass";
 		};
 
 		apb@fc0000 {
@@ -308,7 +332,7 @@
 				reg = <0x9000 0x100>;
 				interrupt-parent = <&sic>;
 				interrupts = <8>;
-				clocks = <&smclk>;
+				clocks = <&refclk>;
 				reg-shift = <2>;
 				status = "disabled";
 			};
@@ -318,7 +342,7 @@
 				reg = <0xa000 0x100>;
 				interrupt-parent = <&sic>;
 				interrupts = <9>;
-				clocks = <&smclk>;
+				clocks = <&refclk>;
 				reg-shift = <2>;
 				status = "disabled";
 			};
