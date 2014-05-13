@@ -106,6 +106,20 @@ struct regulator_init_data *of_get_regulator_init_data(struct device *dev,
 }
 EXPORT_SYMBOL_GPL(of_get_regulator_init_data);
 
+struct devm_of_regulator_matches {
+	struct of_regulator_match *matches;
+	unsigned int num_matches;
+};
+
+static void devm_of_regulator_put_matches(struct device *dev, void *res)
+{
+	struct devm_of_regulator_matches *devm_matches = res;
+	int i;
+
+	for (i = 0; i < devm_matches->num_matches; i++)
+		of_node_put(devm_matches->matches[i].of_node);
+}
+
 /**
  * of_regulator_match - extract multiple regulator init data from device tree.
  * @dev: device requesting the data
@@ -119,7 +133,8 @@ EXPORT_SYMBOL_GPL(of_get_regulator_init_data);
  * regulator. The data parsed from a child node will be matched to a regulator
  * based on either the deprecated property regulator-compatible if present,
  * or otherwise the child node's name. Note that the match table is modified
- * in place.
+ * in place and an additional of_node reference is taken for each matched
+ * regulator.
  *
  * Returns the number of matches found or a negative error code on failure.
  */
@@ -131,9 +146,21 @@ int of_regulator_match(struct device *dev, struct device_node *node,
 	unsigned int i;
 	const char *name;
 	struct device_node *child;
+	struct devm_of_regulator_matches *devm_matches;
 
 	if (!dev || !node)
 		return -EINVAL;
+
+	devm_matches = devres_alloc(devm_of_regulator_put_matches,
+				    sizeof(struct devm_of_regulator_matches),
+				    GFP_KERNEL);
+	if (!devm_matches)
+		return -ENOMEM;
+
+	devm_matches->matches = matches;
+	devm_matches->num_matches = num_matches;
+
+	devres_add(dev, devm_matches);
 
 	for (i = 0; i < num_matches; i++) {
 		struct of_regulator_match *match = &matches[i];
@@ -162,7 +189,7 @@ int of_regulator_match(struct device *dev, struct device_node *node,
 					child->name);
 				return -EINVAL;
 			}
-			match->of_node = child;
+			match->of_node = of_node_get(child);
 			count++;
 			break;
 		}
