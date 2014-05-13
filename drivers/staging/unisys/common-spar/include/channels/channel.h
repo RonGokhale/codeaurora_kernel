@@ -1,4 +1,4 @@
-/* Copyright © 2010 - 2013 UNISYS CORPORATION
+/* Copyright (C) 2010 - 2013 UNISYS CORPORATION
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,7 @@
 */
 
 /* define the following to prevent include nesting in kernel header
- * files of similar abreviated content
+ * files of similar abbreviated content
  */
 #define __SUPERVISOR_CHANNEL_H__
 
