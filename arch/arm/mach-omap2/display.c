@@ -279,6 +279,8 @@ static enum omapdss_version __init omap_display_get_version(void)
 		return OMAPDSS_VER_OMAP4;
 	else if (soc_is_omap54xx())
 		return OMAPDSS_VER_OMAP5;
+	else if (soc_is_am43xx())
+		return OMAPDSS_VER_AM43xx;
 	else
 		return OMAPDSS_VER_UNKNOWN;
 }
@@ -566,6 +568,7 @@ static const char * const dss_compat_conv_list[] __initconst = {
 	"svideo-connector",
 	"ti,tfp410",
 	"ti,tpd12s015",
+	"toppoly,td028ttec1",
 };
 
 /* prepend compatible string with "omapdss," */
@@ -629,6 +632,10 @@ struct device_node * __init omapdss_find_dss_of_node(void)
 		return node;
 
 	node = of_find_compatible_node(NULL, NULL, "ti,omap4-dss");
+	if (node)
+		return node;
+
+	node = of_find_compatible_node(NULL, NULL, "ti,omap5-dss");
 	if (node)
 		return node;
 
