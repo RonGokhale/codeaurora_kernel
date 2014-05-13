@@ -433,6 +433,12 @@ static void __init of_selftest_platform_populate(void)
 	int irq;
 	struct device_node *np;
 	struct platform_device *pdev;
+	struct device_node *child;
+	int rc;
+	struct of_device_id match[] = {
+		{ .compatible = "test-device", },
+		{}
+	};
 
 	np = of_find_node_by_path("/testcase-data");
 	of_platform_populate(np, of_default_bus_match_table, NULL, NULL);
@@ -456,6 +462,17 @@ static void __init of_selftest_platform_populate(void)
 		selftest(0, "device parsing error failed - %d\n", irq);
 
 	selftest(1, "passed");
+
+	np = of_find_node_by_path("/testcase-data/platform-tests");
+	if (!np) {
+		pr_err("No testcase data in device tree\n");
+		return;
+	}
+
+	for_each_child_of_node(np, child) {
+		rc = of_platform_populate(child, match, NULL, NULL);
+		selftest(!rc, "Could not create device for node '%s'\n", child->name);
+	}
 }
 
 static int __init of_selftest(void)
