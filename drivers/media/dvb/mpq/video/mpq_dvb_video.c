@@ -188,6 +188,9 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 
 		bytes_read = mpq_streambuffer_pkt_read(streambuff, indx,
 			&pkt_hdr, (u8 *)&meta_data);
+                if(0 == bytes_read) {
+                    continue;
+                }
 
 		switch (meta_data.packet_type) {
 		case DMX_FRAMING_INFO_PACKET:
@@ -232,6 +235,10 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 			if (frame_found) {
 				ts_packets_num = meta_data.info.
 						framing.ts_packets_num;
+                                if(0 == ts_packets_num) {
+                                    frame_found = false;
+                                    continue;
+                                }
 				ts_packets_drop_num = meta_data.info.
 						framing.ts_dropped_bytes;
 				drop_ratio = (ts_packets_drop_num*100)
