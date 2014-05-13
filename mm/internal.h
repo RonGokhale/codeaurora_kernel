@@ -134,7 +134,7 @@ struct compact_control {
 	unsigned long nr_migratepages;	/* Number of pages to migrate */
 	unsigned long free_pfn;		/* isolate_freepages search base */
 	unsigned long migrate_pfn;	/* isolate_migratepages search base */
-	bool sync;			/* Synchronous migration */
+	enum migrate_mode mode;		/* Async or sync migration mode */
 	bool ignore_skip_hint;		/* Scan blocks even if marked skip */
 	bool finished_update_free;	/* True when the zone cached pfns are
 					 * no longer being updated
@@ -167,6 +167,11 @@ static inline unsigned long page_order(struct page *page)
 {
 	/* PageBuddy() must be checked by the caller */
 	return page_private(page);
+}
+
+static inline bool is_cow_mapping(vm_flags_t flags)
+{
+	return (flags & (VM_SHARED | VM_MAYWRITE)) == VM_MAYWRITE;
 }
 
 /* mm/util.c */
