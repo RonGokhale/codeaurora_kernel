@@ -5,7 +5,9 @@
 #define _TRACE_COMPACTION_H
 
 #include <linux/types.h>
+#include <linux/list.h>
 #include <linux/tracepoint.h>
+#include <linux/mm_types.h>
 #include <trace/events/gfpflags.h>
 
 DECLARE_EVENT_CLASS(mm_compaction_isolate_template,
@@ -47,10 +49,11 @@ DEFINE_EVENT(mm_compaction_isolate_template, mm_compaction_isolate_freepages,
 
 TRACE_EVENT(mm_compaction_migratepages,
 
-	TP_PROTO(unsigned long nr_migrated,
-		unsigned long nr_failed),
+	TP_PROTO(unsigned long nr_all,
+		int migrate_rc,
+		struct list_head *migratepages),
 
-	TP_ARGS(nr_migrated, nr_failed),
+	TP_ARGS(nr_all, migrate_rc, migratepages),
 
 	TP_STRUCT__entry(
 		__field(unsigned long, nr_migrated)
@@ -58,7 +61,22 @@ TRACE_EVENT(mm_compaction_migratepages,
 	),
 
 	TP_fast_assign(
-		__entry->nr_migrated = nr_migrated;
+		unsigned long nr_failed = 0;
+		struct page *page;
+
+		/*
+		 * migrate_pages() returns either a non-negative number
+		 * with the number of pages that failed migration, or an
+		 * error code, in which case we need to count the remaining
+		 * pages manually
+		 */
+		if (migrate_rc >= 0)
+			nr_failed = migrate_rc;
+		else
+			list_for_each_entry(page, migratepages, lru)
+				nr_failed++;
+
+		__entry->nr_migrated = nr_all - nr_failed;
 		__entry->nr_failed = nr_failed;
 	),
 
