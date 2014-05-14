@@ -344,12 +344,6 @@ bool Hal_MappingOutPipe23a(struct rtw_adapter *pAdapter, u8 NumOutPipe)
 	return result;
 }
 
-void hal_init_macaddr23a(struct rtw_adapter *adapter)
-{
-	rtw_hal_set_hwreg23a(adapter, HW_VAR_MAC_ADDR,
-			  adapter->eeprompriv.mac_addr);
-}
-
 /*
 * C2H event format:
 * Field	 TRIGGER		CONTENT	   CMD_SEQ	CMD_LEN		 CMD_ID
@@ -676,11 +670,13 @@ void rtl8723a_cam_empty_entry(struct rtw_adapter *padapter, u8 ucIndex)
 		/* delay_ms(40); */
 		rtw_write32(padapter, WCAMI, ulContent);
 		/* RT_TRACE(COMP_SEC, DBG_LOUD,
-		   ("CAM_empty_entry23a(): WRITE A4: %lx \n", ulContent));*/
+		   ("rtl8723a_cam_empty_entry(): WRITE A4: %lx \n",
+		   ulContent));*/
 		/* delay_ms(40); */
 		rtw_write32(padapter, RWCAM, ulCommand);
 		/* RT_TRACE(COMP_SEC, DBG_LOUD,
-		   ("CAM_empty_entry23a(): WRITE A0: %lx \n", ulCommand));*/
+		   ("rtl8723a_cam_empty_entry(): WRITE A0: %lx \n",
+		   ulCommand));*/
 	}
 }
 
@@ -689,14 +685,37 @@ void rtl8723a_cam_invalid_all(struct rtw_adapter *padapter)
 	rtw_write32(padapter, RWCAM, BIT(31) | BIT(30));
 }
 
-void rtl8723a_cam_write(struct rtw_adapter *padapter, u32 val1, u32 val2)
+void rtl8723a_cam_write(struct rtw_adapter *padapter,
+			u8 entry, u16 ctrl, const u8 *mac, const u8 *key)
 {
 	u32 cmd;
+	unsigned int i, val, addr;
+	int j;
 
-	rtw_write32(padapter, WCAMI, val1);
+	addr = entry << 3;
 
-	cmd = CAM_POLLINIG | CAM_WRITE | val2;
-	rtw_write32(padapter, RWCAM, cmd);
+	for (j = 5; j >= 0; j--) {
+		switch (j) {
+		case 0:
+			val = ctrl | (mac[0] << 16) | (mac[1] << 24);
+			break;
+		case 1:
+			val = mac[2] | (mac[3] << 8) |
+				(mac[4] << 16) | (mac[5] << 24);
+			break;
+		default:
+			i = (j - 2) << 2;
+			val = key[i] | (key[i+1] << 8) |
+				(key[i+2] << 16) | (key[i+3] << 24);
+			break;
+		}
+
+		rtw_write32(padapter, WCAMI, val);
+		cmd = CAM_POLLINIG | CAM_WRITE | (addr + j);
+		rtw_write32(padapter, RWCAM, cmd);
+
+		/* DBG_8723A("%s => cam write: %x, %x\n", __func__, cmd, val);*/
+	}
 }
 
 void rtl8723a_fifo_cleanup(struct rtw_adapter *padapter)
@@ -736,14 +755,6 @@ void rtl8723a_fifo_cleanup(struct rtw_adapter *padapter)
 	}
 }
 
-void rtl8723a_set_apfm_on_mac(struct rtw_adapter *padapter, u8 val)
-{
-	struct hal_data_8723a *pHalData = GET_HAL_DATA(padapter);
-
-	pHalData->bMacPwrCtrlOn = val;
-	DBG_8723A("%s: bMacPwrCtrlOn =%d\n", __func__, pHalData->bMacPwrCtrlOn);
-}
-
 void rtl8723a_bcn_valid(struct rtw_adapter *padapter)
 {
 	/* BCN_VALID, BIT16 of REG_TDECTRL = BIT0 of REG_TDECTRL+2,
@@ -752,9 +763,13 @@ void rtl8723a_bcn_valid(struct rtw_adapter *padapter)
 		   rtw_read8(padapter, REG_TDECTRL + 2) | BIT0);
 }
 
-void rtl8723a_set_tx_pause(struct rtw_adapter *padapter, u8 pause)
+bool rtl8723a_get_bcn_valid(struct rtw_adapter *padapter)
 {
-	rtw_write8(padapter, REG_TXPAUSE, pause);
+	bool retval;
+
+	retval = (rtw_read8(padapter, REG_TDECTRL + 2) & BIT0) ? true : false;
+
+	return retval;
 }
 
 void rtl8723a_set_beacon_interval(struct rtw_adapter *padapter, u16 interval)
@@ -837,23 +852,18 @@ void rtl8723a_set_initial_gain(struct rtw_adapter *padapter, u32 rx_gain)
 	}
 }
 
-void rtl8723a_odm_support_ability_write(struct rtw_adapter *padapter, u32 val)
+void rtl8723a_odm_support_ability_restore(struct rtw_adapter *padapter)
 {
 	struct hal_data_8723a *pHalData = GET_HAL_DATA(padapter);
 
-	pHalData->odmpriv.SupportAbility = val;
+	pHalData->odmpriv.SupportAbility = pHalData->odmpriv.BK_SupportAbility;
 }
 
-void rtl8723a_odm_support_ability_backup(struct rtw_adapter *padapter, u8 val)
+void rtl8723a_odm_support_ability_backup(struct rtw_adapter *padapter)
 {
 	struct hal_data_8723a *pHalData = GET_HAL_DATA(padapter);
 
-	if (val)	/*  save dm flag */
-		pHalData->odmpriv.BK_SupportAbility =
-			pHalData->odmpriv.SupportAbility;
-	else		/*  restore dm flag */
-		pHalData->odmpriv.SupportAbility =
-			pHalData->odmpriv.BK_SupportAbility;
+	pHalData->odmpriv.BK_SupportAbility = pHalData->odmpriv.SupportAbility;
 }
 
 void rtl8723a_odm_support_ability_set(struct rtw_adapter *padapter, u32 val)
@@ -878,4 +888,43 @@ void rtl8723a_odm_support_ability_clr(struct rtw_adapter *padapter, u32 val)
 void rtl8723a_set_rpwm(struct rtw_adapter *padapter, u8 val)
 {
 	rtw_write8(padapter, REG_USB_HRPWM, val);
+}
+
+u8 rtl8723a_get_rf_type(struct rtw_adapter *padapter)
+{
+	struct hal_data_8723a *pHalData = GET_HAL_DATA(padapter);
+
+	return pHalData->rf_type;
+}
+
+bool rtl8723a_get_fwlps_rf_on(struct rtw_adapter *padapter)
+{
+	bool retval;
+	u32 valRCR;
+
+	/*  When we halt NIC, we should check if FW LPS is leave. */
+
+	if ((padapter->bSurpriseRemoved == true) ||
+	    (padapter->pwrctrlpriv.rf_pwrstate == rf_off)) {
+		/*  If it is in HW/SW Radio OFF or IPS state, we do
+		    not check Fw LPS Leave, because Fw is unload. */
+		retval = true;
+	} else {
+		valRCR = rtw_read32(padapter, REG_RCR);
+		if (valRCR & 0x00070000)
+			retval = false;
+		else
+			retval = true;
+	}
+
+	return retval;
+}
+
+bool rtl8723a_chk_hi_queue_empty(struct rtw_adapter *padapter)
+{
+	u32 hgq;
+
+	hgq = rtw_read32(padapter, REG_HGQ_INFORMATION);
+
+	return ((hgq & 0x0000ff00) == 0) ? true : false;
 }
