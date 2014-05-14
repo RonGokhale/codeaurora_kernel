@@ -503,10 +503,11 @@ static irqreturn_t pca953x_irq_handler(int irq, void *devid)
 	struct pca953x_chip *chip = devid;
 	u8 pending[MAX_BANK];
 	u8 level;
+	unsigned nhandled = 0;
 	int i;
 
 	if (!pca953x_irq_pending(chip, pending))
-		return IRQ_HANDLED;
+		return IRQ_NONE;
 
 	for (i = 0; i < NBANK(chip); i++) {
 		while (pending[i]) {
@@ -514,10 +515,11 @@ static irqreturn_t pca953x_irq_handler(int irq, void *devid)
 			handle_nested_irq(irq_find_mapping(chip->domain,
 							level + (BANK_SZ * i)));
 			pending[i] &= ~(1 << level);
+			nhandled++;
 		}
 	}
 
-	return IRQ_HANDLED;
+	return (nhandled > 0) ? IRQ_HANDLED : IRQ_NONE;
 }
 
 static int pca953x_gpio_irq_map(struct irq_domain *d, unsigned int irq,
@@ -584,7 +586,8 @@ static int pca953x_irq_setup(struct pca953x_chip *chip,
 					client->irq,
 					   NULL,
 					   pca953x_irq_handler,
-					   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+					   IRQF_TRIGGER_LOW | IRQF_ONESHOT |
+						   IRQF_SHARED,
 					   dev_name(&client->dev), chip);
 		if (ret) {
 			dev_err(&client->dev, "failed to request irq %d\n",
