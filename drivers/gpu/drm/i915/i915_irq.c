@@ -751,24 +751,32 @@ static u32 gm45_get_vblank_counter(struct drm_device *dev, int pipe)
 /* raw reads, only for fast reads of display block, no need for forcewake etc. */
 #define __raw_i915_read32(dev_priv__, reg__) readl((dev_priv__)->regs + (reg__))
 
-static bool ilk_pipe_in_vblank_locked(struct drm_device *dev, enum pipe pipe)
+static int __intel_get_crtc_scanline(struct intel_crtc *crtc)
 {
+	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	uint32_t status;
-	int reg;
+	const struct drm_display_mode *mode = &crtc->config.adjusted_mode;
+	enum pipe pipe = crtc->pipe;
+	int vtotal = mode->crtc_vtotal;
+	int position;
 
-	if (INTEL_INFO(dev)->gen >= 8) {
-		status = GEN8_PIPE_VBLANK;
-		reg = GEN8_DE_PIPE_ISR(pipe);
-	} else if (INTEL_INFO(dev)->gen >= 7) {
-		status = DE_PIPE_VBLANK_IVB(pipe);
-		reg = DEISR;
-	} else {
-		status = DE_PIPE_VBLANK(pipe);
-		reg = DEISR;
-	}
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		vtotal /= 2;
 
-	return __raw_i915_read32(dev_priv, reg) & status;
+	if (IS_GEN2(dev))
+		position = __raw_i915_read32(dev_priv, PIPEDSL(pipe)) & DSL_LINEMASK_GEN2;
+	else
+		position = __raw_i915_read32(dev_priv, PIPEDSL(pipe)) & DSL_LINEMASK_GEN3;
+
+	/*
+	 * Scanline counter increments at leading edge of hsync, and
+	 * it starts counting from vtotal-1 on the first active line.
+	 * That means the scanline counter value is always one less
+	 * than what we would expect. Ie. just after start of vblank,
+	 * which also occurs at start of hsync (on the last active line),
+	 * the scanline counter will read vblank_start-1.
+	 */
+	return (position + 1) % vtotal;
 }
 
 static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
@@ -780,7 +788,7 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	const struct drm_display_mode *mode = &intel_crtc->config.adjusted_mode;
 	int position;
-	int vbl_start, vbl_end, htotal, vtotal;
+	int vbl_start, vbl_end, hsync_start, htotal, vtotal;
 	bool in_vbl = true;
 	int ret = 0;
 	unsigned long irqflags;
@@ -792,6 +800,7 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 	}
 
 	htotal = mode->crtc_htotal;
+	hsync_start = mode->crtc_hsync_start;
 	vtotal = mode->crtc_vtotal;
 	vbl_start = mode->crtc_vblank_start;
 	vbl_end = mode->crtc_vblank_end;
@@ -810,7 +819,7 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 	 * following code must not block on uncore.lock.
 	 */
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
-	
+
 	/* preempt_disable_rt() should go right here in PREEMPT_RT patchset. */
 
 	/* Get optional system timestamp before query. */
@@ -821,68 +830,7 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		/* No obvious pixelcount register. Only query vertical
 		 * scanout position from Display scan line register.
 		 */
-		if (IS_GEN2(dev))
-			position = __raw_i915_read32(dev_priv, PIPEDSL(pipe)) & DSL_LINEMASK_GEN2;
-		else
-			position = __raw_i915_read32(dev_priv, PIPEDSL(pipe)) & DSL_LINEMASK_GEN3;
-
-		if (HAS_DDI(dev)) {
-			/*
-			 * On HSW HDMI outputs there seems to be a 2 line
-			 * difference, whereas eDP has the normal 1 line
-			 * difference that earlier platforms have. External
-			 * DP is unknown. For now just check for the 2 line
-			 * difference case on all output types on HSW+.
-			 *
-			 * This might misinterpret the scanline counter being
-			 * one line too far along on eDP, but that's less
-			 * dangerous than the alternative since that would lead
-			 * the vblank timestamp code astray when it sees a
-			 * scanline count before vblank_start during a vblank
-			 * interrupt.
-			 */
-			in_vbl = ilk_pipe_in_vblank_locked(dev, pipe);
-			if ((in_vbl && (position == vbl_start - 2 ||
-					position == vbl_start - 1)) ||
-			    (!in_vbl && (position == vbl_end - 2 ||
-					 position == vbl_end - 1)))
-				position = (position + 2) % vtotal;
-		} else if (HAS_PCH_SPLIT(dev)) {
-			/*
-			 * The scanline counter increments at the leading edge
-			 * of hsync, ie. it completely misses the active portion
-			 * of the line. Fix up the counter at both edges of vblank
-			 * to get a more accurate picture whether we're in vblank
-			 * or not.
-			 */
-			in_vbl = ilk_pipe_in_vblank_locked(dev, pipe);
-			if ((in_vbl && position == vbl_start - 1) ||
-			    (!in_vbl && position == vbl_end - 1))
-				position = (position + 1) % vtotal;
-		} else {
-			/*
-			 * ISR vblank status bits don't work the way we'd want
-			 * them to work on non-PCH platforms (for
-			 * ilk_pipe_in_vblank_locked()), and there doesn't
-			 * appear any other way to determine if we're currently
-			 * in vblank.
-			 *
-			 * Instead let's assume that we're already in vblank if
-			 * we got called from the vblank interrupt and the
-			 * scanline counter value indicates that we're on the
-			 * line just prior to vblank start. This should result
-			 * in the correct answer, unless the vblank interrupt
-			 * delivery really got delayed for almost exactly one
-			 * full frame/field.
-			 */
-			if (flags & DRM_CALLED_FROM_VBLIRQ &&
-			    position == vbl_start - 1) {
-				position = (position + 1) % vtotal;
-
-				/* Signal this correction as "applied". */
-				ret |= 0x8;
-			}
-		}
+		position = __intel_get_crtc_scanline(intel_crtc);
 	} else {
 		/* Have access to pixelcount since start of frame.
 		 * We can split this into vertical and horizontal
@@ -894,6 +842,17 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		vbl_start *= htotal;
 		vbl_end *= htotal;
 		vtotal *= htotal;
+
+		/*
+		 * Start of vblank interrupt is triggered at start of hsync,
+		 * just prior to the first active line of vblank. However we
+		 * consider lines to start at the leading edge of horizontal
+		 * active. So, should we get here before we've crossed into
+		 * the horizontal active of the first line in vblank, we would
+		 * not set the DRM_SCANOUTPOS_INVBL flag. In order to fix that,
+		 * always add htotal-hsync_start to the current pixel position.
+		 */
+		position = (position + htotal - hsync_start) % vtotal;
 	}
 
 	/* Get optional system timestamp after query. */
@@ -930,6 +889,19 @@ static int i915_get_crtc_scanoutpos(struct drm_device *dev, int pipe,
 		ret |= DRM_SCANOUTPOS_INVBL;
 
 	return ret;
+}
+
+int intel_get_crtc_scanline(struct intel_crtc *crtc)
+{
+	struct drm_i915_private *dev_priv = crtc->base.dev->dev_private;
+	unsigned long irqflags;
+	int position;
+
+	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
+	position = __intel_get_crtc_scanline(crtc);
+	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
+
+	return position;
 }
 
 static int i915_get_vblank_timestamp(struct drm_device *dev, int pipe,
@@ -1347,13 +1319,16 @@ static irqreturn_t gen8_gt_irq_handler(struct drm_device *dev,
 			DRM_ERROR("The master control interrupt lied (GT0)!\n");
 	}
 
-	if (master_ctl & GEN8_GT_VCS1_IRQ) {
+	if (master_ctl & (GEN8_GT_VCS1_IRQ | GEN8_GT_VCS2_IRQ)) {
 		tmp = I915_READ(GEN8_GT_IIR(1));
 		if (tmp) {
 			ret = IRQ_HANDLED;
 			vcs = tmp >> GEN8_VCS1_IRQ_SHIFT;
 			if (vcs & GT_RENDER_USER_INTERRUPT)
 				notify_ring(dev, &dev_priv->ring[VCS]);
+			vcs = tmp >> GEN8_VCS2_IRQ_SHIFT;
+			if (vcs & GT_RENDER_USER_INTERRUPT)
+				notify_ring(dev, &dev_priv->ring[VCS2]);
 			I915_WRITE(GEN8_GT_IIR(1), tmp);
 		} else
 			DRM_ERROR("The master control interrupt lied (GT1)!\n");
@@ -1581,6 +1556,19 @@ static void gen6_rps_irq_handler(struct drm_i915_private *dev_priv, u32 pm_iir)
 	}
 }
 
+static bool intel_pipe_handle_vblank(struct drm_device *dev, enum pipe pipe)
+{
+	struct intel_crtc *crtc;
+
+	if (!drm_handle_vblank(dev, pipe))
+		return false;
+
+	crtc = to_intel_crtc(intel_get_crtc_for_pipe(dev, pipe));
+	wake_up(&crtc->vbl_wait);
+
+	return true;
+}
+
 static void valleyview_pipestat_irq_handler(struct drm_device *dev, u32 iir)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -1632,7 +1620,7 @@ static void valleyview_pipestat_irq_handler(struct drm_device *dev, u32 iir)
 
 	for_each_pipe(pipe) {
 		if (pipe_stats[pipe] & PIPE_START_VBLANK_INTERRUPT_STATUS)
-			drm_handle_vblank(dev, pipe);
+			intel_pipe_handle_vblank(dev, pipe);
 
 		if (pipe_stats[pipe] & PLANE_FLIP_DONE_INT_STATUS_VLV) {
 			intel_prepare_page_flip(dev, pipe);
@@ -1680,7 +1668,7 @@ static void i9xx_hpd_irq_handler(struct drm_device *dev)
 
 static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 {
-	struct drm_device *dev = (struct drm_device *) arg;
+	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 iir, gt_iir, pm_iir;
 	irqreturn_t ret = IRQ_NONE;
@@ -1712,6 +1700,95 @@ static irqreturn_t valleyview_irq_handler(int irq, void *arg)
 	}
 
 out:
+	return ret;
+}
+
+static irqreturn_t cherryview_irq_handler(int irq, void *arg)
+{
+	struct drm_device *dev = arg;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 master_ctl, iir;
+	irqreturn_t ret = IRQ_NONE;
+	unsigned int pipes = 0;
+
+	master_ctl = I915_READ(GEN8_MASTER_IRQ);
+
+	I915_WRITE(GEN8_MASTER_IRQ, 0);
+
+	ret = gen8_gt_irq_handler(dev, dev_priv, master_ctl);
+
+	iir = I915_READ(VLV_IIR);
+
+	if (iir & (I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT | I915_DISPLAY_PIPE_A_EVENT_INTERRUPT))
+		pipes |= 1 << 0;
+	if (iir & (I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT | I915_DISPLAY_PIPE_B_EVENT_INTERRUPT))
+		pipes |= 1 << 1;
+	if (iir & (I915_DISPLAY_PIPE_C_VBLANK_INTERRUPT | I915_DISPLAY_PIPE_C_EVENT_INTERRUPT))
+		pipes |= 1 << 2;
+
+	if (pipes) {
+		u32 pipe_stats[I915_MAX_PIPES] = {};
+		unsigned long irqflags;
+		int pipe;
+
+		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
+		for_each_pipe(pipe) {
+			unsigned int reg;
+
+			if (!(pipes & (1 << pipe)))
+				continue;
+
+			reg = PIPESTAT(pipe);
+			pipe_stats[pipe] = I915_READ(reg);
+
+			/*
+			 * Clear the PIPE*STAT regs before the IIR
+			 */
+			if (pipe_stats[pipe] & 0x8000ffff) {
+				if (pipe_stats[pipe] & PIPE_FIFO_UNDERRUN_STATUS)
+					DRM_DEBUG_DRIVER("pipe %c underrun\n",
+							 pipe_name(pipe));
+				I915_WRITE(reg, pipe_stats[pipe]);
+			}
+		}
+		spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
+
+		for_each_pipe(pipe) {
+			if (pipe_stats[pipe] & PIPE_VBLANK_INTERRUPT_STATUS)
+				drm_handle_vblank(dev, pipe);
+
+			if (pipe_stats[pipe] & PLANE_FLIP_DONE_INT_STATUS_VLV) {
+				intel_prepare_page_flip(dev, pipe);
+				intel_finish_page_flip(dev, pipe);
+			}
+		}
+
+		if (pipe_stats[0] & PIPE_GMBUS_INTERRUPT_STATUS)
+			gmbus_irq_handler(dev);
+
+		ret = IRQ_HANDLED;
+	}
+
+	/* Consume port.  Then clear IIR or we'll miss events */
+	if (iir & I915_DISPLAY_PORT_INTERRUPT) {
+		u32 hotplug_status = I915_READ(PORT_HOTPLUG_STAT);
+
+		I915_WRITE(PORT_HOTPLUG_STAT, hotplug_status);
+
+		DRM_DEBUG_DRIVER("hotplug event received, stat 0x%08x\n",
+				 hotplug_status);
+		if (hotplug_status & HOTPLUG_INT_STATUS_I915)
+			queue_work(dev_priv->wq,
+				   &dev_priv->hotplug_work);
+
+		ret = IRQ_HANDLED;
+	}
+
+	I915_WRITE(VLV_IIR, iir);
+
+	I915_WRITE(GEN8_MASTER_IRQ, DE_MASTER_IRQ_CONTROL);
+	POSTING_READ(GEN8_MASTER_IRQ);
+
 	return ret;
 }
 
@@ -1875,7 +1952,7 @@ static void ilk_display_irq_handler(struct drm_device *dev, u32 de_iir)
 
 	for_each_pipe(pipe) {
 		if (de_iir & DE_PIPE_VBLANK(pipe))
-			drm_handle_vblank(dev, pipe);
+			intel_pipe_handle_vblank(dev, pipe);
 
 		if (de_iir & DE_PIPE_FIFO_UNDERRUN(pipe))
 			if (intel_set_cpu_fifo_underrun_reporting(dev, pipe, false))
@@ -1925,7 +2002,7 @@ static void ivb_display_irq_handler(struct drm_device *dev, u32 de_iir)
 
 	for_each_pipe(pipe) {
 		if (de_iir & (DE_PIPE_VBLANK_IVB(pipe)))
-			drm_handle_vblank(dev, pipe);
+			intel_pipe_handle_vblank(dev, pipe);
 
 		/* plane/pipes map 1:1 on ilk+ */
 		if (de_iir & DE_PLANE_FLIP_DONE_IVB(pipe)) {
@@ -1947,7 +2024,7 @@ static void ivb_display_irq_handler(struct drm_device *dev, u32 de_iir)
 
 static irqreturn_t ironlake_irq_handler(int irq, void *arg)
 {
-	struct drm_device *dev = (struct drm_device *) arg;
+	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 de_iir, gt_iir, de_ier, sde_ier = 0;
 	irqreturn_t ret = IRQ_NONE;
@@ -2068,7 +2145,7 @@ static irqreturn_t gen8_irq_handler(int irq, void *arg)
 
 		pipe_iir = I915_READ(GEN8_DE_PIPE_IIR(pipe));
 		if (pipe_iir & GEN8_PIPE_VBLANK)
-			drm_handle_vblank(dev, pipe);
+			intel_pipe_handle_vblank(dev, pipe);
 
 		if (pipe_iir & GEN8_PIPE_PRIMARY_FLIP_DONE) {
 			intel_prepare_page_flip(dev, pipe);
@@ -2185,6 +2262,14 @@ static void i915_error_work_func(struct work_struct *work)
 				   reset_event);
 
 		/*
+		 * In most cases it's guaranteed that we get here with an RPM
+		 * reference held, for example because there is a pending GPU
+		 * request that won't finish until the reset is done. This
+		 * isn't the case at least when we get here by doing a
+		 * simulated reset via debugs, so get an RPM reference.
+		 */
+		intel_runtime_pm_get(dev_priv);
+		/*
 		 * All state reset _must_ be completed before we update the
 		 * reset counter, for otherwise waiters might miss the reset
 		 * pending state and not properly drop locks, resulting in
@@ -2193,6 +2278,8 @@ static void i915_error_work_func(struct work_struct *work)
 		ret = i915_reset(dev);
 
 		intel_display_handle_reset(dev);
+
+		intel_runtime_pm_put(dev_priv);
 
 		if (ret == 0) {
 			/*
@@ -2597,8 +2684,7 @@ semaphore_wait_to_signaller_ring(struct intel_ring_buffer *ring, u32 ipehr)
 			if(ring == signaller)
 				continue;
 
-			if (sync_bits ==
-			    signaller->semaphore_register[ring->id])
+			if (sync_bits == signaller->semaphore.mbox.wait[ring->id])
 				return signaller;
 		}
 	}
@@ -2977,6 +3063,37 @@ static void gen8_irq_preinstall(struct drm_device *dev)
 	gen8_irq_reset(dev);
 }
 
+static void cherryview_irq_preinstall(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int pipe;
+
+	I915_WRITE(GEN8_MASTER_IRQ, 0);
+	POSTING_READ(GEN8_MASTER_IRQ);
+
+	GEN8_IRQ_RESET_NDX(GT, 0);
+	GEN8_IRQ_RESET_NDX(GT, 1);
+	GEN8_IRQ_RESET_NDX(GT, 2);
+	GEN8_IRQ_RESET_NDX(GT, 3);
+
+	GEN5_IRQ_RESET(GEN8_PCU_);
+
+	POSTING_READ(GEN8_PCU_IIR);
+
+	I915_WRITE(DPINVGTT, DPINVGTT_STATUS_MASK_CHV);
+
+	I915_WRITE(PORT_HOTPLUG_EN, 0);
+	I915_WRITE(PORT_HOTPLUG_STAT, I915_READ(PORT_HOTPLUG_STAT));
+
+	for_each_pipe(pipe)
+		I915_WRITE(PIPESTAT(pipe), 0xffff);
+
+	I915_WRITE(VLV_IMR, 0xffffffff);
+	I915_WRITE(VLV_IER, 0x0);
+	I915_WRITE(VLV_IIR, 0xffffffff);
+	POSTING_READ(VLV_IIR);
+}
+
 static void ibx_hpd_irq_setup(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3294,6 +3411,50 @@ static int gen8_irq_postinstall(struct drm_device *dev)
 	return 0;
 }
 
+static int cherryview_irq_postinstall(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 enable_mask = I915_DISPLAY_PORT_INTERRUPT |
+		I915_DISPLAY_PIPE_A_EVENT_INTERRUPT |
+		I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT |
+		I915_DISPLAY_PIPE_B_EVENT_INTERRUPT |
+		I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT |
+		I915_DISPLAY_PIPE_C_EVENT_INTERRUPT |
+		I915_DISPLAY_PIPE_C_VBLANK_INTERRUPT;
+	u32 pipestat_enable = PLANE_FLIP_DONE_INT_EN_VLV;
+	unsigned long irqflags;
+	int pipe;
+
+	/*
+	 * Leave vblank interrupts masked initially.  enable/disable will
+	 * toggle them based on usage.
+	 */
+	dev_priv->irq_mask = ~enable_mask |
+		I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT |
+		I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT |
+		I915_DISPLAY_PIPE_C_VBLANK_INTERRUPT;
+
+	for_each_pipe(pipe)
+		I915_WRITE(PIPESTAT(pipe), 0xffff);
+
+	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
+	i915_enable_pipestat(dev_priv, 0, PIPE_GMBUS_EVENT_ENABLE);
+	for_each_pipe(pipe)
+		i915_enable_pipestat(dev_priv, pipe, pipestat_enable);
+	spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
+
+	I915_WRITE(VLV_IIR, 0xffffffff);
+	I915_WRITE(VLV_IMR, dev_priv->irq_mask);
+	I915_WRITE(VLV_IER, enable_mask);
+
+	gen8_gt_irq_postinstall(dev_priv);
+
+	I915_WRITE(GEN8_MASTER_IRQ, MASTER_INTERRUPT_ENABLE);
+	POSTING_READ(GEN8_MASTER_IRQ);
+
+	return 0;
+}
+
 static void gen8_irq_uninstall(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3315,6 +3476,8 @@ static void valleyview_irq_uninstall(struct drm_device *dev)
 	if (!dev_priv)
 		return;
 
+	I915_WRITE(VLV_MASTER_IER, 0);
+
 	intel_hpd_irq_uninstall(dev_priv);
 
 	for_each_pipe(pipe)
@@ -3335,6 +3498,57 @@ static void valleyview_irq_uninstall(struct drm_device *dev)
 	I915_WRITE(VLV_IMR, 0xffffffff);
 	I915_WRITE(VLV_IER, 0x0);
 	POSTING_READ(VLV_IER);
+}
+
+static void cherryview_irq_uninstall(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int pipe;
+
+	if (!dev_priv)
+		return;
+
+	I915_WRITE(GEN8_MASTER_IRQ, 0);
+	POSTING_READ(GEN8_MASTER_IRQ);
+
+#define GEN8_IRQ_FINI_NDX(type, which)				\
+do {								\
+	I915_WRITE(GEN8_##type##_IMR(which), 0xffffffff);	\
+	I915_WRITE(GEN8_##type##_IER(which), 0);		\
+	I915_WRITE(GEN8_##type##_IIR(which), 0xffffffff);	\
+	POSTING_READ(GEN8_##type##_IIR(which));			\
+	I915_WRITE(GEN8_##type##_IIR(which), 0xffffffff);	\
+} while (0)
+
+#define GEN8_IRQ_FINI(type)				\
+do {							\
+	I915_WRITE(GEN8_##type##_IMR, 0xffffffff);	\
+	I915_WRITE(GEN8_##type##_IER, 0);		\
+	I915_WRITE(GEN8_##type##_IIR, 0xffffffff);	\
+	POSTING_READ(GEN8_##type##_IIR);		\
+	I915_WRITE(GEN8_##type##_IIR, 0xffffffff);	\
+} while (0)
+
+	GEN8_IRQ_FINI_NDX(GT, 0);
+	GEN8_IRQ_FINI_NDX(GT, 1);
+	GEN8_IRQ_FINI_NDX(GT, 2);
+	GEN8_IRQ_FINI_NDX(GT, 3);
+
+	GEN8_IRQ_FINI(PCU);
+
+#undef GEN8_IRQ_FINI
+#undef GEN8_IRQ_FINI_NDX
+
+	I915_WRITE(PORT_HOTPLUG_EN, 0);
+	I915_WRITE(PORT_HOTPLUG_STAT, I915_READ(PORT_HOTPLUG_STAT));
+
+	for_each_pipe(pipe)
+		I915_WRITE(PIPESTAT(pipe), 0xffff);
+
+	I915_WRITE(VLV_IMR, 0xffffffff);
+	I915_WRITE(VLV_IER, 0x0);
+	I915_WRITE(VLV_IIR, 0xffffffff);
+	POSTING_READ(VLV_IIR);
 }
 
 static void ironlake_irq_uninstall(struct drm_device *dev)
@@ -3404,7 +3618,7 @@ static bool i8xx_handle_vblank(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u16 flip_pending = DISPLAY_PLANE_FLIP_PENDING(plane);
 
-	if (!drm_handle_vblank(dev, pipe))
+	if (!intel_pipe_handle_vblank(dev, pipe))
 		return false;
 
 	if ((iir & flip_pending) == 0)
@@ -3428,7 +3642,7 @@ static bool i8xx_handle_vblank(struct drm_device *dev,
 
 static irqreturn_t i8xx_irq_handler(int irq, void *arg)
 {
-	struct drm_device *dev = (struct drm_device *) arg;
+	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u16 iir, new_iir;
 	u32 pipe_stats[2];
@@ -3589,7 +3803,7 @@ static bool i915_handle_vblank(struct drm_device *dev,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 flip_pending = DISPLAY_PLANE_FLIP_PENDING(plane);
 
-	if (!drm_handle_vblank(dev, pipe))
+	if (!intel_pipe_handle_vblank(dev, pipe))
 		return false;
 
 	if ((iir & flip_pending) == 0)
@@ -3613,7 +3827,7 @@ static bool i915_handle_vblank(struct drm_device *dev,
 
 static irqreturn_t i915_irq_handler(int irq, void *arg)
 {
-	struct drm_device *dev = (struct drm_device *) arg;
+	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES];
 	unsigned long irqflags;
@@ -3843,7 +4057,7 @@ static void i915_hpd_irq_setup(struct drm_device *dev)
 
 static irqreturn_t i965_irq_handler(int irq, void *arg)
 {
-	struct drm_device *dev = (struct drm_device *) arg;
+	struct drm_device *dev = arg;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 iir, new_iir;
 	u32 pipe_stats[I915_MAX_PIPES];
@@ -4042,7 +4256,15 @@ void intel_irq_init(struct drm_device *dev)
 		dev->driver->get_scanout_position = i915_get_crtc_scanoutpos;
 	}
 
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_CHERRYVIEW(dev)) {
+		dev->driver->irq_handler = cherryview_irq_handler;
+		dev->driver->irq_preinstall = cherryview_irq_preinstall;
+		dev->driver->irq_postinstall = cherryview_irq_postinstall;
+		dev->driver->irq_uninstall = cherryview_irq_uninstall;
+		dev->driver->enable_vblank = valleyview_enable_vblank;
+		dev->driver->disable_vblank = valleyview_disable_vblank;
+		dev_priv->display.hpd_irq_setup = i915_hpd_irq_setup;
+	} else if (IS_VALLEYVIEW(dev)) {
 		dev->driver->irq_handler = valleyview_irq_handler;
 		dev->driver->irq_preinstall = valleyview_irq_preinstall;
 		dev->driver->irq_postinstall = valleyview_irq_postinstall;

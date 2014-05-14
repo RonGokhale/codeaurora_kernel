@@ -1,6 +1,10 @@
 #ifndef _INTEL_RINGBUFFER_H_
 #define _INTEL_RINGBUFFER_H_
 
+#include <linux/hashtable.h>
+
+#define I915_CMD_HASH_ORDER 9
+
 /*
  * Gen2 BSpec "1. Programming Environment" / 1.4.4.6 "Ring Buffer Use"
  * Gen3 BSpec "vol1c Memory Interface Functions" / 2.3.4.5 "Ring Buffer Use"
@@ -61,8 +65,10 @@ struct  intel_ring_buffer {
 		VCS,
 		BCS,
 		VECS,
+		VCS2
 	} id;
-#define I915_NUM_RINGS 4
+#define I915_NUM_RINGS 5
+#define LAST_USER_RING (VECS + 1)
 	u32		mmio_base;
 	void		__iomem *virtual_start;
 	struct		drm_device *dev;
@@ -88,7 +94,6 @@ struct  intel_ring_buffer {
 	unsigned irq_refcount; /* protected by dev_priv->irq_lock */
 	u32		irq_enable_mask;	/* bitmask to enable ring interrupt */
 	u32		trace_irq_seqno;
-	u32		sync_seqno[I915_NUM_RINGS-1];
 	bool __must_check (*irq_get)(struct intel_ring_buffer *ring);
 	void		(*irq_put)(struct intel_ring_buffer *ring);
 
@@ -111,19 +116,30 @@ struct  intel_ring_buffer {
 	void		(*set_seqno)(struct intel_ring_buffer *ring,
 				     u32 seqno);
 	int		(*dispatch_execbuffer)(struct intel_ring_buffer *ring,
-					       u32 offset, u32 length,
+					       u64 offset, u32 length,
 					       unsigned flags);
 #define I915_DISPATCH_SECURE 0x1
 #define I915_DISPATCH_PINNED 0x2
 	void		(*cleanup)(struct intel_ring_buffer *ring);
-	int		(*sync_to)(struct intel_ring_buffer *ring,
+
+	struct {
+		u32	sync_seqno[I915_NUM_RINGS-1];
+
+		struct {
+			/* our mbox written by others */
+			u32		wait[I915_NUM_RINGS];
+			/* mboxes this ring signals to */
+			u32		signal[I915_NUM_RINGS];
+		} mbox;
+
+		/* AKA wait() */
+		int	(*sync_to)(struct intel_ring_buffer *ring,
 				   struct intel_ring_buffer *to,
 				   u32 seqno);
-
-	/* our mbox written by others */
-	u32		semaphore_register[I915_NUM_RINGS];
-	/* mboxes this ring signals to */
-	u32		signal_mbox[I915_NUM_RINGS];
+		int	(*signal)(struct intel_ring_buffer *signaller,
+				  /* num_dwords needed by caller */
+				  unsigned int num_dwords);
+	} semaphore;
 
 	/**
 	 * List of objects currently involved in rendering from the
@@ -164,12 +180,13 @@ struct  intel_ring_buffer {
 		volatile u32 *cpu_page;
 	} scratch;
 
+	bool needs_cmd_parser;
+
 	/*
-	 * Tables of commands the command parser needs to know about
+	 * Table of commands the command parser needs to know about
 	 * for this ring.
 	 */
-	const struct drm_i915_cmd_table *cmd_tables;
-	int cmd_table_count;
+	DECLARE_HASHTABLE(cmd_hash, I915_CMD_HASH_ORDER);
 
 	/*
 	 * Table of registers allowed in commands that read/write registers.
@@ -263,6 +280,7 @@ intel_write_status_page(struct intel_ring_buffer *ring,
 #define I915_GEM_HWS_SCRATCH_INDEX	0x30
 #define I915_GEM_HWS_SCRATCH_ADDR (I915_GEM_HWS_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
 
+void intel_stop_ring_buffer(struct intel_ring_buffer *ring);
 void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring);
 
 int __must_check intel_ring_begin(struct intel_ring_buffer *ring, int n);
@@ -286,6 +304,7 @@ int intel_ring_invalidate_all_caches(struct intel_ring_buffer *ring);
 
 int intel_init_render_ring_buffer(struct drm_device *dev);
 int intel_init_bsd_ring_buffer(struct drm_device *dev);
+int intel_init_bsd2_ring_buffer(struct drm_device *dev);
 int intel_init_blt_ring_buffer(struct drm_device *dev);
 int intel_init_vebox_ring_buffer(struct drm_device *dev);
 
