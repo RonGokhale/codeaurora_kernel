@@ -2600,8 +2600,8 @@ static bool throttle_direct_reclaim(gfp_t gfp_mask, struct zonelist *zonelist,
 	 * Check if the pfmemalloc reserves are ok by finding the first node
 	 * with a usable ZONE_NORMAL or lower zone
 	 */
-        for_each_zone_zonelist_nodemask(zone, z, zonelist,
-                                        gfp_mask, nodemask) {
+	for_each_zone_zonelist_nodemask(zone, z, zonelist,
+					gfp_mask, nodemask) {
 		if (zone_idx(zone) > ZONE_NORMAL)
 			continue;
 
