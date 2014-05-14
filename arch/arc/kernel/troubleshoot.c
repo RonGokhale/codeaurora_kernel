@@ -86,12 +86,13 @@ static void show_faulting_vma(unsigned long address, char *buf)
 	unsigned long ino = 0;
 	dev_t dev = 0;
 	char *nm = buf;
+	struct mm_struct *active_mm = current->active_mm;
 
 	/* can't use print_vma_addr() yet as it doesn't check for
 	 * non-inclusive vma
 	 */
-	down_read(&current->active_mm->mmap_sem);
-	vma = find_vma(current->active_mm, address);
+	down_read(&active_mm->mmap_sem);
+	vma = find_vma(active_mm, address);
 
 	/* check against the find_vma( ) behaviour which returns the next VMA
 	 * if the container VMA is not found
@@ -113,7 +114,7 @@ static void show_faulting_vma(unsigned long address, char *buf)
 	} else
 		pr_info("    @No matching VMA found\n");
 
-	up_read(&current->active_mm->mmap_sem);
+	up_read(&active_mm->mmap_sem);
 }
 
 static void show_ecr_verbose(struct pt_regs *regs)
