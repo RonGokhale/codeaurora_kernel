@@ -128,9 +128,9 @@ asmlinkage __printf(1, 2) __cold
 int printk(const char *fmt, ...);
 
 /*
- * Special printk facility for scheduler use only, _DO_NOT_USE_ !
+ * Special printk facility for scheduler/timekeeping use only, _DO_NOT_USE_ !
  */
-__printf(1, 2) __cold int printk_sched(const char *fmt, ...);
+__printf(1, 2) __cold int printk_deferred(const char *fmt, ...);
 
 /*
  * Please don't use printk_ratelimit(), because it shares ratelimiting state
@@ -165,7 +165,7 @@ int printk(const char *s, ...)
 	return 0;
 }
 static inline __printf(1, 2) __cold
-int printk_sched(const char *s, ...)
+int printk_deferred(const char *s, ...)
 {
 	return 0;
 }
@@ -210,6 +210,12 @@ extern asmlinkage void dump_stack(void) __cold;
 #define pr_fmt(fmt) fmt
 #endif
 
+/*
+ * These can be used to print at the various log levels.
+ * All of these will print unconditionally, although note that pr_debug()
+ * and other debug macros are compiled out unless either DEBUG is defined
+ * or CONFIG_DYNAMIC_DEBUG is set.
+ */
 #define pr_emerg(fmt, ...) \
 	printk(KERN_EMERG pr_fmt(fmt), ##__VA_ARGS__)
 #define pr_alert(fmt, ...) \
@@ -266,8 +272,19 @@ extern asmlinkage void dump_stack(void) __cold;
 		printk(fmt, ##__VA_ARGS__);			\
 	}							\
 })
+#define printk_deferred_once(fmt, ...)				\
+({								\
+	static bool __print_once __read_mostly;			\
+								\
+	if (!__print_once) {					\
+		__print_once = true;				\
+		printk_deferred(fmt, ##__VA_ARGS__);		\
+	}							\
+})
 #else
 #define printk_once(fmt, ...)					\
+	no_printk(fmt, ##__VA_ARGS__)
+#define printk_deferred_once(fmt, ...)				\
 	no_printk(fmt, ##__VA_ARGS__)
 #endif
 

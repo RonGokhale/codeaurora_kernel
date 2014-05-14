@@ -130,8 +130,10 @@ enum multi_stop_state {
 	MULTI_STOP_NONE,
 	/* Awaiting everyone to be scheduled. */
 	MULTI_STOP_PREPARE,
-	/* Disable interrupts. */
-	MULTI_STOP_DISABLE_IRQ,
+	/* Disable interrupts on CPUs not in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_INACTIVE,
+	/* Disable interrupts on CPUs in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_ACTIVE,
 	/* Run the function */
 	MULTI_STOP_RUN,
 	/* Exit */
@@ -189,10 +191,27 @@ static int multi_cpu_stop(void *data)
 	do {
 		/* Chill out and ensure we re-read multi_stop_state. */
 		cpu_relax();
+
+		/*
+		 * In the case of CPU offline, we don't want the other CPUs to
+		 * send IPIs to the active_cpu (the one going offline) after it
+		 * has disabled interrupts in the _DISABLE_IRQ state (because,
+		 * then it will notice the IPIs only after it goes offline). So
+		 * we split this state into _INACTIVE and _ACTIVE, and thereby
+		 * ensure that the active_cpu disables interrupts only after
+		 * the other CPUs do the same thing.
+		 */
+
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
-			case MULTI_STOP_DISABLE_IRQ:
+			case MULTI_STOP_DISABLE_IRQ_INACTIVE:
+				if (is_active)
+					break;
+
+				/* Else, fall-through */
+
+			case MULTI_STOP_DISABLE_IRQ_ACTIVE:
 				local_irq_disable();
 				hard_irq_disable();
 				break;
@@ -307,6 +326,7 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
  * @cpu: cpu to stop
  * @fn: function to execute
  * @arg: argument to @fn
+ * @work_buf: pointer to cpu_stop_work structure
  *
  * Similar to stop_one_cpu() but doesn't wait for completion.  The
  * caller is responsible for ensuring @work_buf is currently unused
