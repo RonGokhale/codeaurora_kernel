@@ -5085,7 +5085,7 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 			ret = -EINVAL;
 			break;
 		}
-		ret = res_counter_memparse_write_strategy(buffer, &val);
+		ret = res_counter_memparse_write_strategy(buf, &val);
 		if (ret)
 			break;
 		if (type == _MEM) {
@@ -6026,7 +6026,7 @@ static struct cftype mem_cgroup_files[] = {
 	{
 		.name = "low_limit_in_bytes",
 		.private = MEMFILE_PRIVATE(_MEM, RES_LOW_LIMIT),
-		.write_string = mem_cgroup_write,
+		.write = mem_cgroup_write,
 		.read_u64 = mem_cgroup_read_u64,
 	},
 	{
