@@ -130,8 +130,10 @@ enum multi_stop_state {
 	MULTI_STOP_NONE,
 	/* Awaiting everyone to be scheduled. */
 	MULTI_STOP_PREPARE,
-	/* Disable interrupts. */
-	MULTI_STOP_DISABLE_IRQ,
+	/* Disable interrupts on CPUs not in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_INACTIVE,
+	/* Disable interrupts on CPUs in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_ACTIVE,
 	/* Run the function */
 	MULTI_STOP_RUN,
 	/* Exit */
@@ -165,13 +167,12 @@ static void ack_state(struct multi_stop_data *msdata)
 		set_state(msdata, msdata->state + 1);
 }
 
-
 /* This is the cpu_stop function which stops the CPU. */
 static int multi_cpu_stop(void *data)
 {
 	struct multi_stop_data *msdata = data;
 	enum multi_stop_state curstate = MULTI_STOP_NONE;
-	int cpu = smp_processor_id(), num_active_cpus, err = 0;
+	int cpu = smp_processor_id(), err = 0;
 	unsigned long flags;
 	bool is_active;
 
@@ -181,13 +182,10 @@ static int multi_cpu_stop(void *data)
 	 */
 	local_save_flags(flags);
 
-	if (!msdata->active_cpus) {
+	if (!msdata->active_cpus)
 		is_active = cpu == cpumask_first(cpu_online_mask);
-		num_active_cpus = 1;
-	} else {
+	else
 		is_active = cpumask_test_cpu(cpu, msdata->active_cpus);
-		num_active_cpus = cpumask_weight(msdata->active_cpus);
-	}
 
 	/* Simple state machine */
 	do {
@@ -197,26 +195,23 @@ static int multi_cpu_stop(void *data)
 		/*
 		 * In the case of CPU offline, we don't want the other CPUs to
 		 * send IPIs to the active_cpu (the one going offline) after it
-		 * has entered the _DISABLE_IRQ state (because, then it will
-		 * notice the IPIs only after it goes offline). So ensure that
-		 * the active_cpu always follows the others while entering
-		 * each subsequent state in this state-machine.
-		 *
-		 * msdata->thread_ack tracks the number of CPUs that are yet to
-		 * move to the next state, during each transition. So make the
-		 * active_cpu(s) wait until ->thread_ack indicates that the
-		 * active_cpus are the only ones left to complete the transition.
+		 * has disabled interrupts in the _DISABLE_IRQ state (because,
+		 * then it will notice the IPIs only after it goes offline). So
+		 * we split this state into _INACTIVE and _ACTIVE, and thereby
+		 * ensure that the active_cpu disables interrupts only after
+		 * the other CPUs do the same thing.
 		 */
-		if (is_active) {
-			/* Wait until all the non-active threads ack the state */
-			while (atomic_read(&msdata->thread_ack) > num_active_cpus)
-				cpu_relax();
-		}
 
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
-			case MULTI_STOP_DISABLE_IRQ:
+			case MULTI_STOP_DISABLE_IRQ_INACTIVE:
+				if (is_active)
+					break;
+
+				/* Else, fall-through */
+
+			case MULTI_STOP_DISABLE_IRQ_ACTIVE:
 				local_irq_disable();
 				hard_irq_disable();
 				break;
