@@ -985,7 +985,8 @@ void do_page_add_anon_rmap(struct page *page,
 		/*
 		 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
 		 * these counters are not modified from interrupt context, and
-		 * pte lock(a spinlock) is held, which implies preemption disabled.
+		 * pte lock(a spinlock) is held, which implies preemption
+		 * disabled.
 		 */
 		if (PageTransHuge(page))
 			__inc_zone_page_state(page,
