@@ -7,7 +7,6 @@
 #include <linux/types.h>
 #include <linux/list.h>
 #include <linux/tracepoint.h>
-#include <linux/mm_types.h>
 #include <trace/events/gfpflags.h>
 
 DECLARE_EVENT_CLASS(mm_compaction_isolate_template,
@@ -62,7 +61,7 @@ TRACE_EVENT(mm_compaction_migratepages,
 
 	TP_fast_assign(
 		unsigned long nr_failed = 0;
-		struct page *page;
+		struct list_head *page_lru;
 
 		/*
 		 * migrate_pages() returns either a non-negative number
@@ -73,7 +72,7 @@ TRACE_EVENT(mm_compaction_migratepages,
 		if (migrate_rc >= 0)
 			nr_failed = migrate_rc;
 		else
-			list_for_each_entry(page, migratepages, lru)
+			list_for_each(page_lru, migratepages)
 				nr_failed++;
 
 		__entry->nr_migrated = nr_all - nr_failed;
