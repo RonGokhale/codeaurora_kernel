@@ -165,12 +165,13 @@ static void ack_state(struct multi_stop_data *msdata)
 		set_state(msdata, msdata->state + 1);
 }
 
+
 /* This is the cpu_stop function which stops the CPU. */
 static int multi_cpu_stop(void *data)
 {
 	struct multi_stop_data *msdata = data;
 	enum multi_stop_state curstate = MULTI_STOP_NONE;
-	int cpu = smp_processor_id(), err = 0;
+	int cpu = smp_processor_id(), num_active_cpus, err = 0;
 	unsigned long flags;
 	bool is_active;
 
@@ -180,15 +181,38 @@ static int multi_cpu_stop(void *data)
 	 */
 	local_save_flags(flags);
 
-	if (!msdata->active_cpus)
+	if (!msdata->active_cpus) {
 		is_active = cpu == cpumask_first(cpu_online_mask);
-	else
+		num_active_cpus = 1;
+	} else {
 		is_active = cpumask_test_cpu(cpu, msdata->active_cpus);
+		num_active_cpus = cpumask_weight(msdata->active_cpus);
+	}
 
 	/* Simple state machine */
 	do {
 		/* Chill out and ensure we re-read multi_stop_state. */
 		cpu_relax();
+
+		/*
+		 * In the case of CPU offline, we don't want the other CPUs to
+		 * send IPIs to the active_cpu (the one going offline) after it
+		 * has entered the _DISABLE_IRQ state (because, then it will
+		 * notice the IPIs only after it goes offline). So ensure that
+		 * the active_cpu always follows the others while entering
+		 * each subsequent state in this state-machine.
+		 *
+		 * msdata->thread_ack tracks the number of CPUs that are yet to
+		 * move to the next state, during each transition. So make the
+		 * active_cpu(s) wait until ->thread_ack indicates that the
+		 * active_cpus are the only ones left to complete the transition.
+		 */
+		if (is_active) {
+			/* Wait until all the non-active threads ack the state */
+			while (atomic_read(&msdata->thread_ack) > num_active_cpus)
+				cpu_relax();
+		}
+
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
