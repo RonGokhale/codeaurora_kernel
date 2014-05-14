@@ -86,7 +86,7 @@ static void __init koelsch_add_du_device(void)
  * devices until they get moved to DT.
  */
 static const struct clk_name clk_names[] __initconst = {
-	{ "cmt0", NULL, "sh_cmt.0" },
+	{ "cmt0", "fck", "sh-cmt-48-gen2.0" },
 	{ "scifa0", NULL, "sh-sci.0" },
 	{ "scifa1", NULL, "sh-sci.1" },
 	{ "scifb0", NULL, "sh-sci.2" },
@@ -139,7 +139,7 @@ static const char * const koelsch_boards_compat_dt[] __initconst = {
 
 DT_MACHINE_START(KOELSCH_DT, "koelsch")
 	.smp		= smp_ops(r8a7791_smp_ops),
-	.init_early	= r8a7791_init_early,
+	.init_early	= shmobile_init_delay,
 	.init_time	= rcar_gen2_timer_init,
 	.init_machine	= koelsch_add_standard_devices,
 	.init_late	= shmobile_init_late,
