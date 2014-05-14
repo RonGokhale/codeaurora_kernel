@@ -658,10 +658,8 @@ long do_msgsnd(int msqid, long mtype, void __user *mtext,
 		if (err)
 			goto out_unlock0;
 
-		if (msgsz + msq->q_cbytes <= msq->q_qbytes &&
-				1 + msq->q_qnum <= msq->q_qbytes) {
-			break;
-		}
+		if (msgsz + msq->q_cbytes <= msq->q_qbytes)
+			break; /* there is space in the queue for this msg */
 
 		/* queue full, wait: */
 		if (msgflg & IPC_NOWAIT) {
