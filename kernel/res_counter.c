@@ -189,7 +189,10 @@ int res_counter_memparse_write_strategy(const char *buf,
 	/* return RES_COUNTER_MAX(unlimited) if "-1" is specified */
 	if (*buf == '-') {
 		int rc = kstrtoull(buf + 1, 10, &res);
-		if ((res != 1) || rc)
+
+		if (rc)
+			return rc;
+		if (res != 1)
 			return -EINVAL;
 		*resp = RES_COUNTER_MAX;
 		return 0;
