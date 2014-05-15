@@ -22,7 +22,7 @@ case "$mode" in
 esac
 kerneldir="`pwd`"
 confdir="$kerneldir/chromeos/config"
-archs="x86_64 i386 armel"
+archs="x86_64 i386 armel mips"
 bindir="`pwd`/chromeos/scripts"
 base_conf="$confdir/base.config"
 tmpdir=`mktemp -d`
