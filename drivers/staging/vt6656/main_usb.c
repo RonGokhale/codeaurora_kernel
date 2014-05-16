@@ -312,8 +312,6 @@ static int device_init_registers(struct vnt_private *pDevice)
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "---->INIbInitAdapter. [%d][%d]\n",
 				DEVICE_INIT_COLD, pDevice->byPacketType);
 
-	spin_lock_irq(&pDevice->lock);
-
 	memcpy(pDevice->abyBroadcastAddr, abyBroadcastAddr, ETH_ALEN);
 	memcpy(pDevice->abySNAP_RFC1042, abySNAP_RFC1042, ETH_ALEN);
 	memcpy(pDevice->abySNAP_Bridgetunnel, abySNAP_Bridgetunnel, ETH_ALEN);
@@ -323,20 +321,17 @@ static int device_init_registers(struct vnt_private *pDevice)
 			if (FIRMWAREbBrach2Sram(pDevice) == false) {
 				DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
 					" FIRMWAREbBrach2Sram fail\n");
-				spin_unlock_irq(&pDevice->lock);
 				return false;
 			}
 		} else {
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
 				" FIRMWAREbDownload fail\n");
-			spin_unlock_irq(&pDevice->lock);
 			return false;
 		}
 	}
 
 	if (!BBbVT3184Init(pDevice)) {
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO" BBbVT3184Init fail\n");
-		spin_unlock_irq(&pDevice->lock);
 		return false;
 	}
 
@@ -353,7 +348,6 @@ static int device_init_registers(struct vnt_private *pDevice)
 		sizeof(struct vnt_cmd_card_init), (u8 *)init_cmd);
 	if (ntStatus != STATUS_SUCCESS) {
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO" Issue Card init fail\n");
-		spin_unlock_irq(&pDevice->lock);
 		return false;
 	}
 
@@ -362,7 +356,6 @@ static int device_init_registers(struct vnt_private *pDevice)
 	if (ntStatus != STATUS_SUCCESS) {
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
 			"Cardinit request in status fail!\n");
-		spin_unlock_irq(&pDevice->lock);
 		return false;
 	}
 
@@ -370,10 +363,8 @@ static int device_init_registers(struct vnt_private *pDevice)
 	ntStatus = CONTROLnsRequestIn(pDevice, MESSAGE_TYPE_READ,
 		MAC_REG_LOCALID, MESSAGE_REQUEST_MACREG, 1,
 			&pDevice->byLocalID);
-	if (ntStatus != STATUS_SUCCESS) {
-		spin_unlock_irq(&pDevice->lock);
+	if (ntStatus != STATUS_SUCCESS)
 		return false;
-	}
 
 	/* do MACbSoftwareReset in MACvInitialize */
 
@@ -604,10 +595,8 @@ static int device_init_registers(struct vnt_private *pDevice)
 		ntStatus = CONTROLnsRequestIn(pDevice, MESSAGE_TYPE_READ,
 			MAC_REG_GPIOCTL1, MESSAGE_REQUEST_MACREG, 1, &byTmp);
 
-		if (ntStatus != STATUS_SUCCESS) {
-			spin_unlock_irq(&pDevice->lock);
+		if (ntStatus != STATUS_SUCCESS)
 			return false;
-		}
 
 		if ((byTmp & GPIO3_DATA) == 0) {
 			pDevice->bHWRadioOff = true;
@@ -633,9 +622,6 @@ static int device_init_registers(struct vnt_private *pDevice)
 	} else {
 		CARDbRadioPowerOn(pDevice);
 	}
-
-
-	spin_unlock_irq(&pDevice->lock);
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"<----INIbInitAdapter Exit\n");
 
@@ -709,16 +695,12 @@ vt6656_probe(struct usb_interface *intf, const struct usb_device_id *id)
 
 	device_set_options(pDevice);
 	spin_lock_init(&pDevice->lock);
+	mutex_init(&pDevice->usb_lock);
+
 	INIT_DELAYED_WORK(&pDevice->run_command_work, vRunCommand);
 	INIT_DELAYED_WORK(&pDevice->second_callback_work, BSSvSecondCallBack);
 	INIT_WORK(&pDevice->read_work_item, RXvWorkItem);
 	INIT_WORK(&pDevice->rx_mng_work_item, RXvMngWorkItem);
-
-	pDevice->pControlURB = usb_alloc_urb(0, GFP_ATOMIC);
-	if (!pDevice->pControlURB) {
-		DBG_PRT(MSG_LEVEL_ERR, KERN_ERR"Failed to alloc control urb\n");
-		goto err_netdev;
-	}
 
 	pDevice->tx_80211 = device_dma0_tx_80211;
 	pDevice->vnt_mgmt.pAdapter = (void *) pDevice;
@@ -757,9 +739,9 @@ static void device_free_tx_bufs(struct vnt_private *priv)
 	for (ii = 0; ii < priv->cbTD; ii++) {
 		tx_context = priv->apTD[ii];
 		/* deallocate URBs */
-		if (tx_context->pUrb) {
-			usb_kill_urb(tx_context->pUrb);
-			usb_free_urb(tx_context->pUrb);
+		if (tx_context->urb) {
+			usb_kill_urb(tx_context->urb);
+			usb_free_urb(tx_context->urb);
 		}
 
 		kfree(tx_context);
@@ -825,17 +807,17 @@ static bool device_alloc_bufs(struct vnt_private *priv)
 		}
 
 		priv->apTD[ii] = tx_context;
-		tx_context->pDevice = priv;
+		tx_context->priv = priv;
 
 		/* allocate URBs */
-		tx_context->pUrb = usb_alloc_urb(0, GFP_ATOMIC);
-		if (tx_context->pUrb == NULL) {
+		tx_context->urb = usb_alloc_urb(0, GFP_ATOMIC);
+		if (!tx_context->urb) {
 			DBG_PRT(MSG_LEVEL_ERR,
 				KERN_ERR "alloc tx urb failed\n");
 			goto free_tx;
 		}
 
-		tx_context->bBoolInUse = false;
+		tx_context->in_use = false;
 	}
 
 	/* allocate RCB mem */
@@ -976,8 +958,6 @@ static int  device_open(struct net_device *dev)
     }
 
     MP_CLEAR_FLAG(pDevice, fMP_DISCONNECTED);
-    MP_CLEAR_FLAG(pDevice, fMP_CONTROL_READS);
-    MP_CLEAR_FLAG(pDevice, fMP_CONTROL_WRITES);
     MP_SET_FLAG(pDevice, fMP_POST_READS);
     MP_SET_FLAG(pDevice, fMP_POST_WRITES);
 
@@ -1025,7 +1005,6 @@ static int  device_open(struct net_device *dev)
 
     /* if WEP key already set by iwconfig but device not yet open */
     if ((pDevice->bEncryptionEnable == true) && (pDevice->bTransmitKey == true)) {
-         spin_lock_irq(&pDevice->lock);
          KeybSetDefaultKey( pDevice,
                             &(pDevice->sKey),
                             pDevice->byKeyIndex | (1 << 31),
@@ -1034,7 +1013,7 @@ static int  device_open(struct net_device *dev)
                             pDevice->abyKey,
                             KEY_CTL_WEP
                           );
-         spin_unlock_irq(&pDevice->lock);
+
          pDevice->eEncryptionStatus = Ndis802_11Encryption1Enabled;
     }
 
@@ -1081,10 +1060,9 @@ static int device_close(struct net_device *dev)
         pMgmt->bShareKeyAlgorithm = false;
         pDevice->bEncryptionEnable = false;
         pDevice->eEncryptionStatus = Ndis802_11EncryptionDisabled;
-	spin_lock_irq(&pDevice->lock);
+
 	for (uu = 0; uu < MAX_KEY_TABLE; uu++)
                 MACvDisableKeyEntry(pDevice,uu);
-	spin_unlock_irq(&pDevice->lock);
 
     if ((pDevice->flags & DEVICE_FLAGS_UNPLUG) == false) {
         MACbShutdown(pDevice);
@@ -1145,10 +1123,6 @@ static void vt6656_disconnect(struct usb_interface *intf)
 
 	if (device->dev) {
 		unregister_netdev(device->dev);
-
-		usb_kill_urb(device->pControlURB);
-		usb_free_urb(device->pControlURB);
-
 		free_netdev(device->dev);
 	}
 }
@@ -1173,8 +1147,9 @@ static int device_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct vnt_private *pDevice = netdev_priv(dev);
 	struct net_device_stats *stats = &pDevice->stats;
+	unsigned long flags;
 
-	spin_lock_irq(&pDevice->lock);
+	spin_lock_irqsave(&pDevice->lock, flags);
 
 	netif_stop_queue(dev);
 
@@ -1189,13 +1164,13 @@ static int device_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto out;
 	}
 
-	if (nsDMA_tx_packet(pDevice, TYPE_AC0DMA, skb)) {
+	if (nsDMA_tx_packet(pDevice, skb)) {
 		if (netif_queue_stopped(dev))
 			netif_wake_queue(dev);
 	}
 
 out:
-	spin_unlock_irq(&pDevice->lock);
+	spin_unlock_irqrestore(&pDevice->lock, flags);
 
 	return NETDEV_TX_OK;
 }

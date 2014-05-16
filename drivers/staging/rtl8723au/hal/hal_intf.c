@@ -117,18 +117,6 @@ uint rtw_hal_deinit23a(struct rtw_adapter *padapter)
 	return status;
 }
 
-void rtw_hal_set_hwreg23a(struct rtw_adapter *padapter, u8 variable, u8 *val)
-{
-	if (padapter->HalFunc.SetHwRegHandler)
-		padapter->HalFunc.SetHwRegHandler(padapter, variable, val);
-}
-
-void rtw23a_hal_get_hwreg(struct rtw_adapter *padapter, u8 variable, u8 *val)
-{
-	if (padapter->HalFunc.GetHwRegHandler)
-		padapter->HalFunc.GetHwRegHandler(padapter, variable, val);
-}
-
 u8 rtw_hal_set_def_var23a(struct rtw_adapter *padapter, enum hal_def_variable eVariable, void *pValue)
 {
 	if (padapter->HalFunc.SetHalDefVarHandler)
@@ -190,13 +178,6 @@ u32	rtw_hal_inirp_deinit23a(struct rtw_adapter *padapter)
 
 }
 
-u8	rtw_hal_intf_ps_func23a(struct rtw_adapter *padapter, enum hal_intf_ps_func efunc_id, u8 *val)
-{
-	if (padapter->HalFunc.interface_ps_func)
-		return padapter->HalFunc.interface_ps_func(padapter, efunc_id, val);
-	return _FAIL;
-}
-
 s32	rtw_hal_xmit23aframe_enqueue(struct rtw_adapter *padapter, struct xmit_frame *pxmitframe)
 {
 	if (padapter->HalFunc.hal_xmitframe_enqueue)
@@ -226,11 +207,6 @@ s32	rtw_hal_init23a_xmit_priv(struct rtw_adapter *padapter)
 	if (padapter->HalFunc.init_xmit_priv != NULL)
 		return padapter->HalFunc.init_xmit_priv(padapter);
 	return _FAIL;
-}
-void	rtw_hal_free_xmit_priv23a(struct rtw_adapter *padapter)
-{
-	if (padapter->HalFunc.free_xmit_priv != NULL)
-		padapter->HalFunc.free_xmit_priv(padapter);
 }
 
 s32	rtw_hal_init23a_recv_priv(struct rtw_adapter *padapter)
@@ -272,32 +248,6 @@ void	rtw_hal_add_ra_tid23a(struct rtw_adapter *padapter, u32 bitmap, u8 arg, u8 
 {
 	if (padapter->HalFunc.Add_RateATid)
 		padapter->HalFunc.Add_RateATid(padapter, bitmap, arg, rssi_level);
-}
-
-/*	Start specifical interface thread		*/
-void	rtw_hal_start_thread23a(struct rtw_adapter *padapter)
-{
-	if (padapter->HalFunc.run_thread)
-		padapter->HalFunc.run_thread(padapter);
-}
-/*	Start specifical interface thread		*/
-void	rtw_hal_stop_thread23a(struct rtw_adapter *padapter)
-{
-	if (padapter->HalFunc.cancel_thread)
-		padapter->HalFunc.cancel_thread(padapter);
-}
-
-u32	rtw_hal_read_bbreg23a(struct rtw_adapter *padapter, u32 RegAddr, u32 BitMask)
-{
-	u32 data = 0;
-	if (padapter->HalFunc.read_bbreg)
-		 data = padapter->HalFunc.read_bbreg(padapter, RegAddr, BitMask);
-	return data;
-}
-void	rtw_hal_write_bbreg23a(struct rtw_adapter *padapter, u32 RegAddr, u32 BitMask, u32 Data)
-{
-	if (padapter->HalFunc.write_bbreg)
-		padapter->HalFunc.write_bbreg(padapter, RegAddr, BitMask, Data);
 }
 
 u32	rtw_hal_read_rfreg23a(struct rtw_adapter *padapter, u32 eRFPath, u32 RegAddr, u32 BitMask)
@@ -404,17 +354,4 @@ void rtw_hal_reset_security_engine23a(struct rtw_adapter *adapter)
 {
 	if (adapter->HalFunc.hal_reset_security_engine)
 		adapter->HalFunc.hal_reset_security_engine(adapter);
-}
-
-s32 rtw_hal_c2h_handler23a(struct rtw_adapter *adapter, struct c2h_evt_hdr *c2h_evt)
-{
-	s32 ret = _FAIL;
-	if (adapter->HalFunc.c2h_handler)
-		ret = adapter->HalFunc.c2h_handler(adapter, c2h_evt);
-	return ret;
-}
-
-c2h_id_filter rtw_hal_c2h_id_filter_ccx23a(struct rtw_adapter *adapter)
-{
-	return adapter->HalFunc.c2h_id_filter_ccx;
 }

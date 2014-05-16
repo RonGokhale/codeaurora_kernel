@@ -17,12 +17,6 @@
 
 #include <drv_types.h>
 
-
-struct bssid_info {
-	unsigned char  BSSID[6];
-	u8  PMKID[16];
-};
-
 u8 rtw_set_802_11_authentication_mode23a(struct rtw_adapter *pdapter,
 				      enum ndis_802_11_auth_mode authmode);
 u8 rtw_set_802_11_add_wep23a(struct rtw_adapter * padapter,
@@ -35,5 +29,6 @@ u8 rtw_set_802_11_ssid23a(struct rtw_adapter * padapter, struct cfg80211_ssid * 
 
 u16 rtw_get_cur_max_rate23a(struct rtw_adapter *adapter);
 s32 FillH2CCmd(struct rtw_adapter *padapter, u8 ElementID, u32 CmdLen, u8 *pCmdBuffer);
+u8 rtw_do_join23a(struct rtw_adapter *padapter);
 
 #endif

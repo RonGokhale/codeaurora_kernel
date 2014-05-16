@@ -1576,22 +1576,6 @@ void odm_RSSIMonitorCheck23aAP(struct dm_odm_t *pDM_Odm)
 {
 }
 
-void ODM_InitAllTimers(struct dm_odm_t *pDM_Odm)
-{
-	setup_timer(&pDM_Odm->DM_SWAT_Table.SwAntennaSwitchTimer,
-		    odm_SwAntDivChkAntSwitchCallback23a, (unsigned long)pDM_Odm);
-}
-
-void ODM_CancelAllTimers(struct dm_odm_t *pDM_Odm)
-{
-	del_timer_sync(&pDM_Odm->DM_SWAT_Table.SwAntennaSwitchTimer);
-}
-
-void ODM_ReleaseAllTimers(struct dm_odm_t *pDM_Odm)
-{
-	ODM_ReleaseTimer(pDM_Odm, &pDM_Odm->DM_SWAT_Table.SwAntennaSwitchTimer);
-}
-
 /* endif */
 /* 3 ============================================================ */
 /* 3 Tx Power Tracking */
@@ -1655,7 +1639,8 @@ void odm_SwAntDivInit(struct dm_odm_t *pDM_Odm)
 {
 }
 
-void ODM_SwAntDivChkPerPktRssi(struct dm_odm_t *pDM_Odm, u8 StationID, struct odm_phy_info *pPhyInfo)
+void ODM_SwAntDivChkPerPktRssi(struct dm_odm_t *pDM_Odm, u8 StationID,
+			       struct phy_info *pPhyInfo)
 {
 }
 

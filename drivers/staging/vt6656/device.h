@@ -176,13 +176,13 @@ struct vnt_rcb {
 
 /* used to track bulk out irps */
 struct vnt_usb_send_context {
-	void *pDevice;
-	struct sk_buff *pPacket;
-	struct urb *pUrb;
-	unsigned int uBufLen;
+	void *priv;
+	struct sk_buff *skb;
+	struct urb *urb;
+	unsigned int buf_len;
 	u8 type;
-	bool bBoolInUse;
-	unsigned char Data[MAX_TOTAL_SIZE_WITH_ALL_HEADERS];
+	bool in_use;
+	unsigned char data[MAX_TOTAL_SIZE_WITH_ALL_HEADERS];
 };
 
 /* tx packet info for rxtx */
@@ -363,6 +363,7 @@ struct vnt_private {
 	u8 byRxMode;
 
 	spinlock_t lock;
+	struct mutex usb_lock;
 
 	u32 rx_bytes;
 
@@ -379,9 +380,7 @@ struct vnt_private {
 	u32 uCurrentDFCBIdx;
 
 	/* USB */
-	struct urb *pControlURB;
 	struct urb *pInterruptURB;
-	struct usb_ctrlrequest sUsbCtlRequest;
 	u32 int_interval;
 
 	/* Variables to track resources for the BULK In Pipe */
@@ -742,8 +741,6 @@ struct vnt_private {
 #define fMP_RECV_SIDE_RESOURCE_ALLOCATED    0x00000080
 #define fMP_POST_READS                      0x00000100
 #define fMP_POST_WRITES                     0x00000200
-#define fMP_CONTROL_READS                   0x00000400
-#define fMP_CONTROL_WRITES                  0x00000800
 
 #define MP_SET_FLAG(_M, _F)             ((_M)->Flags |= (_F))
 #define MP_CLEAR_FLAG(_M, _F)            ((_M)->Flags &= ~(_F))

@@ -99,7 +99,8 @@ static void sreset_restore_security_station(struct rtw_adapter *padapter)
 		val8 = 0xcc;
 	else
 		val8 = 0xcf;
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_SEC_CFG, (u8 *)(&val8));
+
+	rtl8723a_set_sec_cfg(padapter, val8);
 
 	if ((padapter->securitypriv.dot11PrivacyAlgrthm == _TKIP_) ||
 	    (padapter->securitypriv.dot11PrivacyAlgrthm == _AES_)) {
@@ -131,23 +132,16 @@ static void sreset_restore_network_station(struct rtw_adapter *padapter)
 			threshold = 1;
 		else
 			threshold = 0;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_RXDMA_AGG_PG_TH, (u8 *)(&threshold));
-	} else {
+	} else
 		threshold = 1;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_RXDMA_AGG_PG_TH, (u8 *)(&threshold));
-	}
 
-	set_channel_bwmode23a(padapter, pmlmeext->cur_channel, pmlmeext->cur_ch_offset, pmlmeext->cur_bwmode);
+	rtl8723a_set_rxdma_agg_pg_th(padapter, threshold);
 
-	/* disable dynamic functions, such as high power, DIG */
-	/* Switch_DM_Func23a(padapter, DYNAMIC_FUNC_DISABLE, false); */
+	set_channel_bwmode23a(padapter, pmlmeext->cur_channel,
+			      pmlmeext->cur_ch_offset, pmlmeext->cur_bwmode);
 
-	rtw_hal_set_hwreg23a(padapter, HW_VAR_BSSID, pmlmeinfo->network.MacAddress);
-
-	{
-		u8	join_type = 0;
-		rtw_hal_set_hwreg23a(padapter, HW_VAR_MLME_JOIN, (u8 *)(&join_type));
-	}
+	hw_var_set_bssid(padapter, pmlmeinfo->network.MacAddress);
+	hw_var_set_mlme_join(padapter, 0);
 
 	Set_MSR23a(padapter, (pmlmeinfo->state & 0x3));
 
@@ -163,17 +157,24 @@ static void sreset_restore_network_status(struct rtw_adapter *padapter)
 	struct mlme_priv *mlmepriv = &padapter->mlmepriv;
 
 	if (check_fwstate(mlmepriv, WIFI_STATION_STATE)) {
-		DBG_8723A(FUNC_ADPT_FMT" fwstate:0x%08x - WIFI_STATION_STATE\n", FUNC_ADPT_ARG(padapter), get_fwstate(mlmepriv));
+		DBG_8723A("%s(%s): fwstate:0x%08x - WIFI_STATION_STATE\n",
+			  __func__, padapter->pnetdev->name,
+			  get_fwstate(mlmepriv));
 		sreset_restore_network_station(padapter);
 #ifdef CONFIG_8723AU_AP_MODE
 	} else if (check_fwstate(mlmepriv, WIFI_AP_STATE)) {
-		DBG_8723A(FUNC_ADPT_FMT" fwstate:0x%08x - WIFI_AP_STATE\n", FUNC_ADPT_ARG(padapter), get_fwstate(mlmepriv));
+		DBG_8723A("%s(%s): fwstate:0x%08x - WIFI_AP_STATE\n",
+			  __func__, padapter->pnetdev->name,
+			  get_fwstate(mlmepriv));
 		rtw_ap_restore_network(padapter);
 #endif
 	} else if (check_fwstate(mlmepriv, WIFI_ADHOC_STATE)) {
-		DBG_8723A(FUNC_ADPT_FMT" fwstate:0x%08x - WIFI_ADHOC_STATE\n", FUNC_ADPT_ARG(padapter), get_fwstate(mlmepriv));
+		DBG_8723A("%s(%s): fwstate:0x%08x - WIFI_ADHOC_STATE\n",
+			  __func__, padapter->pnetdev->name,
+			  get_fwstate(mlmepriv));
 	} else {
-		DBG_8723A(FUNC_ADPT_FMT" fwstate:0x%08x - ???\n", FUNC_ADPT_ARG(padapter), get_fwstate(mlmepriv));
+		DBG_8723A("%s(%s): fwstate:0x%08x - ???\n", __func__,
+			  padapter->pnetdev->name, get_fwstate(mlmepriv));
 	}
 }
 
@@ -185,7 +186,7 @@ static void sreset_stop_adapter(struct rtw_adapter *padapter)
 	if (padapter == NULL)
 		return;
 
-	DBG_8723A(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(padapter));
+	DBG_8723A("%s(%s)\n", __func__, padapter->pnetdev->name);
 
 	if (!rtw_netif_queue_stopped(padapter->pnetdev))
 		netif_tx_stop_all_queues(padapter->pnetdev);
@@ -210,7 +211,7 @@ static void sreset_start_adapter(struct rtw_adapter *padapter)
 	if (padapter == NULL)
 		return;
 
-	DBG_8723A(FUNC_ADPT_FMT"\n", FUNC_ADPT_ARG(padapter));
+	DBG_8723A("%s(%s)\n", __func__, padapter->pnetdev->name);
 
 	if (check_fwstate(pmlmepriv, _FW_LINKED)) {
 		sreset_restore_network_status(padapter);

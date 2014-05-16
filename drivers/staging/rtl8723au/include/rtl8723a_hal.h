@@ -37,17 +37,6 @@
 #define RTL819X_DEFAULT_RF_TYPE			RF_1T2R
 #define RTL819X_TOTAL_RF_PATH				2
 
-/* TODO:  The following need to check!! */
-#define RTL8723_FW_UMC_IMG				"rtl8192CU\\rtl8723fw.bin"
-#define RTL8723_FW_UMC_B_IMG			"rtl8192CU\\rtl8723fw_B.bin"
-#define RTL8723_PHY_REG					"rtl8723S\\PHY_REG_1T.txt"
-#define RTL8723_PHY_RADIO_A				"rtl8723S\\radio_a_1T.txt"
-#define RTL8723_PHY_RADIO_B				"rtl8723S\\radio_b_1T.txt"
-#define RTL8723_AGC_TAB					"rtl8723S\\AGC_TAB_1T.txt"
-#define RTL8723_PHY_MACREG				"rtl8723S\\MAC_REG.txt"
-#define RTL8723_PHY_REG_PG				"rtl8723S\\PHY_REG_PG.txt"
-#define RTL8723_PHY_REG_MP				"rtl8723S\\PHY_REG_MP.txt"
-
 /*  */
 /*		RTL8723S From header */
 /*  */
@@ -424,11 +413,6 @@ struct hal_data_8723a {
 
 	bool				bMACFuncEnable;
 
-#ifdef CONFIG_8723AU_P2P
-	struct P2P_PS_Offload_t	p2p_ps_offload;
-#endif
-
-
 	/*  */
 	/*  For USB Interface HAL related */
 	/*  */
@@ -437,14 +421,6 @@ struct hal_data_8723a {
 	/*  Interrupt related register information. */
 	u32	IntArray[2];
 	u32	IntrMask[2];
-
-	/*  */
-	/*  For SDIO Interface HAL related */
-	/*  */
-
-	/*  Auto FSM to Turn On, include clock, isolation, power control for MAC only */
-	u8			bMacPwrCtrlOn;
-
 };
 
 #define GET_HAL_DATA(__pAdapter)	((struct hal_data_8723a *)((__pAdapter)->HalData))
@@ -556,8 +532,6 @@ void Hal_EfuseParseThermalMeter_8723A(struct rtw_adapter *padapter, u8 *hwinfo, 
 void Hal_InitChannelPlan23a(struct rtw_adapter *padapter);
 
 void rtl8723a_set_hal_ops(struct hal_ops *pHalFunc);
-void SetHwReg8723A(struct rtw_adapter *padapter, u8 variable, u8 *val);
-void GetHwReg8723A(struct rtw_adapter *padapter, u8 variable, u8 *val);
 #ifdef CONFIG_8723AU_BT_COEXIST
 void rtl8723a_SingleDualAntennaDetection(struct rtw_adapter *padapter);
 #endif
@@ -571,5 +545,6 @@ void rtl8723a_start_thread(struct rtw_adapter *padapter);
 void rtl8723a_stop_thread(struct rtw_adapter *padapter);
 
 s32 c2h_id_filter_ccx_8723a(u8 id);
+s32 c2h_handler_8723a(struct rtw_adapter *padapter, struct c2h_evt_hdr *c2h_evt);
 
 #endif

@@ -1,4 +1,4 @@
-/* Copyright © 2010 - 2013 UNISYS CORPORATION */
+/* Copyright (C) 2010 - 2013 UNISYS CORPORATION */
 /* All rights reserved. */
 #ifndef __IOCHANNEL_H__
 #define __IOCHANNEL_H__
@@ -192,7 +192,7 @@ typedef enum { NET_RCV_POST = 0,	/* submit buffer to hold receiving
 	/* uisnic -> virtnic */
 	NET_MACADDR,		/* indicates the client has requested to update
 				 * its MAC addr */
-	NET_MACADDR_ACK,	/* Mac addres  */
+	NET_MACADDR_ACK,	/* MAC address  */
 
 } NET_TYPES;
 

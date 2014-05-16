@@ -91,7 +91,7 @@ odm_EVMdbToPercentage(
 }
 
 static void odm_RxPhyStatus92CSeries_Parsing(struct dm_odm_t *pDM_Odm,
-					     struct odm_phy_info *pPhyInfo,
+					     struct phy_info *pPhyInfo,
 					     u8 *pPhyStatus,
 					     struct odm_packet_info *pPktinfo)
 {
@@ -281,7 +281,7 @@ void odm_Init_RSSIForDM23a(struct dm_odm_t *pDM_Odm)
 }
 
 static void odm_Process_RSSIForDM(struct dm_odm_t *pDM_Odm,
-				  struct odm_phy_info *pPhyInfo,
+				  struct phy_info *pPhyInfo,
 				  struct odm_packet_info *pPktinfo)
 {
 	s32 UndecoratedSmoothedPWDB, UndecoratedSmoothedCCK;
@@ -396,7 +396,7 @@ static void odm_Process_RSSIForDM(struct dm_odm_t *pDM_Odm,
 
 /*  Endianness before calling this API */
 static void ODM_PhyStatusQuery23a_92CSeries(struct dm_odm_t *pDM_Odm,
-					 struct odm_phy_info *pPhyInfo,
+					 struct phy_info *pPhyInfo,
 					 u8 *pPhyStatus,
 					 struct odm_packet_info *pPktinfo)
 {
@@ -411,7 +411,7 @@ static void ODM_PhyStatusQuery23a_92CSeries(struct dm_odm_t *pDM_Odm,
 	}
 }
 
-void ODM_PhyStatusQuery23a(struct dm_odm_t *pDM_Odm, struct odm_phy_info *pPhyInfo,
+void ODM_PhyStatusQuery23a(struct dm_odm_t *pDM_Odm, struct phy_info *pPhyInfo,
 			   u8 *pPhyStatus, struct odm_packet_info *pPktinfo)
 {
 	ODM_PhyStatusQuery23a_92CSeries(pDM_Odm, pPhyInfo, pPhyStatus, pPktinfo);
@@ -426,12 +426,9 @@ void ODM_MacStatusQuery23a(struct dm_odm_t *pDM_Odm, u8 *pMacStatus, u8 MacID,
 
 }
 
-enum hal_status
-ODM_ConfigRFWithHeaderFile23a(
-	struct dm_odm_t *pDM_Odm,
-	enum RF_RADIO_PATH	Content,
-	enum RF_RADIO_PATH	eRFPath
-  )
+int ODM_ConfigRFWithHeaderFile23a(struct dm_odm_t *pDM_Odm,
+				  enum RF_RADIO_PATH Content,
+				  enum RF_RADIO_PATH eRFPath)
 {
 	ODM_RT_TRACE(pDM_Odm, ODM_COMP_INIT, ODM_DBG_LOUD,
 		     ("===>ODM_ConfigRFWithHeaderFile23a\n"));
@@ -446,14 +443,11 @@ ODM_ConfigRFWithHeaderFile23a(
 	}
 	ODM_RT_TRACE(pDM_Odm, ODM_COMP_INIT, ODM_DBG_TRACE,
 		     ("ODM_ConfigRFWithHeaderFile23a: Radio No %x\n", eRFPath));
-	return HAL_STATUS_SUCCESS;
+	return _SUCCESS;
 }
 
-enum hal_status
-ODM_ConfigBBWithHeaderFile23a(
-	struct dm_odm_t *pDM_Odm,
-	enum odm_bb_config_type		ConfigType
-	)
+int ODM_ConfigBBWithHeaderFile23a(struct dm_odm_t *pDM_Odm,
+				  enum odm_bb_config_type ConfigType)
 {
 	if (pDM_Odm->SupportICType == ODM_RTL8723A) {
 		if (ConfigType == CONFIG_BB_PHY_REG)
@@ -465,17 +459,12 @@ ODM_ConfigBBWithHeaderFile23a(
 		ODM_RT_TRACE(pDM_Odm, ODM_COMP_INIT, ODM_DBG_LOUD,
 			     (" ===> phy_ConfigBBWithHeaderFile() agc:Rtl8723PHY_REG_1TArray\n"));
 	}
-	return HAL_STATUS_SUCCESS;
+	return _SUCCESS;
 }
 
-enum hal_status
-ODM_ConfigMACWithHeaderFile23a(
-	struct dm_odm_t *pDM_Odm
-	)
+int ODM_ConfigMACWithHeaderFile23a(struct dm_odm_t *pDM_Odm)
 {
-	u8 result = HAL_STATUS_SUCCESS;
-
 	if (pDM_Odm->SupportICType == ODM_RTL8723A)
 		READ_AND_CONFIG_MP(8723A, _MAC_REG_);
-	return result;
+	return _SUCCESS;
 }

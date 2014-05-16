@@ -55,20 +55,11 @@ int rtw_os_recvbuf_resource_alloc(struct adapter *padapter,
 {
 	int res = _SUCCESS;
 
-	precvbuf->irp_pending = false;
 	precvbuf->purb = usb_alloc_urb(0, GFP_KERNEL);
 	if (precvbuf->purb == NULL)
 		res = _FAIL;
 	precvbuf->pskb = NULL;
 	precvbuf->reuse = false;
-	precvbuf->pallocated_buf = NULL;
-	precvbuf->pbuf = NULL;
-	precvbuf->pdata = NULL;
-	precvbuf->phead = NULL;
-	precvbuf->ptail = NULL;
-	precvbuf->pend = NULL;
-	precvbuf->transfer_len = 0;
-	precvbuf->len = 0;
 	return res;
 }
 
@@ -229,14 +220,12 @@ void rtw_os_read_port(struct adapter *padapter, struct recv_buf *precvbuf)
 {
 	struct recv_priv *precvpriv = &padapter->recvpriv;
 
-	precvbuf->ref_cnt--;
 	/* free skb in recv_buf */
 	dev_kfree_skb_any(precvbuf->pskb);
 	precvbuf->pskb = NULL;
 	precvbuf->reuse = false;
-	if (!precvbuf->irp_pending)
-		rtw_read_port(padapter, precvpriv->ff_hwaddr, 0,
-			      (unsigned char *)precvbuf);
+	rtw_read_port(padapter, precvpriv->ff_hwaddr, 0,
+			(unsigned char *)precvbuf);
 }
 
 static void _rtw_reordering_ctrl_timeout_handler(void *func_context)
