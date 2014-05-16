@@ -59,12 +59,12 @@ static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
 
 static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
 {
-	return intel_dsi->dev.type == INTEL_DSI_VIDEO_MODE;
+	return intel_dsi->operation_mode == INTEL_DSI_VIDEO_MODE;
 }
 
 static inline bool is_cmd_mode(struct intel_dsi *intel_dsi)
 {
-	return intel_dsi->dev.type == INTEL_DSI_COMMAND_MODE;
+	return intel_dsi->operation_mode == INTEL_DSI_COMMAND_MODE;
 }
 
 static void intel_dsi_hot_plug(struct intel_encoder *encoder)
@@ -185,6 +185,8 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	/* put device in ready state */
 	intel_dsi_device_ready(encoder);
 
+	msleep(intel_dsi->panel_on_delay);
+
 	if (intel_dsi->dev.dev_ops->panel_reset)
 		intel_dsi->dev.dev_ops->panel_reset(&intel_dsi->dev);
 
@@ -301,6 +303,9 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 
 	if (intel_dsi->dev.dev_ops->disable_panel_power)
 		intel_dsi->dev.dev_ops->disable_panel_power(&intel_dsi->dev);
+
+	msleep(intel_dsi->panel_off_delay);
+	msleep(intel_dsi->panel_pwr_cycle_delay);
 }
 
 static bool intel_dsi_get_hw_state(struct intel_encoder *encoder,
@@ -524,6 +529,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 
 	/* recovery disables */
 	I915_WRITE(MIPI_EOT_DISABLE(pipe), val);
+
+	/* in terms of low power clock */
+	I915_WRITE(MIPI_INIT_COUNT(pipe), intel_dsi->init_count);
 
 	/* in terms of txbyteclkhs. actual high to low switch +
 	 * MIPI_STOP_STATE_STALL * MIPI_LP_BYTECLK.
