@@ -12,8 +12,9 @@
  * modified by sysctl. Both SHMMAX and SHMALL have their default values
  * to the maximum limit which is as large as it can be without helping
  * userspace overflow the values. There is really nothing the kernel
- * can do to avoid this any variables. It is therefore not advised to
- * make them any larger. This is suitable for both 32 and 64-bit systems.
+ * can do to avoid this any further. It is therefore not advised to
+ * make them any larger. These limits are suitable for both 32 and
+ * 64-bit systems.
  */
 #define SHMMIN 1			 /* min shared seg size (bytes) */
 #define SHMMNI 4096			 /* max num of segs system wide */
