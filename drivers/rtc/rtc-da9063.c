@@ -82,6 +82,7 @@ static void da9063_tm_to_data(struct rtc_time *tm, u8 *data)
 static int da9063_rtc_stop_alarm(struct device *dev)
 {
 	struct da9063_rtc *rtc = dev_get_drvdata(dev);
+
 	return regmap_update_bits(rtc->hw->regmap, DA9063_REG_ALARM_Y,
 				  DA9063_ALARM_ON, 0);
 }
@@ -89,6 +90,7 @@ static int da9063_rtc_stop_alarm(struct device *dev)
 static int da9063_rtc_start_alarm(struct device *dev)
 {
 	struct da9063_rtc *rtc = dev_get_drvdata(dev);
+
 	return regmap_update_bits(rtc->hw->regmap, DA9063_REG_ALARM_Y,
 				  DA9063_ALARM_ON, DA9063_ALARM_ON);
 }
@@ -115,13 +117,12 @@ static int da9063_rtc_read_time(struct device *dev, struct rtc_time *tm)
 
 	da9063_data_to_tm(data, tm);
 
-	(void)rtc_tm_to_time(tm, &tm_secs);
-	(void)rtc_tm_to_time(&rtc->alarm_time, &al_secs);
+	rtc_tm_to_time(tm, &tm_secs);
+	rtc_tm_to_time(&rtc->alarm_time, &al_secs);
 
 	/* handle the rtc synchronisation delay */
 	if (rtc->rtc_sync == true && al_secs - tm_secs == 1)
-		(void)memcpy((void *)tm, (const void *)&rtc->alarm_time,
-			     sizeof(struct rtc_time));
+		memcpy(tm, &rtc->alarm_time, sizeof(struct rtc_time));
 	else
 		rtc->rtc_sync = false;
 
