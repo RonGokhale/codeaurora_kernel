@@ -1647,11 +1647,10 @@ static unsigned long set_max_huge_pages(struct hstate *h, unsigned long count,
 		 * and reducing the surplus.
 		 */
 		spin_unlock(&hugetlb_lock);
-		if (hstate_is_gigantic(h)) {
+		if (hstate_is_gigantic(h))
 			ret = alloc_fresh_gigantic_page(h, nodes_allowed);
-		} else {
+		else
 			ret = alloc_fresh_huge_page(h, nodes_allowed);
-		}
 		spin_lock(&hugetlb_lock);
 		if (!ret)
 			goto out;
