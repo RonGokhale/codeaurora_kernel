@@ -985,7 +985,8 @@ void do_page_add_anon_rmap(struct page *page,
 		/*
 		 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
 		 * these counters are not modified in interrupt context, and
-		 * pte lock(a spinlock) is held, which implies preemtion disabled.
+		 * pte lock(a spinlock) is held, which implies preemption
+		 * disabled.
 		 */
 		if (PageTransHuge(page))
 			__inc_zone_page_state(page,
@@ -1082,7 +1083,7 @@ void page_remove_rmap(struct page *page)
 	 * We use the irq-unsafe __{inc|mod}_zone_page_stat because
 	 * these counters are not modified in interrupt context, and
 	 * these counters are not modified in interrupt context, and
-	 * pte lock(a spinlock) is held, which implies preemtion disabled.
+	 * pte lock(a spinlock) is held, which implies preemption disabled.
 	 */
 	if (unlikely(PageHuge(page)))
 		goto out;
