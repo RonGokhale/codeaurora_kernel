@@ -57,6 +57,7 @@ Brief summary of control files.
  memory.memsw.usage_in_bytes	 # show current res_counter usage for memory+Swap
 				 (See 5.5 for details)
  memory.limit_in_bytes		 # set/show limit of memory usage
+ memory.low_limit_in_bytes	 # set/show low limit for memory reclaim
  memory.memsw.limit_in_bytes	 # set/show limit of memory+Swap usage
  memory.failcnt			 # show the number of memory usage hits limits
  memory.memsw.failcnt		 # show the number of memory+Swap hits limits
@@ -244,7 +245,15 @@ global VM. Cgroups can get reclaimed basically under two conditions
    to select and kill the bulkiest task in the hiearchy. (See 10. OOM Control
    below.)
 
-Note2: When panic_on_oom is set to "2", the whole system will panic.
+Groups might be also protected from both global and limit reclaim by
+low_limit_in_bytes knob. If the limit is non-zero the reclaim logic
+doesn't include groups (and their subgroups - see 6. Hierarchy support)
+which are bellow the low limit if there is other eligible cgroup in the
+reclaimed hierarchy. If all groups which participate reclaim are under
+their low limits then all of them are reclaimed and the low limit is
+ignored.
+
+Note: When panic_on_oom is set to "2", the whole system will panic.
 
 When oom event notifier is registered, event will be delivered to the root
 of the memory pressure which cannot be handled (See oom_control section)
