@@ -31,7 +31,12 @@
 
 int watchdog_user_enabled = 1;
 int __read_mostly watchdog_thresh = 10;
+#ifdef CONFIG_SMP
 int __read_mostly sysctl_softlockup_all_cpu_backtrace;
+#else
+#define sysctl_softlockup_all_cpu_backtrace 0
+#endif
+
 static int __read_mostly watchdog_running;
 static u64 __read_mostly sample_period;
 
