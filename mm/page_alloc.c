@@ -2576,16 +2576,13 @@ rebalance:
 	if (page)
 		goto got_pg;
 
-	if (gfp_mask & __GFP_NO_KSWAPD) {
-		/*
-		 * Khugepaged is allowed to try MIGRATE_SYNC_LIGHT, the latency
-		 * of this allocation isn't critical.  Everything else, however,
-		 * should only be allowed to do MIGRATE_ASYNC to avoid excessive
-		 * stalls during fault.
-		 */
-		if ((current->flags & (PF_KTHREAD | PF_KSWAPD)) == PF_KTHREAD)
-			migration_mode = MIGRATE_SYNC_LIGHT;
-	}
+	/*
+	 * It can become very expensive to allocate transparent hugepages at
+	 * fault, so use asynchronous memory compaction for THP unless it is
+	 * khugepaged trying to collapse.
+	 */
+	if (!(gfp_mask & __GFP_NO_KSWAPD) || (current->flags & PF_KTHREAD))
+		migration_mode = MIGRATE_SYNC_LIGHT;
 
 	/*
 	 * If compaction is deferred for high-order allocations, it is because
