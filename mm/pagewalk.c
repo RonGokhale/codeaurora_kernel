@@ -193,12 +193,14 @@ static int walk_hugetlb_range(unsigned long addr, unsigned long end,
 	do {
 		next = hugetlb_entry_end(h, addr, end);
 		pte = huge_pte_offset(walk->mm, addr & hmask);
+		if (!pte)
+			continue;
 		ptl = huge_pte_lock(h, mm, pte);
 		/*
 		 * Callers should have their own way to handle swap entries
 		 * in walk->hugetlb_entry().
 		 */
-		if (pte && walk->hugetlb_entry)
+		if (walk->hugetlb_entry)
 			err = walk->hugetlb_entry(pte, addr, next, walk);
 		spin_unlock(ptl);
 		if (err)
