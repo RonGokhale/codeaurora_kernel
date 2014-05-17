@@ -21,6 +21,7 @@
 #include <linux/smpboot.h>
 #include <linux/atomic.h>
 #include <linux/lglock.h>
+#include <linux/smp.h>
 
 /*
  * Structure to determine completion condition and record errors.  May
@@ -224,6 +225,16 @@ static int multi_cpu_stop(void *data)
 					local_irq_disable();
 					hard_irq_disable();
 				}
+
+				/*
+				 * IPIs (from the inactive CPUs) might arrive
+				 * late due to hardware latencies. So flush
+				 * out any pending IPI callbacks explicitly,
+				 * to ensure that the outgoing CPU doesn't go
+				 * offline with work still pending (during
+				 * CPU hotplug).
+				 */
+				flush_smp_call_function_queue();
 				break;
 			case MULTI_STOP_RUN:
 				if (is_active)
