@@ -2193,6 +2193,11 @@ static int ocfs2_commit_thread(void *arg)
 			if (printk_timed_ratelimit(&abort_warn_time, 60*HZ))
 				mlog(ML_ERROR, "status = %d, journal is "
 						"already aborted.\n", status);
+			/*
+			 * After ocfs2_commit_cache() fails, j_num_trans has a
+			 * non-zero value.  Sleep here to avoid a busy-wait
+			 * loop.
+			 */
 			msleep_interruptible(1000);
 		}
 
