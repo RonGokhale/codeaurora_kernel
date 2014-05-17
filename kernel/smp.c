@@ -195,13 +195,15 @@ void generic_smp_call_function_single_interrupt(void)
 	 */
 	if (unlikely(!cpu_online(smp_processor_id()) && !warned)) {
 		warned = true;
-		WARN_ON(1);
+		WARN(1, "IPI on offline CPU %d\n", smp_processor_id());
+
 		/*
 		 * We don't have to use the _safe() variant here
 		 * because we are not invoking the IPI handlers yet.
 		 */
 		llist_for_each_entry(csd, entry, llist)
-			pr_warn("SMP IPI Payload: %pS \n", csd->func);
+			pr_warn("IPI callback %pS sent to offline CPU\n",
+				csd->func);
 	}
 
 	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
