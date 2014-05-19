@@ -64,6 +64,24 @@ static const struct dp_link_dpll vlv_dpll[] = {
 		{ .p1 = 2, .p2 = 2, .n = 1, .m1 = 2, .m2 = 27 } }
 };
 
+/*
+ * CHV supports eDP 1.4 that have  more link rates.
+ * Below only provides the fixed rate but exclude variable rate.
+ */
+static const struct dp_link_dpll chv_dpll[] = {
+	/*
+	 * CHV requires to program fractional division for m2.
+	 * m2 is stored in fixed point format using formula below
+	 * (m2_int << 22) | m2_fraction
+	 */
+	{ DP_LINK_BW_1_62,	/* m2_int = 32, m2_fraction = 1677722 */
+		{ .p1 = 4, .p2 = 2, .n = 1, .m1 = 2, .m2 = 0x819999a } },
+	{ DP_LINK_BW_2_7,	/* m2_int = 27, m2_fraction = 0 */
+		{ .p1 = 4, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } },
+	{ DP_LINK_BW_5_4,	/* m2_int = 27, m2_fraction = 0 */
+		{ .p1 = 2, .p2 = 1, .n = 1, .m1 = 2, .m2 = 0x6c00000 } }
+};
+
 /**
  * is_edp - is the given port attached to an eDP panel (either CPU or PCH)
  * @intel_dp: DP struct
@@ -727,6 +745,9 @@ intel_dp_set_clock(struct intel_encoder *encoder,
 	} else if (HAS_PCH_SPLIT(dev)) {
 		divisor = pch_dpll;
 		count = ARRAY_SIZE(pch_dpll);
+	} else if (IS_CHERRYVIEW(dev)) {
+		divisor = chv_dpll;
+		count = ARRAY_SIZE(chv_dpll);
 	} else if (IS_VALLEYVIEW(dev)) {
 		divisor = vlv_dpll;
 		count = ARRAY_SIZE(vlv_dpll);
@@ -780,6 +801,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 		pipe_config->has_pch_encoder = true;
 
 	pipe_config->has_dp_encoder = true;
+	pipe_config->has_audio = intel_dp->has_audio;
 
 	if (is_edp(intel_dp) && intel_connector->panel.fixed_mode) {
 		intel_fixed_panel_mode(intel_connector->panel.fixed_mode,
@@ -904,7 +926,7 @@ static void ironlake_set_pll_cpu_edp(struct intel_dp *intel_dp)
 	udelay(500);
 }
 
-static void intel_dp_mode_set(struct intel_encoder *encoder)
+static void intel_dp_prepare(struct intel_encoder *encoder)
 {
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -939,7 +961,7 @@ static void intel_dp_mode_set(struct intel_encoder *encoder)
 	intel_dp->DP |= DP_VOLTAGE_0_4 | DP_PRE_EMPHASIS_0;
 	intel_dp->DP |= DP_PORT_WIDTH(intel_dp->lane_count);
 
-	if (intel_dp->has_audio) {
+	if (crtc->config.has_audio) {
 		DRM_DEBUG_DRIVER("Enabling DP audio on pipe %c\n",
 				 pipe_name(crtc->pipe));
 		intel_dp->DP |= DP_AUDIO_OUTPUT_ENABLE;
@@ -972,14 +994,15 @@ static void intel_dp_mode_set(struct intel_encoder *encoder)
 		if (drm_dp_enhanced_frame_cap(intel_dp->dpcd))
 			intel_dp->DP |= DP_ENHANCED_FRAMING;
 
-		if (crtc->pipe == 1)
-			intel_dp->DP |= DP_PIPEB_SELECT;
+		if (!IS_CHERRYVIEW(dev)) {
+			if (crtc->pipe == 1)
+				intel_dp->DP |= DP_PIPEB_SELECT;
+		} else {
+			intel_dp->DP |= DP_PIPE_SELECT_CHV(crtc->pipe);
+		}
 	} else {
 		intel_dp->DP |= DP_LINK_TRAIN_OFF_CPT;
 	}
-
-	if (port == PORT_A && !IS_VALLEYVIEW(dev))
-		ironlake_set_pll_cpu_edp(intel_dp);
 }
 
 #define IDLE_ON_MASK		(PP_ON | PP_SEQUENCE_MASK | 0                     | PP_SEQUENCE_STATE_MASK)
@@ -1482,8 +1505,11 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
 	int dotclock;
 
+	tmp = I915_READ(intel_dp->output_reg);
+	if (tmp & DP_AUDIO_OUTPUT_ENABLE)
+		pipe_config->has_audio = true;
+
 	if ((port == PORT_A) || !HAS_PCH_CPT(dev)) {
-		tmp = I915_READ(intel_dp->output_reg);
 		if (tmp & DP_SYNC_HS_HIGH)
 			flags |= DRM_MODE_FLAG_PHSYNC;
 		else
@@ -1877,8 +1903,13 @@ static void g4x_pre_enable_dp(struct intel_encoder *encoder)
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct intel_digital_port *dport = dp_to_dig_port(intel_dp);
 
-	if (dport->port == PORT_A)
+	intel_dp_prepare(encoder);
+
+	/* Only ilk+ has port A */
+	if (dport->port == PORT_A) {
+		ironlake_set_pll_cpu_edp(intel_dp);
 		ironlake_edp_pll_on(intel_dp);
+	}
 }
 
 static void vlv_pre_enable_dp(struct intel_encoder *encoder)
@@ -1930,6 +1961,8 @@ static void vlv_dp_pre_pll_enable(struct intel_encoder *encoder)
 	enum dpio_channel port = vlv_dport_to_channel(dport);
 	int pipe = intel_crtc->pipe;
 
+	intel_dp_prepare(encoder);
+
 	/* Program Tx lane resets to default */
 	mutex_lock(&dev_priv->dpio_lock);
 	vlv_dpio_write(dev_priv, pipe, VLV_PCS_DW0(port),
@@ -1946,6 +1979,50 @@ static void vlv_dp_pre_pll_enable(struct intel_encoder *encoder)
 	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW11(port), 0x00001500);
 	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW14(port), 0x40400000);
 	mutex_unlock(&dev_priv->dpio_lock);
+}
+
+static void chv_pre_enable_dp(struct intel_encoder *encoder)
+{
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
+	struct intel_digital_port *dport = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct edp_power_seq power_seq;
+	struct intel_crtc *intel_crtc =
+		to_intel_crtc(encoder->base.crtc);
+	enum dpio_channel ch = vlv_dport_to_channel(dport);
+	int pipe = intel_crtc->pipe;
+	int data, i;
+
+	/* Program Tx lane latency optimal setting*/
+	mutex_lock(&dev_priv->dpio_lock);
+	for (i = 0; i < 4; i++) {
+		/* Set the latency optimal bit */
+		data = (i == 1) ? 0x0 : 0x6;
+		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW11(ch, i),
+				data << DPIO_FRC_LATENCY_SHFIT);
+
+		/* Set the upar bit */
+		data = (i == 1) ? 0x0 : 0x1;
+		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW14(ch, i),
+				data << DPIO_UPAR_SHIFT);
+	}
+
+	/* Data lane stagger programming */
+	/* FIXME: Fix up value only after power analysis */
+
+	mutex_unlock(&dev_priv->dpio_lock);
+
+	if (is_edp(intel_dp)) {
+		/* init power sequencer on this pipe and port */
+		intel_dp_init_panel_power_sequencer(dev, intel_dp, &power_seq);
+		intel_dp_init_panel_power_sequencer_registers(dev, intel_dp,
+							      &power_seq);
+	}
+
+	intel_enable_dp(encoder);
+
+	vlv_wait_port_ready(dev_priv, dport);
 }
 
 /*
@@ -2172,6 +2249,142 @@ static uint32_t intel_vlv_signal_levels(struct intel_dp *intel_dp)
 	return 0;
 }
 
+static uint32_t intel_chv_signal_levels(struct intel_dp *intel_dp)
+{
+	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_digital_port *dport = dp_to_dig_port(intel_dp);
+	struct intel_crtc *intel_crtc = to_intel_crtc(dport->base.base.crtc);
+	u32 deemph_reg_value, margin_reg_value, val, tx_dw2;
+	uint8_t train_set = intel_dp->train_set[0];
+	enum dpio_channel ch = vlv_dport_to_channel(dport);
+	int pipe = intel_crtc->pipe;
+
+	switch (train_set & DP_TRAIN_PRE_EMPHASIS_MASK) {
+	case DP_TRAIN_PRE_EMPHASIS_0:
+		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
+		case DP_TRAIN_VOLTAGE_SWING_400:
+			deemph_reg_value = 128;
+			margin_reg_value = 52;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_600:
+			deemph_reg_value = 128;
+			margin_reg_value = 77;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_800:
+			deemph_reg_value = 128;
+			margin_reg_value = 102;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_1200:
+			deemph_reg_value = 128;
+			margin_reg_value = 154;
+			/* FIXME extra to set for 1200 */
+			break;
+		default:
+			return 0;
+		}
+		break;
+	case DP_TRAIN_PRE_EMPHASIS_3_5:
+		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
+		case DP_TRAIN_VOLTAGE_SWING_400:
+			deemph_reg_value = 85;
+			margin_reg_value = 78;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_600:
+			deemph_reg_value = 85;
+			margin_reg_value = 116;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_800:
+			deemph_reg_value = 85;
+			margin_reg_value = 154;
+			break;
+		default:
+			return 0;
+		}
+		break;
+	case DP_TRAIN_PRE_EMPHASIS_6:
+		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
+		case DP_TRAIN_VOLTAGE_SWING_400:
+			deemph_reg_value = 64;
+			margin_reg_value = 104;
+			break;
+		case DP_TRAIN_VOLTAGE_SWING_600:
+			deemph_reg_value = 64;
+			margin_reg_value = 154;
+			break;
+		default:
+			return 0;
+		}
+		break;
+	case DP_TRAIN_PRE_EMPHASIS_9_5:
+		switch (train_set & DP_TRAIN_VOLTAGE_SWING_MASK) {
+		case DP_TRAIN_VOLTAGE_SWING_400:
+			deemph_reg_value = 43;
+			margin_reg_value = 154;
+			break;
+		default:
+			return 0;
+		}
+		break;
+	default:
+		return 0;
+	}
+
+	mutex_lock(&dev_priv->dpio_lock);
+
+	/* Clear calc init */
+	vlv_dpio_write(dev_priv, pipe, CHV_PCS_DW10(ch), 0);
+
+	/* Program swing deemph */
+	val = vlv_dpio_read(dev_priv, pipe, VLV_TX_DW4(ch));
+	val &= ~DPIO_SWING_DEEMPH9P5_MASK;
+	val |= deemph_reg_value << DPIO_SWING_DEEMPH9P5_SHIFT;
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW4(ch), val);
+
+	/* Program swing margin */
+	tx_dw2 = vlv_dpio_read(dev_priv, pipe, VLV_TX_DW2(ch));
+	tx_dw2 &= ~DPIO_SWING_MARGIN_MASK;
+	tx_dw2 |= margin_reg_value << DPIO_SWING_MARGIN_SHIFT;
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW2(ch), tx_dw2);
+
+	/* Disable unique transition scale */
+	val = vlv_dpio_read(dev_priv, pipe, VLV_TX_DW3(ch));
+	val &= ~DPIO_TX_UNIQ_TRANS_SCALE_EN;
+	vlv_dpio_write(dev_priv, pipe, VLV_TX_DW3(ch), val);
+
+	if (((train_set & DP_TRAIN_PRE_EMPHASIS_MASK)
+			== DP_TRAIN_PRE_EMPHASIS_0) &&
+		((train_set & DP_TRAIN_VOLTAGE_SWING_MASK)
+			== DP_TRAIN_VOLTAGE_SWING_1200)) {
+
+		/*
+		 * The document said it needs to set bit 27 for ch0 and bit 26
+		 * for ch1. Might be a typo in the doc.
+		 * For now, for this unique transition scale selection, set bit
+		 * 27 for ch0 and ch1.
+		 */
+		val = vlv_dpio_read(dev_priv, pipe, VLV_TX_DW3(ch));
+		val |= DPIO_TX_UNIQ_TRANS_SCALE_EN;
+		vlv_dpio_write(dev_priv, pipe, VLV_TX_DW3(ch), val);
+
+		tx_dw2 |= (0x9a << DPIO_UNIQ_TRANS_SCALE_SHIFT);
+		vlv_dpio_write(dev_priv, pipe, VLV_TX_DW2(ch), tx_dw2);
+	}
+
+	/* Start swing calculation */
+	vlv_dpio_write(dev_priv, pipe, CHV_PCS_DW10(ch),
+		(DPIO_PCS_SWING_CALC_TX0_TX2 | DPIO_PCS_SWING_CALC_TX1_TX3));
+
+	/* LRC Bypass */
+	val = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW30);
+	val |= DPIO_LRC_BYPASS;
+	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW30, val);
+
+	mutex_unlock(&dev_priv->dpio_lock);
+
+	return 0;
+}
+
 static void
 intel_get_adjust_train(struct intel_dp *intel_dp,
 		       const uint8_t link_status[DP_LINK_STATUS_SIZE])
@@ -2386,6 +2599,9 @@ intel_dp_set_signal_levels(struct intel_dp *intel_dp, uint32_t *DP)
 	} else if (IS_HASWELL(dev)) {
 		signal_levels = intel_hsw_signal_levels(train_set);
 		mask = DDI_BUF_EMP_MASK;
+	} else if (IS_CHERRYVIEW(dev)) {
+		signal_levels = intel_chv_signal_levels(intel_dp);
+		mask = 0;
 	} else if (IS_VALLEYVIEW(dev)) {
 		signal_levels = intel_vlv_signal_levels(intel_dp);
 		mask = 0;
@@ -4013,11 +4229,13 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 			 DRM_MODE_ENCODER_TMDS);
 
 	intel_encoder->compute_config = intel_dp_compute_config;
-	intel_encoder->mode_set = intel_dp_mode_set;
 	intel_encoder->disable = intel_disable_dp;
 	intel_encoder->get_hw_state = intel_dp_get_hw_state;
 	intel_encoder->get_config = intel_dp_get_config;
-	if (IS_VALLEYVIEW(dev)) {
+	if (IS_CHERRYVIEW(dev)) {
+		intel_encoder->pre_enable = chv_pre_enable_dp;
+		intel_encoder->enable = vlv_enable_dp;
+	} else if (IS_VALLEYVIEW(dev)) {
 		intel_encoder->pre_pll_enable = vlv_dp_pre_pll_enable;
 		intel_encoder->pre_enable = vlv_pre_enable_dp;
 		intel_encoder->enable = vlv_enable_dp;

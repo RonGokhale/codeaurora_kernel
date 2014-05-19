@@ -449,6 +449,8 @@ void i915_gem_context_fini(struct drm_device *dev)
 			i915_gem_context_unreference(dctx);
 			dev_priv->ring[RCS].last_context = NULL;
 		}
+
+		i915_gem_object_ggtt_unpin(dctx->obj);
 	}
 
 	for (i = 0; i < I915_NUM_RINGS; i++) {
@@ -461,7 +463,6 @@ void i915_gem_context_fini(struct drm_device *dev)
 		ring->last_context = NULL;
 	}
 
-	i915_gem_object_ggtt_unpin(dctx->obj);
 	i915_gem_context_unreference(dctx);
 }
 
@@ -699,6 +700,12 @@ static int do_switch(struct intel_ring_buffer *ring,
 		/* obj is kept alive until the next request by its active ref */
 		i915_gem_object_ggtt_unpin(from->obj);
 		i915_gem_context_unreference(from);
+	} else {
+		if (to->is_initialized == false) {
+			ret = i915_gem_render_state_init(ring);
+			if (ret)
+				DRM_ERROR("init render state: %d\n", ret);
+		}
 	}
 
 	to->is_initialized = true;

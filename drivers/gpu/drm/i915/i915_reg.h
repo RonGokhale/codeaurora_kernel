@@ -29,6 +29,8 @@
 #define _TRANSCODER(tran, a, b) ((a) + (tran)*((b)-(a)))
 
 #define _PORT(port, a, b) ((a) + (port)*((b)-(a)))
+#define _PIPE3(pipe, a, b, c) (pipe < 2 ? _PIPE(pipe, a, b) : c)
+#define _PORT3(port, a, b, c) (port < 2 ? _PORT(port, a, b) : c)
 
 #define _MASKED_BIT_ENABLE(a) (((a) << 16) | (a))
 #define _MASKED_BIT_DISABLE(a) ((a) << 16)
@@ -91,6 +93,9 @@
 #define   GEN6_MBC_SNPCR_MED	(1<<21)
 #define   GEN6_MBC_SNPCR_LOW	(2<<21)
 #define   GEN6_MBC_SNPCR_MIN	(3<<21) /* only 1/16th of the cache is shared */
+
+#define VLV_G3DCTL		0x9024
+#define VLV_GSCKGCTL		0x9028
 
 #define GEN6_MBCTL		0x0907c
 #define   GEN6_MBCTL_ENABLE_BOOT_FETCH	(1 << 4)
@@ -467,6 +472,7 @@
 #define   IOSF_PORT_PUNIT			0x4
 #define   IOSF_PORT_NC				0x11
 #define   IOSF_PORT_DPIO			0x12
+#define   IOSF_PORT_DPIO_2			0x1a
 #define   IOSF_PORT_GPIO_NC			0x13
 #define   IOSF_PORT_CCK				0x14
 #define   IOSF_PORT_CCU				0xA9
@@ -675,6 +681,12 @@ enum punit_power_well {
 #define _VLV_PCS_DW9_CH1		0x8424
 #define	VLV_PCS_DW9(ch) _PORT(ch, _VLV_PCS_DW9_CH0, _VLV_PCS_DW9_CH1)
 
+#define _CHV_PCS_DW10_CH0		0x8228
+#define _CHV_PCS_DW10_CH1		0x8428
+#define   DPIO_PCS_SWING_CALC_TX0_TX2	(1<<30)
+#define   DPIO_PCS_SWING_CALC_TX1_TX3	(1<<31)
+#define CHV_PCS_DW10(ch) _PORT(ch, _CHV_PCS_DW10_CH0, _CHV_PCS_DW10_CH1)
+
 #define _VLV_PCS_DW11_CH0		0x822c
 #define _VLV_PCS_DW11_CH1		0x842c
 #define VLV_PCS_DW11(ch) _PORT(ch, _VLV_PCS_DW11_CH0, _VLV_PCS_DW11_CH1)
@@ -693,14 +705,21 @@ enum punit_power_well {
 
 #define _VLV_TX_DW2_CH0			0x8288
 #define _VLV_TX_DW2_CH1			0x8488
+#define   DPIO_SWING_MARGIN_SHIFT	16
+#define   DPIO_SWING_MARGIN_MASK	(0xff << DPIO_SWING_MARGIN_SHIFT)
+#define   DPIO_UNIQ_TRANS_SCALE_SHIFT	8
 #define VLV_TX_DW2(ch) _PORT(ch, _VLV_TX_DW2_CH0, _VLV_TX_DW2_CH1)
 
 #define _VLV_TX_DW3_CH0			0x828c
 #define _VLV_TX_DW3_CH1			0x848c
+/* The following bit for CHV phy */
+#define   DPIO_TX_UNIQ_TRANS_SCALE_EN	(1<<27)
 #define VLV_TX_DW3(ch) _PORT(ch, _VLV_TX_DW3_CH0, _VLV_TX_DW3_CH1)
 
 #define _VLV_TX_DW4_CH0			0x8290
 #define _VLV_TX_DW4_CH1			0x8490
+#define   DPIO_SWING_DEEMPH9P5_SHIFT	24
+#define   DPIO_SWING_DEEMPH9P5_MASK	(0xff << DPIO_SWING_DEEMPH9P5_SHIFT)
 #define VLV_TX_DW4(ch) _PORT(ch, _VLV_TX_DW4_CH0, _VLV_TX_DW4_CH1)
 
 #define _VLV_TX3_DW4_CH0		0x690
@@ -720,6 +739,62 @@ enum punit_power_well {
 #define _VLV_TX_DW14_CH1		0x84b8
 #define VLV_TX_DW14(ch) _PORT(ch, _VLV_TX_DW14_CH0, _VLV_TX_DW14_CH1)
 
+/* CHV dpPhy registers */
+#define _CHV_PLL_DW0_CH0		0x8000
+#define _CHV_PLL_DW0_CH1		0x8180
+#define CHV_PLL_DW0(ch) _PIPE(ch, _CHV_PLL_DW0_CH0, _CHV_PLL_DW0_CH1)
+
+#define _CHV_PLL_DW1_CH0		0x8004
+#define _CHV_PLL_DW1_CH1		0x8184
+#define   DPIO_CHV_N_DIV_SHIFT		8
+#define   DPIO_CHV_M1_DIV_BY_2		(0 << 0)
+#define CHV_PLL_DW1(ch) _PIPE(ch, _CHV_PLL_DW1_CH0, _CHV_PLL_DW1_CH1)
+
+#define _CHV_PLL_DW2_CH0		0x8008
+#define _CHV_PLL_DW2_CH1		0x8188
+#define CHV_PLL_DW2(ch) _PIPE(ch, _CHV_PLL_DW2_CH0, _CHV_PLL_DW2_CH1)
+
+#define _CHV_PLL_DW3_CH0		0x800c
+#define _CHV_PLL_DW3_CH1		0x818c
+#define  DPIO_CHV_FRAC_DIV_EN		(1 << 16)
+#define  DPIO_CHV_FIRST_MOD		(0 << 8)
+#define  DPIO_CHV_SECOND_MOD		(1 << 8)
+#define  DPIO_CHV_FEEDFWD_GAIN_SHIFT	0
+#define CHV_PLL_DW3(ch) _PIPE(ch, _CHV_PLL_DW3_CH0, _CHV_PLL_DW3_CH1)
+
+#define _CHV_PLL_DW6_CH0		0x8018
+#define _CHV_PLL_DW6_CH1		0x8198
+#define   DPIO_CHV_GAIN_CTRL_SHIFT	16
+#define	  DPIO_CHV_INT_COEFF_SHIFT	8
+#define   DPIO_CHV_PROP_COEFF_SHIFT	0
+#define CHV_PLL_DW6(ch) _PIPE(ch, _CHV_PLL_DW6_CH0, _CHV_PLL_DW6_CH1)
+
+#define _CHV_CMN_DW13_CH0		0x8134
+#define _CHV_CMN_DW0_CH1		0x8080
+#define   DPIO_CHV_S1_DIV_SHIFT		21
+#define   DPIO_CHV_P1_DIV_SHIFT		13 /* 3 bits */
+#define   DPIO_CHV_P2_DIV_SHIFT		8  /* 5 bits */
+#define   DPIO_CHV_K_DIV_SHIFT		4
+#define   DPIO_PLL_FREQLOCK		(1 << 1)
+#define   DPIO_PLL_LOCK			(1 << 0)
+#define CHV_CMN_DW13(ch) _PIPE(ch, _CHV_CMN_DW13_CH0, _CHV_CMN_DW0_CH1)
+
+#define _CHV_CMN_DW14_CH0		0x8138
+#define _CHV_CMN_DW1_CH1		0x8084
+#define   DPIO_AFC_RECAL		(1 << 14)
+#define   DPIO_DCLKP_EN			(1 << 13)
+#define CHV_CMN_DW14(ch) _PIPE(ch, _CHV_CMN_DW14_CH0, _CHV_CMN_DW1_CH1)
+
+#define CHV_CMN_DW30			0x8178
+#define   DPIO_LRC_BYPASS		(1 << 3)
+
+#define _TXLANE(ch, lane, offset) ((ch ? 0x2400 : 0) + \
+					(lane) * 0x200 + (offset))
+
+#define CHV_TX_DW11(ch, lane) _TXLANE(ch, lane, 0xac)
+#define   DPIO_FRC_LATENCY_SHFIT	8
+#define CHV_TX_DW14(ch, lane) _TXLANE(ch, lane, 0xb8)
+#define   DPIO_UPAR_SHIFT		30
 /*
  * Fence registers
  */
@@ -786,9 +861,20 @@ enum punit_power_well {
 #define RING_MAX_IDLE(base)	((base)+0x54)
 #define RING_HWS_PGA(base)	((base)+0x80)
 #define RING_HWS_PGA_GEN6(base)	((base)+0x2080)
-#define ARB_MODE		0x04030
+
+#define GEN7_WR_WATERMARK	0x4028
+#define GEN7_GFX_PRIO_CTRL	0x402C
+#define ARB_MODE		0x4030
 #define   ARB_MODE_SWIZZLE_SNB	(1<<4)
 #define   ARB_MODE_SWIZZLE_IVB	(1<<5)
+#define GEN7_GFX_PEND_TLB0	0x4034
+#define GEN7_GFX_PEND_TLB1	0x4038
+/* L3, CVS, ZTLB, RCC, CASC LRA min, max values */
+#define GEN7_LRA_LIMITS_BASE	0x403C
+#define GEN7_LRA_LIMITS_REG_NUM	13
+#define GEN7_MEDIA_MAX_REQ_COUNT	0x4070
+#define GEN7_GFX_MAX_REQ_COUNT		0x4074
+
 #define GAMTARBMODE		0x04a08
 #define   ARB_MODE_BWGTLB_DISABLE (1<<9)
 #define   ARB_MODE_SWIZZLE_BDW	(1<<1)
@@ -823,6 +909,9 @@ enum punit_power_well {
 #define   RING_WAIT_I8XX	(1<<0) /* gen2, PRBx_HEAD */
 #define   RING_WAIT		(1<<11) /* gen3+, PRBx_CTL */
 #define   RING_WAIT_SEMAPHORE	(1<<10) /* gen6+ */
+
+#define GEN7_TLB_RD_ADDR	0x4700
+
 #if 0
 #define PRB0_TAIL	0x02030
 #define PRB0_HEAD	0x02034
@@ -949,6 +1038,8 @@ enum punit_power_well {
 
 #define VLV_DISPLAY_BASE 0x180000
 
+#define VLV_GU_CTL0	(VLV_DISPLAY_BASE + 0x2030)
+#define VLV_GU_CTL1	(VLV_DISPLAY_BASE + 0x2034)
 #define SCPD0		0x0209c /* 915+ only */
 #define IER		0x020a0
 #define IIR		0x020a4
@@ -956,6 +1047,7 @@ enum punit_power_well {
 #define ISR		0x020ac
 #define VLV_GUNIT_CLOCK_GATE	(VLV_DISPLAY_BASE + 0x2060)
 #define   GCFG_DIS		(1<<8)
+#define VLV_GUNIT_CLOCK_GATE2	(VLV_DISPLAY_BASE + 0x2064)
 #define VLV_IIR_RW	(VLV_DISPLAY_BASE + 0x2084)
 #define VLV_IER		(VLV_DISPLAY_BASE + 0x20a0)
 #define VLV_IIR		(VLV_DISPLAY_BASE + 0x20a4)
@@ -1124,24 +1216,43 @@ enum punit_power_well {
 
 /* These are all the "old" interrupts */
 #define ILK_BSD_USER_INTERRUPT				(1<<5)
+
+#define I915_PM_INTERRUPT				(1<<31)
+#define I915_ISP_INTERRUPT				(1<<22)
+#define I915_LPE_PIPE_B_INTERRUPT			(1<<21)
+#define I915_LPE_PIPE_A_INTERRUPT			(1<<20)
+#define I915_MIPIB_INTERRUPT				(1<<19)
+#define I915_MIPIA_INTERRUPT				(1<<18)
 #define I915_PIPE_CONTROL_NOTIFY_INTERRUPT		(1<<18)
 #define I915_DISPLAY_PORT_INTERRUPT			(1<<17)
+#define I915_DISPLAY_PIPE_C_HBLANK_INTERRUPT		(1<<16)
+#define I915_MASTER_ERROR_INTERRUPT			(1<<15)
 #define I915_RENDER_COMMAND_PARSER_ERROR_INTERRUPT	(1<<15)
+#define I915_DISPLAY_PIPE_B_HBLANK_INTERRUPT		(1<<14)
 #define I915_GMCH_THERMAL_SENSOR_EVENT_INTERRUPT	(1<<14) /* p-state */
+#define I915_DISPLAY_PIPE_A_HBLANK_INTERRUPT		(1<<13)
 #define I915_HWB_OOM_INTERRUPT				(1<<13)
+#define I915_LPE_PIPE_C_INTERRUPT			(1<<12)
 #define I915_SYNC_STATUS_INTERRUPT			(1<<12)
+#define I915_MISC_INTERRUPT				(1<<11)
 #define I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT	(1<<11)
+#define I915_DISPLAY_PIPE_C_VBLANK_INTERRUPT		(1<<10)
 #define I915_DISPLAY_PLANE_B_FLIP_PENDING_INTERRUPT	(1<<10)
+#define I915_DISPLAY_PIPE_C_EVENT_INTERRUPT		(1<<9)
 #define I915_OVERLAY_PLANE_FLIP_PENDING_INTERRUPT	(1<<9)
+#define I915_DISPLAY_PIPE_C_DPBM_INTERRUPT		(1<<8)
 #define I915_DISPLAY_PLANE_C_FLIP_PENDING_INTERRUPT	(1<<8)
 #define I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT		(1<<7)
 #define I915_DISPLAY_PIPE_A_EVENT_INTERRUPT		(1<<6)
 #define I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT		(1<<5)
 #define I915_DISPLAY_PIPE_B_EVENT_INTERRUPT		(1<<4)
+#define I915_DISPLAY_PIPE_A_DPBM_INTERRUPT		(1<<3)
+#define I915_DISPLAY_PIPE_B_DPBM_INTERRUPT		(1<<2)
 #define I915_DEBUG_INTERRUPT				(1<<2)
+#define I915_WINVALID_INTERRUPT				(1<<1)
 #define I915_USER_INTERRUPT				(1<<1)
 #define I915_ASLE_INTERRUPT				(1<<0)
-#define I915_BSD_USER_INTERRUPT				(1 << 25)
+#define I915_BSD_USER_INTERRUPT				(1<<25)
 
 #define GEN6_BSD_RNCID			0x12198
 
@@ -1373,10 +1484,23 @@ enum punit_power_well {
 #define   DPLL_LOCK_VLV			(1<<15)
 #define   DPLL_INTEGRATED_CRI_CLK_VLV	(1<<14)
 #define   DPLL_INTEGRATED_CLOCK_VLV	(1<<13)
+#define   DPLL_SSC_REF_CLOCK_CHV	(1<<13)
 #define   DPLL_PORTC_READY_MASK		(0xf << 4)
 #define   DPLL_PORTB_READY_MASK		(0xf)
 
 #define   DPLL_FPA01_P1_POST_DIV_MASK_I830	0x001f0000
+
+/* Additional CHV pll/phy registers */
+#define DPIO_PHY_STATUS			(VLV_DISPLAY_BASE + 0x6240)
+#define   DPLL_PORTD_READY_MASK		(0xf)
+#define DISPLAY_PHY_CONTROL (VLV_DISPLAY_BASE + 0x60100)
+#define   PHY_COM_LANE_RESET_DEASSERT(phy, val) \
+				((phy == DPIO_PHY0) ? (val | 1) : (val | 2))
+#define   PHY_COM_LANE_RESET_ASSERT(phy, val) \
+				((phy == DPIO_PHY0) ? (val & ~1) : (val & ~2))
+#define DISPLAY_PHY_STATUS (VLV_DISPLAY_BASE + 0x60104)
+#define   PHY_POWERGOOD(phy)	((phy == DPIO_PHY0) ? (1<<31) : (1<<30))
+
 /*
  * The i830 generation, in LVDS mode, defines P1 as the bit number set within
  * this field (only one bit may be set).
@@ -2386,6 +2510,10 @@ enum punit_power_well {
 #define   SDVO_PIPE_SEL_CPT(pipe)		((pipe) << 29)
 #define   SDVO_PIPE_SEL_MASK_CPT		(3 << 29)
 
+/* CHV SDVO/HDMI bits: */
+#define   SDVO_PIPE_SEL_CHV(pipe)		((pipe) << 24)
+#define   SDVO_PIPE_SEL_MASK_CHV		(3 << 24)
+
 
 /* DVO port control */
 #define DVOA			0x61120
@@ -3143,6 +3271,8 @@ enum punit_power_well {
 #define   DP_PORT_EN			(1 << 31)
 #define   DP_PIPEB_SELECT		(1 << 30)
 #define   DP_PIPE_MASK			(1 << 30)
+#define   DP_PIPE_SELECT_CHV(pipe)	((pipe) << 16)
+#define   DP_PIPE_MASK_CHV		(3 << 16)
 
 /* Link training mode - select a suitable mode for each stage */
 #define   DP_LINK_TRAIN_PAT_1		(0 << 28)
@@ -3377,6 +3507,7 @@ enum punit_power_well {
 #define   SPRITE1_FLIP_DONE_INT_EN_VLV		(1UL<<30)
 #define   PIPE_CRC_ERROR_ENABLE			(1UL<<29)
 #define   PIPE_CRC_DONE_ENABLE			(1UL<<28)
+#define   PERF_COUNTER2_INTERRUPT_EN		(1UL<<27)
 #define   PIPE_GMBUS_EVENT_ENABLE		(1UL<<27)
 #define   PLANE_FLIP_DONE_INT_EN_VLV		(1UL<<26)
 #define   PIPE_HOTPLUG_INTERRUPT_ENABLE		(1UL<<26)
@@ -3388,8 +3519,10 @@ enum punit_power_well {
 #define   PIPE_ODD_FIELD_INTERRUPT_ENABLE	(1UL<<21)
 #define   PIPE_EVEN_FIELD_INTERRUPT_ENABLE	(1UL<<20)
 #define   PIPE_B_PSR_INTERRUPT_ENABLE_VLV	(1UL<<19)
+#define   PERF_COUNTER_INTERRUPT_EN		(1UL<<19)
 #define   PIPE_HOTPLUG_TV_INTERRUPT_ENABLE	(1UL<<18) /* pre-965 */
 #define   PIPE_START_VBLANK_INTERRUPT_ENABLE	(1UL<<18) /* 965 or later */
+#define   PIPE_FRAMESTART_INTERRUPT_ENABLE	(1UL<<17)
 #define   PIPE_VBLANK_INTERRUPT_ENABLE		(1UL<<17)
 #define   PIPEA_HBLANK_INT_EN_VLV		(1UL<<16)
 #define   PIPE_OVERLAY_UPDATED_ENABLE		(1UL<<16)
@@ -3397,6 +3530,7 @@ enum punit_power_well {
 #define   SPRITE0_FLIP_DONE_INT_STATUS_VLV	(1UL<<14)
 #define   PIPE_CRC_ERROR_INTERRUPT_STATUS	(1UL<<13)
 #define   PIPE_CRC_DONE_INTERRUPT_STATUS	(1UL<<12)
+#define   PERF_COUNTER2_INTERRUPT_STATUS	(1UL<<11)
 #define   PIPE_GMBUS_INTERRUPT_STATUS		(1UL<<11)
 #define   PLANE_FLIP_DONE_INT_STATUS_VLV	(1UL<<10)
 #define   PIPE_HOTPLUG_INTERRUPT_STATUS		(1UL<<10)
@@ -3405,12 +3539,16 @@ enum punit_power_well {
 #define   PIPE_DPST_EVENT_STATUS		(1UL<<7)
 #define   PIPE_LEGACY_BLC_EVENT_STATUS		(1UL<<6)
 #define   PIPE_A_PSR_STATUS_VLV			(1UL<<6)
+#define   PIPE_LEGACY_BLC_EVENT_STATUS		(1UL<<6)
 #define   PIPE_ODD_FIELD_INTERRUPT_STATUS	(1UL<<5)
 #define   PIPE_EVEN_FIELD_INTERRUPT_STATUS	(1UL<<4)
 #define   PIPE_B_PSR_STATUS_VLV			(1UL<<3)
+#define   PERF_COUNTER_INTERRUPT_STATUS		(1UL<<3)
 #define   PIPE_HOTPLUG_TV_INTERRUPT_STATUS	(1UL<<2) /* pre-965 */
 #define   PIPE_START_VBLANK_INTERRUPT_STATUS	(1UL<<2) /* 965 or later */
+#define   PIPE_FRAMESTART_INTERRUPT_STATUS	(1UL<<1)
 #define   PIPE_VBLANK_INTERRUPT_STATUS		(1UL<<1)
+#define   PIPE_HBLANK_INT_STATUS		(1UL<<0)
 #define   PIPE_OVERLAY_UPDATED_STATUS		(1UL<<0)
 
 #define PIPESTAT_INT_ENABLE_MASK		0x7fff0000
@@ -3456,14 +3594,25 @@ enum punit_power_well {
 #define   SPRITED_FLIP_DONE_INT_EN		(1<<26)
 #define   SPRITEC_FLIP_DONE_INT_EN		(1<<25)
 #define   PLANEB_FLIP_DONE_INT_EN		(1<<24)
+#define   PIPE_PSR_INT_EN			(1<<22)
 #define   PIPEA_LINE_COMPARE_INT_EN		(1<<21)
 #define   PIPEA_HLINE_INT_EN			(1<<20)
 #define   PIPEA_VBLANK_INT_EN			(1<<19)
 #define   SPRITEB_FLIP_DONE_INT_EN		(1<<18)
 #define   SPRITEA_FLIP_DONE_INT_EN		(1<<17)
 #define   PLANEA_FLIPDONE_INT_EN		(1<<16)
+#define   PIPEC_LINE_COMPARE_INT_EN		(1<<13)
+#define   PIPEC_HLINE_INT_EN			(1<<12)
+#define   PIPEC_VBLANK_INT_EN			(1<<11)
+#define   SPRITEF_FLIPDONE_INT_EN		(1<<10)
+#define   SPRITEE_FLIPDONE_INT_EN		(1<<9)
+#define   PLANEC_FLIPDONE_INT_EN		(1<<8)
 
-#define DPINVGTT				(VLV_DISPLAY_BASE + 0x7002c) /* VLV only */
+#define DPINVGTT				(VLV_DISPLAY_BASE + 0x7002c) /* VLV/CHV only */
+#define   SPRITEF_INVALID_GTT_INT_EN		(1<<27)
+#define   SPRITEE_INVALID_GTT_INT_EN		(1<<26)
+#define   PLANEC_INVALID_GTT_INT_EN		(1<<25)
+#define   CURSORC_INVALID_GTT_INT_EN		(1<<24)
 #define   CURSORB_INVALID_GTT_INT_EN		(1<<23)
 #define   CURSORA_INVALID_GTT_INT_EN		(1<<22)
 #define   SPRITED_INVALID_GTT_INT_EN		(1<<21)
@@ -3473,6 +3622,11 @@ enum punit_power_well {
 #define   SPRITEA_INVALID_GTT_INT_EN		(1<<17)
 #define   PLANEA_INVALID_GTT_INT_EN		(1<<16)
 #define   DPINVGTT_EN_MASK			0xff0000
+#define   DPINVGTT_EN_MASK_CHV			0xfff0000
+#define   SPRITEF_INVALID_GTT_STATUS		(1<<11)
+#define   SPRITEE_INVALID_GTT_STATUS		(1<<10)
+#define   PLANEC_INVALID_GTT_STATUS		(1<<9)
+#define   CURSORC_INVALID_GTT_STATUS		(1<<8)
 #define   CURSORB_INVALID_GTT_STATUS		(1<<7)
 #define   CURSORA_INVALID_GTT_STATUS		(1<<6)
 #define   SPRITED_INVALID_GTT_STATUS		(1<<5)
@@ -3482,6 +3636,7 @@ enum punit_power_well {
 #define   SPRITEA_INVALID_GTT_STATUS		(1<<1)
 #define   PLANEA_INVALID_GTT_STATUS		(1<<0)
 #define   DPINVGTT_STATUS_MASK			0xff
+#define   DPINVGTT_STATUS_MASK_CHV		0xfff
 
 #define DSPARB			0x70030
 #define   DSPARB_CSTART_MASK	(0x7f << 7)
@@ -3521,14 +3676,43 @@ enum punit_power_well {
 #define DDL_CURSORA_PRECISION_32	(1<<31)
 #define DDL_CURSORA_PRECISION_16	(0<<31)
 #define DDL_CURSORA_SHIFT		24
+#define DDL_SPRITEB_PRECISION_32	(1<<23)
+#define DDL_SPRITEB_PRECISION_16	(0<<23)
+#define DDL_SPRITEB_SHIFT		16
+#define DDL_SPRITEA_PRECISION_32	(1<<15)
+#define DDL_SPRITEA_PRECISION_16	(0<<15)
+#define DDL_SPRITEA_SHIFT		8
 #define DDL_PLANEA_PRECISION_32		(1<<7)
 #define DDL_PLANEA_PRECISION_16		(0<<7)
+#define DDL_PLANEA_SHIFT		0
+
 #define VLV_DDL2			(VLV_DISPLAY_BASE + 0x70054)
 #define DDL_CURSORB_PRECISION_32	(1<<31)
 #define DDL_CURSORB_PRECISION_16	(0<<31)
 #define DDL_CURSORB_SHIFT		24
+#define DDL_SPRITED_PRECISION_32	(1<<23)
+#define DDL_SPRITED_PRECISION_16	(0<<23)
+#define DDL_SPRITED_SHIFT		16
+#define DDL_SPRITEC_PRECISION_32	(1<<15)
+#define DDL_SPRITEC_PRECISION_16	(0<<15)
+#define DDL_SPRITEC_SHIFT		8
 #define DDL_PLANEB_PRECISION_32		(1<<7)
 #define DDL_PLANEB_PRECISION_16		(0<<7)
+#define DDL_PLANEB_SHIFT		0
+
+#define VLV_DDL3			(VLV_DISPLAY_BASE + 0x70058)
+#define DDL_CURSORC_PRECISION_32	(1<<31)
+#define DDL_CURSORC_PRECISION_16	(0<<31)
+#define DDL_CURSORC_SHIFT		24
+#define DDL_SPRITEF_PRECISION_32	(1<<23)
+#define DDL_SPRITEF_PRECISION_16	(0<<23)
+#define DDL_SPRITEF_SHIFT		16
+#define DDL_SPRITEE_PRECISION_32	(1<<15)
+#define DDL_SPRITEE_PRECISION_16	(0<<15)
+#define DDL_SPRITEE_SHIFT		8
+#define DDL_PLANEC_PRECISION_32		(1<<7)
+#define DDL_PLANEC_PRECISION_16		(0<<7)
+#define DDL_PLANEC_SHIFT		0
 
 /* FIFO watermark sizes etc */
 #define G4X_FIFO_LINE_SIZE	64
@@ -4194,6 +4378,7 @@ enum punit_power_well {
 #define  GEN8_DE_PIPE_A_IRQ		(1<<16)
 #define  GEN8_DE_PIPE_IRQ(pipe)		(1<<(16+pipe))
 #define  GEN8_GT_VECS_IRQ		(1<<6)
+#define  GEN8_GT_PM_IRQ			(1<<4)
 #define  GEN8_GT_VCS2_IRQ		(1<<3)
 #define  GEN8_GT_VCS1_IRQ		(1<<2)
 #define  GEN8_GT_BCS_IRQ		(1<<1)
@@ -4989,6 +5174,8 @@ enum punit_power_well {
 
 #define  EDP_LINK_TRAIN_VOL_EMP_MASK_IVB	(0x3f<<22)
 
+#define  VLV_PMWGICZ				0x1300a4
+
 #define  FORCEWAKE				0xA18C
 #define  FORCEWAKE_VLV				0x1300b0
 #define  FORCEWAKE_ACK_VLV			0x1300b4
@@ -5012,6 +5199,7 @@ enum punit_power_well {
 #define  FORCEWAKE_MT_ACK			0x130040
 #define  ECOBUS					0xa180
 #define    FORCEWAKE_MT_ENABLE			(1<<5)
+#define  VLV_SPAREG2H				0xA194
 
 #define  GTFIFODBG				0x120000
 #define    GT_FIFO_SBDROPERR			(1<<6)
@@ -5041,12 +5229,19 @@ enum punit_power_well {
 # define GEN6_RCPBUNIT_CLOCK_GATE_DISABLE		(1 << 12)
 # define GEN6_RCCUNIT_CLOCK_GATE_DISABLE		(1 << 11)
 
+#define GEN6_UCGCTL3				0x9408
+
 #define GEN7_UCGCTL4				0x940c
 #define  GEN7_L3BANK2X_CLOCK_GATE_DISABLE	(1<<25)
+
+#define GEN6_RCGCTL1				0x9410
+#define GEN6_RCGCTL2				0x9414
+#define GEN6_RSTCTL				0x9420
 
 #define GEN8_UCGCTL6				0x9430
 #define   GEN8_SDEUNIT_CLOCK_GATE_DISABLE	(1<<14)
 
+#define GEN6_GFXPAUSE				0xA000
 #define GEN6_RPNSWREQ				0xA008
 #define   GEN6_TURBO_DISABLE			(1<<31)
 #define   GEN6_FREQUENCY(x)			((x)<<25)
@@ -5099,6 +5294,9 @@ enum punit_power_well {
 #define GEN6_RP_UP_EI				0xA068
 #define GEN6_RP_DOWN_EI				0xA06C
 #define GEN6_RP_IDLE_HYSTERSIS			0xA070
+#define GEN6_RPDEUHWTC				0xA080
+#define GEN6_RPDEUC				0xA084
+#define GEN6_RPDEUCSW				0xA088
 #define GEN6_RC_STATE				0xA094
 #define GEN6_RC1_WAKE_RATE_LIMIT		0xA098
 #define GEN6_RC6_WAKE_RATE_LIMIT		0xA09C
@@ -5106,11 +5304,15 @@ enum punit_power_well {
 #define GEN6_RC_EVALUATION_INTERVAL		0xA0A8
 #define GEN6_RC_IDLE_HYSTERSIS			0xA0AC
 #define GEN6_RC_SLEEP				0xA0B0
+#define GEN6_RCUBMABDTMR			0xA0B0
 #define GEN6_RC1e_THRESHOLD			0xA0B4
 #define GEN6_RC6_THRESHOLD			0xA0B8
 #define GEN6_RC6p_THRESHOLD			0xA0BC
+#define VLV_RCEDATA				0xA0BC
 #define GEN6_RC6pp_THRESHOLD			0xA0C0
 #define GEN6_PMINTRMSK				0xA168
+#define GEN8_PMINTR_REDIRECT_TO_NON_DISP	(1<<31)
+#define VLV_PWRDWNUPCTL				0xA294
 
 #define GEN6_PMISR				0x44020
 #define GEN6_PMIMR				0x44024 /* rps_lock */
@@ -5126,6 +5328,9 @@ enum punit_power_well {
 #define  GEN6_PM_RPS_EVENTS			(GEN6_PM_RP_UP_THRESHOLD | \
 						 GEN6_PM_RP_DOWN_THRESHOLD | \
 						 GEN6_PM_RP_DOWN_TIMEOUT)
+
+#define GEN7_GT_SCRATCH_BASE			0x4F100
+#define GEN7_GT_SCRATCH_REG_NUM			8
 
 #define VLV_GTLC_SURVIVABILITY_REG              0x130098
 #define VLV_GFX_CLK_STATUS_BIT			(1<<3)

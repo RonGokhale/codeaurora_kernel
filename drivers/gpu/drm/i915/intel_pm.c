@@ -487,7 +487,7 @@ void intel_update_fbc(struct drm_device *dev)
 	 *   - new fb is too large to fit in compressed buffer
 	 *   - going to an unsupported config (interlace, pixel multiply, etc.)
 	 */
-	list_for_each_entry(tmp_crtc, &dev->mode_config.crtc_list, head) {
+	for_each_crtc(dev, tmp_crtc) {
 		if (intel_crtc_active(tmp_crtc) &&
 		    to_intel_crtc(tmp_crtc)->primary_enabled) {
 			if (crtc) {
@@ -1010,7 +1010,7 @@ static struct drm_crtc *single_enabled_crtc(struct drm_device *dev)
 {
 	struct drm_crtc *crtc, *enabled = NULL;
 
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+	for_each_crtc(dev, crtc) {
 		if (intel_crtc_active(crtc)) {
 			if (enabled)
 				return NULL;
@@ -2077,7 +2077,7 @@ static void intel_fixup_cur_wm_latency(struct drm_device *dev, uint16_t wm[5])
 		wm[3] *= 2;
 }
 
-static int ilk_wm_max_level(const struct drm_device *dev)
+int ilk_wm_max_level(const struct drm_device *dev)
 {
 	/* how many WM levels are we expecting */
 	if (IS_HASWELL(dev) || IS_BROADWELL(dev))
@@ -2170,7 +2170,7 @@ static void ilk_compute_wm_config(struct drm_device *dev,
 	struct intel_crtc *intel_crtc;
 
 	/* Compute the currently _active_ config */
-	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list, base.head) {
+	for_each_intel_crtc(dev, intel_crtc) {
 		const struct intel_pipe_wm *wm = &intel_crtc->wm.active;
 
 		if (!wm->pipe_enabled)
@@ -2254,7 +2254,7 @@ static void ilk_merge_wm_level(struct drm_device *dev,
 
 	ret_wm->enable = true;
 
-	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list, base.head) {
+	for_each_intel_crtc(dev, intel_crtc) {
 		const struct intel_pipe_wm *active = &intel_crtc->wm.active;
 		const struct intel_wm_level *wm = &active->wm[level];
 
@@ -2400,7 +2400,7 @@ static void ilk_compute_wm_results(struct drm_device *dev,
 	}
 
 	/* LP0 register values */
-	list_for_each_entry(intel_crtc, &dev->mode_config.crtc_list, base.head) {
+	for_each_intel_crtc(dev, intel_crtc) {
 		enum pipe pipe = intel_crtc->pipe;
 		const struct intel_wm_level *r =
 			&intel_crtc->wm.active.wm[0];
@@ -2747,7 +2747,7 @@ void ilk_wm_get_hw_state(struct drm_device *dev)
 	struct ilk_wm_values *hw = &dev_priv->wm.hw;
 	struct drm_crtc *crtc;
 
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head)
+	for_each_crtc(dev, crtc)
 		ilk_pipe_wm_get_hw_state(crtc);
 
 	hw->wm_lp[0] = I915_READ(WM1_LP_ILK);
@@ -3114,6 +3114,9 @@ static u32 gen6_rps_pm_mask(struct drm_i915_private *dev_priv, u8 val)
 	if (INTEL_INFO(dev_priv->dev)->gen <= 7 && !IS_HASWELL(dev_priv->dev))
 		mask |= GEN6_PM_RP_UP_EI_EXPIRED;
 
+	if (IS_GEN8(dev_priv->dev))
+		mask |= GEN8_PMINTR_REDIRECT_TO_NON_DISP;
+
 	return ~mask;
 }
 
@@ -3246,6 +3249,26 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	trace_intel_gpu_freq_change(vlv_gpu_freq(dev_priv, val));
 }
 
+static void gen8_disable_rps_interrupts(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	I915_WRITE(GEN6_PMINTRMSK, ~GEN8_PMINTR_REDIRECT_TO_NON_DISP);
+	I915_WRITE(GEN8_GT_IER(2), I915_READ(GEN8_GT_IER(2)) &
+				   ~dev_priv->pm_rps_events);
+	/* Complete PM interrupt masking here doesn't race with the rps work
+	 * item again unmasking PM interrupts because that is using a different
+	 * register (GEN8_GT_IMR(2)) to mask PM interrupts. The only risk is in
+	 * leaving stale bits in GEN8_GT_IIR(2) and GEN8_GT_IMR(2) which
+	 * gen8_enable_rps will clean up. */
+
+	spin_lock_irq(&dev_priv->irq_lock);
+	dev_priv->rps.pm_iir = 0;
+	spin_unlock_irq(&dev_priv->irq_lock);
+
+	I915_WRITE(GEN8_GT_IIR(2), dev_priv->pm_rps_events);
+}
+
 static void gen6_disable_rps_interrupts(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -3272,7 +3295,10 @@ static void gen6_disable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
 
-	gen6_disable_rps_interrupts(dev);
+	if (IS_BROADWELL(dev))
+		gen8_disable_rps_interrupts(dev);
+	else
+		gen6_disable_rps_interrupts(dev);
 }
 
 static void valleyview_disable_rps(struct drm_device *dev)
@@ -3308,10 +3334,6 @@ static int sanitize_rc6_option(const struct drm_device *dev, int enable_rc6)
 	if (INTEL_INFO(dev)->gen == 5 && !IS_IRONLAKE_M(dev))
 		return 0;
 
-	/* Disable RC6 on Broadwell for now */
-	if (IS_BROADWELL(dev))
-		return 0;
-
 	/* Respect the kernel parameter if it is set */
 	if (enable_rc6 >= 0) {
 		int mask;
@@ -3324,7 +3346,7 @@ static int sanitize_rc6_option(const struct drm_device *dev, int enable_rc6)
 
 		if ((enable_rc6 & mask) != enable_rc6)
 			DRM_INFO("Adjusting RC6 mask to %d (requested %d, valid %d)\n",
-				 enable_rc6, enable_rc6 & mask, mask);
+				 enable_rc6 & mask, enable_rc6, mask);
 
 		return enable_rc6 & mask;
 	}
@@ -3342,6 +3364,17 @@ static int sanitize_rc6_option(const struct drm_device *dev, int enable_rc6)
 int intel_enable_rc6(const struct drm_device *dev)
 {
 	return i915.enable_rc6;
+}
+
+static void gen8_enable_rps_interrupts(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	spin_lock_irq(&dev_priv->irq_lock);
+	WARN_ON(dev_priv->rps.pm_iir);
+	bdw_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
+	I915_WRITE(GEN8_GT_IIR(2), dev_priv->pm_rps_events);
+	spin_unlock_irq(&dev_priv->irq_lock);
 }
 
 static void gen6_enable_rps_interrupts(struct drm_device *dev)
@@ -3446,7 +3479,7 @@ static void gen8_enable_rps(struct drm_device *dev)
 
 	gen6_set_rps(dev, (I915_READ(GEN6_GT_PERF_STATUS) & 0xff00) >> 8);
 
-	gen6_enable_rps_interrupts(dev);
+	gen8_enable_rps_interrupts(dev);
 
 	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -4608,7 +4641,7 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 	if (IS_IRONLAKE_M(dev)) {
 		ironlake_disable_drps(dev);
 		ironlake_disable_rc6(dev);
-	} else if (IS_GEN6(dev) || IS_GEN7(dev)) {
+	} else if (IS_GEN6(dev) || IS_GEN7(dev) || IS_BROADWELL(dev)) {
 		cancel_delayed_work_sync(&dev_priv->rps.delayed_resume_work);
 		cancel_work_sync(&dev_priv->rps.work);
 		mutex_lock(&dev_priv->rps.hw_lock);
@@ -4655,7 +4688,7 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 		ironlake_enable_rc6(dev);
 		intel_init_emon(dev);
 		mutex_unlock(&dev->struct_mutex);
-	} else if (IS_GEN6(dev) || IS_GEN7(dev)) {
+	} else if (IS_GEN6(dev) || IS_GEN7(dev) || IS_BROADWELL(dev)) {
 		/*
 		 * PCU communication is slow and this doesn't need to be
 		 * done at any specific time, so do this out of our fast path
@@ -5333,6 +5366,15 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 	 * in the reporting of vblank events.
 	 */
 	I915_WRITE(VLV_GUNIT_CLOCK_GATE, GCFG_DIS);
+}
+
+static void cherryview_init_clock_gating(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
+
+	I915_WRITE(MI_ARB_VLV, MI_ARB_DISPLAY_TRICKLE_FEED_DISABLE);
 }
 
 static void g4x_init_clock_gating(struct drm_device *dev)
@@ -6270,6 +6312,10 @@ void intel_init_pm(struct drm_device *dev)
 			dev_priv->display.init_clock_gating = haswell_init_clock_gating;
 		else if (INTEL_INFO(dev)->gen == 8)
 			dev_priv->display.init_clock_gating = gen8_init_clock_gating;
+	} else if (IS_CHERRYVIEW(dev)) {
+		dev_priv->display.update_wm = valleyview_update_wm;
+		dev_priv->display.init_clock_gating =
+			cherryview_init_clock_gating;
 	} else if (IS_VALLEYVIEW(dev)) {
 		dev_priv->display.update_wm = valleyview_update_wm;
 		dev_priv->display.init_clock_gating =
