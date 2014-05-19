@@ -5,14 +5,31 @@
 # error "please don't include this file directly"
 #endif
 
+#ifdef CONFIG_S390_TICKET_SPINLOCK
+
+typedef struct arch_spinlock {
+	union {
+		unsigned int lock;
+		struct __raw_tickets {
+			u16 owner;
+			u8 tail;
+			u8 head;
+		} tickets;
+	};
+} arch_spinlock_t;
+
+#else /* CONFIG_S390_TICKET_SPINLOCK */
+
 typedef struct {
-	volatile unsigned int owner_cpu;
+	unsigned int lock;
 } __attribute__ ((aligned (4))) arch_spinlock_t;
 
-#define __ARCH_SPIN_LOCK_UNLOCKED	{ 0 }
+#endif /* CONFIG_S390_TICKET_SPINLOCK */
+
+#define __ARCH_SPIN_LOCK_UNLOCKED { .lock = 0, }
 
 typedef struct {
-	volatile unsigned int lock;
+	unsigned int lock;
 } arch_rwlock_t;
 
 #define __ARCH_RW_LOCK_UNLOCKED		{ 0 }
