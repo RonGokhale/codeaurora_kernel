@@ -289,55 +289,6 @@ u32 rtw_free_uc_swdec_pending_queue(struct adapter *adapter)
 	return cnt;
 }
 
-int rtw_enqueue_recvbuf_to_head(struct recv_buf *precvbuf, struct __queue *queue)
-{
-	spin_lock_bh(&queue->lock);
-
-	rtw_list_delete(&precvbuf->list);
-	rtw_list_insert_head(&precvbuf->list, get_list_head(queue));
-
-	spin_unlock_bh(&queue->lock);
-
-	return _SUCCESS;
-}
-
-int rtw_enqueue_recvbuf(struct recv_buf *precvbuf, struct __queue *queue)
-{
-	unsigned long irqL;
-	spin_lock_irqsave(&queue->lock, irqL);
-
-	rtw_list_delete(&precvbuf->list);
-
-	rtw_list_insert_tail(&precvbuf->list, get_list_head(queue));
-	spin_unlock_irqrestore(&queue->lock, irqL);
-	return _SUCCESS;
-}
-
-struct recv_buf *rtw_dequeue_recvbuf (struct __queue *queue)
-{
-	unsigned long irqL;
-	struct recv_buf *precvbuf;
-	struct list_head *plist, *phead;
-
-	spin_lock_irqsave(&queue->lock, irqL);
-
-	if (_rtw_queue_empty(queue)) {
-		precvbuf = NULL;
-	} else {
-		phead = get_list_head(queue);
-
-		plist = phead->next;
-
-		precvbuf = container_of(plist, struct recv_buf, list);
-
-		rtw_list_delete(&precvbuf->list);
-	}
-
-	spin_unlock_irqrestore(&queue->lock, irqL);
-
-	return precvbuf;
-}
-
 static int recvframe_chkmic(struct adapter *adapter,
 			    struct recv_frame *precvframe)
 {
@@ -1871,7 +1822,7 @@ static int recv_indicatepkts_in_order(struct adapter *padapter, struct recv_reor
 			return true;
 
 		prhdr = container_of(plist, struct recv_frame, list);
-	        pattrib = &prhdr->attrib;
+		pattrib = &prhdr->attrib;
 		preorder_ctrl->indicate_seq = pattrib->seq_num;
 	}
 

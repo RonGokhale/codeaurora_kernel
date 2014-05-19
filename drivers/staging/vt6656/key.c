@@ -39,7 +39,6 @@
 #include "mac.h"
 #include "tmacro.h"
 #include "key.h"
-#include "rndis.h"
 #include "control.h"
 
 static int          msglevel                =MSG_LEVEL_INFO;
@@ -97,7 +96,6 @@ void KeyvInitTable(struct vnt_private *pDevice, PSKeyManagement pTable)
 	int i, jj;
 	u8 pbyData[MAX_KEY_TABLE+1];
 
-    spin_lock_irq(&pDevice->lock);
     for (i=0;i<MAX_KEY_TABLE;i++) {
         pTable->KeyTable[i].bInUse = false;
         pTable->KeyTable[i].PairwiseKey.bKeyValid = false;
@@ -121,8 +119,6 @@ void KeyvInitTable(struct vnt_private *pDevice, PSKeyManagement pTable)
                         11,
                         pbyData
                         );
-
-    spin_unlock_irq(&pDevice->lock);
 
     return;
 }

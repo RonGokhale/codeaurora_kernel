@@ -698,9 +698,9 @@ int vt6656_hostap_ioctl(struct vnt_private *pDevice, struct iw_point *p)
 	switch (param->cmd) {
 	case VIAWGET_HOSTAPD_SET_ENCRYPTION:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_SET_ENCRYPTION \n");
-        spin_lock_irq(&pDevice->lock);
+
 		ret = hostap_set_encryption(pDevice, param, p->length);
-        spin_unlock_irq(&pDevice->lock);
+
 		break;
 	case VIAWGET_HOSTAPD_GET_ENCRYPTION:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_GET_ENCRYPTION \n");
@@ -742,7 +742,8 @@ int vt6656_hostap_ioctl(struct vnt_private *pDevice, struct iw_point *p)
 
 	case VIAWGET_HOSTAPD_MLME:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_MLME \n");
-	    return -EOPNOTSUPP;
+	    ret = -EOPNOTSUPP;
+	    goto out;
 
 	case VIAWGET_HOSTAPD_SET_GENERIC_ELEMENT:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_SET_GENERIC_ELEMENT \n");
@@ -751,7 +752,8 @@ int vt6656_hostap_ioctl(struct vnt_private *pDevice, struct iw_point *p)
 
 	case VIAWGET_HOSTAPD_SCAN_REQ:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_SCAN_REQ \n");
-	    return -EOPNOTSUPP;
+	    ret = -EOPNOTSUPP;
+	    goto out;
 
 	case VIAWGET_HOSTAPD_STA_CLEAR_STATS:
 	    DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "VIAWGET_HOSTAPD_STA_CLEAR_STATS \n");

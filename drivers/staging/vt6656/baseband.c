@@ -40,10 +40,8 @@
 #include "mac.h"
 #include "baseband.h"
 #include "rf.h"
-#include "srom.h"
 #include "control.h"
 #include "datarate.h"
-#include "rndis.h"
 
 static int          msglevel                =MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
@@ -739,7 +737,6 @@ void BBvCalculateParameter(struct vnt_private *pDevice, u32 cbFrameLength,
 	u32 cbTmp;
 	int bExtBit;
 	u8 byPreambleType = pDevice->byPreambleType;
-	int bCCK = pDevice->bCCK;
 
     cbBitCount = cbFrameLength * 8;
     bExtBit = false;
@@ -759,8 +756,6 @@ void BBvCalculateParameter(struct vnt_private *pDevice, u32 cbFrameLength,
         break;
 
     case RATE_5M :
-        if (bCCK == false)
-            cbBitCount ++;
         cbUsCount = (cbBitCount * 10) / 55;
         cbTmp = (cbUsCount * 55) / 10;
         if (cbTmp != cbBitCount)
@@ -772,9 +767,6 @@ void BBvCalculateParameter(struct vnt_private *pDevice, u32 cbFrameLength,
         break;
 
     case RATE_11M :
-
-        if (bCCK == false)
-            cbBitCount ++;
         cbUsCount = cbBitCount / 11;
         cbTmp = cbUsCount * 11;
         if (cbTmp != cbBitCount) {

@@ -79,7 +79,6 @@
 #include "rf.h"
 #include "iowpa.h"
 #include "control.h"
-#include "rndis.h"
 
 static int msglevel = MSG_LEVEL_INFO;
 //static int          msglevel                =MSG_LEVEL_DEBUG;
@@ -2572,7 +2571,6 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
     }
 
     // Init the BSS informations
-    pDevice->bCCK = true;
     pDevice->bProtectMode = false;
     MACvDisableProtectMD(pDevice);
     pDevice->bBarkerPreambleMd = false;
@@ -2655,8 +2653,7 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
     pMgmt->uCurrChannel = pCurr->uChannel;
     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "<----s_bSynchBSS Set Channel [%d]\n", pCurr->uChannel);
 
-    if ((pDevice->bUpdateBBVGA) &&
-        (pDevice->byBBVGACurrent != pDevice->abyBBVGA[0])) {
+    if (pDevice->byBBVGACurrent != pDevice->abyBBVGA[0]) {
         pDevice->byBBVGACurrent = pDevice->abyBBVGA[0];
         BBvSetVGAGainOffset(pDevice, pDevice->byBBVGACurrent);
         BBvSetShortSlotTime(pDevice);
@@ -4058,6 +4055,7 @@ int bMgrPrepareBeaconToSend(struct vnt_private *pDevice,
 	struct vnt_manager *pMgmt)
 {
 	struct vnt_tx_mgmt *pTxPacket;
+	unsigned long flags;
 
 //    pDevice->bBeaconBufReady = false;
     if (pDevice->bEncryptionEnable || pDevice->bEnable8021x){
@@ -4084,8 +4082,13 @@ int bMgrPrepareBeaconToSend(struct vnt_private *pDevice,
         (pMgmt->abyCurrBSSID[0] == 0))
         return false;
 
-    csBeacon_xmit(pDevice, pTxPacket);
-    MACvRegBitsOn(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
+	spin_lock_irqsave(&pDevice->lock, flags);
+
+	csBeacon_xmit(pDevice, pTxPacket);
+
+	spin_unlock_irqrestore(&pDevice->lock, flags);
+
+	MACvRegBitsOn(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
 
     return true;
 }

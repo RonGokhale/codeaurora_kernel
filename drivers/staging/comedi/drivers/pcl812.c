@@ -761,7 +761,6 @@ static int pcl812_ai_cmdtest(struct comedi_device *dev,
 		err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
 
 	err |= cfc_check_trigger_arg_min(&cmd->chanlist_len, 1);
-	err |= cfc_check_trigger_arg_max(&cmd->chanlist_len, MAX_CHANLIST_LEN);
 	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
 
 	if (cmd->stop_src == TRIG_COUNT)
@@ -811,8 +810,9 @@ static int pcl812_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 				devpriv->ai_dma = 0;
 				break;
 			}
-	} else
+	} else {
 		devpriv->ai_dma = 0;
+	}
 
 	devpriv->ai_act_scan = 0;
 	devpriv->ai_poll_ptr = 0;
