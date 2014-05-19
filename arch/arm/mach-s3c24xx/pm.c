@@ -66,25 +66,7 @@ static struct sleep_save core_save[] = {
 	SAVE_ITEM(S3C2410_BANKCON3),
 	SAVE_ITEM(S3C2410_BANKCON4),
 	SAVE_ITEM(S3C2410_BANKCON5),
-
-#ifdef CONFIG_SAMSUNG_CLOCK
-	SAVE_ITEM(S3C2410_LOCKTIME),
-	SAVE_ITEM(S3C2410_CLKCON),
-#ifndef CONFIG_CPU_FREQ
-	SAVE_ITEM(S3C2410_CLKDIVN),
-	SAVE_ITEM(S3C2410_MPLLCON),
-	SAVE_ITEM(S3C2410_REFRESH),
-#endif
-	SAVE_ITEM(S3C2410_UPLLCON),
-	SAVE_ITEM(S3C2410_CLKSLOW),
-#endif /* CONFIG_SAMSUNG_CLOCK */
 };
-
-#ifdef CONFIG_SAMSUNG_CLOCK
-static struct sleep_save misc_save[] = {
-	SAVE_ITEM(S3C2410_DCLKCON),
-};
-#endif
 
 /* s3c_pm_check_resume_pin
  *
@@ -143,16 +125,10 @@ void s3c_pm_configure_extint(void)
 void s3c_pm_restore_core(void)
 {
 	s3c_pm_do_restore_core(core_save, ARRAY_SIZE(core_save));
-#ifdef CONFIG_SAMSUNG_CLOCK
-	s3c_pm_do_restore(misc_save, ARRAY_SIZE(misc_save));
-#endif
 }
 
 void s3c_pm_save_core(void)
 {
-#ifdef CONFIG_SAMSUNG_CLOCK
-	s3c_pm_do_save(misc_save, ARRAY_SIZE(misc_save));
-#endif
 	s3c_pm_do_save(core_save, ARRAY_SIZE(core_save));
 }
 
