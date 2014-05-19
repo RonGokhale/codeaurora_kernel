@@ -179,8 +179,7 @@ void sgdma_clear_txirq(struct altera_tse_private *priv)
  */
 int sgdma_tx_buffer(struct altera_tse_private *priv, struct tse_buffer *buffer)
 {
-	struct sgdma_descrip __iomem *descbase =
-		(struct sgdma_descrip __iomem *)priv->tx_dma_desc;
+	struct sgdma_descrip __iomem *descbase = priv->tx_dma_desc;
 
 	struct sgdma_descrip __iomem *cdesc = &descbase[0];
 	struct sgdma_descrip __iomem *ndesc = &descbase[1];
@@ -240,8 +239,7 @@ void sgdma_add_rx_desc(struct altera_tse_private *priv,
  */
 u32 sgdma_rx_status(struct altera_tse_private *priv)
 {
-	struct sgdma_descrip __iomem *base =
-		(struct sgdma_descrip __iomem *)priv->rx_dma_desc;
+	struct sgdma_descrip __iomem *base = priv->rx_dma_desc;
 	struct sgdma_descrip __iomem *desc = NULL;
 	struct tse_buffer *rxbuffer = NULL;
 	unsigned int rxstatus = 0;
@@ -348,8 +346,7 @@ static void sgdma_setup_descrip(struct sgdma_descrip __iomem *desc,
  */
 static int sgdma_async_read(struct altera_tse_private *priv)
 {
-	struct sgdma_descrip __iomem *descbase =
-		(struct sgdma_descrip __iomem *)priv->rx_dma_desc;
+	struct sgdma_descrip __iomem *descbase = priv->rx_dma_desc;
 
 	struct sgdma_descrip __iomem *cdesc = &descbase[0];
 	struct sgdma_descrip __iomem *ndesc = &descbase[1];
