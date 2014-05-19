@@ -185,13 +185,58 @@ void generic_smp_call_function_single_interrupt(void)
 {
 	struct llist_node *entry;
 	struct call_single_data *csd, *csd_next;
+	static bool warned;
+
+	entry = llist_del_all(&__get_cpu_var(call_single_queue));
+	entry = llist_reverse_order(entry);
 
 	/*
 	 * Shouldn't receive this interrupt on a cpu that is not yet online.
 	 */
-	WARN_ON_ONCE(!cpu_online(smp_processor_id()));
+	if (unlikely(!cpu_online(smp_processor_id()) && !warned)) {
+		warned = true;
+		WARN(1, "IPI on offline CPU %d\n", smp_processor_id());
 
-	entry = llist_del_all(&__get_cpu_var(call_single_queue));
+		/*
+		 * We don't have to use the _safe() variant here
+		 * because we are not invoking the IPI handlers yet.
+		 */
+		llist_for_each_entry(csd, entry, llist)
+			pr_warn("IPI callback %pS sent to offline CPU\n",
+				csd->func);
+	}
+
+	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
+		csd->func(csd->info);
+		csd_unlock(csd);
+	}
+}
+
+/**
+ * flush_smp_call_function_queue - Flush pending smp-call-function callbacks
+ *
+ * Flush any pending smp-call-function callbacks queued on this CPU (including
+ * those for which the source CPU's IPIs might not have been received on this
+ * CPU yet). This is invoked by a CPU about to go offline, to ensure that all
+ * pending IPI functions are run before it goes completely offline.
+ *
+ * Loop through the call_single_queue and run all the queued functions.
+ * Must be called with interrupts disabled.
+ */
+void flush_smp_call_function_queue(void)
+{
+	struct llist_head *head;
+	struct llist_node *entry;
+	struct call_single_data *csd, *csd_next;
+
+	WARN_ON(!irqs_disabled());
+
+	head = &__get_cpu_var(call_single_queue);
+
+	if (likely(llist_empty(head)))
+		return;
+
+	entry = llist_del_all(head);
 	entry = llist_reverse_order(entry);
 
 	llist_for_each_entry_safe(csd, csd_next, entry, llist) {
