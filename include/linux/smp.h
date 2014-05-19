@@ -29,6 +29,17 @@ extern unsigned int total_cpus;
 int smp_call_function_single(int cpuid, smp_call_func_t func, void *info,
 			     int wait);
 
+struct queue_single_data;
+typedef void (*smp_queue_func_t)(struct queue_single_data *qsd);
+
+struct queue_single_data {
+	struct call_single_data data;
+	smp_queue_func_t func;
+	int pending;
+};
+
+int smp_queue_function_single(int cpu, struct queue_single_data *qsd);
+
 /*
  * Call a function on all processors
  */
