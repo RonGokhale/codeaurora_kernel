@@ -144,7 +144,7 @@ int iwl_mvm_send_cmd_status(struct iwl_mvm *mvm, struct iwl_host_cmd *cmd,
 		      "cmd flags %x", cmd->flags))
 		return -EINVAL;
 
-	cmd->flags |= CMD_SYNC | CMD_WANT_SKB;
+	cmd->flags |= CMD_WANT_SKB;
 
 	ret = iwl_trans_send_cmd(mvm->trans, cmd);
 	if (ret == -ERFKILL) {
@@ -519,6 +519,7 @@ void iwl_mvm_dump_nic_error_log(struct iwl_mvm *mvm)
 		iwl_mvm_dump_umac_error_log(mvm);
 }
 
+#ifdef CONFIG_IWLWIFI_DEBUGFS
 void iwl_mvm_fw_error_sram_dump(struct iwl_mvm *mvm)
 {
 	const struct fw_img *img;
@@ -581,6 +582,7 @@ void iwl_mvm_fw_error_rxf_dump(struct iwl_mvm *mvm)
 	}
 	iwl_trans_release_nic_access(mvm->trans, &flags);
 }
+#endif
 
 /**
  * iwl_mvm_send_lq_cmd() - Send link quality command
@@ -597,7 +599,7 @@ int iwl_mvm_send_lq_cmd(struct iwl_mvm *mvm, struct iwl_lq_cmd *lq, bool init)
 	struct iwl_host_cmd cmd = {
 		.id = LQ_CMD,
 		.len = { sizeof(struct iwl_lq_cmd), },
-		.flags = init ? CMD_SYNC : CMD_ASYNC,
+		.flags = init ? 0 : CMD_ASYNC,
 		.data = { lq, },
 	};
 
