@@ -283,6 +283,15 @@ config MMC_SDHCI_BCM2835
 
 	  If unsure, say N.
 
+config MMC_MOXART
+	tristate "MOXART SD/MMC Host Controller support"
+	depends on ARCH_MOXART && MMC
+	help
+	  This selects support for the MOXART SD/MMC Host Controller.
+	  MOXA provides one multi-functional card reader which can
+	  be found on some embedded hardware such as UC-7112-LX.
+	  If you have a controller with this interface, say Y here.
+
 config MMC_OMAP
 	tristate "TI OMAP Multimedia Card Interface support"
 	depends on ARCH_OMAP
@@ -694,3 +703,10 @@ config MMC_REALTEK_PCI
 	help
 	  Say Y here to include driver code to support SD/MMC card interface
 	  of Realtek PCI-E card reader
+
+config MMC_REALTEK_USB
+	tristate "Realtek USB SD/MMC Card Interface Driver"
+	depends on MFD_RTSX_USB
+	help
+	  Say Y here to include driver code to support SD/MMC card interface
+	  of Realtek RTS5129/39 series card reader
