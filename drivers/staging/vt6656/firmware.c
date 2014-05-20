@@ -31,9 +31,9 @@
  *
  */
 
+#include <linux/compiler.h>
 #include "firmware.h"
 #include "control.h"
-#include "rndis.h"
 
 static int msglevel = MSG_LEVEL_INFO;
 /* static int msglevel = MSG_LEVEL_DEBUG; */
@@ -54,7 +54,6 @@ int FIRMWAREbDownload(struct vnt_private *pDevice)
 	int ii, rc;
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"---->Download firmware\n");
-	spin_unlock_irq(&pDevice->lock);
 
 	rc = request_firmware(&fw, FIRMWARE_NAME, dev);
 	if (rc) {
@@ -71,7 +70,7 @@ int FIRMWAREbDownload(struct vnt_private *pDevice)
 		wLength = min_t(int, fw->size - ii, FIRMWARE_CHUNK_SIZE);
 		memcpy(pBuffer, fw->data + ii, wLength);
 
-		NdisStatus = CONTROLnsRequestOutAsyn(pDevice,
+		NdisStatus = CONTROLnsRequestOut(pDevice,
 						0,
 						0x1200+ii,
 						0x0000,
@@ -91,7 +90,6 @@ free_fw:
 out:
 	kfree(pBuffer);
 
-	spin_lock_irq(&pDevice->lock);
 	return result;
 }
 MODULE_FIRMWARE(FIRMWARE_NAME);

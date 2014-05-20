@@ -314,148 +314,141 @@ static int pci9111_ai_cancel(struct comedi_device *dev,
 	return 0;
 }
 
+static int pci9111_ai_check_chanlist(struct comedi_device *dev,
+				     struct comedi_subdevice *s,
+				     struct comedi_cmd *cmd)
+{
+	unsigned int range0 = CR_RANGE(cmd->chanlist[0]);
+	unsigned int aref0 = CR_AREF(cmd->chanlist[0]);
+	int i;
+
+	for (i = 1; i < cmd->chanlist_len; i++) {
+		unsigned int chan = CR_CHAN(cmd->chanlist[i]);
+		unsigned int range = CR_RANGE(cmd->chanlist[i]);
+		unsigned int aref = CR_AREF(cmd->chanlist[i]);
+
+		if (chan != i) {
+			dev_dbg(dev->class_dev,
+				"entries in chanlist must be consecutive channels,counting upwards from 0\n");
+			return -EINVAL;
+		}
+
+		if (range != range0) {
+			dev_dbg(dev->class_dev,
+				"entries in chanlist must all have the same gain\n");
+			return -EINVAL;
+		}
+
+		if (aref != aref0) {
+			dev_dbg(dev->class_dev,
+				"entries in chanlist must all have the same reference\n");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static int pci9111_ai_do_cmd_test(struct comedi_device *dev,
 				  struct comedi_subdevice *s,
 				  struct comedi_cmd *cmd)
 {
 	struct pci9111_private_data *dev_private = dev->private;
-	int tmp;
-	int error = 0;
-	int range, reference;
-	int i;
+	int err = 0;
+	unsigned int arg;
 
 	/* Step 1 : check if triggers are trivially valid */
 
-	error |= cfc_check_trigger_src(&cmd->start_src, TRIG_NOW);
-	error |= cfc_check_trigger_src(&cmd->scan_begin_src,
+	err |= cfc_check_trigger_src(&cmd->start_src, TRIG_NOW);
+	err |= cfc_check_trigger_src(&cmd->scan_begin_src,
 					TRIG_TIMER | TRIG_FOLLOW | TRIG_EXT);
-	error |= cfc_check_trigger_src(&cmd->convert_src,
+	err |= cfc_check_trigger_src(&cmd->convert_src,
 					TRIG_TIMER | TRIG_EXT);
-	error |= cfc_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
-	error |= cfc_check_trigger_src(&cmd->stop_src,
+	err |= cfc_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
+	err |= cfc_check_trigger_src(&cmd->stop_src,
 					TRIG_COUNT | TRIG_NONE);
 
-	if (error)
+	if (err)
 		return 1;
 
 	/* Step 2a : make sure trigger sources are unique */
 
-	error |= cfc_check_trigger_is_unique(cmd->scan_begin_src);
-	error |= cfc_check_trigger_is_unique(cmd->convert_src);
-	error |= cfc_check_trigger_is_unique(cmd->stop_src);
+	err |= cfc_check_trigger_is_unique(cmd->scan_begin_src);
+	err |= cfc_check_trigger_is_unique(cmd->convert_src);
+	err |= cfc_check_trigger_is_unique(cmd->stop_src);
 
 	/* Step 2b : and mutually compatible */
 
-	if ((cmd->convert_src == TRIG_TIMER) &&
-	    !((cmd->scan_begin_src == TRIG_TIMER) ||
-	      (cmd->scan_begin_src == TRIG_FOLLOW)))
-		error |= -EINVAL;
-	if ((cmd->convert_src == TRIG_EXT) &&
-	    !((cmd->scan_begin_src == TRIG_EXT) ||
-	      (cmd->scan_begin_src == TRIG_FOLLOW)))
-		error |= -EINVAL;
+	if (cmd->scan_begin_src != TRIG_FOLLOW) {
+		if (cmd->scan_begin_src != cmd->convert_src)
+			err |= -EINVAL;
+	}
 
-	if (error)
+	if (err)
 		return 2;
 
 	/* Step 3: check if arguments are trivially valid */
 
-	error |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
+	err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
 
 	if (cmd->convert_src == TRIG_TIMER)
-		error |= cfc_check_trigger_arg_min(&cmd->convert_arg,
+		err |= cfc_check_trigger_arg_min(&cmd->convert_arg,
 					PCI9111_AI_ACQUISITION_PERIOD_MIN_NS);
 	else	/* TRIG_EXT */
-		error |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
+		err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
 
 	if (cmd->scan_begin_src == TRIG_TIMER)
-		error |= cfc_check_trigger_arg_min(&cmd->scan_begin_arg,
+		err |= cfc_check_trigger_arg_min(&cmd->scan_begin_arg,
 					PCI9111_AI_ACQUISITION_PERIOD_MIN_NS);
 	else	/* TRIG_FOLLOW || TRIG_EXT */
-		error |= cfc_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
+		err |= cfc_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
 
-	error |= cfc_check_trigger_arg_is(&cmd->scan_end_arg,
-					  cmd->chanlist_len);
+	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
 
 	if (cmd->stop_src == TRIG_COUNT)
-		error |= cfc_check_trigger_arg_min(&cmd->stop_arg, 1);
+		err |= cfc_check_trigger_arg_min(&cmd->stop_arg, 1);
 	else	/* TRIG_NONE */
-		error |= cfc_check_trigger_arg_is(&cmd->stop_arg, 0);
+		err |= cfc_check_trigger_arg_is(&cmd->stop_arg, 0);
 
-	if (error)
+	if (err)
 		return 3;
 
-	/*  Step 4 : fix up any arguments */
+	/* Step 4: fix up any arguments */
 
 	if (cmd->convert_src == TRIG_TIMER) {
-		tmp = cmd->convert_arg;
+		arg = cmd->convert_arg;
 		i8253_cascade_ns_to_timer(I8254_OSC_BASE_2MHZ,
 					  &dev_private->div1,
 					  &dev_private->div2,
 					  &cmd->convert_arg, cmd->flags);
-		if (tmp != cmd->convert_arg)
-			error++;
+		if (cmd->convert_arg != arg)
+			err |= -EINVAL;
 	}
-	/*  There's only one timer on this card, so the scan_begin timer must */
-	/*  be a multiple of chanlist_len*convert_arg */
 
+	/*
+	 * There's only one timer on this card, so the scan_begin timer
+	 * must be a multiple of chanlist_len*convert_arg
+	 */
 	if (cmd->scan_begin_src == TRIG_TIMER) {
+		arg = cmd->chanlist_len * cmd->convert_arg;
 
-		unsigned int scan_begin_min;
-		unsigned int scan_begin_arg;
-		unsigned int scan_factor;
+		if (arg < cmd->scan_begin_arg)
+			arg *= (cmd->scan_begin_arg / arg);
 
-		scan_begin_min = cmd->chanlist_len * cmd->convert_arg;
-
-		if (cmd->scan_begin_arg != scan_begin_min) {
-			if (scan_begin_min < cmd->scan_begin_arg) {
-				scan_factor =
-				    cmd->scan_begin_arg / scan_begin_min;
-				scan_begin_arg = scan_factor * scan_begin_min;
-				if (cmd->scan_begin_arg != scan_begin_arg) {
-					cmd->scan_begin_arg = scan_begin_arg;
-					error++;
-				}
-			} else {
-				cmd->scan_begin_arg = scan_begin_min;
-				error++;
-			}
+		if (cmd->scan_begin_arg != arg) {
+			cmd->scan_begin_arg = arg;
+			err |= -EINVAL;
 		}
 	}
 
-	if (error)
+	if (err)
 		return 4;
 
-	/*  Step 5 : check channel list */
+	/* Step 5: check channel list if it exists */
+	if (cmd->chanlist && cmd->chanlist_len > 0)
+		err |= pci9111_ai_check_chanlist(dev, s, cmd);
 
-	if (cmd->chanlist) {
-
-		range = CR_RANGE(cmd->chanlist[0]);
-		reference = CR_AREF(cmd->chanlist[0]);
-
-		if (cmd->chanlist_len > 1) {
-			for (i = 0; i < cmd->chanlist_len; i++) {
-				if (CR_CHAN(cmd->chanlist[i]) != i) {
-					comedi_error(dev,
-						     "entries in chanlist must be consecutive "
-						     "channels,counting upwards from 0\n");
-					error++;
-				}
-				if (CR_RANGE(cmd->chanlist[i]) != range) {
-					comedi_error(dev,
-						     "entries in chanlist must all have the same gain\n");
-					error++;
-				}
-				if (CR_AREF(cmd->chanlist[i]) != reference) {
-					comedi_error(dev,
-						     "entries in chanlist must all have the same reference\n");
-					error++;
-				}
-			}
-		}
-	}
-
-	if (error)
+	if (err)
 		return 5;
 
 	return 0;
