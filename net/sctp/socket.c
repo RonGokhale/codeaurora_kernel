@@ -71,6 +71,7 @@
 #include <net/route.h>
 #include <net/ipv6.h>
 #include <net/inet_common.h>
+#include <net/busy_poll.h>
 
 #include <linux/socket.h> /* for sa_family_t */
 #include <linux/export.h>
@@ -5945,8 +5946,9 @@ static long sctp_get_port_local(struct sock *sk, union sctp_addr *addr)
 		/* Search for an available port. */
 		int low, high, remaining, index;
 		unsigned int rover;
+		struct net *net = sock_net(sk);
 
-		inet_get_local_port_range(sock_net(sk), &low, &high);
+		inet_get_local_port_range(net, &low, &high);
 		remaining = (high - low) + 1;
 		rover = prandom_u32() % remaining + low;
 
@@ -5954,7 +5956,7 @@ static long sctp_get_port_local(struct sock *sk, union sctp_addr *addr)
 			rover++;
 			if ((rover < low) || (rover > high))
 				rover = low;
-			if (inet_is_reserved_local_port(rover))
+			if (inet_is_local_reserved_port(net, rover))
 				continue;
 			index = sctp_phashfn(sock_net(sk), rover);
 			head = &sctp_port_hashtable[index];
@@ -6556,6 +6558,10 @@ static struct sk_buff *sctp_skb_recv_datagram(struct sock *sk, int flags,
 
 		if (sk->sk_shutdown & RCV_SHUTDOWN)
 			break;
+
+		if (sk_can_busy_loop(sk) &&
+		    sk_busy_loop(sk, noblock))
+			continue;
 
 		/* User doesn't want to wait.  */
 		error = -EAGAIN;
