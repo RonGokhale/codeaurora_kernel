@@ -140,7 +140,7 @@ static const struct regmap_irq_chip axp20x_regmap_irq_chip = {
 	.init_ack_masked	= true,
 };
 
-static const char * const axp20x_supplies[] = {
+static const char * axp20x_supplies[] = {
 	"acin",
 	"vin2",
 	"vin3",
