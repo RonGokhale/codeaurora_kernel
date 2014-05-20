@@ -64,7 +64,6 @@ static unsigned long i915_gem_inactive_scan(struct shrinker *shrinker,
 static unsigned long i915_gem_purge(struct drm_i915_private *dev_priv, long target);
 static unsigned long i915_gem_shrink_all(struct drm_i915_private *dev_priv);
 static void i915_gem_object_truncate(struct drm_i915_gem_object *obj);
-static void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring);
 
 static bool cpu_cache_is_coherent(struct drm_device *dev,
 				  enum i915_cache_level level)
@@ -2448,7 +2447,7 @@ void i915_gem_reset(struct drm_device *dev)
 /**
  * This function clears the request list as sequence numbers are passed.
  */
-static void
+void
 i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 {
 	uint32_t seqno;
@@ -2762,12 +2761,14 @@ int i915_vma_unbind(struct i915_vma *vma)
 	 * cause memory corruption through use-after-free.
 	 */
 
-	i915_gem_object_finish_gtt(obj);
+	if (i915_is_ggtt(vma->vm)) {
+		i915_gem_object_finish_gtt(obj);
 
-	/* release the fence reg _after_ flushing */
-	ret = i915_gem_object_put_fence(obj);
-	if (ret)
-		return ret;
+		/* release the fence reg _after_ flushing */
+		ret = i915_gem_object_put_fence(obj);
+		if (ret)
+			return ret;
+	}
 
 	trace_i915_vma_unbind(vma);
 
@@ -3040,6 +3041,9 @@ i915_gem_object_put_fence(struct drm_i915_gem_object *obj)
 		return 0;
 
 	fence = &dev_priv->fence_regs[obj->fence_reg];
+
+	if (WARN_ON(fence->pin_count))
+		return -EBUSY;
 
 	i915_gem_object_fence_lost(obj);
 	i915_gem_object_update_fence(obj, fence, false);
@@ -3637,6 +3641,15 @@ unlock:
 
 static bool is_pin_display(struct drm_i915_gem_object *obj)
 {
+	struct i915_vma *vma;
+
+	if (list_empty(&obj->vma_list))
+		return false;
+
+	vma = i915_gem_obj_to_ggtt(obj);
+	if (!vma)
+		return false;
+
 	/* There are 3 sources that pin objects:
 	 *   1. The display engine (scanouts, sprites, cursors);
 	 *   2. Reservations for execbuffer;
@@ -3648,7 +3661,7 @@ static bool is_pin_display(struct drm_i915_gem_object *obj)
 	 * subtracting the potential reference by the user, any pin_count
 	 * remains, it must be due to another use by the display engine.
 	 */
-	return i915_gem_obj_to_ggtt(obj)->pin_count - !!obj->user_pin_count;
+	return vma->pin_count - !!obj->user_pin_count;
 }
 
 /*
@@ -3662,6 +3675,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     struct intel_ring_buffer *pipelined)
 {
 	u32 old_read_domains, old_write_domain;
+	bool was_pin_display;
 	int ret;
 
 	if (pipelined != obj->ring) {
@@ -3673,6 +3687,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	/* Mark the pin_display early so that we account for the
 	 * display coherency whilst setting up the cache domains.
 	 */
+	was_pin_display = obj->pin_display;
 	obj->pin_display = true;
 
 	/* The display engine is not coherent with the LLC cache on gen6.  As
@@ -3715,7 +3730,8 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	return 0;
 
 err_unpin_display:
-	obj->pin_display = is_pin_display(obj);
+	WARN_ON(was_pin_display != is_pin_display(obj));
+	obj->pin_display = was_pin_display;
 	return ret;
 }
 
@@ -3852,8 +3868,12 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		    uint32_t alignment,
 		    unsigned flags)
 {
+	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	struct i915_vma *vma;
 	int ret;
+
+	if (WARN_ON(vm == &dev_priv->mm.aliasing_ppgtt->base))
+		return -ENODEV;
 
 	if (WARN_ON(flags & (PIN_GLOBAL | PIN_MAPPABLE) && !i915_is_ggtt(vm)))
 		return -EINVAL;
@@ -3908,6 +3928,32 @@ i915_gem_object_ggtt_unpin(struct drm_i915_gem_object *obj)
 
 	if (--vma->pin_count == 0)
 		obj->pin_mappable = false;
+}
+
+bool
+i915_gem_object_pin_fence(struct drm_i915_gem_object *obj)
+{
+	if (obj->fence_reg != I915_FENCE_REG_NONE) {
+		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+		struct i915_vma *ggtt_vma = i915_gem_obj_to_ggtt(obj);
+
+		WARN_ON(!ggtt_vma ||
+			dev_priv->fence_regs[obj->fence_reg].pin_count >
+			ggtt_vma->pin_count);
+		dev_priv->fence_regs[obj->fence_reg].pin_count++;
+		return true;
+	} else
+		return false;
+}
+
+void
+i915_gem_object_unpin_fence(struct drm_i915_gem_object *obj)
+{
+	if (obj->fence_reg != I915_FENCE_REG_NONE) {
+		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+		WARN_ON(dev_priv->fence_regs[obj->fence_reg].pin_count <= 0);
+		dev_priv->fence_regs[obj->fence_reg].pin_count--;
+	}
 }
 
 int
@@ -4217,6 +4263,9 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 	if (obj->base.import_attach)
 		drm_prime_gem_destroy(&obj->base, NULL);
 
+	if (obj->ops->release)
+		obj->ops->release(obj);
+
 	drm_gem_object_release(&obj->base);
 	i915_gem_info_remove_obj(dev_priv, obj->base.size);
 
@@ -4496,6 +4545,7 @@ int i915_gem_init(struct drm_device *dev)
 			DRM_DEBUG_DRIVER("allow wake ack timed out\n");
 	}
 
+	i915_gem_init_userptr(dev);
 	i915_gem_init_global_gtt(dev);
 
 	ret = i915_gem_context_init(dev);
@@ -5081,6 +5131,9 @@ struct i915_vma *i915_gem_obj_to_ggtt(struct drm_i915_gem_object *obj)
 {
 	struct i915_vma *vma;
 
+	/* This WARN has probably outlived its usefulness (callers already
+	 * WARN if they don't find the GGTT vma they expect). When removing,
+	 * remember to remove the pre-check in is_pin_display() as well */
 	if (WARN_ON(list_empty(&obj->vma_list)))
 		return NULL;
 
