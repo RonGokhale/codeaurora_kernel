@@ -56,9 +56,6 @@ struct device;
 struct phy_device;
 /* 802.11 specific */
 struct wireless_dev;
-					/* source back-compat hooks */
-#define SET_ETHTOOL_OPS(netdev,ops) \
-	( (netdev)->ethtool_ops = (ops) )
 
 void netdev_set_default_ethtool_ops(struct net_device *dev,
 				    const struct ethtool_ops *ops);
@@ -2634,6 +2631,7 @@ int dev_get_phys_port_id(struct net_device *dev,
 			 struct netdev_phys_port_id *ppid);
 int dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev,
 			struct netdev_queue *txq);
+int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 int dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 bool is_skb_forwardable(struct net_device *dev, struct sk_buff *skb);
 
