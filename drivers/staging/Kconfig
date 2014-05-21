@@ -90,8 +90,6 @@ source "drivers/staging/tidspbridge/Kconfig"
 
 source "drivers/staging/quickstart/Kconfig"
 
-source "drivers/staging/sbe-2t3e3/Kconfig"
-
 source "drivers/staging/keucr/Kconfig"
 
 source "drivers/staging/bcm/Kconfig"
@@ -143,6 +141,8 @@ source "drivers/staging/dgap/Kconfig"
 source "drivers/staging/gs_fpgaboot/Kconfig"
 
 source "drivers/staging/nokia_h4p/Kconfig"
+
+source "drivers/staging/skein/Kconfig"
 
 source "drivers/staging/unisys/Kconfig"
 
