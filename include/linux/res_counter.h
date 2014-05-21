@@ -40,6 +40,11 @@ struct res_counter {
 	 */
 	unsigned long long soft_limit;
 	/*
+	 * the limit under which the usage cannot be pushed
+	 * due to external pressure.
+	 */
+	unsigned long long low_limit;
+	/*
 	 * the number of unsuccessful attempts to consume the resource
 	 */
 	unsigned long long failcnt;
@@ -88,6 +93,7 @@ enum {
 	RES_LIMIT,
 	RES_FAILCNT,
 	RES_SOFT_LIMIT,
+	RES_LOW_LIMIT,
 };
 
 /*
@@ -175,6 +181,28 @@ res_counter_soft_limit_excess(struct res_counter *cnt)
 	return excess;
 }
 
+/**
+ * Get the difference between the usage and the low limit
+ * @cnt: The counter
+ *
+ * Returns 0 if usage is less than or equal to low limit
+ * The difference between usage and low limit, otherwise.
+ */
+static inline unsigned long long
+res_counter_low_limit_excess(struct res_counter *cnt)
+{
+	unsigned long long excess;
+	unsigned long flags;
+
+	spin_lock_irqsave(&cnt->lock, flags);
+	if (cnt->usage <= cnt->low_limit)
+		excess = 0;
+	else
+		excess = cnt->usage - cnt->low_limit;
+	spin_unlock_irqrestore(&cnt->lock, flags);
+	return excess;
+}
+
 static inline void res_counter_reset_max(struct res_counter *cnt)
 {
 	unsigned long flags;
@@ -216,6 +244,18 @@ res_counter_set_soft_limit(struct res_counter *cnt,
 
 	spin_lock_irqsave(&cnt->lock, flags);
 	cnt->soft_limit = soft_limit;
+	spin_unlock_irqrestore(&cnt->lock, flags);
+	return 0;
+}
+
+static inline int
+res_counter_set_low_limit(struct res_counter *cnt,
+				unsigned long long low_limit)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&cnt->lock, flags);
+	cnt->low_limit = low_limit;
 	spin_unlock_irqrestore(&cnt->lock, flags);
 	return 0;
 }
