@@ -2206,6 +2206,7 @@ int i915_gem_object_sync(struct drm_i915_gem_object *obj,
 			 struct intel_ring_buffer *to);
 void i915_vma_move_to_active(struct i915_vma *vma,
 			     struct intel_ring_buffer *ring);
+void i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj);
 int i915_gem_dumb_create(struct drm_file *file_priv,
 			 struct drm_device *dev,
 			 struct drm_mode_create_dumb *args);

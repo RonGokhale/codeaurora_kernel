@@ -2084,7 +2084,7 @@ void i915_vma_move_to_active(struct i915_vma *vma,
 	return i915_gem_object_move_to_active(vma->obj, ring);
 }
 
-static void
+void
 i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
