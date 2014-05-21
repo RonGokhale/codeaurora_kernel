@@ -63,6 +63,8 @@ void on_each_cpu_cond(bool (*cond_func)(int cpu, void *info),
 
 int smp_call_function_single_async(int cpu, struct call_single_data *csd);
 
+void flush_smp_call_function_queue(void);
+
 #ifdef CONFIG_SMP
 
 #include <linux/preempt.h>
