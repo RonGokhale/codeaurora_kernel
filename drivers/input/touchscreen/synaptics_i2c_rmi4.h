@@ -35,6 +35,10 @@
 #include <linux/earlysuspend.h>
 #endif
 #include <linux/debugfs.h>
+#if defined(CONFIG_SECURE_TOUCH)
+#include <linux/completion.h>
+#include <linux/atomic.h>
+#endif
 
 #define PDT_PROPS (0x00EF)
 #define PDT_START (0x00E9)
@@ -262,6 +266,12 @@ struct synaptics_rmi4_data {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend early_suspend;
 #endif
+#endif
+#if defined(CONFIG_SECURE_TOUCH)
+	atomic_t st_enabled;
+	atomic_t st_pending_irqs;
+	struct completion st_powerdown;
+	struct completion st_irq_processed;
 #endif
 };
 
