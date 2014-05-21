@@ -431,8 +431,12 @@ static void __init of_selftest_match_node(void)
 static void __init of_selftest_platform_populate(void)
 {
 	int irq;
-	struct device_node *np;
+	struct device_node *np, *child;
 	struct platform_device *pdev;
+	struct of_device_id match[] = {
+		{ .compatible = "test-device", },
+		{}
+	};
 
 	np = of_find_node_by_path("/testcase-data");
 	of_platform_populate(np, of_default_bus_match_table, NULL, NULL);
@@ -440,22 +444,32 @@ static void __init of_selftest_platform_populate(void)
 	/* Test that a missing irq domain returns -EPROBE_DEFER */
 	np = of_find_node_by_path("/testcase-data/testcase-device1");
 	pdev = of_find_device_by_node(np);
-	if (!pdev)
-		selftest(0, "device 1 creation failed\n");
+	selftest(pdev, "device 1 creation failed\n");
+
 	irq = platform_get_irq(pdev, 0);
-	if (irq != -EPROBE_DEFER)
-		selftest(0, "device deferred probe failed - %d\n", irq);
+	selftest(irq == -EPROBE_DEFER, "device deferred probe failed - %d\n", irq);
 
 	/* Test that a parsing failure does not return -EPROBE_DEFER */
 	np = of_find_node_by_path("/testcase-data/testcase-device2");
 	pdev = of_find_device_by_node(np);
-	if (!pdev)
-		selftest(0, "device 2 creation failed\n");
+	selftest(pdev, "device 2 creation failed\n");
 	irq = platform_get_irq(pdev, 0);
-	if (irq >= 0 || irq == -EPROBE_DEFER)
-		selftest(0, "device parsing error failed - %d\n", irq);
+	selftest(irq < 0 && irq != -EPROBE_DEFER, "device parsing error failed - %d\n", irq);
 
-	selftest(1, "passed");
+	np = of_find_node_by_path("/testcase-data/platform-tests");
+	if (!np) {
+		pr_err("No testcase data in device tree\n");
+		return;
+	}
+
+	for_each_child_of_node(np, child) {
+		struct device_node *grandchild;
+		of_platform_populate(child, match, NULL, NULL);
+		for_each_child_of_node(child, grandchild)
+			selftest(of_find_device_by_node(grandchild),
+				 "Could not create device for node '%s'\n",
+				 grandchild->name);
+	}
 }
 
 static int __init of_selftest(void)
