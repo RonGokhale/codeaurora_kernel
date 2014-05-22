@@ -662,11 +662,11 @@ cmos_do_probe(struct device *dev, struct resource *ports, int rtc_irq)
 	 * (needing ioremap etc), not i/o space resources like this ...
 	 */
 	if (RTC_IOMAPPED)
-		ports = request_region
-			(ports->start, resource_size(ports), driver_name);
+		ports = request_region(ports->start, resource_size(ports),
+				       driver_name);
 	else
-		ports = request_mem_region
-			(ports->start, resource_size(ports), driver_name);
+		ports = request_mem_region(ports->start, resource_size(ports),
+					   driver_name);
 	if (!ports) {
 		dev_dbg(dev, "i/o registers already in use\n");
 		return -EBUSY;
