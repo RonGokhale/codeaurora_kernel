@@ -18,6 +18,8 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#define pr_fmt(fmt) "pstore: " fmt
+
 #include <linux/atomic.h>
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -224,14 +226,12 @@ static void allocate_buf_for_compression(void)
 			zlib_inflate_workspacesize());
 		stream.workspace = kmalloc(size, GFP_KERNEL);
 		if (!stream.workspace) {
-			pr_err("pstore: No memory for compression workspace; "
-				"skipping compression\n");
+			pr_err("No memory for compression workspace; skipping compression\n");
 			kfree(big_oops_buf);
 			big_oops_buf = NULL;
 		}
 	} else {
-		pr_err("No memory for uncompressed data; "
-			"skipping compression\n");
+		pr_err("No memory for uncompressed data; skipping compression\n");
 		stream.workspace = NULL;
 	}
 
@@ -502,8 +502,8 @@ void pstore_get_records(int quiet)
 				size = unzipped_len;
 				compressed = false;
 			} else {
-				pr_err("pstore: decompression failed;"
-					"returned %d\n", unzipped_len);
+				pr_err("pstore: decompression failed;returned %d\n",
+				       unzipped_len);
 				compressed = true;
 			}
 		}
@@ -524,8 +524,8 @@ out:
 	mutex_unlock(&psi->read_mutex);
 
 	if (failed)
-		printk(KERN_WARNING "pstore: failed to load %d record(s) from '%s'\n",
-		       failed, psi->name);
+		pr_warn("failed to load %d record(s) from '%s'\n",
+			failed, psi->name);
 }
 
 static void pstore_dowork(struct work_struct *work)
