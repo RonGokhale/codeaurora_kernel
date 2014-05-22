@@ -282,7 +282,7 @@
 		spi-cpol;
 		spi-cpha;
 	};
-}
+};
 
 &scif0 {
 	pinctrl-0 = <&scif0_pins>;
