@@ -193,27 +193,37 @@ static int multi_cpu_stop(void *data)
 		cpu_relax();
 
 		/*
-		 * In the case of CPU offline, we don't want the other CPUs to
-		 * send IPIs to the active_cpu (the one going offline) after it
-		 * has disabled interrupts in the _DISABLE_IRQ state (because,
-		 * then it will notice the IPIs only after it goes offline). So
-		 * we split this state into _INACTIVE and _ACTIVE, and thereby
-		 * ensure that the active_cpu disables interrupts only after
-		 * the other CPUs do the same thing.
+		 * We use 2 separate stages to disable interrupts, namely
+		 * _INACTIVE and _ACTIVE, to ensure that the inactive CPUs
+		 * disable their interrupts first, followed by the active CPUs.
+		 *
+		 * This is done to avoid a race in the CPU offline path, which
+		 * can lead to receiving IPIs on the outgoing CPU *after* it
+		 * has gone offline.
+		 *
+		 * During CPU offline, we don't want the other CPUs to send
+		 * IPIs to the active_cpu (the outgoing CPU) *after* it has
+		 * disabled interrupts (because, then it will notice the IPIs
+		 * only after it has gone offline). We can prevent this by
+		 * making the other CPUs disable their interrupts first - that
+		 * way, they will run the stop-machine code with interrupts
+		 * disabled, and hence won't send IPIs after that point.
 		 */
 
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
 			case MULTI_STOP_DISABLE_IRQ_INACTIVE:
-				if (is_active)
-					break;
-
-				/* Else, fall-through */
-
+				if (!is_active) {
+					local_irq_disable();
+					hard_irq_disable();
+				}
+				break;
 			case MULTI_STOP_DISABLE_IRQ_ACTIVE:
-				local_irq_disable();
-				hard_irq_disable();
+				if (is_active) {
+					local_irq_disable();
+					hard_irq_disable();
+				}
 				break;
 			case MULTI_STOP_RUN:
 				if (is_active)
