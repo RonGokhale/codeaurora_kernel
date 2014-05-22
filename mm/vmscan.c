@@ -2230,8 +2230,18 @@ static inline bool should_continue_reclaim(struct zone *zone,
 	}
 }
 
+/**
+ * __shrink_zone - shrinks a given zone
+ *
+ * @zone: zone to shrink
+ * @sc: scan control with additional reclaim parameters
+ * @honor_memcg_guarantee: do not reclaim memcgs which are within their memory
+ * guarantee
+ *
+ * Returns the number of reclaimed memcgs.
+ */
 static unsigned __shrink_zone(struct zone *zone, struct scan_control *sc,
-		bool follow_low_limit)
+		bool honor_memcg_guarantee)
 {
 	unsigned long nr_reclaimed, nr_scanned;
 	unsigned nr_scanned_groups = 0;
@@ -2251,12 +2261,9 @@ static unsigned __shrink_zone(struct zone *zone, struct scan_control *sc,
 		do {
 			struct lruvec *lruvec;
 
-			/*
-			 * Memcg might be under its low limit so we have to
-			 * skip it during the first reclaim round
-			 */
-			if (follow_low_limit &&
-					!mem_cgroup_reclaim_eligible(memcg, root)) {
+			/* Memcg might be protected from the reclaim */
+			if (honor_memcg_guarantee &&
+					mem_cgroup_within_guarantee(memcg, root)) {
 				/*
 				 * It would be more optimal to skip the memcg
 				 * subtree now but we do not have a memcg iter
@@ -2304,8 +2311,8 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 	if (!__shrink_zone(zone, sc, true)) {
 		/*
 		 * First round of reclaim didn't find anything to reclaim
-		 * because of low limit protection so try again and ignore
-		 * the low limit this time.
+		 * because of the memory guantees for all memcgs in the
+		 * reclaim target so try again and ignore guarantees this time.
 		 */
 		__shrink_zone(zone, sc, false);
 	}
