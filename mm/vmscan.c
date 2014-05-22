@@ -2322,13 +2322,20 @@ static unsigned __shrink_zone(struct zone *zone, struct scan_control *sc,
 
 static void shrink_zone(struct zone *zone, struct scan_control *sc)
 {
-	if (!__shrink_zone(zone, sc, true)) {
+	bool honor_guarantee = true;
+
+	while (!__shrink_zone(zone, sc, honor_guarantee)) {
 		/*
-		 * First round of reclaim didn't find anything to reclaim
-		 * because of the memory guantees for all memcgs in the
-		 * reclaim target so try again and ignore guarantees this time.
+		 * The previous round of reclaim didn't find anything to scan
+		 * because
+		 * a) the whole reclaimed hierarchy is within guarantee so
+		 *    we fallback to ignore the guarantee because other option
+		 *    would be the OOM
+		 * b) multiple reclaimers are racing and so the first round
+		 *    should be retried
 		 */
-		__shrink_zone(zone, sc, false);
+		if (mem_cgroup_all_within_guarantee(sc->target_mem_cgroup))
+			honor_guarantee = false;
 	}
 }
 
