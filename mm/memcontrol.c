@@ -2804,6 +2804,19 @@ bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
 	return false;
 }
 
+bool mem_cgroup_all_within_guarantee(struct mem_cgroup *root)
+{
+	struct mem_cgroup *iter;
+
+	for_each_mem_cgroup_tree(iter, root)
+		if (!mem_cgroup_within_guarantee(iter, root)) {
+			mem_cgroup_iter_break(root, iter);
+			return false;
+		}
+
+	return true;
+}
+
 struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
 {
 	struct mem_cgroup *memcg = NULL;
