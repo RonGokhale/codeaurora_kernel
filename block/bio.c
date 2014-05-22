@@ -702,7 +702,6 @@ static int __bio_add_page(struct request_queue *q, struct bio *bio, struct page
 			  unsigned int max_sectors)
 {
 	int retried_segments = 0;
-	unsigned int bi_phys_segments_orig;
 	struct bio_vec *bvec;
 
 	/*
@@ -762,7 +761,6 @@ static int __bio_add_page(struct request_queue *q, struct bio *bio, struct page
 	bvec->bv_len = len;
 	bvec->bv_offset = offset;
 	bio->bi_vcnt++;
-	bi_phys_segments_orig = bio->bi_phys_segments;
 	bio->bi_phys_segments++;
 
 	/*
@@ -813,8 +811,7 @@ static int __bio_add_page(struct request_queue *q, struct bio *bio, struct page
 	bvec->bv_len = 0;
 	bvec->bv_offset = 0;
 	bio->bi_vcnt--;
-	bio->bi_phys_segments = bi_phys_segments_orig;
-
+	blk_recount_segments(q, bio);
 	return 0;
 }
 
