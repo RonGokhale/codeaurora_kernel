@@ -180,8 +180,8 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 
 		indx = mpq_streambuffer_pkt_next(streambuff, -1, &pktlen);
 
-		if (-1 == indx) {
-			DBG("Invalid Index -1\n");
+		if (0 > indx) {
+			ERR("Invalid Index 0\n");
 			mutex_unlock(&mpq_dvb_video_device->lock);
 			return;
 		}
