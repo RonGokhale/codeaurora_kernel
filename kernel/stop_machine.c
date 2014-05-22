@@ -227,11 +227,12 @@ static int multi_cpu_stop(void *data)
 
 					/*
 					 * IPIs (from the inactive CPUs) might
-					 * arrive late due to hardware latencies.
-					 * So flush out any pending IPI callbacks
-					 * explicitly, to ensure that the outgoing
-					 * CPU doesn't go offline with work still
-					 * pending (during CPU hotplug).
+					 * arrive late due to hardware
+					 * latencies.  So flush out any pending
+					 * IPI callbacks explicitly, to ensure
+					 * that the outgoing CPU doesn't go
+					 * offline with work still pending
+					 * (during CPU hotplug).
 					 */
 					generic_smp_call_function_single_interrupt();
 				}
