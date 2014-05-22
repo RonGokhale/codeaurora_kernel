@@ -35,7 +35,6 @@
 #include "desc.h"
 #include "mac.h"
 #include "80211hdr.h"
-#include "rndis.h"
 #include "control.h"
 
 //static int          msglevel                =MSG_LEVEL_DEBUG;
@@ -75,7 +74,7 @@ void MACvWriteMultiAddr(struct vnt_private *pDevice, u64 mc_filter)
  */
 void MACbShutdown(struct vnt_private *pDevice)
 {
-    CONTROLnsRequestOutAsyn(pDevice,
+	CONTROLnsRequestOut(pDevice,
                         MESSAGE_TYPE_MACSHUTDOWN,
                         0,
                         0,
