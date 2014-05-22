@@ -92,7 +92,7 @@ bool __mem_cgroup_same_or_subtree(const struct mem_cgroup *root_memcg,
 bool task_in_mem_cgroup(struct task_struct *task,
 			const struct mem_cgroup *memcg);
 
-extern bool mem_cgroup_reclaim_eligible(struct mem_cgroup *memcg,
+extern bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
 		struct mem_cgroup *root);
 
 extern struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page);
@@ -291,10 +291,10 @@ static inline struct lruvec *mem_cgroup_page_lruvec(struct page *page,
 	return &zone->lruvec;
 }
 
-static inline bool mem_cgroup_reclaim_eligible(struct mem_cgroup *memcg,
+static inline bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
 		struct mem_cgroup *root)
 {
-	return true;
+	return false;
 }
 
 static inline struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
