@@ -10,7 +10,7 @@
  *
  * ------------------------------------------------------------------------- */
 
-#define pr_fmt(fmt) "devpts: " fmt
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
 #include <linux/init.h>
