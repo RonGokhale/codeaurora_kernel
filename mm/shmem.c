@@ -1376,7 +1376,7 @@ shmem_write_begin(struct file *file, struct address_space *mapping,
 	struct inode *inode = mapping->host;
 	pgoff_t index = pos >> PAGE_CACHE_SHIFT;
 	ret = shmem_getpage(inode, index, pagep, SGP_WRITE, NULL);
-	if (*pagep)
+	if (ret == 0 && *pagep)
 		init_page_accessed(*pagep);
 	return ret;
 }
