@@ -1,0 +1,112 @@
+next/fixes-non-critical
+
+next/cleanup
+	versatile/leds
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-leds
+	cleanup/kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/robh/linux tags/kconfig-cleanups
+		contains randconfig-fixes
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.16
+	patch
+		leds: Fix build for LEDS_CLASS=m on versatile
+	sirf/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/sirf-soc-for-3.16
+	vexpress/updates
+		git://git.linaro.org/people/pawel.moll/linux tags/vexpress/updates-for-3.16
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.16
+	renesas/clock
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-for-v3.16
+	renesas/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.16
+	at91/cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup
+	mvebu/soc-orion5x
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-orion5x-3.16
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.16
+		contains depends/irqchip-mvebu
+	cleanup/kconfig
+		Merge branch 'cleanup/kconfig' into next/soc
+	renesas/clock2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock2-for-v3.16
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v3.16
+	sti/soc
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-soc-for-v3.16
+	sunxi/core
+		https://github.com/mripard/linux tags/sunxi-core-for-3.16
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.16
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-soc
+
+next/boards
+	shmobile/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.16
+	patch
+		ARM: multi_v7: enable AT24C EEPROM driver
+		ARM: multi_v7_defconfig: select CONFIG_GPIO_DWAPB
+		ARM: multi_v7_defconfig: Select CONFIG_MACH_BERLIN_BG2Q
+	renesas/clock
+		Merge branch 'renesas/clock' into next/boards
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.16
+	patch
+		ARM: configs: add CONFIG_MMC_SDHCI_PXAV3 to the multi_v7_defconfig
+		ARM: configs: enable XHCI mvebu support in multi_v7_defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.16
+	renesas/boards2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards2-for-v3.16
+	patch
+		ARM: add drivers for Colibri T30 to multi_v7_defconfig
+	depends/clockevents-cleanups
+		Merge branch 'depends/clockevents-cleanups' into next/boards
+	renesas/clock-cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-cleanup2-for-v3.16
+	renesas/dt-scif
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-scif-for-v3.16
+	renesas/r7s72100-ccf
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r7s72100-ccf-for-v3.16
+	sunxi/defconfig
+		https://github.com/mripard/linux tags/sunxi-defconfig-for-3.16
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-defconfig
+
+next/dt
+	at91/dt
+		git://github.com/at91linux/linux-at91 tags/at91-dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.16
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.16
+	socfpga/dt
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga-dt-updates-for-3.16_v3
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.16
+	rockchip/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.16-rockchip-dt
+	keystone/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	at91/dt2
+		git://github.com/at91linux/linux-at91 tags/at91-dt2
+	renesas/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt3-for-v3.16
+	sunxi/dt
+		https://github.com/mripard/linux tags/sunxi-dt-for-3.16
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.16
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-dt
+
+next/drivers
+	socfpga/reset-driver
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga-driver-update-for-3.16
+	mvebu/drivers
+		git://git.infradead.org/linux-mvebu tags/mvebu-drivers-3.16
+	sunxi/drivers
+		https://github.com/mripard/linux sunxi/drivers-for-3.16
