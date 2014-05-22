@@ -2244,9 +2244,11 @@ static inline bool should_continue_reclaim(struct zone *zone,
 	}
 }
 
-static void shrink_zone(struct zone *zone, struct scan_control *sc)
+static unsigned __shrink_zone(struct zone *zone, struct scan_control *sc,
+		bool follow_low_limit)
 {
 	unsigned long nr_reclaimed, nr_scanned;
+	unsigned nr_scanned_groups = 0;
 
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
@@ -2263,7 +2265,23 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 		do {
 			struct lruvec *lruvec;
 
+			/*
+			 * Memcg might be under its low limit so we have to
+			 * skip it during the first reclaim round
+			 */
+			if (follow_low_limit &&
+					!mem_cgroup_reclaim_eligible(memcg, root)) {
+				/*
+				 * It would be more optimal to skip the memcg
+				 * subtree now but we do not have a memcg iter
+				 * helper for that. Anyone?
+				 */
+				memcg = mem_cgroup_iter(root, memcg, &reclaim);
+				continue;
+			}
+
 			lruvec = mem_cgroup_zone_lruvec(zone, memcg);
+			nr_scanned_groups++;
 
 			shrink_lruvec(lruvec, sc);
 
@@ -2291,6 +2309,20 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 
 	} while (should_continue_reclaim(zone, sc->nr_reclaimed - nr_reclaimed,
 					 sc->nr_scanned - nr_scanned, sc));
+
+	return nr_scanned_groups;
+}
+
+static void shrink_zone(struct zone *zone, struct scan_control *sc)
+{
+	if (!__shrink_zone(zone, sc, true)) {
+		/*
+		 * First round of reclaim didn't find anything to reclaim
+		 * because of low limit protection so try again and ignore
+		 * the low limit this time.
+		 */
+		__shrink_zone(zone, sc, false);
+	}
 }
 
 /* Returns true if compaction should go ahead for a high-order request */
