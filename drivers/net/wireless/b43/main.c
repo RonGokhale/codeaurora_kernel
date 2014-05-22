@@ -1175,18 +1175,7 @@ static void b43_bcma_phy_reset(struct b43_wldev *dev)
 	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
 	udelay(2);
 
-	/* Take PHY out of reset */
-	flags = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
-	flags &= ~B43_BCMA_IOCTL_PHY_RESET;
-	flags |= BCMA_IOCTL_FGC;
-	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
-	udelay(1);
-
-	/* Do not force clock anymore */
-	flags = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
-	flags &= ~BCMA_IOCTL_FGC;
-	bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, flags);
-	udelay(1);
+	b43_phy_take_out_of_reset(dev);
 }
 
 static void b43_bcma_wireless_core_reset(struct b43_wldev *dev, bool gmode)
@@ -1208,10 +1197,9 @@ static void b43_bcma_wireless_core_reset(struct b43_wldev *dev, bool gmode)
 }
 #endif
 
+#ifdef CONFIG_B43_SSB
 static void b43_ssb_wireless_core_reset(struct b43_wldev *dev, bool gmode)
 {
-	struct ssb_device *sdev = dev->dev->sdev;
-	u32 tmslow;
 	u32 flags = 0;
 
 	if (gmode)
@@ -1223,18 +1211,9 @@ static void b43_ssb_wireless_core_reset(struct b43_wldev *dev, bool gmode)
 	b43_device_enable(dev, flags);
 	msleep(2);		/* Wait for the PLL to turn on. */
 
-	/* Now take the PHY out of Reset again */
-	tmslow = ssb_read32(sdev, SSB_TMSLOW);
-	tmslow |= SSB_TMSLOW_FGC;
-	tmslow &= ~B43_TMSLOW_PHYRESET;
-	ssb_write32(sdev, SSB_TMSLOW, tmslow);
-	ssb_read32(sdev, SSB_TMSLOW);	/* flush */
-	msleep(1);
-	tmslow &= ~SSB_TMSLOW_FGC;
-	ssb_write32(sdev, SSB_TMSLOW, tmslow);
-	ssb_read32(sdev, SSB_TMSLOW);	/* flush */
-	msleep(1);
+	b43_phy_take_out_of_reset(dev);
 }
+#endif
 
 void b43_wireless_core_reset(struct b43_wldev *dev, bool gmode)
 {
@@ -2709,32 +2688,37 @@ static int b43_upload_initvals(struct b43_wldev *dev)
 	struct b43_firmware *fw = &dev->fw;
 	const struct b43_iv *ivals;
 	size_t count;
-	int err;
 
 	hdr = (const struct b43_fw_header *)(fw->initvals.data->data);
 	ivals = (const struct b43_iv *)(fw->initvals.data->data + hdr_len);
 	count = be32_to_cpu(hdr->size);
-	err = b43_write_initvals(dev, ivals, count,
+	return b43_write_initvals(dev, ivals, count,
 				 fw->initvals.data->size - hdr_len);
-	if (err)
-		goto out;
-	if (fw->initvals_band.data) {
-		hdr = (const struct b43_fw_header *)(fw->initvals_band.data->data);
-		ivals = (const struct b43_iv *)(fw->initvals_band.data->data + hdr_len);
-		count = be32_to_cpu(hdr->size);
-		err = b43_write_initvals(dev, ivals, count,
-					 fw->initvals_band.data->size - hdr_len);
-		if (err)
-			goto out;
-	}
-out:
+}
 
-	return err;
+static int b43_upload_initvals_band(struct b43_wldev *dev)
+{
+	const size_t hdr_len = sizeof(struct b43_fw_header);
+	const struct b43_fw_header *hdr;
+	struct b43_firmware *fw = &dev->fw;
+	const struct b43_iv *ivals;
+	size_t count;
+
+	if (!fw->initvals_band.data)
+		return 0;
+
+	hdr = (const struct b43_fw_header *)(fw->initvals_band.data->data);
+	ivals = (const struct b43_iv *)(fw->initvals_band.data->data + hdr_len);
+	count = be32_to_cpu(hdr->size);
+	return b43_write_initvals(dev, ivals, count,
+				  fw->initvals_band.data->size - hdr_len);
 }
 
 /* Initialize the GPIOs
  * http://bcm-specs.sipsolutions.net/GPIO
  */
+
+#ifdef CONFIG_B43_SSB
 static struct ssb_device *b43_ssb_gpio_dev(struct b43_wldev *dev)
 {
 	struct ssb_bus *bus = dev->dev->sdev->bus;
@@ -2745,10 +2729,13 @@ static struct ssb_device *b43_ssb_gpio_dev(struct b43_wldev *dev)
 	return bus->chipco.dev;
 #endif
 }
+#endif
 
 static int b43_gpio_init(struct b43_wldev *dev)
 {
+#ifdef CONFIG_B43_SSB
 	struct ssb_device *gpiodev;
+#endif
 	u32 mask, set;
 
 	b43_maskset32(dev, B43_MMIO_MACCTL, ~B43_MACCTL_GPOUTSMSK, 0);
@@ -2807,7 +2794,9 @@ static int b43_gpio_init(struct b43_wldev *dev)
 /* Turn off all GPIO stuff. Call this on module unload, for example. */
 static void b43_gpio_cleanup(struct b43_wldev *dev)
 {
+#ifdef CONFIG_B43_SSB
 	struct ssb_device *gpiodev;
+#endif
 
 	switch (dev->dev->bus_type) {
 #ifdef CONFIG_B43_BCMA
@@ -3088,6 +3077,10 @@ static int b43_chip_init(struct b43_wldev *dev)
 		goto out;	/* firmware is released later */
 
 	err = b43_upload_initvals(dev);
+	if (err)
+		goto err_gpio_clean;
+
+	err = b43_upload_initvals_band(dev);
 	if (err)
 		goto err_gpio_clean;
 
@@ -3690,37 +3683,6 @@ static void b43_op_set_tsf(struct ieee80211_hw *hw,
 	mutex_unlock(&wl->mutex);
 }
 
-static void b43_put_phy_into_reset(struct b43_wldev *dev)
-{
-	u32 tmp;
-
-	switch (dev->dev->bus_type) {
-#ifdef CONFIG_B43_BCMA
-	case B43_BUS_BCMA:
-		b43err(dev->wl,
-		       "Putting PHY into reset not supported on BCMA\n");
-		break;
-#endif
-#ifdef CONFIG_B43_SSB
-	case B43_BUS_SSB:
-		tmp = ssb_read32(dev->dev->sdev, SSB_TMSLOW);
-		tmp &= ~B43_TMSLOW_GMODE;
-		tmp |= B43_TMSLOW_PHYRESET;
-		tmp |= SSB_TMSLOW_FGC;
-		ssb_write32(dev->dev->sdev, SSB_TMSLOW, tmp);
-		msleep(1);
-
-		tmp = ssb_read32(dev->dev->sdev, SSB_TMSLOW);
-		tmp &= ~SSB_TMSLOW_FGC;
-		tmp |= B43_TMSLOW_PHYRESET;
-		ssb_write32(dev->dev->sdev, SSB_TMSLOW, tmp);
-		msleep(1);
-
-		break;
-#endif
-	}
-}
-
 static const char *band_to_string(enum ieee80211_band band)
 {
 	switch (band) {
@@ -3736,89 +3698,73 @@ static const char *band_to_string(enum ieee80211_band band)
 }
 
 /* Expects wl->mutex locked */
-static int b43_switch_band(struct b43_wl *wl, struct ieee80211_channel *chan)
+static int b43_switch_band(struct b43_wldev *dev,
+			   struct ieee80211_channel *chan)
 {
-	struct b43_wldev *up_dev = NULL;
-	struct b43_wldev *down_dev;
-	int err;
-	bool uninitialized_var(gmode);
-	int prev_status;
+	struct b43_phy *phy = &dev->phy;
+	bool gmode;
+	u32 tmp;
 
-	/* Find a device and PHY which supports the band. */
 	switch (chan->band) {
 	case IEEE80211_BAND_5GHZ:
-		if (wl->current_dev->phy.supports_5ghz) {
-			up_dev = wl->current_dev;
-			gmode = false;
-		}
+		gmode = false;
 		break;
 	case IEEE80211_BAND_2GHZ:
-		if (wl->current_dev->phy.supports_2ghz) {
-			up_dev = wl->current_dev;
-			gmode = true;
-		}
+		gmode = true;
 		break;
 	default:
 		B43_WARN_ON(1);
 		return -EINVAL;
 	}
 
-	if (!up_dev) {
-		b43err(wl, "Could not find a device for %s-GHz band operation\n",
+	if (!((gmode && phy->supports_2ghz) ||
+	      (!gmode && phy->supports_5ghz))) {
+		b43err(dev->wl, "This device doesn't support %s-GHz band\n",
 		       band_to_string(chan->band));
 		return -ENODEV;
 	}
-	if (!!wl->current_dev->phy.gmode == !!gmode) {
+
+	if (!!phy->gmode == !!gmode) {
 		/* This device is already running. */
 		return 0;
 	}
-	b43dbg(wl, "Switching to %s-GHz band\n",
+
+	b43dbg(dev->wl, "Switching to %s GHz band\n",
 	       band_to_string(chan->band));
-	down_dev = wl->current_dev;
 
-	prev_status = b43_status(down_dev);
-	/* Shutdown the currently running core. */
-	if (prev_status >= B43_STAT_STARTED)
-		down_dev = b43_wireless_core_stop(down_dev);
-	if (prev_status >= B43_STAT_INITIALIZED)
-		b43_wireless_core_exit(down_dev);
+	b43_software_rfkill(dev, true);
 
-	if (down_dev != up_dev) {
-		/* We switch to a different core, so we put PHY into
-		 * RESET on the old core. */
-		b43_put_phy_into_reset(down_dev);
+	phy->gmode = gmode;
+	b43_phy_put_into_reset(dev);
+	switch (dev->dev->bus_type) {
+#ifdef CONFIG_B43_BCMA
+	case B43_BUS_BCMA:
+		tmp = bcma_aread32(dev->dev->bdev, BCMA_IOCTL);
+		if (gmode)
+			tmp |= B43_BCMA_IOCTL_GMODE;
+		else
+			tmp &= ~B43_BCMA_IOCTL_GMODE;
+		bcma_awrite32(dev->dev->bdev, BCMA_IOCTL, tmp);
+		break;
+#endif
+#ifdef CONFIG_B43_SSB
+	case B43_BUS_SSB:
+		tmp = ssb_read32(dev->dev->sdev, SSB_TMSLOW);
+		if (gmode)
+			tmp |= B43_TMSLOW_GMODE;
+		else
+			tmp &= ~B43_TMSLOW_GMODE;
+		ssb_write32(dev->dev->sdev, SSB_TMSLOW, tmp);
+		break;
+#endif
 	}
+	b43_phy_take_out_of_reset(dev);
 
-	/* Now start the new core. */
-	up_dev->phy.gmode = gmode;
-	if (prev_status >= B43_STAT_INITIALIZED) {
-		err = b43_wireless_core_init(up_dev);
-		if (err) {
-			b43err(wl, "Fatal: Could not initialize device for "
-			       "selected %s-GHz band\n",
-			       band_to_string(chan->band));
-			goto init_failure;
-		}
-	}
-	if (prev_status >= B43_STAT_STARTED) {
-		err = b43_wireless_core_start(up_dev);
-		if (err) {
-			b43err(wl, "Fatal: Could not start device for "
-			       "selected %s-GHz band\n",
-			       band_to_string(chan->band));
-			b43_wireless_core_exit(up_dev);
-			goto init_failure;
-		}
-	}
-	B43_WARN_ON(b43_status(up_dev) != prev_status);
+	b43_upload_initvals_band(dev);
 
-	wl->current_dev = up_dev;
+	b43_phy_init(dev);
 
 	return 0;
-init_failure:
-	/* Whoops, failed to init the new core. No core is operating now. */
-	wl->current_dev = NULL;
-	return err;
 }
 
 /* Write the short and long frame retry limit values. */
@@ -3851,8 +3797,10 @@ static int b43_op_config(struct ieee80211_hw *hw, u32 changed)
 
 	dev = wl->current_dev;
 
+	b43_mac_suspend(dev);
+
 	/* Switch the band (if necessary). This might change the active core. */
-	err = b43_switch_band(wl, conf->chandef.chan);
+	err = b43_switch_band(dev, conf->chandef.chan);
 	if (err)
 		goto out_unlock_mutex;
 
@@ -3870,8 +3818,6 @@ static int b43_op_config(struct ieee80211_hw *hw, u32 changed)
 			(conf_is_ht40_minus(conf) || conf_is_ht40_plus(conf));
 	else
 		phy->is_40mhz = false;
-
-	b43_mac_suspend(dev);
 
 	if (changed & IEEE80211_CONF_CHANGE_RETRY_LIMITS)
 		b43_set_retry_limits(dev, conf->short_frame_max_tx_count,
@@ -4582,8 +4528,12 @@ static void b43_imcfglo_timeouts_workaround(struct b43_wldev *dev)
 	struct ssb_bus *bus;
 	u32 tmp;
 
+#ifdef CONFIG_B43_SSB
 	if (dev->dev->bus_type != B43_BUS_SSB)
 		return;
+#else
+	return;
+#endif
 
 	bus = dev->dev->sdev->bus;
 
@@ -4738,7 +4688,7 @@ static int b43_wireless_core_init(struct b43_wldev *dev)
 	}
 	if (sprom->boardflags_lo & B43_BFL_XTAL_NOSLOW)
 		hf |= B43_HF_DSCRQ; /* Disable slowclock requests from ucode. */
-#ifdef CONFIG_SSB_DRIVER_PCICORE
+#if defined(CONFIG_B43_SSB) && defined(CONFIG_SSB_DRIVER_PCICORE)
 	if (dev->dev->bus_type == B43_BUS_SSB &&
 	    dev->dev->sdev->bus->bustype == SSB_BUSTYPE_PCI &&
 	    dev->dev->sdev->bus->pcicore.dev->id.revision <= 10)
@@ -5129,10 +5079,81 @@ static void b43_wireless_core_detach(struct b43_wldev *dev)
 	b43_phy_free(dev);
 }
 
+static void b43_supported_bands(struct b43_wldev *dev, bool *have_2ghz_phy,
+				bool *have_5ghz_phy)
+{
+	u16 dev_id = 0;
+
+#ifdef CONFIG_B43_BCMA
+	if (dev->dev->bus_type == B43_BUS_BCMA &&
+	    dev->dev->bdev->bus->hosttype == BCMA_HOSTTYPE_PCI)
+		dev_id = dev->dev->bdev->bus->host_pci->device;
+#endif
+#ifdef CONFIG_B43_SSB
+	if (dev->dev->bus_type == B43_BUS_SSB &&
+	    dev->dev->sdev->bus->bustype == SSB_BUSTYPE_PCI)
+		dev_id = dev->dev->sdev->bus->host_pci->device;
+#endif
+	/* Override with SPROM value if available */
+	if (dev->dev->bus_sprom->dev_id)
+		dev_id = dev->dev->bus_sprom->dev_id;
+
+	/* Note: below IDs can be "virtual" (not maching e.g. real PCI ID) */
+	switch (dev_id) {
+	case 0x4324: /* BCM4306 */
+	case 0x4312: /* BCM4311 */
+	case 0x4319: /* BCM4318 */
+	case 0x4328: /* BCM4321 */
+	case 0x432b: /* BCM4322 */
+	case 0x4350: /* BCM43222 */
+	case 0x4353: /* BCM43224 */
+	case 0x0576: /* BCM43224 */
+	case 0x435f: /* BCM6362 */
+	case 0x4331: /* BCM4331 */
+	case 0x4359: /* BCM43228 */
+	case 0x43a0: /* BCM4360 */
+	case 0x43b1: /* BCM4352 */
+		/* Dual band devices */
+		*have_2ghz_phy = true;
+		*have_5ghz_phy = true;
+		return;
+	case 0x4321: /* BCM4306 */
+	case 0x4313: /* BCM4311 */
+	case 0x431a: /* BCM4318 */
+	case 0x432a: /* BCM4321 */
+	case 0x432d: /* BCM4322 */
+	case 0x4352: /* BCM43222 */
+	case 0x4333: /* BCM4331 */
+	case 0x43a2: /* BCM4360 */
+	case 0x43b3: /* BCM4352 */
+		/* 5 GHz only devices */
+		*have_2ghz_phy = false;
+		*have_5ghz_phy = true;
+		return;
+	}
+
+	/* As a fallback, try to guess using PHY type */
+	switch (dev->phy.type) {
+	case B43_PHYTYPE_A:
+		*have_2ghz_phy = false;
+		*have_5ghz_phy = true;
+		return;
+	case B43_PHYTYPE_G:
+	case B43_PHYTYPE_N:
+	case B43_PHYTYPE_LP:
+	case B43_PHYTYPE_HT:
+	case B43_PHYTYPE_LCN:
+		*have_2ghz_phy = true;
+		*have_5ghz_phy = false;
+		return;
+	}
+
+	B43_WARN_ON(1);
+}
+
 static int b43_wireless_core_attach(struct b43_wldev *dev)
 {
 	struct b43_wl *wl = dev->wl;
-	struct pci_dev *pdev = NULL;
 	int err;
 	u32 tmp;
 	bool have_2ghz_phy = false, have_5ghz_phy = false;
@@ -5144,19 +5165,13 @@ static int b43_wireless_core_attach(struct b43_wldev *dev)
 	 * that in core_init(), too.
 	 */
 
-#ifdef CONFIG_B43_SSB
-	if (dev->dev->bus_type == B43_BUS_SSB &&
-	    dev->dev->sdev->bus->bustype == SSB_BUSTYPE_PCI)
-		pdev = dev->dev->sdev->bus->host_pci;
-#endif
-
 	err = b43_bus_powerup(dev, 0);
 	if (err) {
 		b43err(wl, "Bus powerup failed\n");
 		goto out;
 	}
 
-	/* Get the PHY type. */
+	/* Try to guess supported bands for the first init needs */
 	switch (dev->dev->bus_type) {
 #ifdef CONFIG_B43_BCMA
 	case B43_BUS_BCMA:
@@ -5180,47 +5195,28 @@ static int b43_wireless_core_attach(struct b43_wldev *dev)
 	dev->phy.gmode = have_2ghz_phy;
 	b43_wireless_core_reset(dev, dev->phy.gmode);
 
+	/* Get the PHY type. */
 	err = b43_phy_versioning(dev);
 	if (err)
 		goto err_powerdown;
-	/* Check if this device supports multiband. */
-	if (!pdev ||
-	    (pdev->device != 0x4312 &&
-	     pdev->device != 0x4319 && pdev->device != 0x4324)) {
-		/* No multiband support. */
-		have_2ghz_phy = false;
+
+	/* Get real info about supported bands */
+	b43_supported_bands(dev, &have_2ghz_phy, &have_5ghz_phy);
+
+	/* We don't support 5 GHz on some PHYs yet */
+	switch (dev->phy.type) {
+	case B43_PHYTYPE_A:
+	case B43_PHYTYPE_N:
+	case B43_PHYTYPE_LP:
+	case B43_PHYTYPE_HT:
+		b43warn(wl, "5 GHz band is unsupported on this PHY\n");
 		have_5ghz_phy = false;
-		switch (dev->phy.type) {
-		case B43_PHYTYPE_A:
-			have_5ghz_phy = true;
-			break;
-		case B43_PHYTYPE_LP: //FIXME not always!
-#if 0 //FIXME enabling 5GHz causes a NULL pointer dereference
-			have_5ghz_phy = 1;
-#endif
-		case B43_PHYTYPE_G:
-		case B43_PHYTYPE_N:
-		case B43_PHYTYPE_HT:
-		case B43_PHYTYPE_LCN:
-			have_2ghz_phy = true;
-			break;
-		default:
-			B43_WARN_ON(1);
-		}
 	}
-	if (dev->phy.type == B43_PHYTYPE_A) {
-		/* FIXME */
-		b43err(wl, "IEEE 802.11a devices are unsupported\n");
+
+	if (!have_2ghz_phy && !have_5ghz_phy) {
+		b43err(wl, "b43 can't support any band on this device\n");
 		err = -EOPNOTSUPP;
 		goto err_powerdown;
-	}
-	if (1 /* disable A-PHY */) {
-		/* FIXME: For now we disable the A-PHY on multi-PHY devices. */
-		if (dev->phy.type != B43_PHYTYPE_N &&
-		    dev->phy.type != B43_PHYTYPE_LP) {
-			have_2ghz_phy = true;
-			have_5ghz_phy = false;
-		}
 	}
 
 	err = b43_phy_allocate(dev);
@@ -5310,6 +5306,7 @@ static int b43_one_core_attach(struct b43_bus_dev *dev, struct b43_wl *wl)
 	(pdev->subsystem_vendor == PCI_VENDOR_ID_##_subvendor) &&	\
 	(pdev->subsystem_device == _subdevice)				)
 
+#ifdef CONFIG_B43_SSB
 static void b43_sprom_fixup(struct ssb_bus *bus)
 {
 	struct pci_dev *pdev;
@@ -5341,6 +5338,7 @@ static void b43_wireless_exit(struct b43_bus_dev *dev, struct b43_wl *wl)
 	ssb_set_devtypedata(dev->sdev, NULL);
 	ieee80211_free_hw(hw);
 }
+#endif
 
 static struct b43_wl *b43_wireless_init(struct b43_bus_dev *dev)
 {
