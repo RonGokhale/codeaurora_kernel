@@ -822,6 +822,9 @@ void __clk_unprepare(struct clk *clk)
  */
 void clk_unprepare(struct clk *clk)
 {
+	if (IS_ERR_OR_NULL(clk))
+		return;
+
 	clk_prepare_lock();
 	__clk_unprepare(clk);
 	clk_prepare_unlock();
@@ -883,9 +886,6 @@ static void __clk_disable(struct clk *clk)
 	if (!clk)
 		return;
 
-	if (WARN_ON(IS_ERR(clk)))
-		return;
-
 	if (WARN_ON(clk->enable_count == 0))
 		return;
 
@@ -913,6 +913,9 @@ static void __clk_disable(struct clk *clk)
 void clk_disable(struct clk *clk)
 {
 	unsigned long flags;
+
+	if (IS_ERR_OR_NULL(clk))
+		return;
 
 	flags = clk_enable_lock();
 	__clk_disable(clk);
@@ -1115,6 +1118,13 @@ long clk_get_accuracy(struct clk *clk)
 }
 EXPORT_SYMBOL_GPL(clk_get_accuracy);
 
+static unsigned long clk_recalc(struct clk *clk, unsigned long parent_rate)
+{
+	if (clk->ops->recalc_rate)
+		return clk->ops->recalc_rate(clk->hw, parent_rate);
+	return parent_rate;
+}
+
 /**
  * __clk_recalc_rates
  * @clk: first clk in the subtree
@@ -1140,10 +1150,7 @@ static void __clk_recalc_rates(struct clk *clk, unsigned long msg)
 	if (clk->parent)
 		parent_rate = clk->parent->rate;
 
-	if (clk->ops->recalc_rate)
-		clk->rate = clk->ops->recalc_rate(clk->hw, parent_rate);
-	else
-		clk->rate = parent_rate;
+	clk->rate = clk_recalc(clk, parent_rate);
 
 	/*
 	 * ignore NOTIFY_STOP and NOTIFY_BAD return values for POST_RATE_CHANGE
@@ -1334,10 +1341,7 @@ static int __clk_speculate_rates(struct clk *clk, unsigned long parent_rate)
 	unsigned long new_rate;
 	int ret = NOTIFY_DONE;
 
-	if (clk->ops->recalc_rate)
-		new_rate = clk->ops->recalc_rate(clk->hw, parent_rate);
-	else
-		new_rate = parent_rate;
+	new_rate = clk_recalc(clk, parent_rate);
 
 	/* abort rate change if a driver returns NOTIFY_BAD or NOTIFY_STOP */
 	if (clk->notifier_count)
@@ -1373,10 +1377,7 @@ static void clk_calc_subtree(struct clk *clk, unsigned long new_rate,
 		new_parent->new_child = clk;
 
 	hlist_for_each_entry(child, &clk->children, child_node) {
-		if (child->ops->recalc_rate)
-			child->new_rate = child->ops->recalc_rate(child->hw, new_rate);
-		else
-			child->new_rate = new_rate;
+		child->new_rate = clk_recalc(child, new_rate);
 		clk_calc_subtree(child, child->new_rate, NULL, 0);
 	}
 }
@@ -1524,10 +1525,7 @@ static void clk_change_rate(struct clk *clk)
 	if (!skip_set_rate && clk->ops->set_rate)
 		clk->ops->set_rate(clk->hw, clk->new_rate, best_parent_rate);
 
-	if (clk->ops->recalc_rate)
-		clk->rate = clk->ops->recalc_rate(clk->hw, best_parent_rate);
-	else
-		clk->rate = best_parent_rate;
+	clk->rate = clk_recalc(clk, best_parent_rate);
 
 	if (clk->notifier_count && old_rate != clk->rate)
 		__clk_notify(clk, POST_RATE_CHANGE, old_rate, clk->rate);
@@ -1715,9 +1713,6 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 
 	if (!clk)
 		return 0;
-
-	if (!clk->ops)
-		return -EINVAL;
 
 	/* verify ops for for multi-parent clks */
 	if ((clk->num_parents > 1) && (!clk->ops->set_parent))
