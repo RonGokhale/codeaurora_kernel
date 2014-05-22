@@ -2780,26 +2780,27 @@ static struct mem_cgroup *mem_cgroup_lookup(unsigned short id)
 }
 
 /**
- * mem_cgroup_reclaim_eligible - checks whether given memcg is eligible for the
- * reclaim
+ * mem_cgroup_within_guarantee - checks whether given memcg is within its
+ * memory guarantee
  * @memcg: target memcg for the reclaim
  * @root: root of the reclaim hierarchy (null for the global reclaim)
  *
- * The given group is reclaimable if it is above its low limit and the same
- * applies for all parents up the hierarchy until root (including).
+ * The given group is within its reclaim gurantee if it is below its low limit
+ * or the same applies for any parent up the hierarchy until root (including).
+ * Such a group might be excluded from the reclaim.
  */
-bool mem_cgroup_reclaim_eligible(struct mem_cgroup *memcg,
+bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
 		struct mem_cgroup *root)
 {
 	do {
 		if (!res_counter_low_limit_excess(&memcg->res))
-			return false;
+			return true;
 		if (memcg == root)
 			break;
 
 	} while ((memcg = parent_mem_cgroup(memcg)));
 
-	return true;
+	return false;
 }
 
 struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
