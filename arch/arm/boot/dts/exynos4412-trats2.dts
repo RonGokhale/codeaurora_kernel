@@ -108,7 +108,6 @@
 			gpio = <&gpj0 5 0>;
 			enable-active-high;
 		};
-
 	};
 
 	gpio-keys {
@@ -143,7 +142,6 @@
 			debounce-inteval = <10>;
 			gpio-key,wakeup;
 		};
-
 	};
 
 	adc: adc@126C0000 {
