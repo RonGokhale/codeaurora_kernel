@@ -1,0 +1,149 @@
+/*
+ * Functions and registers to access AXP20X power management chip.
+ *
+ * Copyright (C) 2013, Carlo Caione <carlo@caione.org>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#ifndef __LINUX_MFD_AXP22X_H
+#define __LINUX_MFD_AXP22X_H
+
+enum {
+	AXP221_ID,
+};
+
+#define AXP22X_DATACACHE(m)		(0x04 + (m))
+
+/* Power supply */
+#define AXP22X_PWR_INPUT_STATUS         0x00
+#define AXP22X_PWR_OP
+#define AXP22X_PWR_OUT_CTRL1		0x10
+#define AXP22X_PWR_OUT_CTRL2		0x12
+#define AXP22X_PWR_OUT_CTRL3		0x13
+#define AXP22X_DLDO1_V_OUT		0x15
+#define AXP22X_DLDO2_V_OUT		0x16
+#define AXP22X_DLDO3_V_OUT		0x17
+#define AXP22X_DLDO4_V_OUT		0x18
+#define AXP22X_ELDO1_V_OUT		0x19
+#define AXP22X_ELDO2_V_OUT		0x1a
+#define AXP22X_ELDO3_V_OUT		0x1b
+#define AXP22X_DC5LDO_V_OUT		0x1c
+#define AXP22X_DCDC1_V_OUT		0x21
+#define AXP22X_DCDC2_V_OUT		0x22
+#define AXP22X_DCDC3_V_OUT		0x23
+#define AXP22X_DCDC4_V_OUT		0x24
+#define AXP22X_DCDC5_V_OUT		0x25
+#define AXP22X_DCDC23_V_RAMP_CTRL	0x27
+#define AXP22X_ALDO1_V_OUT		0x28
+#define AXP22X_ALDO2_V_OUT		0x29
+#define AXP22X_ALDO3_V_OUT		0x2a
+#define AXP22X_WAKE_UP_V_OFF		0x31
+#define AXP22X_OFF_CTRL			0x32
+#define AXP22X_CHRG_CTRL1		0x33
+#define AXP22X_CHRG_CTRL2		0x34
+#define AXP22X_CHRG_CTRL3		0x35
+#define AXP22X_PEK_KEY			0x36
+#define AXP22X_DCDC_FREQ		0x37
+#define AXP22X_V_LTF_CHRG		0x38
+#define AXP22X_V_HTF_CHRG		0x39
+#define AXP22X_V_LTF_DISCHRG		0x3c
+#define AXP22X_V_HTF_DISCHRG		0x3d
+
+/* Interrupt */
+#define AXP22X_IRQ1_EN			0x40
+#define AXP22X_IRQ2_EN			0x41
+#define AXP22X_IRQ3_EN			0x42
+#define AXP22X_IRQ4_EN			0x43
+#define AXP22X_IRQ5_EN			0x44
+#define AXP22X_IRQ1_STATE		0x48
+#define AXP22X_IRQ2_STATE		0x49
+#define AXP22X_IRQ3_STATE		0x4a
+#define AXP22X_IRQ4_STATE		0x4b
+#define AXP22X_IRQ5_STATE		0x4c
+
+/* Power supply */
+#define AXP22X_DCDC_MODE		0x80
+#define AXP22X_ADC_EN1			0x82
+#define AXP22X_ADC_RATE			0x84
+#define AXP22X_TIMER_CTRL		0x8a
+#define AXP22X_PWREN_CTRL1		0x8c
+#define AXP22X_PWREN_CTRL2		0x8d
+#define AXP22X_OVER_TMP			0x8f
+
+/* GPIO */
+#define AXP22X_GPIO0_CTRL		0x90
+#define AXP22X_LDO_IO0_V_OUT		0x91
+#define AXP22X_GPIO1_CTRL		0x90
+#define AXP22X_LDO_IO1_V_OUT		0x93
+#define AXP22X_GPIO_STATE		0x94
+#define AXP22X_GPIO_PULL_DOWN		0x94
+
+/* Battery */
+#define AXP22X_BATLOW_THRES1		0xe6
+
+/* Regulators IDs */
+enum {
+	AXP22X_DCDC1 = 0,
+	AXP22X_DCDC2,
+	AXP22X_DCDC3,
+	AXP22X_DCDC4,
+	AXP22X_DCDC5,
+	AXP22X_DC5LDO,
+	AXP22X_ALDO1,
+	AXP22X_ALDO2,
+	AXP22X_ALDO3,
+	AXP22X_ELDO1,
+	AXP22X_ELDO2,
+	AXP22X_ELDO3,
+	AXP22X_DLDO1,
+	AXP22X_DLDO2,
+	AXP22X_DLDO3,
+	AXP22X_DLDO4,
+	AXP22X_RTC_LDO,
+	AXP22X_LDO_IO0,
+	AXP22X_LDO_IO1,
+	AXP22X_REG_ID_MAX,
+};
+
+/* IRQs */
+enum {
+	AXP22X_IRQ_ACIN_OVER_V = 1,
+	AXP22X_IRQ_ACIN_PLUGIN,
+	AXP22X_IRQ_ACIN_REMOVAL,
+	AXP22X_IRQ_VBUS_OVER_V,
+	AXP22X_IRQ_VBUS_PLUGIN,
+	AXP22X_IRQ_VBUS_REMOVAL,
+	AXP22X_IRQ_VBUS_V_LOW,
+	AXP22X_IRQ_BATT_PLUGIN,
+	AXP22X_IRQ_BATT_REMOVAL,
+	AXP22X_IRQ_BATT_ENT_ACT_MODE,
+	AXP22X_IRQ_BATT_EXIT_ACT_MODE,
+	AXP22X_IRQ_CHARG,
+	AXP22X_IRQ_CHARG_DONE,
+	AXP22X_IRQ_BATT_TEMP_HIGH,
+	AXP22X_IRQ_BATT_TEMP_LOW,
+	AXP22X_IRQ_DIE_TEMP_HIGH,
+	AXP22X_IRQ_CHARG_I_LOW,
+	AXP22X_IRQ_PEK_SHORT,
+	AXP22X_IRQ_PEK_LONG,
+	AXP22X_IRQ_LOW_PWR_LVL1,
+	AXP22X_IRQ_LOW_PWR_LVL2,
+	AXP22X_IRQ_TIMER,
+	AXP22X_IRQ_PEK_RIS_EDGE,
+	AXP22X_IRQ_PEK_FAL_EDGE,
+	AXP22X_IRQ_GPIO1_INPUT,
+	AXP22X_IRQ_GPIO0_INPUT,
+};
+
+struct axp22x_dev {
+	struct device			*dev;
+	struct i2c_client		*i2c_client;
+	struct regmap			*regmap;
+	struct regmap_irq_chip_data	*regmap_irqc;
+	long				variant;
+};
+
+#endif /* __LINUX_MFD_AXP22X_H */
