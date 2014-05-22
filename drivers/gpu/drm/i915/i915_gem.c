@@ -31,6 +31,7 @@
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
+#include <linux/oom.h>
 #include <linux/shmem_fs.h>
 #include <linux/slab.h>
 #include <linux/swap.h>
@@ -52,14 +53,15 @@ static void i915_gem_object_update_fence(struct drm_i915_gem_object *obj,
 					 struct drm_i915_fence_reg *fence,
 					 bool enable);
 
-static unsigned long i915_gem_inactive_count(struct shrinker *shrinker,
+static unsigned long i915_gem_shrinker_count(struct shrinker *shrinker,
 					     struct shrink_control *sc);
-static unsigned long i915_gem_inactive_scan(struct shrinker *shrinker,
+static unsigned long i915_gem_shrinker_scan(struct shrinker *shrinker,
 					    struct shrink_control *sc);
+static int i915_gem_shrinker_oom(struct notifier_block *nb,
+				 unsigned long event,
+				 void *ptr);
 static unsigned long i915_gem_purge(struct drm_i915_private *dev_priv, long target);
 static unsigned long i915_gem_shrink_all(struct drm_i915_private *dev_priv);
-static void i915_gem_object_truncate(struct drm_i915_gem_object *obj);
-static void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring);
 
 static bool cpu_cache_is_coherent(struct drm_device *dev,
 				  enum i915_cache_level level)
@@ -1809,12 +1811,16 @@ i915_gem_mmap_gtt_ioctl(struct drm_device *dev, void *data,
 	return i915_gem_mmap_gtt(file, dev, args->handle, &args->offset);
 }
 
+static inline int
+i915_gem_object_is_purgeable(struct drm_i915_gem_object *obj)
+{
+	return obj->madv == I915_MADV_DONTNEED;
+}
+
 /* Immediately discard the backing storage */
 static void
 i915_gem_object_truncate(struct drm_i915_gem_object *obj)
 {
-	struct inode *inode;
-
 	i915_gem_object_free_mmap_offset(obj);
 
 	if (obj->base.filp == NULL)
@@ -1825,16 +1831,28 @@ i915_gem_object_truncate(struct drm_i915_gem_object *obj)
 	 * To do this we must instruct the shmfs to drop all of its
 	 * backing pages, *now*.
 	 */
-	inode = file_inode(obj->base.filp);
-	shmem_truncate_range(inode, 0, (loff_t)-1);
-
+	shmem_truncate_range(file_inode(obj->base.filp), 0, (loff_t)-1);
 	obj->madv = __I915_MADV_PURGED;
 }
 
-static inline int
-i915_gem_object_is_purgeable(struct drm_i915_gem_object *obj)
+/* Try to discard unwanted pages */
+static void
+i915_gem_object_invalidate(struct drm_i915_gem_object *obj)
 {
-	return obj->madv == I915_MADV_DONTNEED;
+	struct address_space *mapping;
+
+	switch (obj->madv) {
+	case I915_MADV_DONTNEED:
+		i915_gem_object_truncate(obj);
+	case __I915_MADV_PURGED:
+		return;
+	}
+
+	if (obj->base.filp == NULL)
+		return;
+
+	mapping = file_inode(obj->base.filp)->i_mapping,
+	invalidate_mapping_pages(mapping, 0, (loff_t)-1);
 }
 
 static void
@@ -1899,8 +1917,7 @@ i915_gem_object_put_pages(struct drm_i915_gem_object *obj)
 	ops->put_pages(obj);
 	obj->pages = NULL;
 
-	if (i915_gem_object_is_purgeable(obj))
-		i915_gem_object_truncate(obj);
+	i915_gem_object_invalidate(obj);
 
 	return 0;
 }
@@ -2091,7 +2108,19 @@ err_pages:
 		page_cache_release(sg_page_iter_page(&sg_iter));
 	sg_free_table(st);
 	kfree(st);
-	return PTR_ERR(page);
+
+	/* shmemfs first checks if there is enough memory to allocate the page
+	 * and reports ENOSPC should there be insufficient, along with the usual
+	 * ENOMEM for a genuine allocation failure.
+	 *
+	 * We use ENOSPC in our driver to mean that we have run out of aperture
+	 * space and so want to translate the error from shmemfs back to our
+	 * usual understanding of ENOMEM.
+	 */
+	if (PTR_ERR(page) == -ENOSPC)
+		return -ENOMEM;
+	else
+		return PTR_ERR(page);
 }
 
 /* Ensure that the associated pages are gathered from the backing storage
@@ -2172,7 +2201,7 @@ void i915_vma_move_to_active(struct i915_vma *vma,
 	return i915_gem_object_move_to_active(vma->obj, ring);
 }
 
-static void
+void
 i915_gem_object_move_to_inactive(struct drm_i915_gem_object *obj)
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
@@ -2565,7 +2594,7 @@ void i915_gem_reset(struct drm_device *dev)
 /**
  * This function clears the request list as sequence numbers are passed.
  */
-static void
+void
 i915_gem_retire_requests_ring(struct intel_ring_buffer *ring)
 {
 	uint32_t seqno;
@@ -2879,12 +2908,14 @@ int i915_vma_unbind(struct i915_vma *vma)
 	 * cause memory corruption through use-after-free.
 	 */
 
-	i915_gem_object_finish_gtt(obj);
+	if (i915_is_ggtt(vma->vm)) {
+		i915_gem_object_finish_gtt(obj);
 
-	/* release the fence reg _after_ flushing */
-	ret = i915_gem_object_put_fence(obj);
-	if (ret)
-		return ret;
+		/* release the fence reg _after_ flushing */
+		ret = i915_gem_object_put_fence(obj);
+		if (ret)
+			return ret;
+	}
 
 	trace_i915_vma_unbind(vma);
 
@@ -3157,6 +3188,9 @@ i915_gem_object_put_fence(struct drm_i915_gem_object *obj)
 		return 0;
 
 	fence = &dev_priv->fence_regs[obj->fence_reg];
+
+	if (WARN_ON(fence->pin_count))
+		return -EBUSY;
 
 	i915_gem_object_fence_lost(obj);
 	i915_gem_object_update_fence(obj, fence, false);
@@ -3759,6 +3793,15 @@ unlock:
 
 static bool is_pin_display(struct drm_i915_gem_object *obj)
 {
+	struct i915_vma *vma;
+
+	if (list_empty(&obj->vma_list))
+		return false;
+
+	vma = i915_gem_obj_to_ggtt(obj);
+	if (!vma)
+		return false;
+
 	/* There are 3 sources that pin objects:
 	 *   1. The display engine (scanouts, sprites, cursors);
 	 *   2. Reservations for execbuffer;
@@ -3770,7 +3813,7 @@ static bool is_pin_display(struct drm_i915_gem_object *obj)
 	 * subtracting the potential reference by the user, any pin_count
 	 * remains, it must be due to another use by the display engine.
 	 */
-	return i915_gem_obj_to_ggtt(obj)->pin_count - !!obj->user_pin_count;
+	return vma->pin_count - !!obj->user_pin_count;
 }
 
 /*
@@ -3784,6 +3827,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 				     struct intel_ring_buffer *pipelined)
 {
 	u32 old_read_domains, old_write_domain;
+	bool was_pin_display;
 	int ret;
 
 	if (pipelined != obj->ring) {
@@ -3795,6 +3839,7 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	/* Mark the pin_display early so that we account for the
 	 * display coherency whilst setting up the cache domains.
 	 */
+	was_pin_display = obj->pin_display;
 	obj->pin_display = true;
 
 	/* The display engine is not coherent with the LLC cache on gen6.  As
@@ -3837,7 +3882,8 @@ i915_gem_object_pin_to_display_plane(struct drm_i915_gem_object *obj,
 	return 0;
 
 err_unpin_display:
-	obj->pin_display = is_pin_display(obj);
+	WARN_ON(was_pin_display != is_pin_display(obj));
+	obj->pin_display = was_pin_display;
 	return ret;
 }
 
@@ -3993,8 +4039,12 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		    uint32_t alignment,
 		    uint64_t flags)
 {
+	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	struct i915_vma *vma;
 	int ret;
+
+	if (WARN_ON(vm == &dev_priv->mm.aliasing_ppgtt->base))
+		return -ENODEV;
 
 	if (WARN_ON(flags & (PIN_GLOBAL | PIN_MAPPABLE) && !i915_is_ggtt(vm)))
 		return -EINVAL;
@@ -4047,6 +4097,32 @@ i915_gem_object_ggtt_unpin(struct drm_i915_gem_object *obj)
 
 	if (--vma->pin_count == 0)
 		obj->pin_mappable = false;
+}
+
+bool
+i915_gem_object_pin_fence(struct drm_i915_gem_object *obj)
+{
+	if (obj->fence_reg != I915_FENCE_REG_NONE) {
+		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+		struct i915_vma *ggtt_vma = i915_gem_obj_to_ggtt(obj);
+
+		WARN_ON(!ggtt_vma ||
+			dev_priv->fence_regs[obj->fence_reg].pin_count >
+			ggtt_vma->pin_count);
+		dev_priv->fence_regs[obj->fence_reg].pin_count++;
+		return true;
+	} else
+		return false;
+}
+
+void
+i915_gem_object_unpin_fence(struct drm_i915_gem_object *obj)
+{
+	if (obj->fence_reg != I915_FENCE_REG_NONE) {
+		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
+		WARN_ON(dev_priv->fence_regs[obj->fence_reg].pin_count <= 0);
+		dev_priv->fence_regs[obj->fence_reg].pin_count--;
+	}
 }
 
 int
@@ -4346,6 +4422,8 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 
 	if (WARN_ON(obj->pages_pin_count))
 		obj->pages_pin_count = 0;
+	if (obj->madv != __I915_MADV_PURGED)
+		obj->madv = I915_MADV_DONTNEED;
 	i915_gem_object_put_pages(obj);
 	i915_gem_object_free_mmap_offset(obj);
 	i915_gem_object_release_stolen(obj);
@@ -4354,6 +4432,9 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 
 	if (obj->base.import_attach)
 		drm_prime_gem_destroy(&obj->base, NULL);
+
+	if (obj->ops->release)
+		obj->ops->release(obj);
 
 	drm_gem_object_release(&obj->base);
 	i915_gem_info_remove_obj(dev_priv, obj->base.size);
@@ -4634,6 +4715,7 @@ int i915_gem_init(struct drm_device *dev)
 			DRM_DEBUG_DRIVER("allow wake ack timed out\n");
 	}
 
+	i915_gem_init_userptr(dev);
 	i915_gem_init_global_gtt(dev);
 
 	ret = i915_gem_context_init(dev);
@@ -4815,10 +4897,13 @@ i915_gem_load(struct drm_device *dev)
 
 	dev_priv->mm.interruptible = true;
 
-	dev_priv->mm.inactive_shrinker.scan_objects = i915_gem_inactive_scan;
-	dev_priv->mm.inactive_shrinker.count_objects = i915_gem_inactive_count;
-	dev_priv->mm.inactive_shrinker.seeks = DEFAULT_SEEKS;
-	register_shrinker(&dev_priv->mm.inactive_shrinker);
+	dev_priv->mm.shrinker.scan_objects = i915_gem_shrinker_scan;
+	dev_priv->mm.shrinker.count_objects = i915_gem_shrinker_count;
+	dev_priv->mm.shrinker.seeks = DEFAULT_SEEKS;
+	register_shrinker(&dev_priv->mm.shrinker);
+
+	dev_priv->mm.oom_notifier.notifier_call = i915_gem_shrinker_oom;
+	register_oom_notifier(&dev_priv->mm.oom_notifier);
 }
 
 void i915_gem_release(struct drm_device *dev, struct drm_file *file)
@@ -4893,27 +4978,46 @@ static bool mutex_is_locked_by(struct mutex *mutex, struct task_struct *task)
 #endif
 }
 
-static unsigned long
-i915_gem_inactive_count(struct shrinker *shrinker, struct shrink_control *sc)
+static bool i915_gem_shrinker_lock(struct drm_device *dev, bool *unlock)
 {
-	struct drm_i915_private *dev_priv =
-		container_of(shrinker,
-			     struct drm_i915_private,
-			     mm.inactive_shrinker);
-	struct drm_device *dev = dev_priv->dev;
-	struct drm_i915_gem_object *obj;
-	bool unlock = true;
-	unsigned long count;
-
 	if (!mutex_trylock(&dev->struct_mutex)) {
 		if (!mutex_is_locked_by(&dev->struct_mutex, current))
-			return 0;
+			return false;
 
-		if (dev_priv->mm.shrinker_no_lock_stealing)
-			return 0;
+		if (to_i915(dev)->mm.shrinker_no_lock_stealing)
+			return false;
 
-		unlock = false;
-	}
+		*unlock = false;
+	} else
+		*unlock = true;
+
+	return true;
+}
+
+static int num_vma_bound(struct drm_i915_gem_object *obj)
+{
+	struct i915_vma *vma;
+	int count = 0;
+
+	list_for_each_entry(vma, &obj->vma_list, vma_link)
+		if (drm_mm_node_allocated(&vma->node))
+			count++;
+
+	return count;
+}
+
+static unsigned long
+i915_gem_shrinker_count(struct shrinker *shrinker, struct shrink_control *sc)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(shrinker, struct drm_i915_private, mm.shrinker);
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_i915_gem_object *obj;
+	unsigned long count;
+	bool unlock;
+
+	if (!i915_gem_shrinker_lock(dev, &unlock))
+		return 0;
 
 	count = 0;
 	list_for_each_entry(obj, &dev_priv->mm.unbound_list, global_list)
@@ -4921,10 +5025,8 @@ i915_gem_inactive_count(struct shrinker *shrinker, struct shrink_control *sc)
 			count += obj->base.size >> PAGE_SHIFT;
 
 	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list) {
-		if (obj->active)
-			continue;
-
-		if (!i915_gem_obj_is_pinned(obj) && obj->pages_pin_count == 0)
+		if (!i915_gem_obj_is_pinned(obj) &&
+		    obj->pages_pin_count == num_vma_bound(obj))
 			count += obj->base.size >> PAGE_SHIFT;
 	}
 
@@ -4997,44 +5099,99 @@ unsigned long i915_gem_obj_size(struct drm_i915_gem_object *o,
 }
 
 static unsigned long
-i915_gem_inactive_scan(struct shrinker *shrinker, struct shrink_control *sc)
+i915_gem_shrinker_scan(struct shrinker *shrinker, struct shrink_control *sc)
 {
 	struct drm_i915_private *dev_priv =
-		container_of(shrinker,
-			     struct drm_i915_private,
-			     mm.inactive_shrinker);
+		container_of(shrinker, struct drm_i915_private, mm.shrinker);
 	struct drm_device *dev = dev_priv->dev;
 	unsigned long freed;
-	bool unlock = true;
+	bool unlock;
 
-	if (!mutex_trylock(&dev->struct_mutex)) {
-		if (!mutex_is_locked_by(&dev->struct_mutex, current))
-			return SHRINK_STOP;
-
-		if (dev_priv->mm.shrinker_no_lock_stealing)
-			return SHRINK_STOP;
-
-		unlock = false;
-	}
+	if (!i915_gem_shrinker_lock(dev, &unlock))
+		return SHRINK_STOP;
 
 	freed = i915_gem_purge(dev_priv, sc->nr_to_scan);
 	if (freed < sc->nr_to_scan)
 		freed += __i915_gem_shrink(dev_priv,
 					   sc->nr_to_scan - freed,
 					   false);
-	if (freed < sc->nr_to_scan)
-		freed += i915_gem_shrink_all(dev_priv);
-
 	if (unlock)
 		mutex_unlock(&dev->struct_mutex);
 
 	return freed;
 }
 
+static int
+i915_gem_shrinker_oom(struct notifier_block *nb, unsigned long event, void *ptr)
+{
+	struct drm_i915_private *dev_priv =
+		container_of(nb, struct drm_i915_private, mm.oom_notifier);
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_i915_gem_object *obj;
+	unsigned long timeout = msecs_to_jiffies(5000) + 1;
+	unsigned long pinned, bound, unbound, freed;
+	bool was_interruptible;
+	bool unlock;
+
+	while (!i915_gem_shrinker_lock(dev, &unlock) && --timeout)
+		schedule_timeout_killable(1);
+	if (timeout == 0) {
+		pr_err("Unable to purge GPU memory due lock contention.\n");
+		return NOTIFY_DONE;
+	}
+
+	was_interruptible = dev_priv->mm.interruptible;
+	dev_priv->mm.interruptible = false;
+
+	freed = i915_gem_shrink_all(dev_priv);
+
+	dev_priv->mm.interruptible = was_interruptible;
+
+	/* Because we may be allocating inside our own driver, we cannot
+	 * assert that there are no objects with pinned pages that are not
+	 * being pointed to by hardware.
+	 */
+	unbound = bound = pinned = 0;
+	list_for_each_entry(obj, &dev_priv->mm.unbound_list, global_list) {
+		if (!obj->base.filp) /* not backed by a freeable object */
+			continue;
+
+		if (obj->pages_pin_count)
+			pinned += obj->base.size;
+		else
+			unbound += obj->base.size;
+	}
+	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list) {
+		if (!obj->base.filp)
+			continue;
+
+		if (obj->pages_pin_count)
+			pinned += obj->base.size;
+		else
+			bound += obj->base.size;
+	}
+
+	if (unlock)
+		mutex_unlock(&dev->struct_mutex);
+
+	pr_info("Purging GPU memory, %lu bytes freed, %lu bytes still pinned.\n",
+		freed, pinned);
+	if (unbound || bound)
+		pr_err("%lu and %lu bytes still available in the "
+		       "bound and unbound GPU page lists.\n",
+		       bound, unbound);
+
+	*(unsigned long *)ptr += freed;
+	return NOTIFY_DONE;
+}
+
 struct i915_vma *i915_gem_obj_to_ggtt(struct drm_i915_gem_object *obj)
 {
 	struct i915_vma *vma;
 
+	/* This WARN has probably outlived its usefulness (callers already
+	 * WARN if they don't find the GGTT vma they expect). When removing,
+	 * remember to remove the pre-check in is_pin_display() as well */
 	if (WARN_ON(list_empty(&obj->vma_list)))
 		return NULL;
 

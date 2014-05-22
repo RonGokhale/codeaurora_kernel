@@ -44,6 +44,7 @@
 #include <acpi/video.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
+#include <linux/oom.h>
 
 #define LP_RING(d) (&((struct drm_i915_private *)(d))->ring[RCS])
 
@@ -1570,7 +1571,6 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	spin_lock_init(&dev_priv->backlight_lock);
 	spin_lock_init(&dev_priv->uncore.lock);
 	spin_lock_init(&dev_priv->mm.object_stat_lock);
-	dev_priv->ring_index = 0;
 	mutex_init(&dev_priv->dpio_lock);
 	mutex_init(&dev_priv->modeset_restore_lock);
 
@@ -1741,8 +1741,8 @@ out_power_well:
 	intel_power_domains_remove(dev_priv);
 	drm_vblank_cleanup(dev);
 out_gem_unload:
-	if (dev_priv->mm.inactive_shrinker.scan_objects)
-		unregister_shrinker(&dev_priv->mm.inactive_shrinker);
+	WARN_ON(unregister_oom_notifier(&dev_priv->mm.oom_notifier));
+	unregister_shrinker(&dev_priv->mm.shrinker);
 
 	if (dev->pdev->msi_enabled)
 		pci_disable_msi(dev->pdev);
@@ -1793,8 +1793,8 @@ int i915_driver_unload(struct drm_device *dev)
 
 	i915_teardown_sysfs(dev);
 
-	if (dev_priv->mm.inactive_shrinker.scan_objects)
-		unregister_shrinker(&dev_priv->mm.inactive_shrinker);
+	WARN_ON(unregister_oom_notifier(&dev_priv->mm.oom_notifier));
+	unregister_shrinker(&dev_priv->mm.shrinker);
 
 	io_mapping_free(dev_priv->gtt.mappable);
 	arch_phys_wc_del(dev_priv->gtt.mtrr);
@@ -1866,7 +1866,7 @@ int i915_driver_unload(struct drm_device *dev)
 		kmem_cache_destroy(dev_priv->slab);
 
 	pci_dev_put(dev_priv->bridge_dev);
-	kfree(dev->dev_private);
+	kfree(dev_priv);
 
 	return 0;
 }
@@ -1982,6 +1982,7 @@ const struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_DESTROY, i915_gem_context_destroy_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_REG_READ, i915_reg_read_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(I915_GET_RESET_STATS, i915_get_reset_stats_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(I915_GEM_USERPTR, i915_gem_userptr_ioctl, DRM_UNLOCKED|DRM_RENDER_ALLOW),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

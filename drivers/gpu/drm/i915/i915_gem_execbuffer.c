@@ -645,6 +645,8 @@ i915_gem_execbuffer_reserve(struct intel_ring_buffer *ring,
 	if (list_empty(vmas))
 		return 0;
 
+	i915_gem_retire_requests_ring(ring);
+
 	vm = list_first_entry(vmas, struct i915_vma, exec_list)->vm;
 
 	INIT_LIST_HEAD(&ordered_vmas);
@@ -1063,12 +1065,12 @@ static int gen8_dispatch_bsd_ring(struct drm_device *dev,
 		int ring_id;
 
 		mutex_lock(&dev->struct_mutex);
-		if (dev_priv->ring_index == 0) {
+		if (dev_priv->mm.bsd_ring_dispatch_index == 0) {
 			ring_id = VCS;
-			dev_priv->ring_index = 1;
+			dev_priv->mm.bsd_ring_dispatch_index = 1;
 		} else {
 			ring_id = VCS2;
-			dev_priv->ring_index = 0;
+			dev_priv->mm.bsd_ring_dispatch_index = 0;
 		}
 		file_priv->bsd_ring = &dev_priv->ring[ring_id];
 		mutex_unlock(&dev->struct_mutex);
@@ -1206,6 +1208,11 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			goto pre_mutex_err;
 		}
 	} else {
+		if (args->DR4 == 0xffffffff) {
+			DRM_DEBUG("UXA submitting garbage DR4, fixing up\n");
+			args->DR4 = 0;
+		}
+
 		if (args->DR1 || args->DR4 || args->cliprects_ptr) {
 			DRM_DEBUG("0 cliprects but dirt in cliprects fields\n");
 			return -EINVAL;

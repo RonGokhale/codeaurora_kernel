@@ -106,8 +106,8 @@
 #define INTEL_DVO_CHIP_TMDS 2
 #define INTEL_DVO_CHIP_TVOUT 4
 
-#define INTEL_DSI_COMMAND_MODE	0
-#define INTEL_DSI_VIDEO_MODE	1
+#define INTEL_DSI_VIDEO_MODE	0
+#define INTEL_DSI_COMMAND_MODE	1
 
 struct intel_framebuffer {
 	struct drm_framebuffer base;
@@ -273,6 +273,13 @@ struct intel_crtc_config {
 	 * accordingly. */
 	bool has_dp_encoder;
 
+	/* Whether we should send NULL infoframes. Required for audio. */
+	bool has_hdmi_sink;
+
+	/* Audio enabled on this pipe. Only valid if either has_hdmi_sink or
+	 * has_dp_encoder is set. */
+	bool has_audio;
+
 	/*
 	 * Enable dithering, used when the selected pipe bpp doesn't match the
 	 * plane bpp.
@@ -363,7 +370,6 @@ struct intel_crtc {
 	 */
 	bool active;
 	unsigned long enabled_power_domains;
-	bool eld_vld;
 	bool primary_enabled; /* is the primary plane (partially) visible? */
 	bool lowfreq_avail;
 	struct intel_overlay *overlay;
@@ -486,6 +492,7 @@ struct intel_hdmi {
 				enum hdmi_infoframe_type type,
 				const void *frame, ssize_t len);
 	void (*set_infoframes)(struct drm_encoder *encoder,
+			       bool enable,
 			       struct drm_display_mode *adjusted_mode);
 };
 
@@ -561,8 +568,23 @@ vlv_dport_to_channel(struct intel_digital_port *dport)
 {
 	switch (dport->port) {
 	case PORT_B:
+	case PORT_D:
 		return DPIO_CH0;
 	case PORT_C:
+		return DPIO_CH1;
+	default:
+		BUG();
+	}
+}
+
+static inline int
+vlv_pipe_to_channel(enum pipe pipe)
+{
+	switch (pipe) {
+	case PIPE_A:
+	case PIPE_C:
+		return DPIO_CH0;
+	case PIPE_B:
 		return DPIO_CH1;
 	default:
 		BUG();
@@ -593,6 +615,8 @@ struct intel_unpin_work {
 #define INTEL_FLIP_INACTIVE	0
 #define INTEL_FLIP_PENDING	1
 #define INTEL_FLIP_COMPLETE	2
+	u32 flip_count;
+	u32 gtt_offset;
 	bool enable_stall_check;
 };
 
@@ -644,8 +668,6 @@ hdmi_to_dig_port(struct intel_hdmi *intel_hdmi)
 /* i915_irq.c */
 bool intel_set_cpu_fifo_underrun_reporting(struct drm_device *dev,
 					   enum pipe pipe, bool enable);
-bool __intel_set_cpu_fifo_underrun_reporting(struct drm_device *dev,
-					     enum pipe pipe, bool enable);
 bool intel_set_pch_fifo_underrun_reporting(struct drm_device *dev,
 					   enum transcoder pch_transcoder,
 					   bool enable);
@@ -653,9 +675,12 @@ void ilk_enable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void ilk_disable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void snb_enable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void snb_disable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
+void bdw_enable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
+void bdw_disable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void intel_runtime_pm_disable_interrupts(struct drm_device *dev);
 void intel_runtime_pm_restore_interrupts(struct drm_device *dev);
 int intel_get_crtc_scanline(struct intel_crtc *crtc);
+void i9xx_check_fifo_underruns(struct drm_device *dev);
 
 
 /* intel_crt.c */
@@ -902,6 +927,7 @@ extern struct drm_display_mode *intel_find_panel_downclock(
 /* intel_pm.c */
 void intel_init_clock_gating(struct drm_device *dev);
 void intel_suspend_hw(struct drm_device *dev);
+int ilk_wm_max_level(const struct drm_device *dev);
 void intel_update_watermarks(struct drm_crtc *crtc);
 void intel_update_sprite_watermarks(struct drm_plane *plane,
 				    struct drm_crtc *crtc,

@@ -40,12 +40,17 @@
  */
 #define CACHELINE_BYTES 64
 
+static inline int __ring_space(int head, int tail, int size)
+{
+	int space = head - (tail + I915_RING_FREE_SPACE);
+	if (space < 0)
+		space += size;
+	return space;
+}
+
 static inline int ring_space(struct intel_ring_buffer *ring)
 {
-	int space = (ring->head & HEAD_ADDR) - (ring->tail + I915_RING_FREE_SPACE);
-	if (space < 0)
-		space += ring->size;
-	return space;
+	return __ring_space(ring->head & HEAD_ADDR, ring->tail, ring->size);
 }
 
 static bool intel_ring_stopped(struct intel_ring_buffer *ring)
@@ -605,7 +610,7 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 	 * to use MI_WAIT_FOR_EVENT within the CS. It should already be
 	 * programmed to '1' on all products.
 	 *
-	 * WaDisableAsyncFlipPerfMode:snb,ivb,hsw,vlv,bdw
+	 * WaDisableAsyncFlipPerfMode:snb,ivb,hsw,vlv,bdw,chv
 	 */
 	if (INTEL_INFO(dev)->gen >= 6)
 		I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(ASYNC_FLIP_PERF_DISABLE));
@@ -679,6 +684,8 @@ static int gen6_signal(struct intel_ring_buffer *signaller,
 #define MBOX_UPDATE_DWORDS 4
 	if (i915_semaphore_is_enabled(dev))
 		num_dwords += ((I915_NUM_RINGS-1) * MBOX_UPDATE_DWORDS);
+	else
+		return intel_ring_begin(signaller, num_dwords);
 
 	ret = intel_ring_begin(signaller, num_dwords);
 	if (ret)
@@ -1450,7 +1457,9 @@ static int intel_init_ring_buffer(struct drm_device *dev,
 	if (IS_I830(dev) || IS_845G(dev))
 		ring->effective_size -= 2 * CACHELINE_BYTES;
 
-	i915_cmd_parser_init_ring(ring);
+	ret = i915_cmd_parser_init_ring(ring);
+	if (ret)
+		return ret;
 
 	return ring->init(ring);
 }
@@ -1477,12 +1486,14 @@ void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring)
 		ring->cleanup(ring);
 
 	cleanup_status_page(ring);
+
+	i915_cmd_parser_fini_ring(ring);
 }
 
 static int intel_ring_wait_request(struct intel_ring_buffer *ring, int n)
 {
 	struct drm_i915_gem_request *request;
-	u32 seqno = 0, tail;
+	u32 seqno = 0;
 	int ret;
 
 	if (ring->last_retired_head != -1) {
@@ -1495,26 +1506,10 @@ static int intel_ring_wait_request(struct intel_ring_buffer *ring, int n)
 	}
 
 	list_for_each_entry(request, &ring->request_list, list) {
-		int space;
-
-		if (request->tail == -1)
-			continue;
-
-		space = request->tail - (ring->tail + I915_RING_FREE_SPACE);
-		if (space < 0)
-			space += ring->size;
-		if (space >= n) {
+		if (__ring_space(request->tail, ring->tail, ring->size) >= n) {
 			seqno = request->seqno;
-			tail = request->tail;
 			break;
 		}
-
-		/* Consume this request in case we need more space than
-		 * is available and so need to prevent a race between
-		 * updating last_retired_head and direct reads of
-		 * I915_RING_HEAD. It also provides a nice sanity check.
-		 */
-		request->tail = -1;
 	}
 
 	if (seqno == 0)
@@ -1524,11 +1519,11 @@ static int intel_ring_wait_request(struct intel_ring_buffer *ring, int n)
 	if (ret)
 		return ret;
 
-	ring->head = tail;
-	ring->space = ring_space(ring);
-	if (WARN_ON(ring->space < n))
-		return -ENOSPC;
+	i915_gem_retire_requests_ring(ring);
+	ring->head = ring->last_retired_head;
+	ring->last_retired_head = -1;
 
+	ring->space = ring_space(ring);
 	return 0;
 }
 
@@ -1546,7 +1541,6 @@ static int ring_wait_for_space(struct intel_ring_buffer *ring, int n)
 	/* force the tail write in case we have been skipping them */
 	__intel_ring_advance(ring);
 
-	trace_i915_ring_wait_begin(ring);
 	/* With GEM the hangcheck timer should kick us out of the loop,
 	 * leaving it early runs the risk of corrupting GEM state (due
 	 * to running on almost untested codepaths). But on resume
@@ -1554,12 +1548,13 @@ static int ring_wait_for_space(struct intel_ring_buffer *ring, int n)
 	 * case by choosing an insanely large timeout. */
 	end = jiffies + 60 * HZ;
 
+	trace_i915_ring_wait_begin(ring);
 	do {
 		ring->head = I915_READ_HEAD(ring);
 		ring->space = ring_space(ring);
 		if (ring->space >= n) {
-			trace_i915_ring_wait_end(ring);
-			return 0;
+			ret = 0;
+			break;
 		}
 
 		if (!drm_core_check_feature(dev, DRIVER_MODESET) &&
@@ -1571,13 +1566,23 @@ static int ring_wait_for_space(struct intel_ring_buffer *ring, int n)
 
 		msleep(1);
 
+		if (dev_priv->mm.interruptible && signal_pending(current)) {
+			ret = -ERESTARTSYS;
+			break;
+		}
+
 		ret = i915_gem_check_wedge(&dev_priv->gpu_error,
 					   dev_priv->mm.interruptible);
 		if (ret)
-			return ret;
-	} while (!time_after(jiffies, end));
+			break;
+
+		if (time_after(jiffies, end)) {
+			ret = -EBUSY;
+			break;
+		}
+	} while (1);
 	trace_i915_ring_wait_end(ring);
-	return -EBUSY;
+	return ret;
 }
 
 static int intel_wrap_ring_buffer(struct intel_ring_buffer *ring)
@@ -2183,6 +2188,7 @@ int intel_init_bsd2_ring_buffer(struct drm_device *dev)
 	ring->dispatch_execbuffer =
 			gen8_ring_dispatch_execbuffer;
 	ring->semaphore.sync_to = gen6_ring_sync;
+	ring->semaphore.signal = gen6_signal;
 	/*
 	 * The current semaphore is only applied on the pre-gen8. And there
 	 * is no bsd2 ring on the pre-gen8. So now the semaphore_register
