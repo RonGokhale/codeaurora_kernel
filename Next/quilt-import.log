@@ -1,0 +1,17 @@
+Importing jdelvare-hwmon based on 3.15-rc5
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard d6d211db37e75de2ddc3a4f979038c40df7cc79c
+HEAD is now at d6d211db37e7 Linux 3.15-rc5
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-document-temp-min-lcrit-hyst.patch
+Applying: hwmon: Document temp[1-*]_min_hyst sysfs attribute
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-ntc_thermistor-01-fix-dependencies.patch
+Applying: hwmon: (ntc_thermistor) Fix dependencies
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-ntc_thermistor-02-fix-OF-device-ID-mapping.patch
+Applying: hwmon: (ntc_thermistor) Fix OF device ID mapping
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+   c9eaa447e77e..68ffcb02dad0  master     -> jdelvare-hwmon/master
+Importing rd-docs based on 3.15-rc5
+Unchanged quilt series rd-docs
