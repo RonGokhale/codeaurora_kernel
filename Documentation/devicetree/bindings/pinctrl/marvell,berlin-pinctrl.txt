@@ -1,0 +1,45 @@
+* Pin-controller driver for the Marvell Berlin SoCs
+
+The pins controlled by the Marvell Berlin controller are organized in groups.
+Configuration is done by group, so no actual pin information is needed.
+
+Be aware the Marvell Berlin datasheets use the keyword 'mode' for what is called
+a 'function' in the pin-controller subsystem.
+
+Required properties:
+- compatible: should be one of:
+	"marvell,berlin2-soc-pinctrl",
+	"marvell,berlin2-sysmgr-pinctrl",
+	"marvell,berlin2cd-soc-pinctrl",
+	"marvell,berlin2cd-sysmgr-pinctrl",
+	"marvell,berlin2q-soc-pinctrl",
+	"marvell,berlin2q-sysmgr-pinctrl"
+- reg: registers physical address and length of the pin controller.
+
+Please refer to pinctrl-bindings.txt in this directory for details of the
+common pin-controller bindings used by client devices.
+
+A pin-controller node should contain subnodes representing the pin group
+configurations, one per function. Each subnode has the group name and the muxing
+function used.
+
+Required subnode-properties:
+- marvell,groups: a list of strings describing the group names.
+- marvell,function: a string describing the function used to mux the groups.
+
+Example:
+
+sm_pinctrl: pin-controller@0 {
+	compatible = "marvell,berlin2q-sysmgr-pinctrl";
+	reg = <0xfc0000 0x44>;
+
+	uart0_pmux: uart0-pmux {
+		marvell,groups = "GSM12", "GSM13";
+		marvell,function = "uart0";
+	};
+}
+
+&uart0 {
+	pinctrl-0 = <&uart0_pmux>;
+	pinctrl-names = "default";
+};
