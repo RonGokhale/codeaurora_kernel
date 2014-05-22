@@ -982,12 +982,7 @@ int generic_file_fsync(struct file *file, loff_t start, loff_t end,
 	err = __generic_file_fsync(file, start, end, datasync);
 	if (err)
 		return err;
-#ifdef CONFIG_BLOCK
 	return blkdev_issue_flush(inode->i_sb->s_bdev, GFP_KERNEL, NULL);
-#else
-	return err;
-#endif
-
 }
 EXPORT_SYMBOL(generic_file_fsync);
 
