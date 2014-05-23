@@ -26,8 +26,6 @@
 #include <asm/mach/map.h>
 #include <asm/memory.h>
 
-#include <plat/cpu.h>
-
 #include "common.h"
 #include "mfc.h"
 #include "regs-pmu.h"
@@ -168,12 +166,16 @@ void exynos_restart(enum reboot_mode mode, const char *cmd)
 }
 
 static struct platform_device exynos_cpuidle = {
-	.name		= "exynos_cpuidle",
-	.id		= -1,
+	.name              = "exynos_cpuidle",
+	.dev.platform_data = exynos_enter_aftr,
+	.id                = -1,
 };
 
 void __init exynos_cpuidle_init(void)
 {
+	if (soc_is_exynos5440())
+		return;
+
 	platform_device_register(&exynos_cpuidle);
 }
 
@@ -240,17 +242,6 @@ void __init exynos_init_io(void)
 
 	exynos_map_io();
 }
-
-struct bus_type exynos_subsys = {
-	.name		= "exynos-core",
-	.dev_name	= "exynos-core",
-};
-
-static int __init exynos_core_init(void)
-{
-	return subsys_system_register(&exynos_subsys, NULL);
-}
-core_initcall(exynos_core_init);
 
 static void __init exynos_dt_machine_init(void)
 {
