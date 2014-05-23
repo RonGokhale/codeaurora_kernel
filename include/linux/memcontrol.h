@@ -92,6 +92,10 @@ bool __mem_cgroup_same_or_subtree(const struct mem_cgroup *root_memcg,
 bool task_in_mem_cgroup(struct task_struct *task,
 			const struct mem_cgroup *memcg);
 
+extern bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
+		struct mem_cgroup *root);
+extern bool mem_cgroup_all_within_guarantee(struct mem_cgroup *root);
+
 extern struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page);
 extern struct mem_cgroup *mem_cgroup_from_task(struct task_struct *p);
 
@@ -286,6 +290,16 @@ static inline struct lruvec *mem_cgroup_page_lruvec(struct page *page,
 						    struct zone *zone)
 {
 	return &zone->lruvec;
+}
+
+static inline bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
+		struct mem_cgroup *root)
+{
+	return false;
+}
+static inline bool mem_cgroup_all_within_guarantee(struct mem_cgroup *root)
+{
+	return false;
 }
 
 static inline struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
