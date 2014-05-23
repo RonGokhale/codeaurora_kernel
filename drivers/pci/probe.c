@@ -171,9 +171,10 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 			struct resource *res, unsigned int pos)
 {
 	u32 l, sz, mask;
+	u64 l64, sz64, mask64;
 	u16 orig_cmd;
 	struct pci_bus_region region, inverted_region;
-	bool bar_too_big = false, bar_disabled = false;
+	bool bar_too_big = false, bar_too_high = false, bar_invalid = false;
 
 	mask = type ? PCI_ROM_ADDRESS_MASK : ~0;
 
@@ -226,9 +227,9 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	}
 
 	if (res->flags & IORESOURCE_MEM_64) {
-		u64 l64 = l;
-		u64 sz64 = sz;
-		u64 mask64 = mask | (u64)~0 << 32;
+		l64 = l;
+		sz64 = sz;
+		mask64 = mask | (u64)~0 << 32;
 
 		pci_read_config_dword(dev, pos + 4, &l);
 		pci_write_config_dword(dev, pos + 4, ~0);
@@ -243,19 +244,22 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 		if (!sz64)
 			goto fail;
 
-		if ((sizeof(resource_size_t) < 8) && (sz64 > 0x100000000ULL)) {
+		if ((sizeof(dma_addr_t) < 8 || sizeof(resource_size_t) < 8) &&
+		    sz64 > 0x100000000ULL) {
+			res->flags |= IORESOURCE_UNSET | IORESOURCE_DISABLED;
+			res->start = 0;
+			res->end = 0;
 			bar_too_big = true;
-			goto fail;
+			goto out;
 		}
 
-		if ((sizeof(resource_size_t) < 8) && l) {
-			/* Address above 32-bit boundary; disable the BAR */
-			pci_write_config_dword(dev, pos, 0);
-			pci_write_config_dword(dev, pos + 4, 0);
+		if ((sizeof(dma_addr_t) < 8) && l) {
+			/* Above 32-bit boundary; try to reallocate */
 			res->flags |= IORESOURCE_UNSET;
-			region.start = 0;
-			region.end = sz64;
-			bar_disabled = true;
+			res->start = 0;
+			res->end = sz64;
+			bar_too_high = true;
+			goto out;
 		} else {
 			region.start = l64;
 			region.end = l64 + sz64;
@@ -285,11 +289,10 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 	 * be claimed by the device.
 	 */
 	if (inverted_region.start != region.start) {
-		dev_info(&dev->dev, "reg 0x%x: initial BAR value %pa invalid; forcing reassignment\n",
-			 pos, &region.start);
 		res->flags |= IORESOURCE_UNSET;
-		res->end -= res->start;
 		res->start = 0;
+		res->end = region.end - region.start;
+		bar_invalid = true;
 	}
 
 	goto out;
@@ -303,8 +306,15 @@ out:
 		pci_write_config_word(dev, PCI_COMMAND, orig_cmd);
 
 	if (bar_too_big)
-		dev_err(&dev->dev, "reg 0x%x: can't handle 64-bit BAR\n", pos);
-	if (res->flags && !bar_disabled)
+		dev_err(&dev->dev, "reg 0x%x: can't handle BAR larger than 4GB (size %#010llx)\n",
+			pos, (unsigned long long) sz64);
+	if (bar_too_high)
+		dev_info(&dev->dev, "reg 0x%x: can't handle BAR above 4G (bus address %#010llx)\n",
+			 pos, (unsigned long long) l64);
+	if (bar_invalid)
+		dev_info(&dev->dev, "reg 0x%x: initial BAR value %#010llx invalid\n",
+			 pos, (unsigned long long) region.start);
+	if (res->flags)
 		dev_printk(KERN_DEBUG, &dev->dev, "reg 0x%x: %pR\n", pos, res);
 
 	return (res->flags & IORESOURCE_MEM_64) ? 1 : 0;
@@ -465,7 +475,7 @@ void pci_read_bridge_bases(struct pci_bus *child)
 
 	if (dev->transparent) {
 		pci_bus_for_each_resource(child->parent, res, i) {
-			if (res) {
+			if (res && res->flags) {
 				pci_bus_add_resource(child, res,
 						     PCI_SUBTRACTIVE_DECODE);
 				dev_printk(KERN_DEBUG, &dev->dev,
@@ -719,7 +729,7 @@ add_dev:
 	return child;
 }
 
-struct pci_bus *__ref pci_add_new_bus(struct pci_bus *parent, struct pci_dev *dev, int busnr)
+struct pci_bus *pci_add_new_bus(struct pci_bus *parent, struct pci_dev *dev, int busnr)
 {
 	struct pci_bus *child;
 
@@ -1369,7 +1379,7 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	WARN_ON(ret < 0);
 }
 
-struct pci_dev *__ref pci_scan_single_device(struct pci_bus *bus, int devfn)
+struct pci_dev *pci_scan_single_device(struct pci_bus *bus, int devfn)
 {
 	struct pci_dev *dev;
 
@@ -1617,7 +1627,7 @@ static int pcie_bus_configure_set(struct pci_dev *dev, void *data)
  */
 void pcie_bus_configure_settings(struct pci_bus *bus)
 {
-	u8 smpss;
+	u8 smpss = 0;
 
 	if (!bus->self)
 		return;
@@ -1958,7 +1968,7 @@ EXPORT_SYMBOL(pci_scan_bus);
  *
  * Returns the max number of subordinate bus discovered.
  */
-unsigned int __ref pci_rescan_bus_bridge_resize(struct pci_dev *bridge)
+unsigned int pci_rescan_bus_bridge_resize(struct pci_dev *bridge)
 {
 	unsigned int max;
 	struct pci_bus *bus = bridge->subordinate;
@@ -1981,7 +1991,7 @@ unsigned int __ref pci_rescan_bus_bridge_resize(struct pci_dev *bridge)
  *
  * Returns the max number of subordinate bus discovered.
  */
-unsigned int __ref pci_rescan_bus(struct pci_bus *bus)
+unsigned int pci_rescan_bus(struct pci_bus *bus)
 {
 	unsigned int max;
 
