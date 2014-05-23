@@ -21,7 +21,6 @@
 #ifndef __ASM_OUTERCACHE_H
 #define __ASM_OUTERCACHE_H
 
-#include <linux/bug.h>
 #include <linux/types.h>
 
 struct outer_cache_fns {
