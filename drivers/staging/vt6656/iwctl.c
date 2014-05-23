@@ -34,13 +34,11 @@
 #include "iwctl.h"
 #include "mac.h"
 #include "card.h"
-#include "hostap.h"
 #include "power.h"
 #include "rf.h"
 #include "iowpa.h"
 #include "wpactl.h"
 #include "control.h"
-#include "rndis.h"
 #include "baseband.h"
 
 static const long frequency_list[] = {
@@ -384,12 +382,6 @@ int iwctl_siwmode(struct net_device *dev, struct iw_request_info *info,
 	if (pMgmt == NULL)
 		return -EFAULT;
 
-	if (pMgmt->eCurrMode == WMAC_MODE_ESS_AP && pDevice->bEnableHostapd) {
-		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
-			"Can't set operation mode, hostapd is running\n");
-		return rc;
-	}
-
 	switch (*wmode) {
 	case IW_MODE_ADHOC:
 		if (pMgmt->eConfigMode != WMAC_CONFIG_IBSS_STA) {
@@ -409,17 +401,7 @@ int iwctl_siwmode(struct net_device *dev, struct iw_request_info *info,
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "set mode to infrastructure\n");
 		break;
 	case IW_MODE_MASTER:
-
-		pMgmt->eConfigMode = WMAC_CONFIG_ESS_STA;
 		rc = -EOPNOTSUPP;
-		break;
-
-		if (pMgmt->eConfigMode != WMAC_CONFIG_AP) {
-			pMgmt->eConfigMode = WMAC_CONFIG_AP;
-			if (pDevice->flags & DEVICE_FLAGS_OPENED)
-				pDevice->bCommit = true;
-		}
-		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "set mode to Access Point\n");
 		break;
 
 	case IW_MODE_REPEAT:
@@ -440,8 +422,6 @@ int iwctl_siwmode(struct net_device *dev, struct iw_request_info *info,
 		} else {
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
 				"Commit the settings\n");
-
-			spin_lock_irq(&pDevice->lock);
 
 			if (pDevice->bLinkPass &&
 				memcmp(pMgmt->abyCurrSSID,
@@ -471,8 +451,6 @@ int iwctl_siwmode(struct net_device *dev, struct iw_request_info *info,
 			bScheduleCommand((void *) pDevice,
 				 WLAN_CMD_SSID,
 				 NULL);
-
-			spin_unlock_irq(&pDevice->lock);
 		}
 		pDevice->bCommit = false;
 	}
@@ -1212,14 +1190,12 @@ int iwctl_siwencode(struct net_device *dev, struct iw_request_info *info,
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "%02x ", pDevice->abyKey[ii]);
 
 		if (pDevice->flags & DEVICE_FLAGS_OPENED) {
-			spin_lock_irq(&pDevice->lock);
 			KeybSetDefaultKey(pDevice,
 					&(pDevice->sKey),
 					dwKeyIndex | (1 << 31),
 					wrq->length, NULL,
 					pDevice->abyKey,
 					KEY_CTL_WEP);
-			spin_unlock_irq(&pDevice->lock);
 		}
 		pDevice->byKeyIndex = (u8)dwKeyIndex;
 		pDevice->uKeyLength = wrq->length;
@@ -1242,10 +1218,8 @@ int iwctl_siwencode(struct net_device *dev, struct iw_request_info *info,
 		pDevice->bEncryptionEnable = false;
 		pDevice->eEncryptionStatus = Ndis802_11EncryptionDisabled;
 		if (pDevice->flags & DEVICE_FLAGS_OPENED) {
-			spin_lock_irq(&pDevice->lock);
 			for (uu = 0; uu < MAX_KEY_TABLE; uu++)
 				MACvDisableKeyEntry(pDevice, uu);
-			spin_unlock_irq(&pDevice->lock);
 		}
 	}
 	if (wrq->flags & IW_ENCODE_RESTRICTED) {
@@ -1342,12 +1316,9 @@ int iwctl_siwpower(struct net_device *dev, struct iw_request_info *info,
 		return rc;
 	}
 
-	spin_lock_irq(&pDevice->lock);
-
 	if (wrq->disabled) {
 		pDevice->ePSMode = WMAC_POWER_CAM;
 		PSvDisablePowerSaving(pDevice);
-		spin_unlock_irq(&pDevice->lock);
 		return rc;
 	}
 	if ((wrq->flags & IW_POWER_TYPE) == IW_POWER_TIMEOUT) {
@@ -1358,8 +1329,6 @@ int iwctl_siwpower(struct net_device *dev, struct iw_request_info *info,
 		pDevice->ePSMode = WMAC_POWER_FAST;
 		PSvEnablePowerSaving((void *)pDevice, pMgmt->wListenInterval);
 	}
-
-	spin_unlock_irq(&pDevice->lock);
 
 	switch (wrq->flags & IW_POWER_MODE) {
 	case IW_POWER_UNICAST_R:
@@ -1723,9 +1692,7 @@ int iwctl_siwencodeext(struct net_device *dev, struct iw_request_info *info,
 		KeyvInitTable(pDevice, &pDevice->sKey);
 	}
 /*******/
-	spin_lock_irq(&pDevice->lock);
 	ret = wpa_set_keys(pDevice, param);
-	spin_unlock_irq(&pDevice->lock);
 
 error:
 	kfree(buf);

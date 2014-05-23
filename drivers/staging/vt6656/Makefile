@@ -19,7 +19,6 @@ vt6656_stage-y +=	main_usb.o \
 			rc4.o \
 			tether.o \
 			tcrc.o \
-			hostap.o \
 			wpa.o \
 			key.o \
 			tkip.o \
@@ -27,7 +26,6 @@ vt6656_stage-y +=	main_usb.o \
 			rf.o \
 			iwctl.o \
 			wpactl.o \
-			aes_ccmp.o \
 			usbpipe.o \
 			channel.o \
 			control.o \

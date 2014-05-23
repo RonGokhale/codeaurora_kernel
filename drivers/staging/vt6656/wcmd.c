@@ -51,7 +51,6 @@
 #include "control.h"
 #include "rxtx.h"
 #include "rf.h"
-#include "rndis.h"
 #include "channel.h"
 #include "iowpa.h"
 
@@ -279,14 +278,13 @@ void vRunCommand(struct work_struct *work)
 	int ii;
 	u8 byMask[8] = {1, 2, 4, 8, 0x10, 0x20, 0x40, 0x80};
 	u8 byData;
+	unsigned long flags;
 
 	if (pDevice->Flags & fMP_DISCONNECTED)
 		return;
 
 	if (pDevice->bCmdRunning != true)
 		return;
-
-	spin_lock_irq(&pDevice->lock);
 
 	switch (pDevice->eCommandState) {
 
@@ -346,11 +344,10 @@ void vRunCommand(struct work_struct *work)
 			CARDbSetMediaChannel(pDevice, pMgmt->uScanChannel);
 			// Set Baseband to be more sensitive.
 
-			if (pDevice->bUpdateBBVGA) {
-				BBvSetShortSlotTime(pDevice);
-				BBvSetVGAGainOffset(pDevice, pDevice->abyBBVGA[0]);
-				BBvUpdatePreEDThreshold(pDevice, true);
-			}
+			BBvSetShortSlotTime(pDevice);
+			BBvSetVGAGainOffset(pDevice, pDevice->abyBBVGA[0]);
+			BBvUpdatePreEDThreshold(pDevice, true);
+
 			pMgmt->uScanChannel++;
 
 			while (!ChannelValid(pDevice->byZoneType, pMgmt->uScanChannel) &&
@@ -365,11 +362,9 @@ void vRunCommand(struct work_struct *work)
 			if ((pMgmt->b11hEnable == false) ||
 			    (pMgmt->uScanChannel < CB_MAX_CHANNEL_24G)) {
 				s_vProbeChannel(pDevice);
-				spin_unlock_irq(&pDevice->lock);
 				vCommandTimerWait((void *) pDevice, 100);
 				return;
 			} else {
-				spin_unlock_irq(&pDevice->lock);
 				vCommandTimerWait((void *) pDevice, WCMD_PASSIVE_SCAN_TIME);
 				return;
 			}
@@ -385,11 +380,9 @@ void vRunCommand(struct work_struct *work)
 			CARDvSetBSSMode(pDevice);
 		}
 
-		if (pDevice->bUpdateBBVGA) {
-			BBvSetShortSlotTime(pDevice);
-			BBvSetVGAGainOffset(pDevice, pDevice->byBBVGACurrent);
-			BBvUpdatePreEDThreshold(pDevice, false);
-		}
+		BBvSetShortSlotTime(pDevice);
+		BBvSetVGAGainOffset(pDevice, pDevice->byBBVGACurrent);
+		BBvUpdatePreEDThreshold(pDevice, false);
 
 		// Set channel back
 		vAdHocBeaconRestart(pDevice);
@@ -504,7 +497,6 @@ void vRunCommand(struct work_struct *work)
 				pDevice->byLinkWaitCount = 0;
 				pDevice->eCommandState = WLAN_AUTHENTICATE_WAIT;
 				vCommandTimerWait((void *) pDevice, AUTHENTICATE_TIMEOUT);
-				spin_unlock_irq(&pDevice->lock);
 				DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO" Set eCommandState = WLAN_AUTHENTICATE_WAIT\n");
 				return;
 			}
@@ -578,7 +570,6 @@ void vRunCommand(struct work_struct *work)
 				pDevice->byLinkWaitCount = 0;
 				pDevice->eCommandState = WLAN_ASSOCIATE_WAIT;
 				vCommandTimerWait((void *) pDevice, ASSOCIATE_TIMEOUT);
-				spin_unlock_irq(&pDevice->lock);
 				return;
 			}
 		} else if (pMgmt->eCurrState < WMAC_STATE_AUTHPENDING) {
@@ -587,7 +578,6 @@ void vRunCommand(struct work_struct *work)
 			//mike add:wait another 2 sec if authenticated_frame delay!
 			pDevice->byLinkWaitCount++;
 			printk("WLAN_AUTHENTICATE_WAIT:wait %d times!!\n", pDevice->byLinkWaitCount);
-			spin_unlock_irq(&pDevice->lock);
 			vCommandTimerWait((void *) pDevice, AUTHENTICATE_TIMEOUT/2);
 			return;
 		}
@@ -622,7 +612,6 @@ void vRunCommand(struct work_struct *work)
 			//mike add:wait another 2 sec if associated_frame delay!
 			pDevice->byLinkWaitCount++;
 			printk("WLAN_ASSOCIATE_WAIT:wait %d times!!\n", pDevice->byLinkWaitCount);
-			spin_unlock_irq(&pDevice->lock);
 			vCommandTimerWait((void *) pDevice, ASSOCIATE_TIMEOUT/2);
 			return;
 		}
@@ -638,10 +627,9 @@ void vRunCommand(struct work_struct *work)
 			pMgmt->eCurrMode = WMAC_MODE_STANDBY;
 			pDevice->bLinkPass = false;
 			ControlvMaskByte(pDevice, MESSAGE_REQUEST_MACREG, MAC_REG_PAPEDELAY, LEDSTS_STS, LEDSTS_SLOW);
-			if (pDevice->bEnableHostWEP == true)
-				BSSvClearNodeDBTable(pDevice, 1);
-			else
-				BSSvClearNodeDBTable(pDevice, 0);
+
+			BSSvClearNodeDBTable(pDevice, 0);
+
 			pDevice->uAssocCount = 0;
 			pMgmt->eCurrState = WMAC_STATE_IDLE;
 			pDevice->bFixRate = false;
@@ -675,8 +663,12 @@ void vRunCommand(struct work_struct *work)
 					pDevice->bMoreData = true;
 				}
 
-				if (nsDMA_tx_packet(pDevice, TYPE_AC0DMA, skb) != 0)
+				spin_lock_irqsave(&pDevice->lock, flags);
+
+				if (nsDMA_tx_packet(pDevice, skb) != 0)
 					DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Multicast ps tx fail\n");
+
+				spin_unlock_irqrestore(&pDevice->lock, flags);
 
 				pMgmt->sNodeDBTable[0].wEnQueueCnt--;
 			}
@@ -698,8 +690,12 @@ void vRunCommand(struct work_struct *work)
 						pDevice->bMoreData = true;
 					}
 
-					if (nsDMA_tx_packet(pDevice, TYPE_AC0DMA, skb) != 0)
+					spin_lock_irqsave(&pDevice->lock, flags);
+
+					if (nsDMA_tx_packet(pDevice, skb) != 0)
 						DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "sta ps tx fail\n");
+
+					spin_unlock_irqrestore(&pDevice->lock, flags);
 
 					pMgmt->sNodeDBTable[ii].wEnQueueCnt--;
 					// check if sta ps enable, wait next pspoll
@@ -752,9 +748,9 @@ void vRunCommand(struct work_struct *work)
 
 				pDevice->byKeyIndex = 0;
 				pDevice->bTransmitKey = false;
-				spin_unlock_irq(&pDevice->lock);
+
 				KeyvInitTable(pDevice, &pDevice->sKey);
-				spin_lock_irq(&pDevice->lock);
+
 				pMgmt->byCSSPK = KEY_CTL_NONE;
 				pMgmt->byCSSGK = KEY_CTL_NONE;
 
@@ -882,7 +878,6 @@ void vRunCommand(struct work_struct *work)
 
 	s_bCommandComplete(pDevice);
 
-	spin_unlock_irq(&pDevice->lock);
 	return;
 }
 
