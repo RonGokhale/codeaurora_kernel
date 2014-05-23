@@ -119,6 +119,18 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.16
 	tegra/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-dt
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti.git tags/sti-dt-for-v3.16-1
+	at91/dt3
+		git://github.com/at91linux/linux-at91.git tags/at91-dt3
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom.git tags/qcom-dt-for-3.16
+	bcm/dt
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-dt
+	sunxi/dt2
+		https://github.com/mripard/linux.git tags/sunxi-dt-for-3.16-2
+	mvebu/dt2
+		git://git.infradead.org/linux-mvebu.git tags/mvebu-dt-3.16-2
 
 next/drivers
 	socfpga/reset-driver
