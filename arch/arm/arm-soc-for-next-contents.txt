@@ -14,6 +14,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/sirf-soc-for-3.16
 	vexpress/updates
 		git://git.linaro.org/people/pawel.moll/linux tags/vexpress/updates-for-3.16
+	bcm/cleanup
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-cleanup
 
 next/soc
 	renesas/soc
@@ -55,6 +57,8 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom qcom-soc-for-3.16
 	sunxi/core2
 		https://github.com/mripard/linux sunxi-core-for-3.16-2
+	bcm/soc
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-soc
 
 next/soc2
 	keystone/soc
@@ -159,3 +163,12 @@ next/drivers
 		git://git.infradead.org/linux-mvebu tags/mvebu-drivers-3.16
 	sunxi/drivers
 		https://github.com/mripard/linux sunxi/drivers-for-3.16
+	sunxi/drivers2
+		https://github.com/mripard/linux sunxi/drivers-for-3.16
+	qcom/socdriver
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom.git tags/qcom-drivers-for-3.16	
+	patches
+		Documentation: sysfs: add Broadcom GISB arbiter sysfs properties
+		Documentation: devicetree: add Broadcom GISB arbiter bindings
+		bus: add Broadcom GISB bus arbiter timeout/error handler
+
