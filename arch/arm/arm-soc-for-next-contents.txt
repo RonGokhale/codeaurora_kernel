@@ -43,6 +43,23 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.16
 	tegra/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-soc
+	axxia/soc patches
+		ARM: dts: axxia: Add reset controller
+		power: reset: Add Axxia system reset driver
+		ARM: axxia: Adding defconfig for AXM55xx
+		ARM: dts: Device tree for AXM55xx.
+		ARM: Add platform support for LSI AXM55xx SoC
+	mvebu/soc2
+		git://git.infradead.org/linux-mvebu mvebu-soc-3.16-2
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom qcom-soc-for-3.16
+	sunxi/core2
+		https://github.com/mripard/linux sunxi-core-for-3.16-2
+
+next/soc2
+	keystone/soc
+		depends/dma-ranges
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone keystone-soc
 
 next/boards
 	shmobile/defconfig
