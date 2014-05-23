@@ -61,6 +61,26 @@ next/soc2
 		depends/dma-ranges
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone keystone-soc
 
+next/defconfig
+	shmobile/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.16
+	patch
+		ARM: multi_v7: enable AT24C EEPROM driver
+		ARM: multi_v7_defconfig: select CONFIG_GPIO_DWAPB
+		ARM: multi_v7_defconfig: Select CONFIG_MACH_BERLIN_BG2Q
+	sunxi/defconfig2
+		https://github.com/mripard/linux tags/sunxi-defconfig-for-3.16-2
+	mvebu/defconfig2
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.16-2
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom.git tags/qcom-defconfig-for-3.16
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-defconfig
+	patch
+		ARM: configs: add CONFIG_MMC_SDHCI_PXAV3 to the multi_v7_defconfig
+		ARM: configs: enable XHCI mvebu support in multi_v7_defconfig
+		ARM: add drivers for Colibri T30 to multi_v7_defconfig
+
 next/boards
 	shmobile/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.16
