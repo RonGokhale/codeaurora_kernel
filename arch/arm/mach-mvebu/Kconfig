@@ -41,7 +41,7 @@ config MACH_ARMADA_375
 	select ARMADA_375_CLK
 	select CPU_V7
 	select HAVE_ARM_SCU
-	select HAVE_ARM_TWD
+	select HAVE_ARM_TWD if SMP
 	select HAVE_SMP
 	select MACH_MVEBU_V7
 	select PINCTRL_ARMADA_375
@@ -57,7 +57,7 @@ config MACH_ARMADA_38X
 	select ARMADA_38X_CLK
 	select CPU_V7
 	select HAVE_ARM_SCU
-	select HAVE_ARM_TWD
+	select HAVE_ARM_TWD if SMP
 	select HAVE_SMP
 	select MACH_MVEBU_V7
 	select PINCTRL_ARMADA_38X
@@ -103,13 +103,6 @@ config MACH_KIRKWOOD
 	help
 	  Say 'Y' here if you want your kernel to support boards based
 	  on the Marvell Kirkwood device tree.
-
-config MACH_T5325
-	bool "HP T5325 thin client"
-	depends on MACH_KIRKWOOD
-	help
-	  Say 'Y' here if you want your kernel to support the
-	  HP T5325 Thin client
 
 endmenu
 
