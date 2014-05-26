@@ -42,7 +42,6 @@
 #endif
 #define acpi_processor_cstate_check(x) (x) /* no idle limits on IA64 :) */
 static inline void disable_acpi(void) { }
-static inline void pci_acpi_crs_quirks(void) { }
 
 #ifdef CONFIG_IA64_GENERIC
 const char *acpi_get_sysname (void);
