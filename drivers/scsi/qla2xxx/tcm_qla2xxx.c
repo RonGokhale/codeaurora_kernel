@@ -1518,7 +1518,9 @@ static int tcm_qla2xxx_check_initiator_node_acl(
 	}
 	se_tpg = &tpg->se_tpg;
 
-	se_sess = transport_init_session(TARGET_PROT_NORMAL);
+	se_sess = transport_init_session_tags(TCM_QLA2XXX_DEFAULT_TAGS,
+					      sizeof(struct qla_tgt_cmd),
+					      TARGET_PROT_NORMAL);
 	if (IS_ERR(se_sess)) {
 		pr_err("Unable to initialize struct se_session\n");
 		return PTR_ERR(se_sess);

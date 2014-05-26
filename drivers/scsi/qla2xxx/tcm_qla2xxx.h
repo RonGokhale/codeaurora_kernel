@@ -4,6 +4,8 @@
 #define TCM_QLA2XXX_VERSION	"v0.1"
 /* length of ASCII WWPNs including pad */
 #define TCM_QLA2XXX_NAMELEN	32
+/* Number of pre-allocated per-session tags */
+#define TCM_QLA2XXX_DEFAULT_TAGS 512
 
 #include "qla_target.h"
 
