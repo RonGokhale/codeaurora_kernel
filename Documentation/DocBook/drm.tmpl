@@ -342,21 +342,13 @@ char *date;</synopsis>
         <sect4>
           <title>Managed IRQ Registration</title>
           <para>
-            Both the <function>drm_irq_install</function> and
-	    <function>drm_irq_uninstall</function> functions get the device IRQ by
-	    calling <function>drm_dev_to_irq</function>. This inline function will
-	    call a bus-specific operation to retrieve the IRQ number. For platform
-	    devices, <function>platform_get_irq</function>(..., 0) is used to
-	    retrieve the IRQ number.
-          </para>
-          <para>
             <function>drm_irq_install</function> starts by calling the
             <methodname>irq_preinstall</methodname> driver operation. The operation
             is optional and must make sure that the interrupt will not get fired by
             clearing all pending interrupt flags or disabling the interrupt.
           </para>
           <para>
-            The IRQ will then be requested by a call to
+            The passed-in IRQ will then be requested by a call to
             <function>request_irq</function>. If the DRIVER_IRQ_SHARED driver
             feature flag is set, a shared (IRQF_SHARED) IRQ handler will be
             requested.
@@ -1903,8 +1895,8 @@ void intel_crt_init(struct drm_device *dev)
           <para>
             The function filters out modes larger than
             <parameter>max_width</parameter> and <parameter>max_height</parameter>
-            if specified. It then calls the connector
-            <methodname>mode_valid</methodname> helper operation for  each mode in
+            if specified. It then calls the optional connector
+            <methodname>mode_valid</methodname> helper operation for each mode in
             the probed list to check whether the mode is valid for the connector.
           </para>
         </listitem>
@@ -2265,7 +2257,7 @@ void intel_crt_init(struct drm_device *dev)
           <para>
             Verify whether a mode is valid for the connector. Return MODE_OK for
             supported modes and one of the enum drm_mode_status values (MODE_*)
-            for unsupported modes. This operation is mandatory.
+            for unsupported modes. This operation is optional.
           </para>
           <para>
             As the mode rejection reason is currently not used beside for
@@ -2950,6 +2942,11 @@ int num_ioctls;</synopsis>
 	This sections covers all things related to the GEM implementation in the
 	i915 driver.
       </para>
+      <sect2>
+        <title>Batchbuffer Parsing</title>
+!Pdrivers/gpu/drm/i915/i915_cmd_parser.c batch buffer command parser
+!Idrivers/gpu/drm/i915/i915_cmd_parser.c
+      </sect2>
     </sect1>
   </chapter>
 </part>
