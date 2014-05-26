@@ -37,6 +37,11 @@
 		status = "okay";
 	};
 
+	codec@11000000 {
+		samsung,mfc-r = <0x43000000 0x800000>;
+		samsung,mfc-l = <0x51000000 0x800000>;
+	};
+
 	mmc@12200000 {
 		status = "okay";
 		broken-cd;
@@ -362,18 +367,6 @@
 			gpios = <&gpx2 7 1>;
 			linux,code = <KEY_WAKEUP>;
 			gpio-key,wakeup;
-		};
-	};
-
-	amba {
-		mdma1: mdma@11C10000 {
-			/*
-			 * MDMA1 can support both secure and non-secure
-			 * AXI transactions. When this is enabled in the kernel
-			 * for boards that run in secure mode, we are getting
-			 * imprecise external aborts causing the kernel to oops.
-			 */
-			status = "disabled";
 		};
 	};
 };
