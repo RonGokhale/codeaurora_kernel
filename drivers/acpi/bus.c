@@ -52,6 +52,12 @@ struct proc_dir_entry *acpi_root_dir;
 EXPORT_SYMBOL(acpi_root_dir);
 
 #ifdef CONFIG_X86
+#ifdef CONFIG_ACPI_CUSTOM_DSDT
+static inline int set_copy_dsdt(const struct dmi_system_id *id)
+{
+	return 0;
+}
+#else
 static int set_copy_dsdt(const struct dmi_system_id *id)
 {
 	printk(KERN_NOTICE "%s detected - "
@@ -59,6 +65,7 @@ static int set_copy_dsdt(const struct dmi_system_id *id)
 	acpi_gbl_copy_dsdt_locally = 1;
 	return 0;
 }
+#endif
 
 static struct dmi_system_id dsdt_dmi_table[] __initdata = {
 	/*
@@ -340,16 +347,18 @@ static void acpi_bus_notify(acpi_handle handle, u32 type, void *data)
 {
 	struct acpi_device *adev;
 	struct acpi_driver *driver;
-	acpi_status status;
 	u32 ost_code = ACPI_OST_SC_NON_SPECIFIC_FAILURE;
+	bool hotplug_event = false;
 
 	switch (type) {
 	case ACPI_NOTIFY_BUS_CHECK:
 		acpi_handle_debug(handle, "ACPI_NOTIFY_BUS_CHECK event\n");
+		hotplug_event = true;
 		break;
 
 	case ACPI_NOTIFY_DEVICE_CHECK:
 		acpi_handle_debug(handle, "ACPI_NOTIFY_DEVICE_CHECK event\n");
+		hotplug_event = true;
 		break;
 
 	case ACPI_NOTIFY_DEVICE_WAKE:
@@ -358,6 +367,7 @@ static void acpi_bus_notify(acpi_handle handle, u32 type, void *data)
 
 	case ACPI_NOTIFY_EJECT_REQUEST:
 		acpi_handle_debug(handle, "ACPI_NOTIFY_EJECT_REQUEST event\n");
+		hotplug_event = true;
 		break;
 
 	case ACPI_NOTIFY_DEVICE_CHECK_LIGHT:
@@ -393,16 +403,9 @@ static void acpi_bus_notify(acpi_handle handle, u32 type, void *data)
 	    (driver->flags & ACPI_DRIVER_ALL_NOTIFY_EVENTS))
 		driver->ops.notify(adev, type);
 
-	switch (type) {
-	case ACPI_NOTIFY_BUS_CHECK:
-	case ACPI_NOTIFY_DEVICE_CHECK:
-	case ACPI_NOTIFY_EJECT_REQUEST:
-		status = acpi_hotplug_schedule(adev, type);
-		if (ACPI_SUCCESS(status))
-			return;
-	default:
-		break;
-	}
+	if (hotplug_event && ACPI_SUCCESS(acpi_hotplug_schedule(adev, type)))
+		return;
+
 	acpi_bus_put_acpi_device(adev);
 	return;
 
