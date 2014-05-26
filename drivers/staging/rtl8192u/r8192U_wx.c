@@ -135,7 +135,7 @@ static int r8192_wx_force_reset(struct net_device *dev,
 
 	down(&priv->wx_sem);
 
-	printk("%s(): force reset ! extra is %d\n",__FUNCTION__, *extra);
+	printk("%s(): force reset ! extra is %d\n",__func__, *extra);
 	priv->force_reset = *extra;
 	up(&priv->wx_sem);
 	return 0;
@@ -275,9 +275,8 @@ static int rtl8180_wx_get_range(struct net_device *dev,
 
 	range->num_bitrates = RATE_COUNT;
 
-	for (i = 0; i < RATE_COUNT && i < IW_MAX_BITRATES; i++) {
+	for (i = 0; i < RATE_COUNT && i < IW_MAX_BITRATES; i++)
 		range->bitrate[i] = rtl8180_rates[i];
-	}
 
 	range->min_frag = MIN_FRAG_THRESHOLD;
 	range->max_frag = MAX_FRAG_THRESHOLD;
@@ -320,10 +319,8 @@ static int rtl8180_wx_get_range(struct net_device *dev,
 	}
 	range->num_frequency = val;
 	range->num_channels = val;
-#if WIRELESS_EXT > 17
 	range->enc_capa = IW_ENC_CAPA_WPA|IW_ENC_CAPA_WPA2|
 			  IW_ENC_CAPA_CIPHER_TKIP|IW_ENC_CAPA_CIPHER_CCMP;
-#endif
 	tmp->scan_capa = 0x01;
 	return 0;
 }
@@ -733,7 +730,6 @@ exit:
 	return err;
 }
 
-#if (WIRELESS_EXT >= 18)
 //hw security need to reorganized.
 static int r8192_wx_set_enc_ext(struct net_device *dev,
 					struct iw_request_info *info,
@@ -742,7 +738,7 @@ static int r8192_wx_set_enc_ext(struct net_device *dev,
 	int ret=0;
 	struct r8192_priv *priv = ieee80211_priv(dev);
 	struct ieee80211_device *ieee = priv->ieee80211;
-	//printk("===>%s()\n", __FUNCTION__);
+	//printk("===>%s()\n", __func__);
 
 
 	down(&priv->wx_sem);
@@ -821,7 +817,7 @@ static int r8192_wx_set_auth(struct net_device *dev,
 					union iwreq_data *data, char *extra)
 {
 	int ret=0;
-	//printk("====>%s()\n", __FUNCTION__);
+	//printk("====>%s()\n", __func__);
 	struct r8192_priv *priv = ieee80211_priv(dev);
 	down(&priv->wx_sem);
 	ret = ieee80211_wx_set_auth(priv->ieee80211, info, &(data->param), extra);
@@ -833,7 +829,7 @@ static int r8192_wx_set_mlme(struct net_device *dev,
 					struct iw_request_info *info,
 					union iwreq_data *wrqu, char *extra)
 {
-	//printk("====>%s()\n", __FUNCTION__);
+	//printk("====>%s()\n", __func__);
 
 	int ret=0;
 	struct r8192_priv *priv = ieee80211_priv(dev);
@@ -843,18 +839,18 @@ static int r8192_wx_set_mlme(struct net_device *dev,
 	up(&priv->wx_sem);
 	return ret;
 }
-#endif
+
 static int r8192_wx_set_gen_ie(struct net_device *dev,
 					struct iw_request_info *info,
 					union iwreq_data *data, char *extra)
 {
-	   //printk("====>%s(), len:%d\n", __FUNCTION__, data->length);
+	   //printk("====>%s(), len:%d\n", __func__, data->length);
 	int ret=0;
 	struct r8192_priv *priv = ieee80211_priv(dev);
 	down(&priv->wx_sem);
 	ret = ieee80211_wx_set_gen_ie(priv->ieee80211, extra, data->data.length);
 	up(&priv->wx_sem);
-	//printk("<======%s(), ret:%d\n", __FUNCTION__, ret);
+	//printk("<======%s(), ret:%d\n", __func__, ret);
 	return ret;
 
 
@@ -891,11 +887,7 @@ static iw_handler r8192_wx_handlers[] =
 	NULL,                     /* SIOCWIWTHRSPY */
 	r8192_wx_set_wap,	  /* SIOCSIWAP */
 	r8192_wx_get_wap,         /* SIOCGIWAP */
-#if (WIRELESS_EXT >= 18)
 	r8192_wx_set_mlme,                     /* MLME-- */
-#else
-	 NULL,
-#endif
 	dummy,                     /* SIOCGIWAPLIST -- deprecated */
 	r8192_wx_set_scan,        /* SIOCSIWSCAN */
 	r8192_wx_get_scan,        /* SIOCGIWSCAN */
@@ -924,17 +916,10 @@ static iw_handler r8192_wx_handlers[] =
 	r8192_wx_set_gen_ie,//NULL,			/* SIOCSIWGENIE */
 	NULL,			/* SIOCSIWGENIE */
 
-#if (WIRELESS_EXT >= 18)
 	r8192_wx_set_auth,//NULL,			/* SIOCSIWAUTH */
 	NULL,//r8192_wx_get_auth,//NULL,			/* SIOCSIWAUTH */
 	r8192_wx_set_enc_ext,			/* SIOCSIWENCODEEXT */
 	NULL,//r8192_wx_get_enc_ext,//NULL,			/* SIOCSIWENCODEEXT */
-#else
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-#endif
 	NULL,			/* SIOCSIWPMKSA */
 	NULL,			 /*---hole---*/
 
@@ -978,7 +963,6 @@ static iw_handler r8192_private_handler[] = {
 	r8192_wx_force_reset,
 };
 
-//#if WIRELESS_EXT >= 17
 struct iw_statistics *r8192_get_wireless_stats(struct net_device *dev)
 {
        struct r8192_priv *priv = ieee80211_priv(dev);
@@ -1007,7 +991,6 @@ struct iw_statistics *r8192_get_wireless_stats(struct net_device *dev)
 	wstats->qual.updated = IW_QUAL_ALL_UPDATED| IW_QUAL_DBM;
 	return wstats;
 }
-//#endif
 
 
 struct iw_handler_def  r8192_wx_handlers_def={
@@ -1016,8 +999,6 @@ struct iw_handler_def  r8192_wx_handlers_def={
 	.private = r8192_private_handler,
 	.num_private = ARRAY_SIZE(r8192_private_handler),
 	.num_private_args = sizeof(r8192_private_args) / sizeof(struct iw_priv_args),
-#if WIRELESS_EXT >= 17
 	.get_wireless_stats = r8192_get_wireless_stats,
-#endif
 	.private_args = (struct iw_priv_args *)r8192_private_args,
 };

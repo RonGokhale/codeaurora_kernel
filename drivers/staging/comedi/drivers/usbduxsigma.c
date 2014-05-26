@@ -423,7 +423,7 @@ static void usbduxsigma_ao_urb_complete(struct urb *urb)
 			unsigned int chan = devpriv->ao_chanlist[i];
 			unsigned short val;
 
-			ret = comedi_buf_get(s->async, &val);
+			ret = comedi_buf_get(s, &val);
 			if (ret < 0) {
 				dev_err(dev->class_dev, "buffer underflow\n");
 				s->async->events |= (COMEDI_CB_EOA |
@@ -663,12 +663,13 @@ static int usbduxsigma_receive_cmd(struct comedi_device *dev, int command)
 
 static int usbduxsigma_ai_inttrig(struct comedi_device *dev,
 				  struct comedi_subdevice *s,
-				  unsigned int trignum)
+				  unsigned int trig_num)
 {
 	struct usbduxsigma_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int ret;
 
-	if (trignum != 0)
+	if (trig_num != cmd->start_arg)
 		return -EINVAL;
 
 	down(&devpriv->sem);
@@ -738,7 +739,6 @@ static int usbduxsigma_ai_cmd(struct comedi_device *dev,
 		}
 		s->async->inttrig = NULL;
 	} else {	/* TRIG_INT */
-		/* wait for an internal signal and submit the urbs later */
 		s->async->inttrig = usbduxsigma_ai_inttrig;
 	}
 
@@ -856,12 +856,13 @@ static int usbduxsigma_ao_insn_write(struct comedi_device *dev,
 
 static int usbduxsigma_ao_inttrig(struct comedi_device *dev,
 				  struct comedi_subdevice *s,
-				  unsigned int trignum)
+				  unsigned int trig_num)
 {
 	struct usbduxsigma_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int ret;
 
-	if (trignum != 0)
+	if (trig_num != cmd->start_arg)
 		return -EINVAL;
 
 	down(&devpriv->sem);
@@ -1027,7 +1028,6 @@ static int usbduxsigma_ao_cmd(struct comedi_device *dev,
 		}
 		s->async->inttrig = NULL;
 	} else {	/* TRIG_INT */
-		/* wait for an internal signal and submit the urbs later */
 		s->async->inttrig = usbduxsigma_ao_inttrig;
 	}
 

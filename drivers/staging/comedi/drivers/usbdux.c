@@ -373,7 +373,7 @@ static void usbduxsub_ai_isoc_irq(struct urb *urb)
 			val ^= ((s->maxdata + 1) >> 1);
 
 		/* transfer data */
-		err = comedi_buf_put(s->async, val);
+		err = comedi_buf_put(s, val);
 		if (unlikely(err == 0)) {
 			/* buffer overflow */
 			usbdux_ai_stop(dev, 0);
@@ -484,7 +484,7 @@ static void usbduxsub_ao_isoc_irq(struct urb *urb)
 			unsigned int chan = devpriv->ao_chanlist[i];
 			unsigned short val;
 
-			ret = comedi_buf_get(s->async, &val);
+			ret = comedi_buf_get(s, &val);
 			if (ret < 0) {
 				dev_err(dev->class_dev, "buffer underflow\n");
 				s->async->events |= (COMEDI_CB_EOA |
@@ -692,15 +692,16 @@ static int receive_dux_commands(struct comedi_device *dev, unsigned int command)
 
 static int usbdux_ai_inttrig(struct comedi_device *dev,
 			     struct comedi_subdevice *s,
-			     unsigned int trignum)
+			     unsigned int trig_num)
 {
 	struct usbdux_private *devpriv = dev->private;
-	int ret = -EINVAL;
+	struct comedi_cmd *cmd = &s->async->cmd;
+	int ret;
+
+	if (trig_num != cmd->start_arg)
+		return -EINVAL;
 
 	down(&devpriv->sem);
-
-	if (trignum != 0)
-		goto ai_trig_exit;
 
 	if (!devpriv->ai_cmd_running) {
 		devpriv->ai_cmd_running = 1;
@@ -913,15 +914,16 @@ ao_write_exit:
 
 static int usbdux_ao_inttrig(struct comedi_device *dev,
 			     struct comedi_subdevice *s,
-			     unsigned int trignum)
+			     unsigned int trig_num)
 {
 	struct usbdux_private *devpriv = dev->private;
-	int ret = -EINVAL;
+	struct comedi_cmd *cmd = &s->async->cmd;
+	int ret;
+
+	if (trig_num != cmd->start_arg)
+		return -EINVAL;
 
 	down(&devpriv->sem);
-
-	if (trignum != 0)
-		goto ao_trig_exit;
 
 	if (!devpriv->ao_cmd_running) {
 		devpriv->ao_cmd_running = 1;
