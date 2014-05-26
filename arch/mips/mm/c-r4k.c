@@ -50,7 +50,7 @@ static inline void r4k_on_each_cpu(void (*func) (void *info), void *info)
 {
 	preempt_disable();
 
-#if !defined(CONFIG_MIPS_MT_SMP) && !defined(CONFIG_MIPS_MT_SMTC)
+#ifndef CONFIG_MIPS_MT_SMP
 	smp_call_function(func, info, 1);
 #endif
 	func(info);
@@ -105,7 +105,6 @@ static inline void r4k_blast_dcache_page_dc32(unsigned long addr)
 
 static inline void r4k_blast_dcache_page_dc64(unsigned long addr)
 {
-	R4600_HIT_CACHEOP_WAR_IMPL;
 	blast_dcache64_page(addr);
 }
 
@@ -428,7 +427,7 @@ static void r4k___flush_cache_all(void)
 
 static inline int has_valid_asid(const struct mm_struct *mm)
 {
-#if defined(CONFIG_MIPS_MT_SMP) || defined(CONFIG_MIPS_MT_SMTC)
+#ifdef CONFIG_MIPS_MT_SMP
 	int i;
 
 	for_each_online_cpu(i)
