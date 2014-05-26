@@ -4741,6 +4741,8 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 	if (!S_ISREG(inode->i_mode))
 		return -EINVAL;
 
+	mutex_lock(&EXT4_I(inode)->i_write_mutex);
+
 	/*
 	 * Write out all dirty pages to avoid race conditions
 	 * Then release them.
@@ -4748,8 +4750,10 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 	if (mapping->nrpages && mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) {
 		ret = filemap_write_and_wait_range(mapping, offset,
 						   offset + len - 1);
-		if (ret)
+		if (ret) {
+			mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 			return ret;
+		}
 	}
 
 	/*
@@ -4761,8 +4765,10 @@ static long ext4_zero_range(struct file *file, loff_t offset,
 	start = round_up(offset, 1 << blkbits);
 	end = round_down((offset + len), 1 << blkbits);
 
-	if (start < offset || end > offset + len)
+	if (start < offset || end > offset + len) {
+		mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 		return -EINVAL;
+	}
 	partial = (offset + len) & ((1 << blkbits) - 1);
 
 	lblk = start >> blkbits;
@@ -4859,6 +4865,7 @@ out_dio:
 	ext4_inode_resume_unlocked_dio(inode);
 out_mutex:
 	mutex_unlock(&inode->i_mutex);
+	mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 	return ret;
 }
 
@@ -5411,11 +5418,15 @@ int ext4_collapse_range(struct inode *inode, loff_t offset, loff_t len)
 	punch_start = offset >> EXT4_BLOCK_SIZE_BITS(sb);
 	punch_stop = (offset + len) >> EXT4_BLOCK_SIZE_BITS(sb);
 
+	mutex_lock(&EXT4_I(inode)->i_write_mutex);
+
 	/* Call ext4_force_commit to flush all data in case of data=journal. */
 	if (ext4_should_journal_data(inode)) {
 		ret = ext4_force_commit(inode->i_sb);
-		if (ret)
+		if (ret) {
+			mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 			return ret;
+		}
 	}
 
 	/*
@@ -5501,5 +5512,6 @@ out_dio:
 	ext4_inode_resume_unlocked_dio(inode);
 out_mutex:
 	mutex_unlock(&inode->i_mutex);
+	mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 	return ret;
 }

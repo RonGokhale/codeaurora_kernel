@@ -97,7 +97,7 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(iocb->ki_filp);
-	struct mutex *aio_mutex = NULL;
+	bool unaligned_direct_aio = false;
 	struct blk_plug plug;
 	int o_direct = file->f_flags & O_DIRECT;
 	int overwrite = 0;
@@ -105,6 +105,8 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 	ssize_t ret;
 
 	BUG_ON(iocb->ki_pos != pos);
+
+	mutex_lock(&EXT4_I(inode)->i_write_mutex);
 
 	/*
 	 * Unaligned direct AIO must be serialized; see comment above
@@ -115,8 +117,7 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 	    !is_sync_kiocb(iocb) &&
 	    (file->f_flags & O_APPEND ||
 	     ext4_unaligned_aio(inode, iov, nr_segs, pos))) {
-		aio_mutex = ext4_aio_mutex(inode);
-		mutex_lock(aio_mutex);
+		unaligned_direct_aio = true;
 		ext4_unwritten_wait(inode);
 	}
 
@@ -150,8 +151,9 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 		iocb->private = &overwrite;
 
 		/* check whether we do a DIO overwrite or not */
-		if (ext4_should_dioread_nolock(inode) && !aio_mutex &&
-		    !file->f_mapping->nrpages && pos + length <= i_size_read(inode)) {
+		if (ext4_should_dioread_nolock(inode) &&
+		    !unaligned_direct_aio && !file->f_mapping->nrpages &&
+		    pos + length <= i_size_read(inode)) {
 			struct ext4_map_blocks map;
 			unsigned int blkbits = inode->i_blkbits;
 			int err, len;
@@ -181,6 +183,8 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 
 	ret = __generic_file_aio_write(iocb, iov, nr_segs);
 	mutex_unlock(&inode->i_mutex);
+	if (!unaligned_direct_aio)
+		mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 
 	if (ret > 0) {
 		ssize_t err;
@@ -193,8 +197,8 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 		blk_finish_plug(&plug);
 
 errout:
-	if (aio_mutex)
-		mutex_unlock(aio_mutex);
+	if (unaligned_direct_aio)
+		mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 	return ret;
 }
 

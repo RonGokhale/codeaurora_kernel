@@ -3534,6 +3534,8 @@ int ext4_punch_hole(struct inode *inode, loff_t offset, loff_t length)
 
 	trace_ext4_punch_hole(inode, offset, length, 0);
 
+	mutex_lock(&EXT4_I(inode)->i_write_mutex);
+
 	/*
 	 * Write out all dirty pages to avoid race conditions
 	 * Then release them.
@@ -3541,8 +3543,10 @@ int ext4_punch_hole(struct inode *inode, loff_t offset, loff_t length)
 	if (mapping->nrpages && mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) {
 		ret = filemap_write_and_wait_range(mapping, offset,
 						   offset + length - 1);
-		if (ret)
+		if (ret) {
+			mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 			return ret;
+		}
 	}
 
 	mutex_lock(&inode->i_mutex);
@@ -3643,6 +3647,7 @@ out_dio:
 	ext4_inode_resume_unlocked_dio(inode);
 out_mutex:
 	mutex_unlock(&inode->i_mutex);
+	mutex_unlock(&EXT4_I(inode)->i_write_mutex);
 	return ret;
 }
 
