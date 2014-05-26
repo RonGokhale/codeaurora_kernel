@@ -16,6 +16,9 @@ next/cleanup
 		git://git.linaro.org/people/pawel.moll/linux tags/vexpress/updates-for-3.16
 	bcm/cleanup
 		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-cleanup
+	patch
+	  	ARM: vexpress: refine dependencies for new code
+
 
 next/soc
 	renesas/soc
@@ -59,6 +62,8 @@ next/soc
 		https://github.com/mripard/linux sunxi-core-for-3.16-2
 	bcm/soc
 		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-soc
+	patch
+		ARM: sunxi: allow building without reset controller
 
 next/soc2
 	keystone/soc
@@ -171,4 +176,5 @@ next/drivers
 		Documentation: sysfs: add Broadcom GISB arbiter sysfs properties
 		Documentation: devicetree: add Broadcom GISB arbiter bindings
 		bus: add Broadcom GISB bus arbiter timeout/error handler
+  		soc: qcom: fix of_device_id table
 
