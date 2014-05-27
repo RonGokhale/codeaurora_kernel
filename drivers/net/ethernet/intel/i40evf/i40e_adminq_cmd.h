@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Virtual Function Driver
- * Copyright(c) 2013 Intel Corporation.
+ * Copyright(c) 2013 - 2014 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,6 +11,9 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
@@ -180,9 +183,6 @@ enum i40e_admin_queue_opc {
 	i40e_aqc_opc_add_mirror_rule    = 0x0260,
 	i40e_aqc_opc_delete_mirror_rule = 0x0261,
 
-	i40e_aqc_opc_set_storm_control_config = 0x0280,
-	i40e_aqc_opc_get_storm_control_config = 0x0281,
-
 	/* DCB commands */
 	i40e_aqc_opc_dcb_ignore_pfc = 0x0301,
 	i40e_aqc_opc_dcb_updated    = 0x0302,
@@ -205,6 +205,7 @@ enum i40e_admin_queue_opc {
 	i40e_aqc_opc_query_switching_comp_bw_config        = 0x041A,
 	i40e_aqc_opc_suspend_port_tx                       = 0x041B,
 	i40e_aqc_opc_resume_port_tx                        = 0x041C,
+	i40e_aqc_opc_configure_partition_bw                = 0x041D,
 
 	/* hmc */
 	i40e_aqc_opc_query_hmc_resource_profile = 0x0500,
@@ -678,7 +679,6 @@ struct i40e_aqc_add_get_update_vsi {
 #define I40E_AQ_VSI_TYPE_PF             0x2
 #define I40E_AQ_VSI_TYPE_EMP_MNG        0x3
 #define I40E_AQ_VSI_FLAG_CASCADED_PV    0x4
-#define I40E_AQ_VSI_FLAG_CLOUD_VSI      0x8
 	__le32 addr_high;
 	__le32 addr_low;
 };
@@ -1040,7 +1040,9 @@ struct i40e_aqc_set_vsi_promiscuous_modes {
 #define I40E_AQC_SET_VSI_PROMISC_VLAN        0x10
 	__le16 seid;
 #define I40E_AQC_VSI_PROM_CMD_SEID_MASK      0x3FF
-	u8     reserved[10];
+	__le16 vlan_tag;
+#define I40E_AQC_SET_VSI_VLAN_VALID          0x8000
+	u8     reserved[8];
 };
 
 I40E_CHECK_CMD_LENGTH(i40e_aqc_set_vsi_promiscuous_modes);
@@ -1289,27 +1291,6 @@ struct i40e_aqc_add_delete_mirror_rule_completion {
 
 I40E_CHECK_CMD_LENGTH(i40e_aqc_add_delete_mirror_rule_completion);
 
-/* Set Storm Control Configuration (direct 0x0280)
- * Get Storm Control Configuration (direct 0x0281)
- *    the command and response use the same descriptor structure
- */
-struct i40e_aqc_set_get_storm_control_config {
-	__le32 broadcast_threshold;
-	__le32 multicast_threshold;
-	__le32 control_flags;
-#define I40E_AQC_STORM_CONTROL_MDIPW            0x01
-#define I40E_AQC_STORM_CONTROL_MDICW            0x02
-#define I40E_AQC_STORM_CONTROL_BDIPW            0x04
-#define I40E_AQC_STORM_CONTROL_BDICW            0x08
-#define I40E_AQC_STORM_CONTROL_BIDU             0x10
-#define I40E_AQC_STORM_CONTROL_INTERVAL_SHIFT   8
-#define I40E_AQC_STORM_CONTROL_INTERVAL_MASK    (0x3FF << \
-					I40E_AQC_STORM_CONTROL_INTERVAL_SHIFT)
-	u8     reserved[4];
-};
-
-I40E_CHECK_CMD_LENGTH(i40e_aqc_set_get_storm_control_config);
-
 /* DCB 0x03xx*/
 
 /* PFC Ignore (direct 0x0301)
@@ -1499,6 +1480,15 @@ struct i40e_aqc_query_switching_comp_bw_config_resp {
  * (direct 0x041B and 0x041C) uses the generic SEID struct
  */
 
+/* Configure partition BW
+ * (indirect 0x041D)
+ */
+struct i40e_aqc_configure_partition_bw_data {
+	__le16 pf_valid_bits;
+	u8     min_bw[16];      /* guaranteed bandwidth */
+	u8     max_bw[16];      /* bandwidth limit */
+};
+
 /* Get and set the active HMC resource profile and status.
  * (direct 0x0500) and (direct 0x0501)
  */
@@ -1583,11 +1573,8 @@ struct i40e_aq_get_phy_abilities_resp {
 #define I40E_AQ_PHY_FLAG_PAUSE_TX         0x01
 #define I40E_AQ_PHY_FLAG_PAUSE_RX         0x02
 #define I40E_AQ_PHY_FLAG_LOW_POWER        0x04
-#define I40E_AQ_PHY_FLAG_AN_SHIFT         3
-#define I40E_AQ_PHY_FLAG_AN_MASK          (0x3 << I40E_AQ_PHY_FLAG_AN_SHIFT)
-#define I40E_AQ_PHY_FLAG_AN_OFF           0x00 /* link forced on */
-#define I40E_AQ_PHY_FLAG_AN_OFF_LINK_DOWN 0x01
-#define I40E_AQ_PHY_FLAG_AN_ON            0x02
+#define I40E_AQ_PHY_LINK_ENABLED		  0x08
+#define I40E_AQ_PHY_AN_ENABLED			  0x10
 #define I40E_AQ_PHY_FLAG_MODULE_QUAL      0x20
 	__le16 eee_capability;
 #define I40E_AQ_EEE_100BASE_TX       0x0002
@@ -1948,19 +1935,12 @@ I40E_CHECK_CMD_LENGTH(i40e_aqc_lldp_start);
 /* Add Udp Tunnel command and completion (direct 0x0B00) */
 struct i40e_aqc_add_udp_tunnel {
 	__le16 udp_port;
-	u8     header_len; /* in DWords, 1 to 15 */
+	u8     reserved0[3];
 	u8     protocol_type;
-#define I40E_AQC_TUNNEL_TYPE_TEREDO	0x0
-#define I40E_AQC_TUNNEL_TYPE_VXLAN	0x2
-#define I40E_AQC_TUNNEL_TYPE_NGE	0x3
-	u8     variable_udp_length;
-#define I40E_AQC_TUNNEL_FIXED_UDP_LENGTH	0x0
-#define I40E_AQC_TUNNEL_VARIABLE_UDP_LENGTH	0x1
-	u8		udp_key_index;
-#define I40E_AQC_TUNNEL_KEY_INDEX_VXLAN			0x0
-#define I40E_AQC_TUNNEL_KEY_INDEX_NGE			0x1
-#define I40E_AQC_TUNNEL_KEY_INDEX_PROPRIETARY_UDP	0x2
-	u8		reserved[10];
+#define I40E_AQC_TUNNEL_TYPE_VXLAN	0x00
+#define I40E_AQC_TUNNEL_TYPE_NGE	0x01
+#define I40E_AQC_TUNNEL_TYPE_TEREDO	0x10
+	u8     reserved1[10];
 };
 
 I40E_CHECK_CMD_LENGTH(i40e_aqc_add_udp_tunnel);
