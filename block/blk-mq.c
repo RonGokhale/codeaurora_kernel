@@ -1523,11 +1523,43 @@ static int blk_mq_hctx_notify(void *data, unsigned long action,
 	return NOTIFY_OK;
 }
 
+static void blk_mq_exit_hw_queues(struct request_queue *q,
+		struct blk_mq_tag_set *set, int nr_queue)
+{
+	struct blk_mq_hw_ctx *hctx;
+	unsigned int i;
+
+	queue_for_each_hw_ctx(q, hctx, i) {
+		if (i == nr_queue)
+			break;
+
+		if (set->ops->exit_hctx)
+			set->ops->exit_hctx(hctx, i);
+
+		blk_mq_unregister_cpu_notifier(&hctx->cpu_notifier);
+		kfree(hctx->ctxs);
+		blk_mq_free_bitmap(&hctx->ctx_map);
+	}
+
+}
+
+static void blk_mq_free_hw_queues(struct request_queue *q,
+		struct blk_mq_tag_set *set)
+{
+	struct blk_mq_hw_ctx *hctx;
+	unsigned int i;
+
+	queue_for_each_hw_ctx(q, hctx, i) {
+		free_cpumask_var(hctx->cpumask);
+		set->ops->free_hctx(hctx, i);
+	}
+}
+
 static int blk_mq_init_hw_queues(struct request_queue *q,
 		struct blk_mq_tag_set *set)
 {
 	struct blk_mq_hw_ctx *hctx;
-	unsigned int i, j;
+	unsigned int i;
 
 	/*
 	 * Initialize hardware queues
@@ -1579,17 +1611,7 @@ static int blk_mq_init_hw_queues(struct request_queue *q,
 	/*
 	 * Init failed
 	 */
-	queue_for_each_hw_ctx(q, hctx, j) {
-		if (i == j)
-			break;
-
-		if (set->ops->exit_hctx)
-			set->ops->exit_hctx(hctx, j);
-
-		blk_mq_unregister_cpu_notifier(&hctx->cpu_notifier);
-		kfree(hctx->ctxs);
-		blk_mq_free_bitmap(&hctx->ctx_map);
-	}
+	blk_mq_exit_hw_queues(q, set, i);
 
 	return 1;
 }
@@ -1759,6 +1781,9 @@ struct request_queue *blk_mq_init_queue(struct blk_mq_tag_set *set)
 	if (!q)
 		goto err_hctxs;
 
+	if (percpu_counter_init(&q->mq_usage_counter, 0))
+		goto err_map;
+
 	q->mq_map = blk_mq_make_queue_map(set);
 	if (!q->mq_map)
 		goto err_map;
@@ -1838,20 +1863,14 @@ EXPORT_SYMBOL(blk_mq_init_queue);
 
 void blk_mq_free_queue(struct request_queue *q)
 {
-	struct blk_mq_hw_ctx *hctx;
-	int i;
+	struct blk_mq_tag_set	*set = q->tag_set;
 
 	blk_mq_del_queue_tag_set(q);
 
-	queue_for_each_hw_ctx(q, hctx, i) {
-		blk_mq_tag_idle(hctx);
-		kfree(hctx->ctxs);
-		blk_mq_unregister_cpu_notifier(&hctx->cpu_notifier);
-		if (q->mq_ops->exit_hctx)
-			q->mq_ops->exit_hctx(hctx, i);
-		free_cpumask_var(hctx->cpumask);
-		q->mq_ops->free_hctx(hctx, i);
-	}
+	blk_mq_exit_hw_queues(q, set, set->nr_hw_queues);
+	blk_mq_free_hw_queues(q, set);
+
+	percpu_counter_destroy(&q->mq_usage_counter);
 
 	free_percpu(q->queue_ctx);
 	kfree(q->queue_hw_ctx);
