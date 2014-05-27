@@ -803,6 +803,33 @@ static int trimpot_read_insn(struct comedi_device *dev,
 	return 1;
 }
 
+static int cb_pcidas_ai_check_chanlist(struct comedi_device *dev,
+				       struct comedi_subdevice *s,
+				       struct comedi_cmd *cmd)
+{
+	unsigned int chan0 = CR_CHAN(cmd->chanlist[0]);
+	unsigned int range0 = CR_RANGE(cmd->chanlist[0]);
+	int i;
+
+	for (i = 1; i < cmd->chanlist_len; i++) {
+		unsigned int chan = CR_CHAN(cmd->chanlist[i]);
+		unsigned int range = CR_RANGE(cmd->chanlist[i]);
+
+		if (chan != (chan0 + i) % s->n_chan) {
+			dev_dbg(dev->class_dev,
+				"entries in chanlist must be consecutive channels, counting upwards\n");
+			return -EINVAL;
+		}
+
+		if (range != range0) {
+			dev_dbg(dev->class_dev,
+				"entries in chanlist must all have the same gain\n");
+			return -EINVAL;
+		}
+	}
+	return 0;
+}
+
 static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 				struct comedi_subdevice *s,
 				struct comedi_cmd *cmd)
@@ -811,7 +838,6 @@ static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 	struct cb_pcidas_private *devpriv = dev->private;
 	int err = 0;
 	int tmp;
-	int i, gain, start_chan;
 
 	/* Step 1 : check if triggers are trivially valid */
 
@@ -846,9 +872,12 @@ static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 	if (err)
 		return 2;
 
-	/* step 3: arguments are trivially compatible */
+	/* Step 3: check if arguments are trivially valid */
 
 	switch (cmd->start_src) {
+	case TRIG_NOW:
+		err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
+		break;
 	case TRIG_EXT:
 		/* External trigger, only CR_EDGE and CR_INVERT flags allowed */
 		if ((cmd->start_arg
@@ -861,9 +890,6 @@ static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 			cmd->start_arg &= (CR_FLAGS_MASK & ~CR_INVERT);
 			err |= -EINVAL;
 		}
-		break;
-	default:
-		err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
 		break;
 	}
 
@@ -907,24 +933,9 @@ static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 	if (err)
 		return 4;
 
-	/*  check channel/gain list against card's limitations */
-	if (cmd->chanlist) {
-		gain = CR_RANGE(cmd->chanlist[0]);
-		start_chan = CR_CHAN(cmd->chanlist[0]);
-		for (i = 1; i < cmd->chanlist_len; i++) {
-			if (CR_CHAN(cmd->chanlist[i]) !=
-			    (start_chan + i) % s->n_chan) {
-				comedi_error(dev,
-					     "entries in chanlist must be consecutive channels, counting upwards\n");
-				err++;
-			}
-			if (CR_RANGE(cmd->chanlist[i]) != gain) {
-				comedi_error(dev,
-					     "entries in chanlist must all have the same gain\n");
-				err++;
-			}
-		}
-	}
+	/* Step 5: check channel list if it exists */
+	if (cmd->chanlist && cmd->chanlist_len > 0)
+		err |= cb_pcidas_ai_check_chanlist(dev, s, cmd);
 
 	if (err)
 		return 5;
@@ -932,20 +943,16 @@ static int cb_pcidas_ai_cmdtest(struct comedi_device *dev,
 	return 0;
 }
 
-static void cb_pcidas_load_counters(struct comedi_device *dev, unsigned int *ns,
-				    int rounding_flags)
+static void cb_pcidas_ai_load_counters(struct comedi_device *dev)
 {
 	struct cb_pcidas_private *devpriv = dev->private;
+	unsigned long timer_base = devpriv->pacer_counter_dio + ADC8254;
 
-	i8253_cascade_ns_to_timer(I8254_OSC_BASE_10MHZ,
-				  &devpriv->divisor1, &devpriv->divisor2,
-				  ns, rounding_flags);
+	i8254_set_mode(timer_base, 0, 1, I8254_MODE2 | I8254_BINARY);
+	i8254_set_mode(timer_base, 0, 2, I8254_MODE2 | I8254_BINARY);
 
-	/* Write the values of ctr1 and ctr2 into counters 1 and 2 */
-	i8254_load(devpriv->pacer_counter_dio + ADC8254, 0, 1,
-		   devpriv->divisor1, 2);
-	i8254_load(devpriv->pacer_counter_dio + ADC8254, 0, 2,
-		   devpriv->divisor2, 2);
+	i8254_write(timer_base, 0, 1, devpriv->divisor1);
+	i8254_write(timer_base, 0, 2, devpriv->divisor2);
 }
 
 static int cb_pcidas_ai_cmd(struct comedi_device *dev,
@@ -983,12 +990,8 @@ static int cb_pcidas_ai_cmd(struct comedi_device *dev,
 	outw(bits, devpriv->control_status + ADCMUX_CONT);
 
 	/*  load counters */
-	if (cmd->convert_src == TRIG_TIMER)
-		cb_pcidas_load_counters(dev, &cmd->convert_arg,
-					cmd->flags & TRIG_ROUND_MASK);
-	else if (cmd->scan_begin_src == TRIG_TIMER)
-		cb_pcidas_load_counters(dev, &cmd->scan_begin_arg,
-					cmd->flags & TRIG_ROUND_MASK);
+	if (cmd->scan_begin_src == TRIG_TIMER || cmd->convert_src == TRIG_TIMER)
+		cb_pcidas_ai_load_counters(dev);
 
 	/*  set number of conversions */
 	if (cmd->stop_src == TRIG_COUNT)
@@ -1031,6 +1034,25 @@ static int cb_pcidas_ai_cmd(struct comedi_device *dev,
 	if (cmd->convert_src == TRIG_NOW && cmd->chanlist_len > 1)
 		bits |= BURSTE;
 	outw(bits, devpriv->control_status + TRIG_CONTSTAT);
+
+	return 0;
+}
+
+static int cb_pcidas_ao_check_chanlist(struct comedi_device *dev,
+				       struct comedi_subdevice *s,
+				       struct comedi_cmd *cmd)
+{
+	unsigned int chan0 = CR_CHAN(cmd->chanlist[0]);
+
+	if (cmd->chanlist_len > 1) {
+		unsigned int chan1 = CR_CHAN(cmd->chanlist[1]);
+
+		if (chan0 != 0 || chan1 != 1) {
+			dev_dbg(dev->class_dev,
+				"channels must be ordered channel 0, channel 1 in chanlist\n");
+			return -EINVAL;
+		}
+	}
 
 	return 0;
 }
@@ -1097,15 +1119,9 @@ static int cb_pcidas_ao_cmdtest(struct comedi_device *dev,
 	if (err)
 		return 4;
 
-	/*  check channel/gain list against card's limitations */
-	if (cmd->chanlist && cmd->chanlist_len > 1) {
-		if (CR_CHAN(cmd->chanlist[0]) != 0 ||
-		    CR_CHAN(cmd->chanlist[1]) != 1) {
-			comedi_error(dev,
-				     "channels must be ordered channel 0, channel 1 in chanlist\n");
-			err++;
-		}
-	}
+	/* Step 5: check channel list if it exists */
+	if (cmd->chanlist && cmd->chanlist_len > 0)
+		err |= cb_pcidas_ao_check_chanlist(dev, s, cmd);
 
 	if (err)
 		return 5;
@@ -1145,7 +1161,7 @@ static int cb_pcidas_ao_inttrig(struct comedi_device *dev,
 	struct comedi_cmd *cmd = &s->async->cmd;
 	unsigned long flags;
 
-	if (trig_num != 0)
+	if (trig_num != cmd->start_arg)
 		return -EINVAL;
 
 	/*  load up fifo */
@@ -1180,6 +1196,18 @@ static int cb_pcidas_ao_inttrig(struct comedi_device *dev,
 	return 0;
 }
 
+static void cb_pcidas_ao_load_counters(struct comedi_device *dev)
+{
+	struct cb_pcidas_private *devpriv = dev->private;
+	unsigned long timer_base = devpriv->pacer_counter_dio + DAC8254;
+
+	i8254_set_mode(timer_base, 0, 1, I8254_MODE2 | I8254_BINARY);
+	i8254_set_mode(timer_base, 0, 2, I8254_MODE2 | I8254_BINARY);
+
+	i8254_write(timer_base, 0, 1, devpriv->ao_divisor1);
+	i8254_write(timer_base, 0, 2, devpriv->ao_divisor2);
+}
+
 static int cb_pcidas_ao_cmd(struct comedi_device *dev,
 			    struct comedi_subdevice *s)
 {
@@ -1209,18 +1237,9 @@ static int cb_pcidas_ao_cmd(struct comedi_device *dev,
 	outw(0, devpriv->ao_registers + DACFIFOCLR);
 
 	/*  load counters */
-	if (cmd->scan_begin_src == TRIG_TIMER) {
-		i8253_cascade_ns_to_timer(I8254_OSC_BASE_10MHZ,
-					  &devpriv->ao_divisor1,
-					  &devpriv->ao_divisor2,
-					  &cmd->scan_begin_arg, cmd->flags);
+	if (cmd->scan_begin_src == TRIG_TIMER)
+		cb_pcidas_ao_load_counters(dev);
 
-		/* Write the values of ctr1 and ctr2 into counters 1 and 2 */
-		i8254_load(devpriv->pacer_counter_dio + DAC8254, 0, 1,
-			   devpriv->ao_divisor1, 2);
-		i8254_load(devpriv->pacer_counter_dio + DAC8254, 0, 2,
-			   devpriv->ao_divisor2, 2);
-	}
 	/*  set number of conversions */
 	if (cmd->stop_src == TRIG_COUNT)
 		devpriv->ao_count = cmd->chanlist_len * cmd->stop_arg;

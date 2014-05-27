@@ -188,6 +188,7 @@ static void waveform_ai_interrupt(unsigned long arg)
 
 	if (cmd->stop_src == TRIG_COUNT) {
 		unsigned int remaining = cmd->stop_arg - devpriv->ai_count;
+
 		if (num_scans >= remaining) {
 			/* about to finish */
 			num_scans = remaining;
@@ -198,6 +199,7 @@ static void waveform_ai_interrupt(unsigned long arg)
 	for (i = 0; i < num_scans; i++) {
 		for (j = 0; j < cmd->chanlist_len; j++) {
 			unsigned short sample;
+
 			sample = fake_waveform(dev, CR_CHAN(cmd->chanlist[j]),
 					       CR_RANGE(cmd->chanlist[j]),
 					       devpriv->usec_current +
@@ -413,11 +415,7 @@ static int waveform_attach(struct comedi_device *dev,
 	s->n_chan = N_CHANS;
 	s->maxdata = 0xffff;
 	s->range_table = &waveform_ai_ranges;
-	s->len_chanlist = s->n_chan * 2;
 	s->insn_write = waveform_ao_insn_write;
-	s->do_cmd = NULL;
-	s->do_cmdtest = NULL;
-	s->cancel = NULL;
 
 	/* Our default loopback value is just a 0V flatline */
 	for (i = 0; i < s->n_chan; i++)
