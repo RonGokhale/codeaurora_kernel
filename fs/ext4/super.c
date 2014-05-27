@@ -904,6 +904,7 @@ static struct inode *ext4_alloc_inode(struct super_block *sb)
 	atomic_set(&ei->i_ioend_count, 0);
 	atomic_set(&ei->i_unwritten, 0);
 	INIT_WORK(&ei->i_rsv_conversion_work, ext4_end_io_rsv_work);
+	mutex_init(&ei->i_write_mutex);
 
 	return &ei->vfs_inode;
 }
@@ -5516,7 +5517,6 @@ static void ext4_exit_feat_adverts(void)
 
 /* Shared across all ext4 file systems */
 wait_queue_head_t ext4__ioend_wq[EXT4_WQ_HASH_SZ];
-struct mutex ext4__aio_mutex[EXT4_WQ_HASH_SZ];
 
 static int __init ext4_init_fs(void)
 {
@@ -5529,7 +5529,6 @@ static int __init ext4_init_fs(void)
 	ext4_check_flag_values();
 
 	for (i = 0; i < EXT4_WQ_HASH_SZ; i++) {
-		mutex_init(&ext4__aio_mutex[i]);
 		init_waitqueue_head(&ext4__ioend_wq[i]);
 	}
 
