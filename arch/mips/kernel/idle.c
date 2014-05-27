@@ -224,27 +224,13 @@ void __init check_wait(void)
 		   cpu_wait = r4k_wait;
 		 */
 		break;
-	case CPU_RM9000:
-		if ((c->processor_id & 0x00ff) >= 0x40)
-			cpu_wait = r4k_wait;
-		break;
 	default:
 		break;
 	}
 }
 
-static void smtc_idle_hook(void)
-{
-#ifdef CONFIG_MIPS_MT_SMTC
-	void smtc_idle_loop_hook(void);
-
-	smtc_idle_loop_hook();
-#endif
-}
-
 void arch_cpu_idle(void)
 {
-	smtc_idle_hook();
 	if (cpu_wait)
 		cpu_wait();
 	else
