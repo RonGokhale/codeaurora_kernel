@@ -36,11 +36,6 @@
 #define USB_VENDOR_GENESYS_LOGIC		0x05e3
 #define HUB_QUIRK_CHECK_PORT_AUTOSUSPEND	0x01
 
-static inline int hub_is_superspeed(struct usb_device *hdev)
-{
-	return (hdev->descriptor.bDeviceProtocol == USB_HUB_PR_SS);
-}
-
 /* Protect struct usb_device->state and ->children members
  * Note: Both are also protected by ->dev.sem, except that ->state can
  * change to USB_STATE_NOTATTACHED even when the semaphore isn't held. */
@@ -54,6 +49,9 @@ static LIST_HEAD(hub_event_list);	/* List of hubs needing servicing */
 static DECLARE_WAIT_QUEUE_HEAD(khubd_wait);
 
 static struct task_struct *khubd_task;
+
+/* synchronize hub-port add/remove and peering operations */
+DEFINE_MUTEX(usb_port_peer_mutex);
 
 /* cycle leds on hubs that aren't blinking for attention */
 static bool blinkenlights = 0;
@@ -412,30 +410,35 @@ static int set_port_feature(struct usb_device *hdev, int port1, int feature)
 		NULL, 0, 1000);
 }
 
+static char *to_led_name(int selector)
+{
+	switch (selector) {
+	case HUB_LED_AMBER:
+		return "amber";
+	case HUB_LED_GREEN:
+		return "green";
+	case HUB_LED_OFF:
+		return "off";
+	case HUB_LED_AUTO:
+		return "auto";
+	default:
+		return "??";
+	}
+}
+
 /*
  * USB 2.0 spec Section 11.24.2.7.1.10 and table 11-7
  * for info about using port indicators
  */
-static void set_port_led(
-	struct usb_hub *hub,
-	int port1,
-	int selector
-)
+static void set_port_led(struct usb_hub *hub, int port1, int selector)
 {
-	int status = set_port_feature(hub->hdev, (selector << 8) | port1,
+	struct usb_port *port_dev = hub->ports[port1 - 1];
+	int status;
+
+	status = set_port_feature(hub->hdev, (selector << 8) | port1,
 			USB_PORT_FEAT_INDICATOR);
-	if (status < 0)
-		dev_dbg (hub->intfdev,
-			"port %d indicator %s status %d\n",
-			port1,
-			({ char *s; switch (selector) {
-			case HUB_LED_AMBER: s = "amber"; break;
-			case HUB_LED_GREEN: s = "green"; break;
-			case HUB_LED_OFF: s = "off"; break;
-			case HUB_LED_AUTO: s = "auto"; break;
-			default: s = "??"; break;
-			} s; }),
-			status);
+	dev_dbg(&port_dev->dev, "indicator %s status %d\n",
+		to_led_name(selector), status);
 }
 
 #define	LED_CYCLE_PERIOD	((2*HZ)/3)
@@ -743,16 +746,20 @@ int usb_hub_set_port_power(struct usb_device *hdev, struct usb_hub *hub,
 			   int port1, bool set)
 {
 	int ret;
-	struct usb_port *port_dev = hub->ports[port1 - 1];
 
 	if (set)
 		ret = set_port_feature(hdev, port1, USB_PORT_FEAT_POWER);
 	else
 		ret = usb_clear_port_feature(hdev, port1, USB_PORT_FEAT_POWER);
 
-	if (!ret)
-		port_dev->power_is_on = set;
-	return ret;
+	if (ret)
+		return ret;
+
+	if (set)
+		set_bit(port1, hub->power_bits);
+	else
+		clear_bit(port1, hub->power_bits);
+	return 0;
 }
 
 /**
@@ -810,16 +817,9 @@ int usb_hub_clear_tt_buffer(struct urb *urb)
 }
 EXPORT_SYMBOL_GPL(usb_hub_clear_tt_buffer);
 
-/* If do_delay is false, return the number of milliseconds the caller
- * needs to delay.
- */
-static unsigned hub_power_on(struct usb_hub *hub, bool do_delay)
+static void hub_power_on(struct usb_hub *hub, bool do_delay)
 {
 	int port1;
-	unsigned pgood_delay = hub->descriptor->bPwrOn2PwrGood * 2;
-	unsigned delay;
-	u16 wHubCharacteristics =
-			le16_to_cpu(hub->descriptor->wHubCharacteristics);
 
 	/* Enable power on each port.  Some hubs have reserved values
 	 * of LPSM (> 2) in their descriptors, even though they are
@@ -827,23 +827,19 @@ static unsigned hub_power_on(struct usb_hub *hub, bool do_delay)
 	 * but only emulate it.  In all cases, the ports won't work
 	 * unless we send these messages to the hub.
 	 */
-	if ((wHubCharacteristics & HUB_CHAR_LPSM) < 2)
+	if (hub_is_port_power_switchable(hub))
 		dev_dbg(hub->intfdev, "enabling power on all ports\n");
 	else
 		dev_dbg(hub->intfdev, "trying to enable port power on "
 				"non-switchable hub\n");
 	for (port1 = 1; port1 <= hub->hdev->maxchild; port1++)
-		if (hub->ports[port1 - 1]->power_is_on)
+		if (test_bit(port1, hub->power_bits))
 			set_port_feature(hub->hdev, port1, USB_PORT_FEAT_POWER);
 		else
 			usb_clear_port_feature(hub->hdev, port1,
 						USB_PORT_FEAT_POWER);
-
-	/* Wait at least 100 msec for power to become stable */
-	delay = max(pgood_delay, (unsigned) 100);
 	if (do_delay)
-		msleep(delay);
-	return delay;
+		msleep(hub_power_on_good_delay(hub));
 }
 
 static int hub_hub_status(struct usb_hub *hub,
@@ -911,20 +907,20 @@ static int hub_usb3_port_disable(struct usb_hub *hub, int port1)
 		msleep(HUB_DEBOUNCE_STEP);
 	}
 	if (total_time >= HUB_DEBOUNCE_TIMEOUT)
-		dev_warn(hub->intfdev, "Could not disable port %d after %d ms\n",
-				port1, total_time);
+		dev_warn(&hub->ports[port1 - 1]->dev,
+				"Could not disable after %d ms\n", total_time);
 
 	return hub_set_port_link_state(hub, port1, USB_SS_PORT_LS_RX_DETECT);
 }
 
 static int hub_port_disable(struct usb_hub *hub, int port1, int set_state)
 {
+	struct usb_port *port_dev = hub->ports[port1 - 1];
 	struct usb_device *hdev = hub->hdev;
 	int ret = 0;
 
-	if (hub->ports[port1 - 1]->child && set_state)
-		usb_set_device_state(hub->ports[port1 - 1]->child,
-				USB_STATE_NOTATTACHED);
+	if (port_dev->child && set_state)
+		usb_set_device_state(port_dev->child, USB_STATE_NOTATTACHED);
 	if (!hub->error) {
 		if (hub_is_superspeed(hub->hdev))
 			ret = hub_usb3_port_disable(hub, port1);
@@ -933,8 +929,7 @@ static int hub_port_disable(struct usb_hub *hub, int port1, int set_state)
 					USB_PORT_FEAT_ENABLE);
 	}
 	if (ret && ret != -ENODEV)
-		dev_err(hub->intfdev, "cannot disable port %d (err = %d)\n",
-				port1, ret);
+		dev_err(&port_dev->dev, "cannot disable (err = %d)\n", ret);
 	return ret;
 }
 
@@ -945,7 +940,7 @@ static int hub_port_disable(struct usb_hub *hub, int port1, int set_state)
  */
 static void hub_port_logical_disconnect(struct usb_hub *hub, int port1)
 {
-	dev_dbg(hub->intfdev, "logical disconnect on port %d\n", port1);
+	dev_dbg(&hub->ports[port1 - 1]->dev, "logical disconnect\n");
 	hub_port_disable(hub, port1, 1);
 
 	/* FIXME let caller ask to power down the port:
@@ -1048,7 +1043,9 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 		 * for HUB_POST_RESET, but it's easier not to.
 		 */
 		if (type == HUB_INIT) {
-			delay = hub_power_on(hub, false);
+			unsigned delay = hub_power_on_good_delay(hub);
+
+			hub_power_on(hub, false);
 			INIT_DELAYED_WORK(&hub->init_work, hub_init_func2);
 			queue_delayed_work(system_power_efficient_wq,
 					&hub->init_work,
@@ -1083,21 +1080,23 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 	}
  init2:
 
-	/* Check each port and set hub->change_bits to let khubd know
+	/*
+	 * Check each port and set hub->change_bits to let khubd know
 	 * which ports need attention.
 	 */
 	for (port1 = 1; port1 <= hdev->maxchild; ++port1) {
-		struct usb_device *udev = hub->ports[port1 - 1]->child;
+		struct usb_port *port_dev = hub->ports[port1 - 1];
+		struct usb_device *udev = port_dev->child;
 		u16 portstatus, portchange;
 
 		portstatus = portchange = 0;
 		status = hub_port_status(hub, port1, &portstatus, &portchange);
 		if (udev || (portstatus & USB_PORT_STAT_CONNECTION))
-			dev_dbg(hub->intfdev,
-					"port %d: status %04x change %04x\n",
-					port1, portstatus, portchange);
+			dev_dbg(&port_dev->dev, "status %04x change %04x\n",
+					portstatus, portchange);
 
-		/* After anything other than HUB_RESUME (i.e., initialization
+		/*
+		 * After anything other than HUB_RESUME (i.e., initialization
 		 * or any sort of reset), every port should be disabled.
 		 * Unconnected ports should likewise be disabled (paranoia),
 		 * and so should ports for which we have no usb_device.
@@ -1173,15 +1172,13 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 				set_bit(port1, hub->change_bits);
 
 		} else if (udev->persist_enabled) {
-			struct usb_port *port_dev = hub->ports[port1 - 1];
-
 #ifdef CONFIG_PM
 			udev->reset_resume = 1;
 #endif
 			/* Don't set the change_bits when the device
 			 * was powered off.
 			 */
-			if (port_dev->power_is_on)
+			if (test_bit(port1, hub->power_bits))
 				set_bit(port1, hub->change_bits);
 
 		} else {
@@ -1276,12 +1273,22 @@ static void hub_quiesce(struct usb_hub *hub, enum hub_quiescing_type type)
 		flush_work(&hub->tt.clear_work);
 }
 
+static void hub_pm_barrier_for_all_ports(struct usb_hub *hub)
+{
+	int i;
+
+	for (i = 0; i < hub->hdev->maxchild; ++i)
+		pm_runtime_barrier(&hub->ports[i]->dev);
+}
+
 /* caller has locked the hub device */
 static int hub_pre_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	hub_quiesce(hub, HUB_PRE_RESET);
+	hub->in_reset = 1;
+	hub_pm_barrier_for_all_ports(hub);
 	return 0;
 }
 
@@ -1290,6 +1297,8 @@ static int hub_post_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
+	hub->in_reset = 0;
+	hub_pm_barrier_for_all_ports(hub);
 	hub_activate(hub, HUB_POST_RESET);
 	return 0;
 }
@@ -1307,6 +1316,7 @@ static int hub_configure(struct usb_hub *hub,
 	char *message = "out of memory";
 	unsigned unit_load;
 	unsigned full_load;
+	unsigned maxchild;
 
 	hub->buffer = kmalloc(sizeof(*hub->buffer), GFP_KERNEL);
 	if (!hub->buffer) {
@@ -1345,12 +1355,11 @@ static int hub_configure(struct usb_hub *hub,
 		goto fail;
 	}
 
-	hdev->maxchild = hub->descriptor->bNbrPorts;
-	dev_info (hub_dev, "%d port%s detected\n", hdev->maxchild,
-		(hdev->maxchild == 1) ? "" : "s");
+	maxchild = hub->descriptor->bNbrPorts;
+	dev_info(hub_dev, "%d port%s detected\n", maxchild,
+			(maxchild == 1) ? "" : "s");
 
-	hub->ports = kzalloc(hdev->maxchild * sizeof(struct usb_port *),
-			     GFP_KERNEL);
+	hub->ports = kzalloc(maxchild * sizeof(struct usb_port *), GFP_KERNEL);
 	if (!hub->ports) {
 		ret = -ENOMEM;
 		goto fail;
@@ -1371,11 +1380,11 @@ static int hub_configure(struct usb_hub *hub,
 		int	i;
 		char	portstr[USB_MAXCHILDREN + 1];
 
-		for (i = 0; i < hdev->maxchild; i++)
+		for (i = 0; i < maxchild; i++)
 			portstr[i] = hub->descriptor->u.hs.DeviceRemovable
 				    [((i + 1) / 8)] & (1 << ((i + 1) % 8))
 				? 'F' : 'R';
-		portstr[hdev->maxchild] = 0;
+		portstr[maxchild] = 0;
 		dev_dbg(hub_dev, "compound device; port removable status: %s\n", portstr);
 	} else
 		dev_dbg(hub_dev, "standalone hub\n");
@@ -1487,7 +1496,7 @@ static int hub_configure(struct usb_hub *hub,
 		if (hcd->power_budget > 0)
 			hdev->bus_mA = hcd->power_budget;
 		else
-			hdev->bus_mA = full_load * hdev->maxchild;
+			hdev->bus_mA = full_load * maxchild;
 		if (hdev->bus_mA >= full_load)
 			hub->mA_per_port = full_load;
 		else {
@@ -1502,7 +1511,7 @@ static int hub_configure(struct usb_hub *hub,
 			hub->descriptor->bHubContrCurrent);
 		hub->limited_power = 1;
 
-		if (remaining < hdev->maxchild * unit_load)
+		if (remaining < maxchild * unit_load)
 			dev_warn(hub_dev,
 					"insufficient power available "
 					"to use all downstream ports\n");
@@ -1570,15 +1579,19 @@ static int hub_configure(struct usb_hub *hub,
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator[0] = INDICATOR_CYCLE;
 
-	for (i = 0; i < hdev->maxchild; i++) {
+	mutex_lock(&usb_port_peer_mutex);
+	for (i = 0; i < maxchild; i++) {
 		ret = usb_hub_create_port_device(hub, i + 1);
 		if (ret < 0) {
 			dev_err(hub->intfdev,
 				"couldn't create port%d device.\n", i + 1);
-			hdev->maxchild = i;
-			goto fail_keep_maxchild;
+			break;
 		}
 	}
+	hdev->maxchild = i;
+	mutex_unlock(&usb_port_peer_mutex);
+	if (ret < 0)
+		goto fail;
 
 	usb_hub_adjust_deviceremovable(hdev, hub->descriptor);
 
@@ -1586,8 +1599,6 @@ static int hub_configure(struct usb_hub *hub,
 	return 0;
 
 fail:
-	hdev->maxchild = 0;
-fail_keep_maxchild:
 	dev_err (hub_dev, "config failed, %s (err %d)\n",
 			message, ret);
 	/* hub_disconnect() frees urb and descriptor */
@@ -1623,6 +1634,8 @@ static void hub_disconnect(struct usb_interface *intf)
 	hub->error = 0;
 	hub_quiesce(hub, HUB_DISCONNECT);
 
+	mutex_lock(&usb_port_peer_mutex);
+
 	/* Avoid races with recursively_mark_NOTATTACHED() */
 	spin_lock_irq(&device_state_lock);
 	port1 = hdev->maxchild;
@@ -1632,6 +1645,8 @@ static void hub_disconnect(struct usb_interface *intf)
 
 	for (; port1 > 0; --port1)
 		usb_hub_remove_port_device(hub, port1);
+
+	mutex_unlock(&usb_port_peer_mutex);
 
 	if (hub->hdev->speed == USB_SPEED_HIGH)
 		highspeed_hubs--;
@@ -2082,16 +2097,15 @@ void usb_disconnect(struct usb_device **pdev)
 	usb_hcd_synchronize_unlinks(udev);
 
 	if (udev->parent) {
+		int port1 = udev->portnum;
 		struct usb_hub *hub = usb_hub_to_struct_hub(udev->parent);
-		struct usb_port	*port_dev = hub->ports[udev->portnum - 1];
+		struct usb_port	*port_dev = hub->ports[port1 - 1];
 
 		sysfs_remove_link(&udev->dev.kobj, "port");
 		sysfs_remove_link(&port_dev->dev.kobj, "device");
 
-		if (!port_dev->did_runtime_put)
+		if (test_and_clear_bit(port1, hub->child_usage_bits))
 			pm_runtime_put(&port_dev->dev);
-		else
-			port_dev->did_runtime_put = false;
 	}
 
 	usb_remove_ep_devs(&udev->ep0);
@@ -2300,6 +2314,22 @@ static void set_usb_port_removable(struct usb_device *udev)
 		udev->removable = USB_DEVICE_REMOVABLE;
 	else
 		udev->removable = USB_DEVICE_FIXED;
+
+	/*
+	 * Platform firmware may have populated an alternative value for
+	 * removable.  If the parent port has a known connect_type use
+	 * that instead.
+	 */
+	switch (hub->ports[udev->portnum - 1]->connect_type) {
+	case USB_PORT_CONNECT_TYPE_HOT_PLUG:
+		udev->removable = USB_DEVICE_REMOVABLE;
+		break;
+	case USB_PORT_CONNECT_TYPE_HARD_WIRED:
+		udev->removable = USB_DEVICE_FIXED;
+		break;
+	default: /* use what was set above */
+		break;
+	}
 }
 
 /**
@@ -2369,11 +2399,7 @@ int usb_new_device(struct usb_device *udev)
 
 	device_enable_async_suspend(&udev->dev);
 
-	/*
-	 * check whether the hub marks this port as non-removable. Do it
-	 * now so that platform-specific data can override it in
-	 * device_add()
-	 */
+	/* check whether the hub or firmware marks this port as non-removable */
 	if (udev->parent)
 		set_usb_port_removable(udev);
 
@@ -2390,7 +2416,8 @@ int usb_new_device(struct usb_device *udev)
 	/* Create link files between child device and usb port device. */
 	if (udev->parent) {
 		struct usb_hub *hub = usb_hub_to_struct_hub(udev->parent);
-		struct usb_port	*port_dev = hub->ports[udev->portnum - 1];
+		int port1 = udev->portnum;
+		struct usb_port	*port_dev = hub->ports[port1 - 1];
 
 		err = sysfs_create_link(&udev->dev.kobj,
 				&port_dev->dev.kobj, "port");
@@ -2404,7 +2431,8 @@ int usb_new_device(struct usb_device *udev)
 			goto fail;
 		}
 
-		pm_runtime_get_sync(&port_dev->dev);
+		if (!test_and_set_bit(port1, hub->child_usage_bits))
+			pm_runtime_get_sync(&port_dev->dev);
 	}
 
 	(void) usb_create_ep_devs(&udev->dev, &udev->ep0, udev);
@@ -2572,9 +2600,9 @@ static int hub_port_wait_reset(struct usb_hub *hub, int port1,
 		if (delay_time >= 2 * HUB_SHORT_RESET_TIME)
 			delay = HUB_LONG_RESET_TIME;
 
-		dev_dbg (hub->intfdev,
-			"port %d not %sreset yet, waiting %dms\n",
-			port1, warm ? "warm " : "", delay);
+		dev_dbg(&hub->ports[port1 - 1]->dev,
+				"not %sreset yet, waiting %dms\n",
+				warm ? "warm " : "", delay);
 	}
 
 	if ((portstatus & USB_PORT_STAT_RESET))
@@ -2658,6 +2686,7 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 {
 	int i, status;
 	u16 portchange, portstatus;
+	struct usb_port *port_dev = hub->ports[port1 - 1];
 
 	if (!hub_is_superspeed(hub->hdev)) {
 		if (warm) {
@@ -2691,9 +2720,9 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 		if (status == -ENODEV) {
 			;	/* The hub is gone */
 		} else if (status) {
-			dev_err(hub->intfdev,
-					"cannot %sreset port %d (err = %d)\n",
-					warm ? "warm " : "", port1, status);
+			dev_err(&port_dev->dev,
+					"cannot %sreset (err = %d)\n",
+					warm ? "warm " : "", status);
 		} else {
 			status = hub_port_wait_reset(hub, port1, udev, delay,
 								warm);
@@ -2726,21 +2755,19 @@ static int hub_port_reset(struct usb_hub *hub, int port1,
 			 * hot or warm reset failed.  Try another warm reset.
 			 */
 			if (!warm) {
-				dev_dbg(hub->intfdev, "hot reset failed, warm reset port %d\n",
-						port1);
+				dev_dbg(&port_dev->dev,
+						"hot reset failed, warm reset\n");
 				warm = true;
 			}
 		}
 
-		dev_dbg (hub->intfdev,
-			"port %d not enabled, trying %sreset again...\n",
-			port1, warm ? "warm " : "");
+		dev_dbg(&port_dev->dev,
+				"not enabled, trying %sreset again...\n",
+				warm ? "warm " : "");
 		delay = HUB_LONG_RESET_TIME;
 	}
 
-	dev_err (hub->intfdev,
-		"Cannot enable port %i.  Maybe the USB cable is bad?\n",
-		port1);
+	dev_err(&port_dev->dev, "Cannot enable. Maybe the USB cable is bad?\n");
 
 done:
 	if (!hub_is_superspeed(hub->hdev))
@@ -2791,6 +2818,8 @@ static int check_port_resume_type(struct usb_device *udev,
 		struct usb_hub *hub, int port1,
 		int status, unsigned portchange, unsigned portstatus)
 {
+	struct usb_port *port_dev = hub->ports[port1 - 1];
+
 	/* Is the device still present? */
 	if (status || port_is_suspended(hub, portstatus) ||
 			!port_is_power_on(hub, portstatus) ||
@@ -2810,9 +2839,8 @@ static int check_port_resume_type(struct usb_device *udev,
 	}
 
 	if (status) {
-		dev_dbg(hub->intfdev,
-				"port %d status %04x.%04x after resume, %d\n",
-				port1, portchange, portstatus, status);
+		dev_dbg(&port_dev->dev, "status %04x.%04x after resume, %d\n",
+				portchange, portstatus, status);
 	} else if (udev->reset_resume) {
 
 		/* Late port handoff can set status-change bits */
@@ -3043,8 +3071,7 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 		status = 0;
 	}
 	if (status) {
-		dev_dbg(hub->intfdev, "can't suspend port %d, status %d\n",
-				port1, status);
+		dev_dbg(&port_dev->dev, "can't suspend, status %d\n", status);
 
 		/* Try to enable USB3 LPM and LTM again */
 		usb_unlocked_enable_lpm(udev);
@@ -3075,10 +3102,9 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 		usb_set_device_state(udev, USB_STATE_SUSPENDED);
 	}
 
-	if (status == 0 && !udev->do_remote_wakeup && udev->persist_enabled) {
+	if (status == 0 && !udev->do_remote_wakeup && udev->persist_enabled
+			&& test_and_clear_bit(port1, hub->child_usage_bits))
 		pm_runtime_put_sync(&port_dev->dev);
-		port_dev->did_runtime_put = true;
-	}
 
 	usb_mark_last_busy(hub->hdev);
 	return status;
@@ -3220,9 +3246,8 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 	int		status;
 	u16		portchange, portstatus;
 
-	if (port_dev->did_runtime_put) {
+	if (!test_and_set_bit(port1, hub->child_usage_bits)) {
 		status = pm_runtime_get_sync(&port_dev->dev);
-		port_dev->did_runtime_put = false;
 		if (status < 0) {
 			dev_dbg(&udev->dev, "can't resume usb port, status %d\n",
 					status);
@@ -3235,8 +3260,6 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 	if (status == 0 && !port_is_suspended(hub, portstatus))
 		goto SuspendCleared;
 
-	/* dev_dbg(hub->intfdev, "resume port %d\n", port1); */
-
 	set_bit(port1, hub->busy_bits);
 
 	/* see 7.1.7.7; affects power usage, but not budgeting */
@@ -3246,8 +3269,7 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 		status = usb_clear_port_feature(hub->hdev,
 				port1, USB_PORT_FEAT_SUSPEND);
 	if (status) {
-		dev_dbg(hub->intfdev, "can't resume port %d, status %d\n",
-				port1, status);
+		dev_dbg(&port_dev->dev, "can't resume, status %d\n", status);
 	} else {
 		/* drive resume for at least 20 msec */
 		dev_dbg(&udev->dev, "usb %sresume\n",
@@ -3348,12 +3370,11 @@ static int hub_suspend(struct usb_interface *intf, pm_message_t msg)
 	 */
 	hub->wakeup_enabled_descendants = 0;
 	for (port1 = 1; port1 <= hdev->maxchild; port1++) {
-		struct usb_device	*udev;
+		struct usb_port *port_dev = hub->ports[port1 - 1];
+		struct usb_device *udev = port_dev->child;
 
-		udev = hub->ports[port1 - 1]->child;
 		if (udev && udev->can_submit) {
-			dev_warn(&intf->dev, "port %d not suspended yet\n",
-					port1);
+			dev_warn(&port_dev->dev, "not suspended yet\n");
 			if (PMSG_IS_AUTO(msg))
 				return -EBUSY;
 		}
@@ -3893,9 +3914,10 @@ EXPORT_SYMBOL_GPL(usb_enable_ltm);
 int hub_port_debounce(struct usb_hub *hub, int port1, bool must_be_connected)
 {
 	int ret;
-	int total_time, stable_time = 0;
 	u16 portchange, portstatus;
 	unsigned connection = 0xffff;
+	int total_time, stable_time = 0;
+	struct usb_port *port_dev = hub->ports[port1 - 1];
 
 	for (total_time = 0; ; total_time += HUB_DEBOUNCE_STEP) {
 		ret = hub_port_status(hub, port1, &portstatus, &portchange);
@@ -3924,9 +3946,8 @@ int hub_port_debounce(struct usb_hub *hub, int port1, bool must_be_connected)
 		msleep(HUB_DEBOUNCE_STEP);
 	}
 
-	dev_dbg (hub->intfdev,
-		"debounce: port %d: total %dms stable %dms status 0x%x\n",
-		port1, total_time, stable_time, portstatus);
+	dev_dbg(&port_dev->dev, "debounce total %dms stable %dms status 0x%x\n",
+			total_time, stable_time, portstatus);
 
 	if (stable_time < HUB_DEBOUNCE_STABLE)
 		return -ETIMEDOUT;
@@ -3985,13 +4006,14 @@ static int hub_set_address(struct usb_device *udev, int devnum)
  */
 static void hub_set_initial_usb2_lpm_policy(struct usb_device *udev)
 {
-	int connect_type;
+	struct usb_hub *hub = usb_hub_to_struct_hub(udev->parent);
+	int connect_type = USB_PORT_CONNECT_TYPE_UNKNOWN;
 
 	if (!udev->usb2_hw_lpm_capable)
 		return;
 
-	connect_type = usb_get_hub_port_connect_type(udev->parent,
-			udev->portnum);
+	if (hub)
+		connect_type = hub->ports[udev->portnum - 1]->connect_type;
 
 	if ((udev->bos->ext_cap->bmAttributes & cpu_to_le32(USB_BESL_SUPPORT)) ||
 			connect_type == USB_PORT_CONNECT_TYPE_HARD_WIRED) {
@@ -4027,8 +4049,6 @@ static int
 hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 		int retry_counter)
 {
-	static DEFINE_MUTEX(usb_address0_mutex);
-
 	struct usb_device	*hdev = hub->hdev;
 	struct usb_hcd		*hcd = bus_to_hcd(hdev->bus);
 	int			i, j, retval;
@@ -4051,7 +4071,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 	if (oldspeed == USB_SPEED_LOW)
 		delay = HUB_LONG_RESET_TIME;
 
-	mutex_lock(&usb_address0_mutex);
+	mutex_lock(&hdev->bus->usb_address0_mutex);
 
 	/* Reset the device; full speed may morph to high speed */
 	/* FIXME a USB 2.0 device may morph into SuperSpeed on reset. */
@@ -4328,7 +4348,7 @@ fail:
 		hub_port_disable(hub, port1, 0);
 		update_devnum(udev, devnum);	/* for disconnect processing */
 	}
-	mutex_unlock(&usb_address0_mutex);
+	mutex_unlock(&hdev->bus->usb_address0_mutex);
 	return retval;
 }
 
@@ -4369,9 +4389,10 @@ hub_power_remaining (struct usb_hub *hub)
 
 	remaining = hdev->bus_mA - hub->descriptor->bHubContrCurrent;
 	for (port1 = 1; port1 <= hdev->maxchild; ++port1) {
-		struct usb_device	*udev = hub->ports[port1 - 1]->child;
-		int			delta;
-		unsigned		unit_load;
+		struct usb_port *port_dev = hub->ports[port1 - 1];
+		struct usb_device *udev = port_dev->child;
+		unsigned unit_load;
+		int delta;
 
 		if (!udev)
 			continue;
@@ -4391,9 +4412,8 @@ hub_power_remaining (struct usb_hub *hub)
 		else
 			delta = 8;
 		if (delta > hub->mA_per_port)
-			dev_warn(&udev->dev,
-				 "%dmA is over %umA budget for port %d!\n",
-				 delta, hub->mA_per_port, port1);
+			dev_warn(&port_dev->dev, "%dmA is over %umA budget!\n",
+					delta, hub->mA_per_port);
 		remaining -= delta;
 	}
 	if (remaining < 0) {
@@ -4416,17 +4436,14 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 					u16 portstatus, u16 portchange)
 {
 	struct usb_device *hdev = hub->hdev;
-	struct device *hub_dev = hub->intfdev;
 	struct usb_hcd *hcd = bus_to_hcd(hdev->bus);
-	unsigned wHubCharacteristics =
-			le16_to_cpu(hub->descriptor->wHubCharacteristics);
+	struct usb_port *port_dev = hub->ports[port1 - 1];
 	struct usb_device *udev;
 	int status, i;
 	unsigned unit_load;
 
-	dev_dbg (hub_dev,
-		"port %d, status %04x, change %04x, %s\n",
-		port1, portstatus, portchange, portspeed(hub, portstatus));
+	dev_dbg(&port_dev->dev, "status %04x, change %04x, %s\n",
+			portstatus, portchange, portspeed(hub, portstatus));
 
 	if (hub->has_indicators) {
 		set_port_led(hub, port1, HUB_LED_AUTO);
@@ -4441,7 +4458,7 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 #endif
 
 	/* Try to resuscitate an existing device */
-	udev = hub->ports[port1 - 1]->child;
+	udev = port_dev->child;
 	if ((portstatus & USB_PORT_STAT_CONNECTION) && udev &&
 			udev->state != USB_STATE_NOTATTACHED) {
 		usb_lock_device(udev);
@@ -4473,7 +4490,7 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		if (hcd->phy && !hdev->parent &&
 				!(portstatus & USB_PORT_STAT_CONNECTION))
 			usb_phy_notify_disconnect(hcd->phy, udev->speed);
-		usb_disconnect(&hub->ports[port1 - 1]->child);
+		usb_disconnect(&port_dev->child);
 	}
 	clear_bit(port1, hub->change_bits);
 
@@ -4489,8 +4506,8 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		status = hub_port_debounce_be_stable(hub, port1);
 		if (status < 0) {
 			if (status != -ENODEV && printk_ratelimit())
-				dev_err(hub_dev, "connect-debounce failed, "
-						"port %d disabled\n", port1);
+				dev_err(&port_dev->dev,
+						"connect-debounce failed\n");
 			portstatus &= ~USB_PORT_STAT_CONNECTION;
 		} else {
 			portstatus = status;
@@ -4504,7 +4521,7 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 			test_bit(port1, hub->removed_bits)) {
 
 		/* maybe switch power back on (e.g. root hub was reset) */
-		if ((wHubCharacteristics & HUB_CHAR_LPSM) < 2
+		if (hub_is_port_power_switchable(hub)
 				&& !port_is_power_on(hub, portstatus))
 			set_port_feature(hdev, port1, USB_PORT_FEAT_POWER);
 
@@ -4525,9 +4542,8 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		 */
 		udev = usb_alloc_dev(hdev, hdev->bus, port1);
 		if (!udev) {
-			dev_err (hub_dev,
-				"couldn't allocate port %d usb_device\n",
-				port1);
+			dev_err(&port_dev->dev,
+					"couldn't allocate usb_device\n");
 			goto done;
 		}
 
@@ -4601,6 +4617,8 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		 */
 		status = 0;
 
+		mutex_lock(&usb_port_peer_mutex);
+
 		/* We mustn't add new devices if the parent hub has
 		 * been disconnected; we would race with the
 		 * recursively_mark_NOTATTACHED() routine.
@@ -4609,16 +4627,19 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		if (hdev->state == USB_STATE_NOTATTACHED)
 			status = -ENOTCONN;
 		else
-			hub->ports[port1 - 1]->child = udev;
+			port_dev->child = udev;
 		spin_unlock_irq(&device_state_lock);
+		mutex_unlock(&usb_port_peer_mutex);
 
 		/* Run it through the hoops (find a driver, etc) */
 		if (!status) {
 			status = usb_new_device(udev);
 			if (status) {
+				mutex_lock(&usb_port_peer_mutex);
 				spin_lock_irq(&device_state_lock);
-				hub->ports[port1 - 1]->child = NULL;
+				port_dev->child = NULL;
 				spin_unlock_irq(&device_state_lock);
+				mutex_unlock(&usb_port_peer_mutex);
 			}
 		}
 
@@ -4627,7 +4648,7 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 
 		status = hub_power_remaining(hub);
 		if (status)
-			dev_dbg(hub_dev, "%dmA power budget left\n", status);
+			dev_dbg(hub->intfdev, "%dmA power budget left\n", status);
 
 		return;
 
@@ -4645,8 +4666,8 @@ loop:
 			!hcd->driver->port_handed_over ||
 			!(hcd->driver->port_handed_over)(hcd, port1)) {
 		if (status != -ENOTCONN && status != -ENODEV)
-			dev_err(hub_dev, "unable to enumerate USB device on port %d\n",
-					port1);
+			dev_err(&port_dev->dev,
+					"unable to enumerate USB device\n");
 	}
 
 done:
@@ -4659,13 +4680,14 @@ done:
 static int hub_handle_remote_wakeup(struct usb_hub *hub, unsigned int port,
 		u16 portstatus, u16 portchange)
 {
+	struct usb_port *port_dev = hub->ports[port - 1];
 	struct usb_device *hdev;
 	struct usb_device *udev;
 	int connect_change = 0;
 	int ret;
 
 	hdev = hub->hdev;
-	udev = hub->ports[port - 1]->child;
+	udev = port_dev->child;
 	if (!hub_is_superspeed(hdev)) {
 		if (!(portchange & USB_PORT_STAT_C_SUSPEND))
 			return 0;
@@ -4690,8 +4712,7 @@ static int hub_handle_remote_wakeup(struct usb_hub *hub, unsigned int port,
 		ret = -ENODEV;
 		hub_port_disable(hub, port, 1);
 	}
-	dev_dbg(hub->intfdev, "resume on port %d, status %d\n",
-			port, ret);
+	dev_dbg(&port_dev->dev, "resume, status %d\n", ret);
 	return connect_change;
 }
 
@@ -4781,7 +4802,8 @@ static void hub_events(void)
 
 		/* deal with port status changes */
 		for (i = 1; i <= hdev->maxchild; i++) {
-			struct usb_device *udev = hub->ports[i - 1]->child;
+			struct usb_port *port_dev = hub->ports[i - 1];
+			struct usb_device *udev = port_dev->child;
 
 			if (test_bit(i, hub->busy_bits))
 				continue;
@@ -4804,10 +4826,9 @@ static void hub_events(void)
 
 			if (portchange & USB_PORT_STAT_C_ENABLE) {
 				if (!connect_change)
-					dev_dbg (hub_dev,
-						"port %d enable change, "
-						"status %08x\n",
-						i, portstatus);
+					dev_dbg(&port_dev->dev,
+							"enable change, status %08x\n",
+							 portstatus);
 				usb_clear_port_feature(hdev, i,
 					USB_PORT_FEAT_C_ENABLE);
 
@@ -4818,13 +4839,9 @@ static void hub_events(void)
 				 * Works at least with mouse driver.
 				 */
 				if (!(portstatus & USB_PORT_STAT_ENABLE)
-				    && !connect_change
-				    && hub->ports[i - 1]->child) {
-					dev_err (hub_dev,
-					    "port %i "
-					    "disabled by hub (EMI?), "
-					    "re-enabling...\n",
-						i);
+				    && !connect_change && udev) {
+					dev_err(&port_dev->dev,
+							"disabled by hub (EMI?), re-enabling...\n");
 					connect_change = 1;
 				}
 			}
@@ -4837,30 +4854,25 @@ static void hub_events(void)
 				u16 status = 0;
 				u16 unused;
 
-				dev_dbg(hub_dev, "over-current change on port "
-					"%d\n", i);
+				dev_dbg(&port_dev->dev, "over-current change\n");
 				usb_clear_port_feature(hdev, i,
 					USB_PORT_FEAT_C_OVER_CURRENT);
 				msleep(100);	/* Cool down */
 				hub_power_on(hub, true);
 				hub_port_status(hub, i, &status, &unused);
 				if (status & USB_PORT_STAT_OVERCURRENT)
-					dev_err(hub_dev, "over-current "
-						"condition on port %d\n", i);
+					dev_err(&port_dev->dev,
+							"over-current condition\n");
 			}
 
 			if (portchange & USB_PORT_STAT_C_RESET) {
-				dev_dbg (hub_dev,
-					"reset change on port %d\n",
-					i);
+				dev_dbg(&port_dev->dev, "reset change\n");
 				usb_clear_port_feature(hdev, i,
 					USB_PORT_FEAT_C_RESET);
 			}
 			if ((portchange & USB_PORT_STAT_C_BH_RESET) &&
 					hub_is_superspeed(hub->hdev)) {
-				dev_dbg(hub_dev,
-					"warm reset change on port %d\n",
-					i);
+				dev_dbg(&port_dev->dev, "warm reset change\n");
 				usb_clear_port_feature(hdev, i,
 					USB_PORT_FEAT_C_BH_PORT_RESET);
 			}
@@ -4869,9 +4881,7 @@ static void hub_events(void)
 						USB_PORT_FEAT_C_PORT_LINK_STATE);
 			}
 			if (portchange & USB_PORT_STAT_C_CONFIG_ERROR) {
-				dev_warn(hub_dev,
-					"config error on port %d\n",
-					i);
+				dev_warn(&port_dev->dev, "config error\n");
 				usb_clear_port_feature(hub->hdev, i,
 						USB_PORT_FEAT_C_PORT_CONFIG_ERROR);
 			}
@@ -4882,7 +4892,7 @@ static void hub_events(void)
 			if (hub_port_warm_reset_required(hub, portstatus)) {
 				int status;
 
-				dev_dbg(hub_dev, "warm reset port %d\n", i);
+				dev_dbg(&port_dev->dev, "warm reset\n");
 				if (!udev ||
 				    !(portstatus & USB_PORT_STAT_CONNECTION) ||
 				    udev->state == USB_STATE_NOTATTACHED) {
@@ -5483,56 +5493,26 @@ struct usb_device *usb_hub_find_child(struct usb_device *hdev,
 }
 EXPORT_SYMBOL_GPL(usb_hub_find_child);
 
-/**
- * usb_set_hub_port_connect_type - set hub port connect type.
- * @hdev: USB device belonging to the usb hub
- * @port1: port num of the port
- * @type: connect type of the port
- */
-void usb_set_hub_port_connect_type(struct usb_device *hdev, int port1,
-	enum usb_port_connect_type type)
-{
-	struct usb_hub *hub = usb_hub_to_struct_hub(hdev);
-
-	if (hub)
-		hub->ports[port1 - 1]->connect_type = type;
-}
-
-/**
- * usb_get_hub_port_connect_type - Get the port's connect type
- * @hdev: USB device belonging to the usb hub
- * @port1: port num of the port
- *
- * Return: The connect type of the port if successful. Or
- * USB_PORT_CONNECT_TYPE_UNKNOWN if input params are invalid.
- */
-enum usb_port_connect_type
-usb_get_hub_port_connect_type(struct usb_device *hdev, int port1)
-{
-	struct usb_hub *hub = usb_hub_to_struct_hub(hdev);
-
-	if (!hub)
-		return USB_PORT_CONNECT_TYPE_UNKNOWN;
-
-	return hub->ports[port1 - 1]->connect_type;
-}
-
 void usb_hub_adjust_deviceremovable(struct usb_device *hdev,
 		struct usb_hub_descriptor *desc)
 {
+	struct usb_hub *hub = usb_hub_to_struct_hub(hdev);
 	enum usb_port_connect_type connect_type;
 	int i;
 
+	if (!hub)
+		return;
+
 	if (!hub_is_superspeed(hdev)) {
 		for (i = 1; i <= hdev->maxchild; i++) {
-			connect_type = usb_get_hub_port_connect_type(hdev, i);
+			struct usb_port *port_dev = hub->ports[i - 1];
 
+			connect_type = port_dev->connect_type;
 			if (connect_type == USB_PORT_CONNECT_TYPE_HARD_WIRED) {
 				u8 mask = 1 << (i%8);
 
 				if (!(desc->u.hs.DeviceRemovable[i/8] & mask)) {
-					dev_dbg(&hdev->dev, "usb port%d's DeviceRemovable is changed to 1 according to platform information.\n",
-						i);
+					dev_dbg(&port_dev->dev, "DeviceRemovable is changed to 1 according to platform information.\n");
 					desc->u.hs.DeviceRemovable[i/8]	|= mask;
 				}
 			}
@@ -5541,14 +5521,14 @@ void usb_hub_adjust_deviceremovable(struct usb_device *hdev,
 		u16 port_removable = le16_to_cpu(desc->u.ss.DeviceRemovable);
 
 		for (i = 1; i <= hdev->maxchild; i++) {
-			connect_type = usb_get_hub_port_connect_type(hdev, i);
+			struct usb_port *port_dev = hub->ports[i - 1];
 
+			connect_type = port_dev->connect_type;
 			if (connect_type == USB_PORT_CONNECT_TYPE_HARD_WIRED) {
 				u16 mask = 1 << i;
 
 				if (!(port_removable & mask)) {
-					dev_dbg(&hdev->dev, "usb port%d's DeviceRemovable is changed to 1 according to platform information.\n",
-						i);
+					dev_dbg(&port_dev->dev, "DeviceRemovable is changed to 1 according to platform information.\n");
 					port_removable |= mask;
 				}
 			}
