@@ -42,6 +42,7 @@ static const char *ring_str(int ring)
 	case VCS: return "bsd";
 	case BCS: return "blt";
 	case VECS: return "vebox";
+	case VCS2: return "bsd2";
 	default: return "";
 	}
 }
@@ -257,7 +258,8 @@ static void i915_ring_error_state(struct drm_i915_error_state_buf *m,
 		err_printf(m, "  INSTPS: 0x%08x\n", ring->instps);
 	}
 	err_printf(m, "  INSTPM: 0x%08x\n", ring->instpm);
-	err_printf(m, "  FADDR: 0x%08x\n", ring->faddr);
+	err_printf(m, "  FADDR: 0x%08x %08x\n", upper_32_bits(ring->faddr),
+		   lower_32_bits(ring->faddr));
 	if (INTEL_INFO(dev)->gen >= 6) {
 		err_printf(m, "  RC PSMI: 0x%08x\n", ring->rc_psmi);
 		err_printf(m, "  FAULT_REG: 0x%08x\n", ring->fault_reg);
@@ -452,16 +454,7 @@ int i915_error_state_to_str(struct drm_i915_error_state_buf *m,
 			err_printf(m, "%s --- HW Context = 0x%08x\n",
 				   dev_priv->ring[i].name,
 				   obj->gtt_offset);
-			offset = 0;
-			for (elt = 0; elt < PAGE_SIZE/16; elt += 4) {
-				err_printf(m, "[%04x] %08x %08x %08x %08x\n",
-					   offset,
-					   obj->pages[0][elt],
-					   obj->pages[0][elt+1],
-					   obj->pages[0][elt+2],
-					   obj->pages[0][elt+3]);
-					offset += 16;
-			}
+			print_error_obj(m, obj);
 		}
 	}
 
@@ -764,14 +757,14 @@ static void i915_record_ring_state(struct drm_device *dev,
 			= I915_READ(RING_SYNC_0(ring->mmio_base));
 		ering->semaphore_mboxes[1]
 			= I915_READ(RING_SYNC_1(ring->mmio_base));
-		ering->semaphore_seqno[0] = ring->sync_seqno[0];
-		ering->semaphore_seqno[1] = ring->sync_seqno[1];
+		ering->semaphore_seqno[0] = ring->semaphore.sync_seqno[0];
+		ering->semaphore_seqno[1] = ring->semaphore.sync_seqno[1];
 	}
 
 	if (HAS_VEBOX(dev)) {
 		ering->semaphore_mboxes[2] =
 			I915_READ(RING_SYNC_2(ring->mmio_base));
-		ering->semaphore_seqno[2] = ring->sync_seqno[2];
+		ering->semaphore_seqno[2] = ring->semaphore.sync_seqno[2];
 	}
 
 	if (INTEL_INFO(dev)->gen >= 4) {
@@ -781,8 +774,10 @@ static void i915_record_ring_state(struct drm_device *dev,
 		ering->instdone = I915_READ(RING_INSTDONE(ring->mmio_base));
 		ering->instps = I915_READ(RING_INSTPS(ring->mmio_base));
 		ering->bbaddr = I915_READ(RING_BBADDR(ring->mmio_base));
-		if (INTEL_INFO(dev)->gen >= 8)
+		if (INTEL_INFO(dev)->gen >= 8) {
+			ering->faddr |= (u64) I915_READ(RING_DMA_FADD_UDW(ring->mmio_base)) << 32;
 			ering->bbaddr |= (u64) I915_READ(RING_BBADDR_UDW(ring->mmio_base)) << 32;
+		}
 		ering->bbstate = I915_READ(RING_BBSTATE(ring->mmio_base));
 	} else {
 		ering->faddr = I915_READ(DMA_FADD_I8XX);
@@ -875,10 +870,7 @@ static void i915_gem_record_active_context(struct intel_ring_buffer *ring,
 
 	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list) {
 		if ((error->ccid & PAGE_MASK) == i915_gem_obj_ggtt_offset(obj)) {
-			ering->ctx = i915_error_object_create_sized(dev_priv,
-								    obj,
-								    &dev_priv->gtt.base,
-								    1);
+			ering->ctx = i915_error_ggtt_object_create(dev_priv, obj);
 			break;
 		}
 	}
@@ -1037,7 +1029,6 @@ static void i915_capture_reg_state(struct drm_i915_private *dev_priv,
 				   struct drm_i915_error_state *error)
 {
 	struct drm_device *dev = dev_priv->dev;
-	int pipe;
 
 	/* General organization
 	 * 1. Registers specific to a single generation
@@ -1062,9 +1053,6 @@ static void i915_capture_reg_state(struct drm_i915_private *dev_priv,
 		error->gfx_mode = I915_READ(GFX_MODE);
 	}
 
-	if (IS_GEN2(dev))
-		error->ier = I915_READ16(IER);
-
 	/* 2: Registers which belong to multiple generations */
 	if (INTEL_INFO(dev)->gen >= 7)
 		error->forcewake = I915_READ(FORCEWAKE_MT);
@@ -1088,9 +1076,10 @@ static void i915_capture_reg_state(struct drm_i915_private *dev_priv,
 	if (HAS_PCH_SPLIT(dev))
 		error->ier = I915_READ(DEIER) | I915_READ(GTIER);
 	else {
-		error->ier = I915_READ(IER);
-		for_each_pipe(pipe)
-			error->pipestat[pipe] = I915_READ(PIPESTAT(pipe));
+		if (IS_GEN2(dev))
+			error->ier = I915_READ16(IER);
+		else
+			error->ier = I915_READ(IER);
 	}
 
 	/* 4: Everything else */
