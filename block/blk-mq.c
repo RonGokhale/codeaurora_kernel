@@ -92,30 +92,6 @@ static void blk_mq_hctx_clear_pending(struct blk_mq_hw_ctx *hctx,
 	clear_bit(CTX_TO_BIT(hctx, ctx), &bm->word);
 }
 
-static struct request *__blk_mq_alloc_request(struct blk_mq_hw_ctx *hctx,
-					      struct blk_mq_ctx *ctx,
-					      gfp_t gfp, bool reserved)
-{
-	struct request *rq;
-	unsigned int tag;
-
-	tag = blk_mq_get_tag(hctx, &ctx->last_tag, gfp, reserved);
-	if (tag != BLK_MQ_TAG_FAIL) {
-		rq = hctx->tags->rqs[tag];
-
-		rq->cmd_flags = 0;
-		if (blk_mq_tag_busy(hctx)) {
-			rq->cmd_flags = REQ_MQ_INFLIGHT;
-			atomic_inc(&hctx->nr_active);
-		}
-
-		rq->tag = tag;
-		return rq;
-	}
-
-	return NULL;
-}
-
 static int blk_mq_queue_enter(struct request_queue *q)
 {
 	int ret;
@@ -263,65 +239,58 @@ static void blk_mq_rq_ctx_init(struct request_queue *q, struct blk_mq_ctx *ctx,
 	ctx->rq_dispatched[rw_is_sync(rw_flags)]++;
 }
 
-static struct request *blk_mq_alloc_request_pinned(struct request_queue *q,
-						   int rw, gfp_t gfp,
-						   bool reserved)
+static struct request *
+__blk_mq_alloc_request(struct request_queue *q, struct blk_mq_hw_ctx *hctx,
+		struct blk_mq_ctx *ctx, int rw, gfp_t gfp, bool reserved)
 {
 	struct request *rq;
+	unsigned int tag;
 
-	do {
-		struct blk_mq_ctx *ctx = blk_mq_get_ctx(q);
-		struct blk_mq_hw_ctx *hctx = q->mq_ops->map_queue(q, ctx->cpu);
+	tag = blk_mq_get_tag(hctx, &ctx->last_tag, gfp, reserved);
+	if (tag != BLK_MQ_TAG_FAIL) {
+		rq = hctx->tags->rqs[tag];
 
-		rq = __blk_mq_alloc_request(hctx, ctx, gfp & ~__GFP_WAIT,
-						reserved);
-		if (rq) {
-			blk_mq_rq_ctx_init(q, ctx, rq, rw);
-			break;
+		rq->cmd_flags = 0;
+		if (blk_mq_tag_busy(hctx)) {
+			rq->cmd_flags = REQ_MQ_INFLIGHT;
+			atomic_inc(&hctx->nr_active);
 		}
 
-		if (gfp & __GFP_WAIT) {
-			__blk_mq_run_hw_queue(hctx);
-			blk_mq_put_ctx(ctx);
-		} else {
-			blk_mq_put_ctx(ctx);
-			break;
-		}
+		rq->tag = tag;
+		blk_mq_rq_ctx_init(q, ctx, rq, rw);
+		return rq;
+	}
 
-		blk_mq_wait_for_tags(hctx, reserved);
-	} while (1);
-
-	return rq;
+	return NULL;
 }
 
-struct request *blk_mq_alloc_request(struct request_queue *q, int rw, gfp_t gfp)
+struct request *blk_mq_alloc_request(struct request_queue *q, int rw, gfp_t gfp,
+		bool reserved)
 {
+	struct blk_mq_ctx *ctx;
+	struct blk_mq_hw_ctx *hctx;
 	struct request *rq;
 
 	if (blk_mq_queue_enter(q))
 		return NULL;
 
-	rq = blk_mq_alloc_request_pinned(q, rw, gfp, false);
-	if (rq)
-		blk_mq_put_ctx(rq->mq_ctx);
+	ctx = blk_mq_get_ctx(q);
+	hctx = q->mq_ops->map_queue(q, ctx->cpu);
+
+	rq = __blk_mq_alloc_request(q, hctx, ctx, rw, gfp & ~__GFP_WAIT,
+				    reserved);
+	if (!rq && (gfp & __GFP_WAIT)) {
+		__blk_mq_run_hw_queue(hctx);
+		blk_mq_put_ctx(ctx);
+
+		ctx = blk_mq_get_ctx(q);
+		hctx = q->mq_ops->map_queue(q, ctx->cpu);
+		rq =  __blk_mq_alloc_request(q, hctx, ctx, rw, gfp, reserved);
+	}
+	blk_mq_put_ctx(ctx);
 	return rq;
 }
 EXPORT_SYMBOL(blk_mq_alloc_request);
-
-struct request *blk_mq_alloc_reserved_request(struct request_queue *q, int rw,
-					      gfp_t gfp)
-{
-	struct request *rq;
-
-	if (blk_mq_queue_enter(q))
-		return NULL;
-
-	rq = blk_mq_alloc_request_pinned(q, rw, gfp, true);
-	if (rq)
-		blk_mq_put_ctx(rq->mq_ctx);
-	return rq;
-}
-EXPORT_SYMBOL(blk_mq_alloc_reserved_request);
 
 static void __blk_mq_free_request(struct blk_mq_hw_ctx *hctx,
 				  struct blk_mq_ctx *ctx, struct request *rq)
@@ -1192,16 +1161,16 @@ static struct request *blk_mq_map_request(struct request_queue *q,
 		rw |= REQ_SYNC;
 
 	trace_block_getrq(q, bio, rw);
-	rq = __blk_mq_alloc_request(hctx, ctx, GFP_ATOMIC, false);
-	if (likely(rq))
-		blk_mq_rq_ctx_init(q, ctx, rq, rw);
-	else {
+	rq = __blk_mq_alloc_request(q, hctx, ctx, rw, GFP_ATOMIC, false);
+	if (unlikely(!rq)) {
+		__blk_mq_run_hw_queue(hctx);
 		blk_mq_put_ctx(ctx);
 		trace_block_sleeprq(q, bio, rw);
-		rq = blk_mq_alloc_request_pinned(q, rw, __GFP_WAIT|GFP_ATOMIC,
-							false);
-		ctx = rq->mq_ctx;
+
+		ctx = blk_mq_get_ctx(q);
 		hctx = q->mq_ops->map_queue(q, ctx->cpu);
+		rq = __blk_mq_alloc_request(q, hctx, ctx, rw,
+					    __GFP_WAIT|GFP_ATOMIC, false);
 	}
 
 	hctx->queued++;
