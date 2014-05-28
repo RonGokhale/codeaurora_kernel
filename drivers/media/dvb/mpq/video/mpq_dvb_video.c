@@ -62,6 +62,9 @@ static char vid_thread_names[DVB_MPQ_NUM_VIDEO_DEVICES][10] = {
 static enum scan_format map_scan_type(enum vdec_interlaced_format type);
 static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
 				struct video_data_buffer *input_frame);
+static int mpq_int_vid_dec_decode_frame_eos(struct mpq_dvb_video_inst *dev_inst,
+                struct video_data_buffer *input_frame);
+
 static int mpq_int_vid_dec_get_buffer_req(struct video_client_ctx *client_ctx,
 				  struct video_buffer_req *vdec_buf_req);
 
@@ -392,6 +395,13 @@ static void mpq_get_frame_and_write(struct mpq_dvb_video_inst *dev_inst,
 				ion_buff_handle);
 			break;
 		case DMX_EOS_PACKET:
+			{
+				mpq_streambuffer_pkt_dispose(streambuff, indx, 0);
+				DBG("DMX_EOS_PACKET from DVB/DMX");
+				dmx_data->in_buffer[free_buf].buffer_len = 0;
+				dmx_data->in_buffer[free_buf].client_data = (void *)free_buf;
+				mpq_int_vid_dec_decode_frame_eos(dev_inst,&dmx_data->in_buffer[free_buf]);
+			}
 			break;
 		case DMX_PES_PACKET:
 		case DMX_MARKER_PACKET:
@@ -781,6 +791,10 @@ static void mpq_int_vid_dec_output_frame_done(
 			vcd_frame_data->aspect_ratio_info.par_height;
 		vdec_msg->vdec_msg_info.msgdatasize =
 		    sizeof(struct vdec_output_frameinfo);
+
+		if(vcd_frame_data->flags & VCD_FRAME_FLAG_EOS) {
+			DBG("VCD_FRAME_FLAG_EOS flag received");
+		}
 	} else {
 		DBG("mpq_int_vid_dec_output_frame_done UVA"\
 				"can not be found\n");
@@ -1762,6 +1776,78 @@ static int mpq_int_vid_dec_start_stop(struct mpq_dvb_video_inst *dev_inst,
 		mutex_unlock(&mpq_dvb_video_device->lock);
 	}
 	return 0;
+}
+
+
+static int mpq_int_vid_dec_decode_frame_eos(struct mpq_dvb_video_inst *dev_inst	,
+						struct video_data_buffer *input_frame)
+
+{
+	struct video_client_ctx *client_ctx;
+	struct vcd_frame_data vcd_input_buffer;
+	unsigned long kernel_vaddr, phy_addr, user_vaddr;
+
+	int pmem_fd;
+	struct file *file;
+	s32 buffer_index = -1;
+	u32 vcd_status = VCD_ERR_FAIL;
+
+	if (!dev_inst || !input_frame)
+		return -EINVAL;
+
+
+	memset((void *)&vcd_input_buffer, 0,
+				   sizeof(struct vcd_frame_data));
+
+	client_ctx = dev_inst->client_ctx;
+
+
+	user_vaddr = (unsigned long)input_frame->bufferaddr;
+
+	if (vidc_lookup_addr_table(client_ctx, BUFFER_TYPE_INPUT,
+				true, &user_vaddr, &kernel_vaddr,
+				&phy_addr, &pmem_fd, &file,
+				&buffer_index)) {
+
+		/* kernel_vaddr  is found. send the frame to VCD */
+		memset((void *)&vcd_input_buffer, 0,
+				sizeof(struct vcd_frame_data));
+		vcd_input_buffer.virtual =
+			(u8 *) (kernel_vaddr + input_frame->offset);
+		if (input_frame->offset) {
+			DBG("input_frame offset is %u instead of 0",
+					(u32)input_frame->offset);
+		}
+		vcd_input_buffer.offset = 0;
+		vcd_input_buffer.frm_clnt_data =
+			(u32) input_frame->client_data;
+		vcd_input_buffer.ip_frm_tag =
+			(u32) input_frame->client_data;
+		vcd_input_buffer.data_len = input_frame->buffer_len;
+		vcd_input_buffer.time_stamp = input_frame->pts;
+		/* Rely on VCD using the same flags as OMX */
+		vcd_input_buffer.flags = 0;
+		vcd_input_buffer.desc_buf = NULL;
+		vcd_input_buffer.desc_size = 0;
+
+		vcd_input_buffer.flags	|= VCD_FRAME_FLAG_EOS;
+
+		DBG("EOS is marked during Normal Playback\n");
+
+		vcd_status = vcd_decode_frame(client_ctx->vcd_handle,
+				&vcd_input_buffer);
+		if (!vcd_status)
+			return 0;
+		else {
+			DBG("%s(): vcd_decode_frame failed = %u\n", __func__,
+					vcd_status);
+			return -EIO;
+		}
+	}
+	else {
+		DBG("%s(): kernel_vaddr not found\n", __func__);
+		return -EIO;
+	}
 }
 
 static int mpq_int_vid_dec_decode_frame(struct mpq_dvb_video_inst *dev_inst,
