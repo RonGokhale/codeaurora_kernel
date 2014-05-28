@@ -466,7 +466,7 @@ static irqreturn_t dt282x_interrupt(int irq, void *d)
 
 		if (devpriv->ad_2scomp)
 			data ^= 1 << (board->adbits - 1);
-		ret = comedi_buf_put(s->async, data);
+		ret = comedi_buf_put(s, data);
 
 		if (ret == 0)
 			s->async->events |= COMEDI_CB_OVERFLOW;
@@ -852,7 +852,7 @@ static int dt282x_ao_cmdtest(struct comedi_device *dev,
 	err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
 	err |= cfc_check_trigger_arg_min(&cmd->scan_begin_arg, 5000);
 	err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
-	err |= cfc_check_trigger_arg_max(&cmd->scan_end_arg, 2);
+	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
 
 	if (cmd->stop_src == TRIG_COUNT) {
 		/* any count is allowed */
@@ -878,12 +878,14 @@ static int dt282x_ao_cmdtest(struct comedi_device *dev,
 }
 
 static int dt282x_ao_inttrig(struct comedi_device *dev,
-			     struct comedi_subdevice *s, unsigned int x)
+			     struct comedi_subdevice *s,
+			     unsigned int trig_num)
 {
 	struct dt282x_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
 	int size;
 
-	if (x != 0)
+	if (trig_num != cmd->start_src)
 		return -EINVAL;
 
 	size = cfc_read_array_from_buffer(s, devpriv->dma[0].buf,

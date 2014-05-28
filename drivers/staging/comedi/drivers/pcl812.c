@@ -761,7 +761,6 @@ static int pcl812_ai_cmdtest(struct comedi_device *dev,
 		err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
 
 	err |= cfc_check_trigger_arg_min(&cmd->chanlist_len, 1);
-	err |= cfc_check_trigger_arg_max(&cmd->chanlist_len, MAX_CHANLIST_LEN);
 	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
 
 	if (cmd->stop_src == TRIG_COUNT)
@@ -811,8 +810,9 @@ static int pcl812_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 				devpriv->ai_dma = 0;
 				break;
 			}
-	} else
+	} else {
 		devpriv->ai_dma = 0;
+	}
 
 	devpriv->ai_act_scan = 0;
 	devpriv->ai_poll_ptr = 0;
@@ -882,7 +882,7 @@ static void pcl812_handle_eoc(struct comedi_device *dev,
 		return;
 	}
 
-	comedi_buf_put(s->async, pcl812_ai_get_sample(dev, s));
+	comedi_buf_put(s, pcl812_ai_get_sample(dev, s));
 
 	/* Set up next channel. Added by abbotti 2010-01-20, but untested. */
 	next_chan = s->async->cur_chan + 1;
@@ -902,7 +902,7 @@ static void transfer_from_dma_buf(struct comedi_device *dev,
 	unsigned int i;
 
 	for (i = len; i; i--) {
-		comedi_buf_put(s->async, ptr[bufptr++]);
+		comedi_buf_put(s, ptr[bufptr++]);
 
 		if (!pcl812_ai_next_chan(dev, s))
 			break;

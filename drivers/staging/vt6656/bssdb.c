@@ -53,8 +53,7 @@
 #include "card.h"
 #include "mac.h"
 #include "wpa2.h"
-#include "control.h"
-#include "rndis.h"
+#include "usbpipe.h"
 #include "iowpa.h"
 #include "power.h"
 
@@ -456,16 +455,14 @@ int BSSbInsertToBSSList(struct vnt_private *pDevice,
 		}
 	}
 
-	if (pDevice->bUpdateBBVGA) {
-		/* Monitor if RSSI is too strong. */
-		pBSSList->byRSSIStatCnt = 0;
-		RFvRSSITodBm(pDevice, (u8) (pRxPacket->uRSSI),
+	/* Monitor if RSSI is too strong. */
+	pBSSList->byRSSIStatCnt = 0;
+	RFvRSSITodBm(pDevice, (u8) (pRxPacket->uRSSI),
 			     &pBSSList->ldBmMAX);
-		pBSSList->ldBmAverage[0] = pBSSList->ldBmMAX;
-		pBSSList->ldBmAverRange = pBSSList->ldBmMAX;
-		for (ii = 1; ii < RSSI_STAT_COUNT; ii++)
-			pBSSList->ldBmAverage[ii] = 0;
-	}
+	pBSSList->ldBmAverage[0] = pBSSList->ldBmMAX;
+	pBSSList->ldBmAverRange = pBSSList->ldBmMAX;
+	for (ii = 1; ii < RSSI_STAT_COUNT; ii++)
+		pBSSList->ldBmAverage[ii] = 0;
 
 	pBSSList->uIELength = uIELength;
 	if (pBSSList->uIELength > WLAN_BEACON_FR_MAXLEN)
@@ -774,8 +771,8 @@ void BSSvAddMulticastNode(struct vnt_private *pDevice)
 {
 	struct vnt_manager *pMgmt = &pDevice->vnt_mgmt;
 
-	if (!pDevice->bEnableHostWEP)
-		memset(&pMgmt->sNodeDBTable[0], 0, sizeof(KnownNodeDB));
+	memset(&pMgmt->sNodeDBTable[0], 0, sizeof(KnownNodeDB));
+
 	memset(pMgmt->sNodeDBTable[0].abyMACAddr, 0xff, WLAN_ADDR_LEN);
 	pMgmt->sNodeDBTable[0].bActive = true;
 	pMgmt->sNodeDBTable[0].bPSEnable = false;
@@ -817,8 +814,6 @@ void BSSvSecondCallBack(struct work_struct *work)
 
 	if (pDevice->Flags & fMP_DISCONNECTED)
 		return;
-
-	spin_lock_irq(&pDevice->lock);
 
 	pDevice->uAssocCount = 0;
 
@@ -1001,10 +996,8 @@ void BSSvSecondCallBack(struct work_struct *work)
 
 		if (pMgmt->sNodeDBTable[0].bActive) { /* Assoc with BSS */
 
-			if (pDevice->bUpdateBBVGA) {
-				s_vCheckSensitivity(pDevice);
-				s_vCheckPreEDThreshold(pDevice);
-			}
+			s_vCheckSensitivity(pDevice);
+			s_vCheckPreEDThreshold(pDevice);
 
 			if (pMgmt->sNodeDBTable[0].uInActiveCount >=
 							(LOST_BEACON_COUNT/2) &&
@@ -1022,10 +1015,10 @@ void BSSvSecondCallBack(struct work_struct *work)
 				pMgmt->eCurrState = WMAC_STATE_IDLE;
 				netif_stop_queue(pDevice->dev);
 				pDevice->bLinkPass = false;
-				ControlvMaskByte(pDevice,
-						 MESSAGE_REQUEST_MACREG,
-						 MAC_REG_PAPEDELAY, LEDSTS_STS,
-						 LEDSTS_SLOW);
+
+				vnt_mac_set_led(pDevice, LEDSTS_STS,
+								LEDSTS_SLOW);
+
 				pDevice->bRoaming = true;
 				pDevice->bIsRoaming = false;
 
@@ -1121,10 +1114,9 @@ void BSSvSecondCallBack(struct work_struct *work)
 		}
 		if (pMgmt->eCurrState == WMAC_STATE_JOINTED) {
 
-			if (pDevice->bUpdateBBVGA) {
-				s_vCheckSensitivity(pDevice);
-				s_vCheckPreEDThreshold(pDevice);
-			}
+			s_vCheckSensitivity(pDevice);
+			s_vCheckPreEDThreshold(pDevice);
+
 			if (pMgmt->sNodeDBTable[0].uInActiveCount >=
 						ADHOC_LOST_BEACON_COUNT) {
 				DBG_PRT(MSG_LEVEL_NOTICE,
@@ -1134,10 +1126,8 @@ void BSSvSecondCallBack(struct work_struct *work)
 				pMgmt->eCurrState = WMAC_STATE_STARTED;
 				netif_stop_queue(pDevice->dev);
 				pDevice->bLinkPass = false;
-				ControlvMaskByte(pDevice,
-						 MESSAGE_REQUEST_MACREG,
-						 MAC_REG_PAPEDELAY, LEDSTS_STS,
-						 LEDSTS_SLOW);
+				vnt_mac_set_led(pDevice, LEDSTS_STS,
+								LEDSTS_SLOW);
 			}
 		}
 	}
@@ -1157,8 +1147,6 @@ void BSSvSecondCallBack(struct work_struct *work)
 		if (netif_queue_stopped(pDevice->dev))
 			netif_wake_queue(pDevice->dev);
 	}
-
-	spin_unlock_irq(&pDevice->lock);
 
 	schedule_delayed_work(&pDevice->second_callback_work, HZ);
 }

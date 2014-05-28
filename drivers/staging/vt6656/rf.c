@@ -38,8 +38,7 @@
 #include "mac.h"
 #include "rf.h"
 #include "baseband.h"
-#include "control.h"
-#include "rndis.h"
+#include "usbpipe.h"
 #include "datarate.h"
 
 static int          msglevel                =MSG_LEVEL_INFO;
@@ -716,7 +715,7 @@ int IFRFbWriteEmbedded(struct vnt_private *pDevice, u32 dwData)
 	pbyData[2] = (u8)(dwData >> 16);
 	pbyData[3] = (u8)(dwData >> 24);
 
-	CONTROLnsRequestOut(pDevice,
+	vnt_control_out(pDevice,
 		MESSAGE_TYPE_WRITE_IFRF, 0, 0, 4, pbyData);
 
 	return true;
@@ -769,6 +768,32 @@ int RFbSetPower(struct vnt_private *priv, u32 rate, u32 channel)
 	return ret;
 }
 
+static u8 vnt_rf_addpower(struct vnt_private *priv)
+{
+	s32 rssi = -priv->uCurrRSSI;
+
+	if (!rssi)
+		return 7;
+
+	if (priv->byRFType == RF_VT3226D0) {
+		if (rssi < -70)
+			return 9;
+		else if (rssi < -65)
+			return 7;
+		else if (rssi < -60)
+			return 5;
+	} else {
+		if (rssi < -80)
+			return 9;
+		else if (rssi < -75)
+			return 7;
+		else if (rssi < -70)
+			return 5;
+	}
+
+	return 0;
+}
+
 /*
  * Description: Set Tx power
  *
@@ -787,6 +812,10 @@ int RFbRawSetPower(struct vnt_private *priv, u8 power, u32 rate)
 {
 	u32 power_setting = 0;
 	int ret = true;
+
+	power += vnt_rf_addpower(priv);
+	if (power > VNT_RF_MAX_POWER)
+		power = VNT_RF_MAX_POWER;
 
 	if (priv->byCurPwr == power)
 		return true;
@@ -1017,7 +1046,7 @@ void RFbRFTableDownload(struct vnt_private *priv)
 	/* Init Table */
 	memcpy(array, addr1, length1);
 
-	CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE, 0,
+	vnt_control_out(priv, MESSAGE_TYPE_WRITE, 0,
 		MESSAGE_REQUEST_RF_INIT, length1, array);
 
 	/* Channel Table 0 */
@@ -1030,7 +1059,7 @@ void RFbRFTableDownload(struct vnt_private *priv)
 
 		memcpy(array, addr2, length);
 
-		CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE,
+		vnt_control_out(priv, MESSAGE_TYPE_WRITE,
 			value, MESSAGE_REQUEST_RF_CH0, length, array);
 
 		length2 -= length;
@@ -1048,7 +1077,7 @@ void RFbRFTableDownload(struct vnt_private *priv)
 
 		memcpy(array, addr3, length);
 
-		CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE,
+		vnt_control_out(priv, MESSAGE_TYPE_WRITE,
 			value, MESSAGE_REQUEST_RF_CH1, length, array);
 
 		length3 -= length;
@@ -1065,7 +1094,7 @@ void RFbRFTableDownload(struct vnt_private *priv)
 		memcpy(array, addr1, length1);
 
 		/* Init Table 2 */
-		CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE,
+		vnt_control_out(priv, MESSAGE_TYPE_WRITE,
 			0, MESSAGE_REQUEST_RF_INIT2, length1, array);
 
 		/* Channel Table 0 */
@@ -1078,7 +1107,7 @@ void RFbRFTableDownload(struct vnt_private *priv)
 
 			memcpy(array, addr2, length);
 
-			CONTROLnsRequestOut(priv, MESSAGE_TYPE_WRITE,
+			vnt_control_out(priv, MESSAGE_TYPE_WRITE,
 				value, MESSAGE_REQUEST_RF_CH2, length, array);
 
 			length2 -= length;
