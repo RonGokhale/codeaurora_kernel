@@ -51,10 +51,9 @@ dtb-$(CONFIG_ARCH_AT91)	+= sama5d36ek.dtb
 
 dtb-$(CONFIG_ARCH_ATLAS6) += atlas6-evb.dtb
 dtb-$(CONFIG_ARCH_BCM2835) += bcm2835-rpi-b.dtb
+dtb-$(CONFIG_ARCH_BCM_5301X) += bcm4708-netgear-r6250.dtb
 dtb-$(CONFIG_ARCH_BCM_MOBILE) += bcm28155-ap.dtb \
 	bcm21664-garnet.dtb
-dtb-$(CONFIG_ARCH_BCM2835) += bcm2835-rpi-b.dtb
-dtb-$(CONFIG_ARCH_BCM_5301X) += bcm4708-netgear-r6250.dtb
 dtb-$(CONFIG_ARCH_BERLIN) += \
 	berlin2-sony-nsz-gs7.dtb	\
 	berlin2cd-google-chromecast.dtb
@@ -231,76 +230,74 @@ dtb-$(CONFIG_ARCH_NOMADIK) += ste-nomadik-s8815.dtb
 dtb-$(CONFIG_ARCH_NSPIRE) += nspire-cx.dtb \
 	nspire-tp.dtb \
 	nspire-clp.dtb
-dtb-$(CONFIG_ARCH_OMAP2PLUS) += omap2420-h4.dtb \
-	omap2430-sdp.dtb \
+dtb-$(CONFIG_ARCH_OMAP2) += omap2420-h4.dtb \
 	omap2420-n800.dtb \
 	omap2420-n810.dtb \
 	omap2420-n810-wimax.dtb \
+	omap2430-sdp.dtb
+dtb-$(CONFIG_ARCH_OMAP3) += am3517-craneboard.dtb \
+	am3517-evm.dtb \
+	am3517_mt_ventoux.dtb \
 	omap3430-sdp.dtb \
 	omap3-beagle.dtb \
-	omap3-cm-t3517.dtb \
-	omap3-sbc-t3517.dtb \
-	omap3-cm-t3530.dtb \
-	omap3-sbc-t3530.dtb \
-	omap3-cm-t3730.dtb \
-	omap3-sbc-t3730.dtb \
-	omap3-devkit8000.dtb \
 	omap3-beagle-xm.dtb \
+	omap3-beagle-xm-ab.dtb \
+	omap3-cm-t3517.dtb \
+	omap3-cm-t3530.dtb \
+	omap3-cm-t3730.dtb \
+	omap3-devkit8000.dtb \
 	omap3-evm.dtb \
 	omap3-evm-37xx.dtb \
+	omap3-gta04.dtb \
+	omap3-igep0020.dtb \
+	omap3-igep0030.dtb \
 	omap3-ldp.dtb \
+	omap3-lilly-dbb056.dtb \
 	omap3-n900.dtb \
 	omap3-n9.dtb \
 	omap3-n950.dtb \
 	omap3-overo-alto35.dtb \
-	omap3-overo-storm-alto35.dtb \
 	omap3-overo-chestnut43.dtb \
-	omap3-overo-storm-chestnut43.dtb \
 	omap3-overo-gallop43.dtb \
-	omap3-overo-storm-gallop43.dtb \
 	omap3-overo-palo43.dtb \
+	omap3-overo-storm-alto35.dtb \
+	omap3-overo-storm-chestnut43.dtb \
+	omap3-overo-storm-gallop43.dtb \
 	omap3-overo-storm-palo43.dtb \
-	omap3-overo-summit.dtb \
 	omap3-overo-storm-summit.dtb \
-	omap3-overo-tobi.dtb \
 	omap3-overo-storm-tobi.dtb \
-	omap3-gta04.dtb \
-	omap3-igep0020.dtb \
-	omap3-igep0030.dtb \
-	omap3-lilly-dbb056.dtb \
-	omap3-zoom3.dtb \
-	omap4-duovero-parlor.dtb \
+	omap3-overo-summit.dtb \
+	omap3-overo-tobi.dtb \
+	omap3-sbc-t3517.dtb \
+	omap3-sbc-t3530.dtb \
+	omap3-sbc-t3730.dtb \
+	omap3-zoom3.dtb
+dtb-$(CONFIG_SOC_AM33XX) += am335x-base0033.dtb \
+	am335x-bone.dtb \
+	am335x-boneblack.dtb \
+	am335x-evm.dtb \
+	am335x-evmsk.dtb \
+	am335x-nano.dtb
+dtb-$(CONFIG_ARCH_OMAP4) += omap4-duovero-parlor.dtb \
 	omap4-panda.dtb \
 	omap4-panda-a4.dtb \
 	omap4-panda-es.dtb \
-	omap4-var-som.dtb \
 	omap4-sdp.dtb \
 	omap4-sdp-es23plus.dtb \
-	omap5-uevm.dtb \
-	am335x-evm.dtb \
-	am335x-evmsk.dtb \
-	am335x-bone.dtb \
-	am335x-boneblack.dtb \
-	am335x-nano.dtb \
-	am335x-base0033.dtb \
-	am3517-craneboard.dtb \
-	am3517-evm.dtb \
-	am3517_mt_ventoux.dtb \
-	am43x-epos-evm.dtb \
-	am437x-gp-evm.dtb \
-	dra7-evm.dtb
+	omap4-var-dvk-om44.dtb \
+	omap4-var-stk-om44.dtb
+dtb-$(CONFIG_SOC_AM43XX) += am43x-epos-evm.dtb \
+	am437x-gp-evm.dtb
+dtb-$(CONFIG_SOC_OMAP5) += omap5-cm-t54.dtb \
+	omap5-sbc-t54.dtb \
+	omap5-uevm.dtb
+dtb-$(CONFIG_SOC_DRA7XX) += dra7-evm.dtb \
+	dra72-evm.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += orion5x-lacie-ethernet-disk-mini-v2.dtb
 dtb-$(CONFIG_ARCH_PRIMA2) += prima2-evb.dtb
 dtb-$(CONFIG_ARCH_QCOM) += qcom-msm8660-surf.dtb \
 	qcom-msm8960-cdp.dtb \
 	qcom-apq8074-dragonboard.dtb
-dtb-$(CONFIG_ARCH_U8500) += ste-snowball.dtb \
-	ste-hrefprev60-stuib.dtb \
-	ste-hrefprev60-tvk.dtb \
-	ste-hrefv60plus-stuib.dtb \
-	ste-hrefv60plus-tvk.dtb \
-	ste-ccu8540.dtb \
-	ste-ccu9540.dtb
 dtb-$(CONFIG_ARCH_S3C24XX) += s3c2416-smdk2416.dtb
 dtb-$(CONFIG_ARCH_S3C64XX) += s3c6410-mini6410.dtb \
 	s3c6410-smdk6410.dtb
@@ -369,9 +366,16 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra30-cardhu-a04.dtb \
 	tegra114-dalmore.dtb \
 	tegra124-venice2.dtb
+dtb-$(CONFIG_ARCH_U300) += ste-u300.dtb
+dtb-$(CONFIG_ARCH_U8500) += ste-snowball.dtb \
+	ste-hrefprev60-stuib.dtb \
+	ste-hrefprev60-tvk.dtb \
+	ste-hrefv60plus-stuib.dtb \
+	ste-hrefv60plus-tvk.dtb \
+	ste-ccu8540.dtb \
+	ste-ccu9540.dtb
 dtb-$(CONFIG_ARCH_VERSATILE) += versatile-ab.dtb \
 	versatile-pb.dtb
-dtb-$(CONFIG_ARCH_U300) += ste-u300.dtb
 dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 	vexpress-v2p-ca9.dtb \
 	vexpress-v2p-ca15-tc1.dtb \
