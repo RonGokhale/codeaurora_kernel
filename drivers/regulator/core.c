@@ -1597,9 +1597,10 @@ EXPORT_SYMBOL_GPL(regulator_unregister_supply_alias);
  * registered any aliases that were registered will be removed
  * before returning to the caller.
  */
-int regulator_bulk_register_supply_alias(struct device *dev, const char **id,
+int regulator_bulk_register_supply_alias(struct device *dev,
+					 const char *const *id,
 					 struct device *alias_dev,
-					 const char **alias_id,
+					 const char *const *alias_id,
 					 int num_id)
 {
 	int i;
@@ -1637,7 +1638,7 @@ EXPORT_SYMBOL_GPL(regulator_bulk_register_supply_alias);
  * aliases in one operation.
  */
 void regulator_bulk_unregister_supply_alias(struct device *dev,
-					    const char **id,
+					    const char *const *id,
 					    int num_id)
 {
 	int i;
@@ -2320,6 +2321,10 @@ static int _regulator_do_set_voltage(struct regulator_dev *rdev,
 			if (rdev->desc->ops->list_voltage ==
 			    regulator_list_voltage_linear)
 				ret = regulator_map_voltage_linear(rdev,
+								min_uV, max_uV);
+			else if (rdev->desc->ops->list_voltage ==
+				 regulator_list_voltage_linear_range)
+				ret = regulator_map_voltage_linear_range(rdev,
 								min_uV, max_uV);
 			else
 				ret = regulator_map_voltage_iterate(rdev,
@@ -3447,7 +3452,7 @@ regulator_register(const struct regulator_desc *regulator_desc,
 
 	/* register with sysfs */
 	rdev->dev.class = &regulator_class;
-	rdev->dev.of_node = config->of_node;
+	rdev->dev.of_node = of_node_get(config->of_node);
 	rdev->dev.parent = dev;
 	dev_set_name(&rdev->dev, "regulator.%d",
 		     atomic_inc_return(&regulator_no) - 1);
@@ -3589,6 +3594,7 @@ void regulator_unregister(struct regulator_dev *rdev)
 	list_del(&rdev->list);
 	kfree(rdev->constraints);
 	regulator_ena_gpio_free(rdev);
+	of_node_put(rdev->dev.of_node);
 	device_unregister(&rdev->dev);
 	mutex_unlock(&regulator_list_mutex);
 }
