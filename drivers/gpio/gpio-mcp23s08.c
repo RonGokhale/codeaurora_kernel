@@ -714,7 +714,7 @@ fail:
 
 #ifdef CONFIG_OF
 #ifdef CONFIG_SPI_MASTER
-static struct of_device_id mcp23s08_spi_of_match[] = {
+static const struct of_device_id mcp23s08_spi_of_match[] = {
 	{
 		.compatible = "microchip,mcp23s08",
 		.data = (void *) MCP_TYPE_S08,
@@ -738,7 +738,7 @@ MODULE_DEVICE_TABLE(of, mcp23s08_spi_of_match);
 #endif
 
 #if IS_ENABLED(CONFIG_I2C)
-static struct of_device_id mcp23s08_i2c_of_match[] = {
+static const struct of_device_id mcp23s08_i2c_of_match[] = {
 	{
 		.compatible = "microchip,mcp23008",
 		.data = (void *) MCP_TYPE_008,
@@ -894,10 +894,11 @@ static int mcp23s08_probe(struct spi_device *spi)
 			dev_err(&spi->dev, "invalid spi-present-mask\n");
 			return -ENODEV;
 		}
+
 		for (addr = 0; addr < ARRAY_SIZE(pdata->chip); addr++) {
-			if ((spi_present_mask & (1 << addr)))
-				chips++;
 			pullups[addr] = 0;
+			if (spi_present_mask & (1 << addr))
+				chips++;
 		}
 	} else {
 		type = spi_get_device_id(spi)->driver_data;
@@ -937,6 +938,10 @@ static int mcp23s08_probe(struct spi_device *spi)
 		if (!(spi_present_mask & (1 << addr)))
 			continue;
 		chips--;
+		if (chips < 0) {
+			dev_err(&spi->dev, "FATAL: invalid negative chip id\n");
+			goto fail;
+		}
 		data->mcp[addr] = &data->chip[chips];
 		status = mcp23s08_probe_one(data->mcp[addr], &spi->dev, spi,
 					    0x40 | (addr << 1), type, base,
