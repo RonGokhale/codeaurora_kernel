@@ -2462,7 +2462,6 @@ xfs_buf_map_from_irec(
  */
 static int
 xfs_dabuf_map(
-	struct xfs_trans	*trans,
 	struct xfs_inode	*dp,
 	xfs_dablk_t		bno,
 	xfs_daddr_t		mappedbno,
@@ -2558,7 +2557,7 @@ xfs_da_get_buf(
 	*bpp = NULL;
 	mapp = &map;
 	nmap = 1;
-	error = xfs_dabuf_map(trans, dp, bno, mappedbno, whichfork,
+	error = xfs_dabuf_map(dp, bno, mappedbno, whichfork,
 				&mapp, &nmap);
 	if (error) {
 		/* mapping a hole is not an error, but we don't continue */
@@ -2606,7 +2605,7 @@ xfs_da_read_buf(
 	*bpp = NULL;
 	mapp = &map;
 	nmap = 1;
-	error = xfs_dabuf_map(trans, dp, bno, mappedbno, whichfork,
+	error = xfs_dabuf_map(dp, bno, mappedbno, whichfork,
 				&mapp, &nmap);
 	if (error) {
 		/* mapping a hole is not an error, but we don't continue */
@@ -2625,47 +2624,6 @@ xfs_da_read_buf(
 		xfs_buf_set_ref(bp, XFS_ATTR_BTREE_REF);
 	else
 		xfs_buf_set_ref(bp, XFS_DIR_BTREE_REF);
-
-	/*
-	 * This verification code will be moved to a CRC verification callback
-	 * function so just leave it here unchanged until then.
-	 */
-	{
-		xfs_dir2_data_hdr_t	*hdr = bp->b_addr;
-		xfs_dir2_free_t		*free = bp->b_addr;
-		xfs_da_blkinfo_t	*info = bp->b_addr;
-		uint			magic, magic1;
-		struct xfs_mount	*mp = dp->i_mount;
-
-		magic = be16_to_cpu(info->magic);
-		magic1 = be32_to_cpu(hdr->magic);
-		if (unlikely(
-		    XFS_TEST_ERROR((magic != XFS_DA_NODE_MAGIC) &&
-				   (magic != XFS_DA3_NODE_MAGIC) &&
-				   (magic != XFS_ATTR_LEAF_MAGIC) &&
-				   (magic != XFS_ATTR3_LEAF_MAGIC) &&
-				   (magic != XFS_DIR2_LEAF1_MAGIC) &&
-				   (magic != XFS_DIR3_LEAF1_MAGIC) &&
-				   (magic != XFS_DIR2_LEAFN_MAGIC) &&
-				   (magic != XFS_DIR3_LEAFN_MAGIC) &&
-				   (magic1 != XFS_DIR2_BLOCK_MAGIC) &&
-				   (magic1 != XFS_DIR3_BLOCK_MAGIC) &&
-				   (magic1 != XFS_DIR2_DATA_MAGIC) &&
-				   (magic1 != XFS_DIR3_DATA_MAGIC) &&
-				   (free->hdr.magic !=
-					cpu_to_be32(XFS_DIR2_FREE_MAGIC)) &&
-				   (free->hdr.magic !=
-					cpu_to_be32(XFS_DIR3_FREE_MAGIC)),
-				mp, XFS_ERRTAG_DA_READ_BUF,
-				XFS_RANDOM_DA_READ_BUF))) {
-			trace_xfs_da_btree_corrupt(bp, _RET_IP_);
-			XFS_CORRUPTION_ERROR("xfs_da_do_buf(2)",
-					     XFS_ERRLEVEL_LOW, mp, info);
-			error = XFS_ERROR(EFSCORRUPTED);
-			xfs_trans_brelse(trans, bp);
-			goto out_free;
-		}
-	}
 	*bpp = bp;
 out_free:
 	if (mapp != &map)
@@ -2679,7 +2637,6 @@ out_free:
  */
 xfs_daddr_t
 xfs_da_reada_buf(
-	struct xfs_trans	*trans,
 	struct xfs_inode	*dp,
 	xfs_dablk_t		bno,
 	xfs_daddr_t		mappedbno,
@@ -2693,7 +2650,7 @@ xfs_da_reada_buf(
 
 	mapp = &map;
 	nmap = 1;
-	error = xfs_dabuf_map(trans, dp, bno, mappedbno, whichfork,
+	error = xfs_dabuf_map(dp, bno, mappedbno, whichfork,
 				&mapp, &nmap);
 	if (error) {
 		/* mapping a hole is not an error, but we don't continue */
