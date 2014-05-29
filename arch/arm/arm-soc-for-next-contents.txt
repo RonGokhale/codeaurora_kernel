@@ -32,6 +32,8 @@ next/cleanup
 		clk: samsung: fix build error
 	samsung/cleanup
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	patch
+		ARM: kconfig: allow PCI support to be selected with ARCH_MULTIPLATFORM
 
 next/soc
 	renesas/soc
@@ -90,6 +92,8 @@ next/soc
 	samsung/clk
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk
 		contains samsung/s3c24xx-clk
+	samsung/clk2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk-2
 
 next/soc2
 	renesas/soc
@@ -249,6 +253,8 @@ next/dt
 		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_dt_updates-for-3.16_take_2_version_2
 	samsung/dt2
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+	omap/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/dt-part3
 
 next/drivers
 	socfpga/reset-driver
