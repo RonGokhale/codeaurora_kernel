@@ -550,13 +550,14 @@ static int iscsi_login_non_zero_tsih_s1(
  */
 static int iscsi_login_non_zero_tsih_s2(
 	struct iscsi_conn *conn,
-	unsigned char *buf)
+	unsigned char *p)
 {
 	struct iscsi_portal_group *tpg = conn->tpg;
 	struct iscsi_session *sess = NULL, *sess_p = NULL;
 	struct se_portal_group *se_tpg = &tpg->tpg_se_tpg;
 	struct se_session *se_sess, *se_sess_tmp;
-	struct iscsi_login_req *pdu = (struct iscsi_login_req *)buf;
+	struct iscsi_login_req *pdu = (struct iscsi_login_req *)p;
+	unsigned char buf[32];
 	bool iser = false;
 
 	spin_lock_bh(&se_tpg->session_lock);
