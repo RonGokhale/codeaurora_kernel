@@ -41,6 +41,7 @@ struct apll_freq {
 };
 
 struct exynos_dvfs_info {
+	struct device	*dev;
 	enum exynos_soc_type type;
 	unsigned long	mpll_freq_khz;
 	unsigned int	pll_safe_idx;
