@@ -35,6 +35,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/pci.h>
+#include <asm/fixmap.h>
 
 #include "mm.h"
 #include "tcm.h"
@@ -117,6 +118,12 @@ static struct cachepolicy cache_policies[] __initdata = {
 };
 
 #ifdef CONFIG_CPU_CP15
+unsigned long __init __clear_cr(unsigned long mask)
+{
+	cr_alignment = cr_alignment & ~mask;
+	return cr_alignment;
+}
+
 /*
  * These are useful for identifying cache coherency
  * problems by allowing the cache or the cache and
@@ -125,6 +132,7 @@ static struct cachepolicy cache_policies[] __initdata = {
  */
 static int __init early_cachepolicy(char *p)
 {
+	unsigned long cr = get_cr();
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(cache_policies); i++) {
@@ -132,8 +140,7 @@ static int __init early_cachepolicy(char *p)
 
 		if (memcmp(p, cache_policies[i].policy, len) == 0) {
 			cachepolicy = i;
-			cr_alignment &= ~cache_policies[i].cr_mask;
-			cr_no_alignment &= ~cache_policies[i].cr_mask;
+			cr = __clear_cr(cache_policies[i].cr_mask);
 			break;
 		}
 	}
@@ -151,7 +158,7 @@ static int __init early_cachepolicy(char *p)
 		cachepolicy = CPOLICY_WRITEBACK;
 	}
 	flush_cache_all();
-	set_cr(cr_alignment);
+	set_cr(cr);
 	return 0;
 }
 early_param("cachepolicy", early_cachepolicy);
@@ -184,35 +191,6 @@ static int __init early_ecc(char *p)
 	return 0;
 }
 early_param("ecc", early_ecc);
-#endif
-
-static int __init noalign_setup(char *__unused)
-{
-	cr_alignment &= ~CR_A;
-	cr_no_alignment &= ~CR_A;
-	set_cr(cr_alignment);
-	return 1;
-}
-__setup("noalign", noalign_setup);
-
-#ifndef CONFIG_SMP
-void adjust_cr(unsigned long mask, unsigned long set)
-{
-	unsigned long flags;
-
-	mask &= ~CR_A;
-
-	set &= mask;
-
-	local_irq_save(flags);
-
-	cr_no_alignment = (cr_no_alignment & ~mask) | set;
-	cr_alignment = (cr_alignment & ~mask) | set;
-
-	set_cr((get_cr() & ~mask) | set);
-
-	local_irq_restore(flags);
-}
 #endif
 
 #else /* ifdef CONFIG_CPU_CP15 */
@@ -1359,6 +1337,9 @@ static void __init kmap_init(void)
 #ifdef CONFIG_HIGHMEM
 	pkmap_page_table = early_pte_alloc(pmd_off_k(PKMAP_BASE),
 		PKMAP_BASE, _PAGE_KERNEL_TABLE);
+
+	fixmap_page_table = early_pte_alloc(pmd_off_k(FIXADDR_START),
+		FIXADDR_START, _PAGE_KERNEL_TABLE);
 #endif
 }
 
@@ -1461,7 +1442,7 @@ void __init early_paging_init(const struct machine_desc *mdesc,
 	 * just complicate the code.
 	 */
 	flush_cache_louis();
-	dsb();
+	dsb(ishst);
 	isb();
 
 	/* remap level 1 table */
