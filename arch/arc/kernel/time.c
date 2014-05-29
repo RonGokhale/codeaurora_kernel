@@ -210,32 +210,20 @@ static irqreturn_t timer_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static struct irqaction arc_timer_irq = {
-	.name    = "Timer0 (clock-evt-dev)",
-	.flags   = IRQF_TIMER | IRQF_PERCPU,
-	.handler = timer_irq_handler,
-};
-
 /*
  * Setup the local event timer for @cpu
  */
-void arc_local_timer_setup(unsigned int cpu)
+void arc_local_timer_setup()
 {
-	struct clock_event_device *clk = &per_cpu(arc_clockevent_device, cpu);
+	struct clock_event_device *evt = this_cpu_ptr(&arc_clockevent_device);
+	int cpu = smp_processor_id();
 
-	clk->cpumask = cpumask_of(cpu);
-	clockevents_config_and_register(clk, arc_get_core_freq(),
+	evt->cpumask = cpumask_of(cpu);
+	clockevents_config_and_register(evt, arc_get_core_freq(),
 					0, ARC_TIMER_MAX);
 
-	/*
-	 * setup the per-cpu timer IRQ handler - for all cpus
-	 * For non boot CPU explicitly unmask at intc
-	 * setup_irq() -> .. -> irq_startup() already does this on boot-cpu
-	 */
-	if (!cpu)
-		setup_irq(TIMER0_IRQ, &arc_timer_irq);
-	else
-		arch_unmask_irq(TIMER0_IRQ);
+	arc_request_percpu_irq(TIMER0_IRQ, cpu, timer_irq_handler,
+			       "Timer0 (per-cpu-tick)", evt);
 }
 
 /*
@@ -261,7 +249,7 @@ void __init time_init(void)
 		clocksource_register_hz(&arc_counter, arc_get_core_freq());
 
 	/* sets up the periodic event timer */
-	arc_local_timer_setup(smp_processor_id());
+	arc_local_timer_setup();
 
 	if (machine_desc->init_time)
 		machine_desc->init_time();
