@@ -18,8 +18,6 @@
 
 #include <mach/map.h>
 
-#include <plat/cpu.h>
-
 #include "common.h"
 #include "smc.h"
 
