@@ -56,9 +56,6 @@ struct device;
 struct phy_device;
 /* 802.11 specific */
 struct wireless_dev;
-					/* source back-compat hooks */
-#define SET_ETHTOOL_OPS(netdev,ops) \
-	( (netdev)->ethtool_ops = (ops) )
 
 void netdev_set_default_ethtool_ops(struct net_device *dev,
 				    const struct ethtool_ops *ops);
@@ -853,7 +850,8 @@ typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
  *	SR-IOV management functions.
  * int (*ndo_set_vf_mac)(struct net_device *dev, int vf, u8* mac);
  * int (*ndo_set_vf_vlan)(struct net_device *dev, int vf, u16 vlan, u8 qos);
- * int (*ndo_set_vf_tx_rate)(struct net_device *dev, int vf, int rate);
+ * int (*ndo_set_vf_rate)(struct net_device *dev, int vf, int min_tx_rate,
+ *			  int max_tx_rate);
  * int (*ndo_set_vf_spoofchk)(struct net_device *dev, int vf, bool setting);
  * int (*ndo_get_vf_config)(struct net_device *dev,
  *			    int vf, struct ifla_vf_info *ivf);
@@ -1047,8 +1045,9 @@ struct net_device_ops {
 						  int queue, u8 *mac);
 	int			(*ndo_set_vf_vlan)(struct net_device *dev,
 						   int queue, u16 vlan, u8 qos);
-	int			(*ndo_set_vf_tx_rate)(struct net_device *dev,
-						      int vf, int rate);
+	int			(*ndo_set_vf_rate)(struct net_device *dev,
+						   int vf, int min_tx_rate,
+						   int max_tx_rate);
 	int			(*ndo_set_vf_spoofchk)(struct net_device *dev,
 						       int vf, bool setting);
 	int			(*ndo_get_vf_config)(struct net_device *dev,
@@ -2634,6 +2633,7 @@ int dev_get_phys_port_id(struct net_device *dev,
 			 struct netdev_phys_port_id *ppid);
 int dev_hard_start_xmit(struct sk_buff *skb, struct net_device *dev,
 			struct netdev_queue *txq);
+int __dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 int dev_forward_skb(struct net_device *dev, struct sk_buff *skb);
 bool is_skb_forwardable(struct net_device *dev, struct sk_buff *skb);
 
@@ -3179,6 +3179,20 @@ extern struct kobj_ns_type_operations net_ns_type_operations;
 const char *netdev_drivername(const struct net_device *dev);
 
 void linkwatch_run_queue(void);
+
+static inline netdev_features_t netdev_intersect_features(netdev_features_t f1,
+							  netdev_features_t f2)
+{
+	if (f1 & NETIF_F_GEN_CSUM)
+		f1 |= (NETIF_F_ALL_CSUM & ~NETIF_F_GEN_CSUM);
+	if (f2 & NETIF_F_GEN_CSUM)
+		f2 |= (NETIF_F_ALL_CSUM & ~NETIF_F_GEN_CSUM);
+	f1 &= f2;
+	if (f1 & NETIF_F_GEN_CSUM)
+		f1 &= ~(NETIF_F_ALL_CSUM & ~NETIF_F_GEN_CSUM);
+
+	return f1;
+}
 
 static inline netdev_features_t netdev_get_wanted_features(
 	struct net_device *dev)

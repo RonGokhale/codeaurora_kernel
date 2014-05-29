@@ -12,6 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
+ * You should have received a copy of the GNU General Public License along
+ * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -101,15 +104,6 @@ enum i40e_debug_mask {
 	I40E_DEBUG_ALL			= 0xFFFFFFFF
 };
 
-/* PCI Bus Info */
-#define I40E_PCI_LINK_WIDTH_1		0x10
-#define I40E_PCI_LINK_WIDTH_2		0x20
-#define I40E_PCI_LINK_WIDTH_4		0x40
-#define I40E_PCI_LINK_WIDTH_8		0x80
-#define I40E_PCI_LINK_SPEED_2500	0x1
-#define I40E_PCI_LINK_SPEED_5000	0x2
-#define I40E_PCI_LINK_SPEED_8000	0x3
-
 /* These are structs for managing the hardware information and the operations.
  * The structures of function pointers are filled out at init time when we
  * know for sure exactly which hardware we're working with.  This gives us the
@@ -173,6 +167,9 @@ struct i40e_link_status {
 	u8 loopback;
 	/* is Link Status Event notification to SW enabled */
 	bool lse_enable;
+	u16 max_frame_size;
+	bool crc_enable;
+	u8 pacing;
 };
 
 struct i40e_phy_info {
@@ -415,6 +412,7 @@ struct i40e_driver_version {
 	u8 minor_version;
 	u8 build_version;
 	u8 subbuild_version;
+	u8 driver_string[32];
 };
 
 /* RX Descriptors */

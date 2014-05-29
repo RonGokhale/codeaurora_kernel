@@ -30,6 +30,7 @@
 #include <linux/if_link.h>
 #include <linux/if_macvlan.h>
 #include <linux/hash.h>
+#include <linux/workqueue.h>
 #include <net/rtnetlink.h>
 #include <net/xfrm.h>
 
@@ -40,9 +41,18 @@ struct macvlan_port {
 	struct hlist_head	vlan_hash[MACVLAN_HASH_SIZE];
 	struct list_head	vlans;
 	struct rcu_head		rcu;
+	struct sk_buff_head	bc_queue;
+	struct work_struct	bc_work;
 	bool 			passthru;
-	int			count;
 };
+
+#define MACVLAN_PORT_IS_EMPTY(port)    list_empty(&port->vlans)
+
+struct macvlan_skb_cb {
+	const struct macvlan_dev *src;
+};
+
+#define MACVLAN_SKB_CB(__skb) ((struct macvlan_skb_cb *)&((__skb)->cb[0]))
 
 static void macvlan_port_destroy(struct net_device *dev);
 
@@ -120,7 +130,7 @@ static int macvlan_broadcast_one(struct sk_buff *skb,
 	struct net_device *dev = vlan->dev;
 
 	if (local)
-		return dev_forward_skb(dev, skb);
+		return __dev_forward_skb(dev, skb);
 
 	skb->dev = dev;
 	if (ether_addr_equal_64bits(eth->h_dest, dev->broadcast))
@@ -128,7 +138,7 @@ static int macvlan_broadcast_one(struct sk_buff *skb,
 	else
 		skb->pkt_type = PACKET_MULTICAST;
 
-	return netif_rx(skb);
+	return 0;
 }
 
 static u32 macvlan_hash_mix(const struct macvlan_dev *vlan)
@@ -175,11 +185,85 @@ static void macvlan_broadcast(struct sk_buff *skb,
 			if (likely(nskb))
 				err = macvlan_broadcast_one(
 					nskb, vlan, eth,
-					mode == MACVLAN_MODE_BRIDGE);
+					mode == MACVLAN_MODE_BRIDGE) ?:
+				      netif_rx_ni(nskb);
 			macvlan_count_rx(vlan, skb->len + ETH_HLEN,
 					 err == NET_RX_SUCCESS, 1);
 		}
 	}
+}
+
+static void macvlan_process_broadcast(struct work_struct *w)
+{
+	struct macvlan_port *port = container_of(w, struct macvlan_port,
+						 bc_work);
+	struct sk_buff *skb;
+	struct sk_buff_head list;
+
+	skb_queue_head_init(&list);
+
+	spin_lock_bh(&port->bc_queue.lock);
+	skb_queue_splice_tail_init(&port->bc_queue, &list);
+	spin_unlock_bh(&port->bc_queue.lock);
+
+	while ((skb = __skb_dequeue(&list))) {
+		const struct macvlan_dev *src = MACVLAN_SKB_CB(skb)->src;
+
+		rcu_read_lock();
+
+		if (!src)
+			/* frame comes from an external address */
+			macvlan_broadcast(skb, port, NULL,
+					  MACVLAN_MODE_PRIVATE |
+					  MACVLAN_MODE_VEPA    |
+					  MACVLAN_MODE_PASSTHRU|
+					  MACVLAN_MODE_BRIDGE);
+		else if (src->mode == MACVLAN_MODE_VEPA)
+			/* flood to everyone except source */
+			macvlan_broadcast(skb, port, src->dev,
+					  MACVLAN_MODE_VEPA |
+					  MACVLAN_MODE_BRIDGE);
+		else
+			/*
+			 * flood only to VEPA ports, bridge ports
+			 * already saw the frame on the way out.
+			 */
+			macvlan_broadcast(skb, port, src->dev,
+					  MACVLAN_MODE_VEPA);
+
+		rcu_read_unlock();
+
+		kfree_skb(skb);
+	}
+}
+
+static void macvlan_broadcast_enqueue(struct macvlan_port *port,
+				      struct sk_buff *skb)
+{
+	struct sk_buff *nskb;
+	int err = -ENOMEM;
+
+	nskb = skb_clone(skb, GFP_ATOMIC);
+	if (!nskb)
+		goto err;
+
+	spin_lock(&port->bc_queue.lock);
+	if (skb_queue_len(&port->bc_queue) < skb->dev->tx_queue_len) {
+		__skb_queue_tail(&port->bc_queue, nskb);
+		err = 0;
+	}
+	spin_unlock(&port->bc_queue.lock);
+
+	if (err)
+		goto free_nskb;
+
+	schedule_work(&port->bc_work);
+	return;
+
+free_nskb:
+	kfree_skb(nskb);
+err:
+	atomic_long_inc(&skb->dev->rx_dropped);
 }
 
 /* called under rcu_read_lock() from netif_receive_skb */
@@ -201,31 +285,17 @@ static rx_handler_result_t macvlan_handle_frame(struct sk_buff **pskb)
 			return RX_HANDLER_CONSUMED;
 		eth = eth_hdr(skb);
 		src = macvlan_hash_lookup(port, eth->h_source);
-		if (!src)
-			/* frame comes from an external address */
-			macvlan_broadcast(skb, port, NULL,
-					  MACVLAN_MODE_PRIVATE |
-					  MACVLAN_MODE_VEPA    |
-					  MACVLAN_MODE_PASSTHRU|
-					  MACVLAN_MODE_BRIDGE);
-		else if (src->mode == MACVLAN_MODE_VEPA)
-			/* flood to everyone except source */
-			macvlan_broadcast(skb, port, src->dev,
-					  MACVLAN_MODE_VEPA |
-					  MACVLAN_MODE_BRIDGE);
-		else if (src->mode == MACVLAN_MODE_BRIDGE)
-			/*
-			 * flood only to VEPA ports, bridge ports
-			 * already saw the frame on the way out.
-			 */
-			macvlan_broadcast(skb, port, src->dev,
-					  MACVLAN_MODE_VEPA);
-		else {
+		if (src && src->mode != MACVLAN_MODE_VEPA &&
+		    src->mode != MACVLAN_MODE_BRIDGE) {
 			/* forward to original port. */
 			vlan = src;
-			ret = macvlan_broadcast_one(skb, vlan, eth, 0);
+			ret = macvlan_broadcast_one(skb, vlan, eth, 0) ?:
+			      netif_rx(skb);
 			goto out;
 		}
+
+		MACVLAN_SKB_CB(skb)->src = src;
+		macvlan_broadcast_enqueue(port, skb);
 
 		return RX_HANDLER_PASS;
 	}
@@ -567,8 +637,7 @@ static void macvlan_uninit(struct net_device *dev)
 
 	free_percpu(vlan->pcpu_stats);
 
-	port->count -= 1;
-	if (!port->count)
+	if (MACVLAN_PORT_IS_EMPTY(port))
 		macvlan_port_destroy(port->dev);
 }
 
@@ -770,6 +839,9 @@ static int macvlan_port_create(struct net_device *dev)
 	for (i = 0; i < MACVLAN_HASH_SIZE; i++)
 		INIT_HLIST_HEAD(&port->vlan_hash[i]);
 
+	skb_queue_head_init(&port->bc_queue);
+	INIT_WORK(&port->bc_work, macvlan_process_broadcast);
+
 	err = netdev_rx_handler_register(dev, macvlan_handle_frame, port);
 	if (err)
 		kfree(port);
@@ -782,6 +854,7 @@ static void macvlan_port_destroy(struct net_device *dev)
 {
 	struct macvlan_port *port = macvlan_port_get_rtnl(dev);
 
+	cancel_work_sync(&port->bc_work);
 	dev->priv_flags &= ~IFF_MACVLAN_PORT;
 	netdev_rx_handler_unregister(dev);
 	kfree_rcu(port, rcu);
@@ -868,13 +941,12 @@ int macvlan_common_newlink(struct net *src_net, struct net_device *dev,
 		vlan->flags = nla_get_u16(data[IFLA_MACVLAN_FLAGS]);
 
 	if (vlan->mode == MACVLAN_MODE_PASSTHRU) {
-		if (port->count)
+		if (!MACVLAN_PORT_IS_EMPTY(port))
 			return -EINVAL;
 		port->passthru = true;
 		eth_hw_addr_inherit(dev, lowerdev);
 	}
 
-	port->count += 1;
 	err = register_netdevice(dev);
 	if (err < 0)
 		goto destroy_port;
@@ -892,8 +964,7 @@ int macvlan_common_newlink(struct net *src_net, struct net_device *dev,
 unregister_netdev:
 	unregister_netdevice(dev);
 destroy_port:
-	port->count -= 1;
-	if (!port->count)
+	if (MACVLAN_PORT_IS_EMPTY(port))
 		macvlan_port_destroy(lowerdev);
 
 	return err;
@@ -1026,6 +1097,13 @@ static int macvlan_device_event(struct notifier_block *unused,
 		list_for_each_entry(vlan, &port->vlans, list) {
 			vlan->dev->gso_max_size = dev->gso_max_size;
 			netdev_update_features(vlan->dev);
+		}
+		break;
+	case NETDEV_CHANGEMTU:
+		list_for_each_entry(vlan, &port->vlans, list) {
+			if (vlan->dev->mtu <= dev->mtu)
+				continue;
+			dev_set_mtu(vlan->dev, dev->mtu);
 		}
 		break;
 	case NETDEV_UNREGISTER:
