@@ -1,0 +1,297 @@
+next/fixes-non-critical
+	reset/fixes
+		git://git.pengutronix.de/git/pza/linux reset/fixes
+	omap/fixes-not-urgent
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/fixes-not-urgent-signed
+	patch
+		ARM: msm: Silence readb/writeb warnings due to missing IOMEM()
+
+next/cleanup
+	versatile/leds
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/versatile-leds
+	cleanup/kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/robh/linux tags/kconfig-cleanups
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.16
+	patch
+		leds: Fix build for LEDS_CLASS=m on versatile
+	sirf/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/sirf-soc-for-3.16
+	vexpress/updates
+		git://git.linaro.org/people/pawel.moll/linux tags/vexpress/updates-for-3.16
+	samsung/s3c24xx-clk
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/s3c24xx-clk
+	bcm/cleanup
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-cleanup
+	patch
+		clk: samsung: clk-s3c2410-dlck: do not use PNAME macro as it declares __initdata
+		ARM: vexpress: refine dependencies for new code
+	omap/prcm
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/prcm-signed
+	patch
+		clk: samsung: fix build error
+	samsung/cleanup
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	patch
+		ARM: kconfig: allow PCI support to be selected with ARCH_MULTIPLATFORM
+
+next/soc
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.16
+	renesas/clock
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-for-v3.16
+	renesas/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.16
+	at91/cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup
+	mvebu/soc-orion5x
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-orion5x-3.16
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.16
+		contains depends/irqchip-mvebu
+	cleanup/kconfig
+		Merge branch 'cleanup/kconfig' into next/soc
+	renesas/clock2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock2-for-v3.16
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v3.16
+	sti/soc
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-soc-for-v3.16
+	sunxi/core
+		https://github.com/mripard/linux tags/sunxi-core-for-3.16
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.16
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-soc
+	axxia/soc
+		Merge branch 'axxia/soc' into next/soc
+	mvebu/soc2
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.16-2
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.16
+	sunxi/core2
+		https://github.com/mripard/linux tags/sunxi-core-for-3.16-2
+	bcm/cleanup
+		Merge branch 'bcm/cleanup' into next/soc
+	bcm/soc
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-soc
+	patch
+		ARM: rockchip: convert smp bringup to CPU_METHOD_OF_DECLARE
+		Documentation: devicetree: arm: sort enable-method entries
+		ARM: sunxi: allow building without reset controller
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/soc-signed
+	omap/pm
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/pm-signed
+	berlin/soc
+		https://github.com/shesselba/linux-berlin tags/berlin-soc-3.16
+	zynq/cleanup
+		git://git.xilinx.com/linux-xlnx tags/zynq-cleanup-for-3.16
+	samsung/mcpm
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/exynos-mcpm
+	samsung/clk
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk
+		contains samsung/s3c24xx-clk
+	samsung/clk2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk-2
+
+next/soc2
+	renesas/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.16
+	renesas/clock
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-for-v3.16
+	renesas/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.16
+	at91/cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup
+	mvebu/soc-orion5x
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-orion5x-3.16
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.16
+		contains depends/irqchip-mvebu
+	cleanup/kconfig
+		Merge branch 'cleanup/kconfig' into next/soc
+	renesas/clock2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock2-for-v3.16
+	renesas/soc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanup-for-v3.16
+	sti/soc
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-soc-for-v3.16
+	sunxi/core
+		https://github.com/mripard/linux tags/sunxi-core-for-3.16
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.16
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-soc
+	axxia/soc
+		Merge branch 'axxia/soc' into next/soc
+	mvebu/soc2
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.16-2
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.16
+	sunxi/core2
+		https://github.com/mripard/linux tags/sunxi-core-for-3.16-2
+	depends/dma-ranges
+		Merge branch 'depends/dma-ranges' into next/soc
+	keystone/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
+	keystone/soc3
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc-2
+
+next/defconfig
+	mvebu/defconfig2
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.16-2
+		contains mvebu/defconfig
+	sunxi/defconfig2
+		https://github.com/mripard/linux tags/sunxi-defconfig-for-3.16-2
+		contains sunxi/defconfig
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-3.16
+	<no branch> (f1e9637f4b49690a6c5793f1745f743506b1bfd1)
+		Merge prior defconfig changes into next/defconfig
+		contains shmobile/defconfig
+	patch
+		ARM: configs: enable XHCI mvebu support in multi_v7_defconfig
+		ARM: configs: add CONFIG_MMC_SDHCI_PXAV3 to the multi_v7_defconfig
+		ARM: add drivers for Colibri T30 to multi_v7_defconfig
+		ARM: at91/defconfig: sama5_defconfig: updated
+		ARM: multi_v7_defconfig: Enable Zynq peripheral drivers
+	<no branch> (4b660a7f5c8099d88d1a43d8ae138965112592c7)
+		Merge tag 'v3.15-rc6' into next/defconfig
+	patch
+		ARM: configs: update Allwinner options
+
+next/boards
+	shmobile/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig-for-v3.16
+	patch
+		ARM: multi_v7: enable AT24C EEPROM driver
+		ARM: multi_v7_defconfig: select CONFIG_GPIO_DWAPB
+		ARM: multi_v7_defconfig: Select CONFIG_MACH_BERLIN_BG2Q
+	renesas/clock
+		Merge branch 'renesas/clock' into next/boards
+	renesas/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.16
+	patch
+		ARM: configs: add CONFIG_MMC_SDHCI_PXAV3 to the multi_v7_defconfig
+		ARM: configs: enable XHCI mvebu support in multi_v7_defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.16
+	renesas/boards2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards2-for-v3.16
+	patch
+		ARM: add drivers for Colibri T30 to multi_v7_defconfig
+	depends/clockevents-cleanups
+		Merge branch 'depends/clockevents-cleanups' into next/boards
+	renesas/clock-cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-cleanup2-for-v3.16
+	renesas/dt-scif
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-scif-for-v3.16
+	renesas/r7s72100-ccf
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r7s72100-ccf-for-v3.16
+	sunxi/defconfig
+		https://github.com/mripard/linux tags/sunxi-defconfig-for-3.16
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-defconfig
+	renesas/r7s72100-ccf2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r7s72100-ccf2-for-v3.16
+	omap/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/board-signed
+	davinci/boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.16/board
+
+next/dt
+	at91/dt
+		git://github.com/at91linux/linux-at91 tags/at91-dt
+	renesas/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.16
+	renesas/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.16
+	socfpga/dt
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga-dt-updates-for-3.16_v3
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.16
+	rockchip/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.16-rockchip-dt
+	keystone/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	at91/dt2
+		git://github.com/at91linux/linux-at91 tags/at91-dt2
+	renesas/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt3-for-v3.16
+	sunxi/dt
+		https://github.com/mripard/linux tags/sunxi-dt-for-3.16
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.16
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.16-dt
+	<no branch> (702b691e4a711e699cf3cccba879c1d945665c0d)
+		Merge commit '702b691e4a71' into next/dt
+	samsung/dt
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.16-1
+	at91/cleanup
+		Merge branch 'at91/cleanup' into next/dt
+	at91/dt3
+		git://github.com/at91linux/linux-at91 tags/at91-dt3
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.16
+	bcm/dt
+		git://github.com/broadcom/mach-bcm tags/for-3.16/bcm-dt
+	sunxi/dt2
+		https://github.com/mripard/linux tags/sunxi-dt-for-3.16-2
+	mvebu/dt2
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.16-2
+	mvebu/soc-orion5x
+		Merge branch 'mvebu/soc-orion5x' into next/dt
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/dt-part2-v2
+	berlin/dt
+		https://github.com/shesselba/linux-berlin tags/berlin-dt-3.16
+	zynq/dt
+		git://git.xilinx.com/linux-xlnx tags/zynq-dt-for-3.16
+	sirf/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux tags/sirf-dts-for-3.16
+	socfpga/dt2
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_dt_updates-for-3.16_take_2_version_2
+	samsung/dt2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+	omap/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/dt-part3
+
+next/drivers
+	socfpga/reset-driver
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga-driver-update-for-3.16
+	mvebu/drivers
+		git://git.infradead.org/linux-mvebu tags/mvebu-drivers-3.16
+	sunxi/drivers
+		https://github.com/mripard/linux sunxi/drivers-for-3.16
+	samsung/drivers
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-drivers
+	qcom/socdriver
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-drivers-for-3.16
+	sunxi/drivers2
+		https://github.com/mripard/linux tags/sunxi-drivers-for-3.16-2
+	patch
+		bus: add Broadcom GISB bus arbiter timeout/error handler
+		Documentation: devicetree: add Broadcom GISB arbiter bindings
+		Documentation: sysfs: add Broadcom GISB arbiter sysfs properties
+		soc: qcom: fix of_device_id table
+	omap/l3-noc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/l3-noc-signed
+	<no branch> (cf7eb979116c2568e8bc3b6a7269c7a359864ace)
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-fixes-for-v3.15-rc4
+	davinci/edma
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.16/edma
+		contains depends/vinod-edma
+	keystone/reset-driver
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-reset-driver
+	samsung/cpuidle
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/exynos-cpuidle
+		contains samsung/clk
+		contains samsung/mcpm
+		contains samsung/s3c24xx-clk
+
+fixes
+
