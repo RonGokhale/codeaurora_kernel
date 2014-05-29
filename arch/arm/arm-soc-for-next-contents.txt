@@ -156,6 +156,10 @@ next/defconfig
 		ARM: add drivers for Colibri T30 to multi_v7_defconfig
 		ARM: at91/defconfig: sama5_defconfig: updated
 		ARM: multi_v7_defconfig: Enable Zynq peripheral drivers
+	<no branch> (4b660a7f5c8099d88d1a43d8ae138965112592c7)
+		Merge tag 'v3.15-rc6' into next/defconfig
+	patch
+		ARM: configs: update Allwinner options
 
 next/boards
 	shmobile/defconfig
@@ -290,20 +294,4 @@ next/drivers
 		contains samsung/s3c24xx-clk
 
 fixes
-	<no branch> (702b691e4a711e699cf3cccba879c1d945665c0d)
-		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes
-	patch
-		ARM: imx: fix error handling in ipu device registration
-	<no branch> (4b353a706a86598ba47307c47301c3c428b79e09)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.15/fixes-v3-signed
-	<no branch> (d903bc9ee9b67410d02923d98a8dd4ecf5a1bc69)
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.15-2
-	<no branch> (13984e9bb15528f70059bbbbda3f9028157eebf6)
-		git://github.com/at91linux/linux-at91 tags/at91-fixes2
-	patch
-		ARM: trusted_foundations: fix compile error on non-SMP
-	<no branch> (68d0e40298f064a5cff40670caded0480274d4b2)
-		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-2nd-tag
-	patch
-		MAINTAINERS: Add reset controller framework entry
 
