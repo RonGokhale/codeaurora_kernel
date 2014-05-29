@@ -13,6 +13,8 @@
 #ifndef _UAPI_ASM_INST_H
 #define _UAPI_ASM_INST_H
 
+#include <asm/bitfield.h>
+
 /*
  * Major opcodes; before MIPS IV cop1x was called cop3.
  */
@@ -74,16 +76,17 @@ enum spec2_op {
 enum spec3_op {
 	ext_op, dextm_op, dextu_op, dext_op,
 	ins_op, dinsm_op, dinsu_op, dins_op,
-	lx_op     = 0x0a, lwle_op   = 0x19,
-	lwre_op   = 0x1a, cachee_op = 0x1b,
-	sbe_op    = 0x1c, she_op    = 0x1d,
-	sce_op    = 0x1e, swe_op    = 0x1f,
-	bshfl_op  = 0x20, swle_op   = 0x21,
-	swre_op   = 0x22, prefe_op  = 0x23,
-	dbshfl_op = 0x24, lbue_op   = 0x28,
-	lhue_op   = 0x29, lbe_op    = 0x2c,
-	lhe_op    = 0x2d, lle_op    = 0x2e,
-	lwe_op    = 0x2f, rdhwr_op  = 0x3b
+	yield_op  = 0x09, lx_op     = 0x0a,
+	lwle_op   = 0x19, lwre_op   = 0x1a,
+	cachee_op = 0x1b, sbe_op    = 0x1c,
+	she_op    = 0x1d, sce_op    = 0x1e,
+	swe_op    = 0x1f, bshfl_op  = 0x20,
+	swle_op   = 0x21, swre_op   = 0x22,
+	prefe_op  = 0x23, dbshfl_op = 0x24,
+	lbue_op   = 0x28, lhue_op   = 0x29,
+	lbe_op    = 0x2c, lhe_op    = 0x2d,
+	lle_op    = 0x2e, lwe_op    = 0x2f,
+	rdhwr_op  = 0x3b
 };
 
 /*
@@ -125,7 +128,8 @@ enum bcop_op {
 enum cop0_coi_func {
 	tlbr_op	      = 0x01, tlbwi_op	    = 0x02,
 	tlbwr_op      = 0x06, tlbp_op	    = 0x08,
-	rfe_op	      = 0x10, eret_op	    = 0x18
+	rfe_op	      = 0x10, eret_op	    = 0x18,
+	wait_op       = 0x20,
 };
 
 /*
@@ -301,7 +305,9 @@ enum mm_32axf_minor_op {
 	mm_tlbwr_op = 0x0cd,
 	mm_jalrs_op = 0x13c,
 	mm_jalrshb_op = 0x17c,
+	mm_sync_op = 0x1ad,
 	mm_syscall_op = 0x22d,
+	mm_wait_op = 0x24d,
 	mm_eret_op = 0x3cd,
 };
 
@@ -479,24 +485,6 @@ enum MIPS6e_i8_func {
  * (microMIPS & MIPS16e) NOP instruction.
  */
 #define MM_NOP16	0x0c00
-
-/*
- * Damn ...  bitfields depend from byteorder :-(
- */
-#ifdef __MIPSEB__
-#define __BITFIELD_FIELD(field, more)					\
-	field;								\
-	more
-
-#elif defined(__MIPSEL__)
-
-#define __BITFIELD_FIELD(field, more)					\
-	more								\
-	field;
-
-#else /* !defined (__MIPSEB__) && !defined (__MIPSEL__) */
-#error "MIPS but neither __MIPSEL__ nor __MIPSEB__?"
-#endif
 
 struct j_format {
 	__BITFIELD_FIELD(unsigned int opcode : 6, /* Jump format */

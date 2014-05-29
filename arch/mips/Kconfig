@@ -50,6 +50,8 @@ config MIPS
 	select CLONE_BACKWARDS
 	select HAVE_DEBUG_STACKOVERFLOW
 	select HAVE_CC_STACKPROTECTOR
+	select CPU_PM if CPU_IDLE
+	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 
 menu "Machine selection"
 
@@ -83,6 +85,7 @@ config AR7
 	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_LITTLE_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	select SYS_SUPPORTS_ZBOOT_UART16550
 	select ARCH_REQUIRE_GPIOLIB
 	select VLYNQ
@@ -106,6 +109,7 @@ config ATH79
 	select SYS_HAS_EARLY_PRINTK
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	help
 	  Support for the Atheros AR71XX/AR724X/AR913X SoCs.
 
@@ -122,6 +126,7 @@ config BCM47XX
 	select NO_EXCEPT_FILL
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_LITTLE_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	select SYS_HAS_EARLY_PRINTK
 	select USE_GENERIC_EARLY_PRINTK_8250
 	help
@@ -248,6 +253,7 @@ config LANTIQ
 	select SYS_HAS_CPU_MIPS32_R2
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_32BIT_KERNEL
+	select SYS_SUPPORTS_MIPS16
 	select SYS_SUPPORTS_MULTITHREADING
 	select SYS_HAS_EARLY_PRINTK
 	select ARCH_REQUIRE_GPIOLIB
@@ -330,6 +336,7 @@ config MIPS_MALTA
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select SYS_SUPPORTS_MIPS_CMP
 	select SYS_SUPPORTS_MIPS_CPS
+	select SYS_SUPPORTS_MIPS16
 	select SYS_SUPPORTS_MULTITHREADING
 	select SYS_SUPPORTS_SMARTMIPS
 	select SYS_SUPPORTS_ZBOOT
@@ -361,6 +368,7 @@ config MIPS_SEAD3
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select SYS_SUPPORTS_SMARTMIPS
 	select SYS_SUPPORTS_MICROMIPS
+	select SYS_SUPPORTS_MIPS16
 	select USB_EHCI_BIG_ENDIAN_DESC
 	select USB_EHCI_BIG_ENDIAN_MMIO
 	select USE_OF
@@ -380,6 +388,7 @@ config MACH_VR41XX
 	select CEVT_R4K
 	select CSRC_R4K
 	select SYS_HAS_CPU_VR41XX
+	select SYS_SUPPORTS_MIPS16
 	select ARCH_REQUIRE_GPIOLIB
 
 config NXP_STB220
@@ -407,6 +416,7 @@ config PMC_MSP
 	select SYS_HAS_CPU_MIPS32_R2
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	select IRQ_CPU
 	select SERIAL_8250
 	select SERIAL_8250_CONSOLE
@@ -430,6 +440,7 @@ config RALINK
 	select SYS_HAS_CPU_MIPS32_R2
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_LITTLE_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	select SYS_HAS_EARLY_PRINTK
 	select HAVE_MACH_CLKDEV
 	select CLKDEV_LOOKUP
@@ -674,7 +685,6 @@ config SNI_RM
 	select SYS_SUPPORTS_BIG_ENDIAN
 	select SYS_SUPPORTS_HIGHMEM
 	select SYS_SUPPORTS_LITTLE_ENDIAN
-	select USE_GENERIC_EARLY_PRINTK_8250
 	help
 	  The SNI RM200/300/400 are MIPS-based machines manufactured by
 	  Siemens Nixdorf Informationssysteme (SNI), parent company of Pyramid
@@ -1059,6 +1069,7 @@ config SOC_PNX833X
 	select SYS_SUPPORTS_32BIT_KERNEL
 	select SYS_SUPPORTS_LITTLE_ENDIAN
 	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_MIPS16
 	select CPU_MIPSR2_IRQ_VI
 
 config SOC_PNX8335
@@ -1842,7 +1853,7 @@ config FORCE_MAX_ZONEORDER
 
 config CEVT_GIC
 	bool "Use GIC global counter for clock events"
-	depends on IRQ_GIC && !(MIPS_SEAD3 || MIPS_MT_SMTC)
+	depends on IRQ_GIC && !MIPS_SEAD3
 	help
 	  Use the GIC global counter for the clock events. The R4K clock
 	  event driver is always present, so if the platform ends up not
@@ -1895,19 +1906,8 @@ config CPU_R4K_CACHE_TLB
 	bool
 	default y if !(CPU_R3000 || CPU_R8000 || CPU_SB1 || CPU_TX39XX || CPU_CAVIUM_OCTEON)
 
-choice
-	prompt "MIPS MT options"
-
-config MIPS_MT_DISABLED
-	bool "Disable multithreading support"
-	help
-	  Use this option if your platform does not support the MT ASE
-	  which is hardware multithreading support. On systems without
-	  an MT-enabled processor, this will be the only option that is
-	  available in this menu.
-
 config MIPS_MT_SMP
-	bool "Use 1 TC on each available VPE for SMP"
+	bool "MIPS MT SMP support (1 TC on each available VPE)"
 	depends on SYS_SUPPORTS_MULTITHREADING
 	select CPU_MIPSR2_IRQ_VI
 	select CPU_MIPSR2_IRQ_EI
@@ -1925,26 +1925,6 @@ config MIPS_MT_SMP
 	  virtual processors which supports SMP. This is equivalent to the
 	  Intel Hyperthreading feature. For further information go to
 	  <http://www.imgtec.com/mips/mips-multithreading.asp>.
-
-config MIPS_MT_SMTC
-	bool "Use all TCs on all VPEs for SMP (DEPRECATED)"
-	depends on CPU_MIPS32_R2
-	depends on SYS_SUPPORTS_MULTITHREADING
-	depends on !MIPS_CPS
-	select CPU_MIPSR2_IRQ_VI
-	select CPU_MIPSR2_IRQ_EI
-	select MIPS_MT
-	select SMP
-	select SMP_UP
-	select SYS_SUPPORTS_SMP
-	select NR_CPUS_DEFAULT_8
-	help
-	  This is a kernel model which is known as SMTC. This is
-	  supported on cores with the MT ASE and presents all TCs
-	  available on all VPEs to support SMP. For further
-	  information see <http://www.linux-mips.org/wiki/34K#SMTC>.
-
-endchoice
 
 config MIPS_MT
 	bool
@@ -1967,7 +1947,7 @@ config SYS_SUPPORTS_MULTITHREADING
 config MIPS_MT_FPAFF
 	bool "Dynamic FPU affinity for FP-intensive threads"
 	default y
-	depends on MIPS_MT_SMP || MIPS_MT_SMTC
+	depends on MIPS_MT_SMP
 
 config MIPS_VPE_LOADER
 	bool "VPE loader support."
@@ -1988,29 +1968,6 @@ config MIPS_VPE_LOADER_MT
 	bool
 	default "y"
 	depends on MIPS_VPE_LOADER && !MIPS_CMP
-
-config MIPS_MT_SMTC_IM_BACKSTOP
-	bool "Use per-TC register bits as backstop for inhibited IM bits"
-	depends on MIPS_MT_SMTC
-	default n
-	help
-	  To support multiple TC microthreads acting as "CPUs" within
-	  a VPE, VPE-wide interrupt mask bits must be specially manipulated
-	  during interrupt handling. To support legacy drivers and interrupt
-	  controller management code, SMTC has a "backstop" to track and
-	  if necessary restore the interrupt mask. This has some performance
-	  impact on interrupt service overhead.
-
-config MIPS_MT_SMTC_IRQAFF
-	bool "Support IRQ affinity API"
-	depends on MIPS_MT_SMTC
-	default n
-	help
-	  Enables SMP IRQ affinity API (/proc/irq/*/smp_affinity, etc.)
-	  for SMTC Linux kernel. Requires platform support, of which
-	  an example can be found in the MIPS kernel i8259 and Malta
-	  platform code.  Adds some overhead to interrupt dispatch, and
-	  should be used only if you know what you are doing.
 
 config MIPS_VPE_LOADER_TOM
 	bool "Load VPE program into memory hidden from linux"
@@ -2039,7 +1996,7 @@ config MIPS_VPE_APSP_API_MT
 
 config MIPS_CMP
 	bool "MIPS CMP framework support (DEPRECATED)"
-	depends on SYS_SUPPORTS_MIPS_CMP && !MIPS_MT_SMTC
+	depends on SYS_SUPPORTS_MIPS_CMP
 	select MIPS_GIC_IPI
 	select SYNC_R4K
 	select WEAK_ORDERING
@@ -2057,9 +2014,11 @@ config MIPS_CPS
 	depends on SYS_SUPPORTS_MIPS_CPS
 	select MIPS_CM
 	select MIPS_CPC
+	select MIPS_CPS_PM if HOTPLUG_CPU
 	select MIPS_GIC_IPI
 	select SMP
 	select SYNC_R4K if (CEVT_R4K || CSRC_R4K)
+	select SYS_SUPPORTS_HOTPLUG_CPU
 	select SYS_SUPPORTS_SMP
 	select WEAK_ORDERING
 	help
@@ -2068,6 +2027,9 @@ config MIPS_CPS
 	  enabled the kernel will probe for other cores and boot them with
 	  no external assistance. It is safe to enable this when hardware
 	  support is unavailable.
+
+config MIPS_CPS_PM
+	bool
 
 config MIPS_GIC_IPI
 	bool
@@ -2199,6 +2161,13 @@ config SYS_SUPPORTS_SMARTMIPS
 config SYS_SUPPORTS_MICROMIPS
 	bool
 
+config SYS_SUPPORTS_MIPS16
+	bool
+	help
+	  This option must be set if a kernel might be executed on a MIPS16-
+	  enabled CPU even if MIPS16 is not actually being used.  In other
+	  words, it makes the kernel MIPS16-tolerant.
+
 config CPU_SUPPORTS_MSA
 	bool
 
@@ -2239,7 +2208,7 @@ config NODES_SHIFT
 
 config HW_PERF_EVENTS
 	bool "Enable hardware performance counter support for perf events"
-	depends on PERF_EVENTS && !MIPS_MT_SMTC && OPROFILE=n && (CPU_MIPS32 || CPU_MIPS64 || CPU_R10000 || CPU_SB1 || CPU_CAVIUM_OCTEON || CPU_XLP)
+	depends on PERF_EVENTS && OPROFILE=n && (CPU_MIPS32 || CPU_MIPS64 || CPU_R10000 || CPU_SB1 || CPU_CAVIUM_OCTEON || CPU_XLP)
 	default y
 	help
 	  Enable hardware performance counter support for perf events. If
@@ -2671,11 +2640,15 @@ endmenu
 config MIPS_EXTERNAL_TIMER
 	bool
 
-if CPU_SUPPORTS_CPUFREQ && MIPS_EXTERNAL_TIMER
 menu "CPU Power Management"
+
+if CPU_SUPPORTS_CPUFREQ && MIPS_EXTERNAL_TIMER
 source "drivers/cpufreq/Kconfig"
-endmenu
 endif
+
+source "drivers/cpuidle/Kconfig"
+
+endmenu
 
 source "net/Kconfig"
 
