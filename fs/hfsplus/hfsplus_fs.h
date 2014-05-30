@@ -375,9 +375,6 @@ int hfsplus_attr_bin_cmp_key(const hfsplus_btree_key *,
 		const hfsplus_btree_key *);
 int hfsplus_attr_build_key(struct super_block *, hfsplus_btree_key *,
 			u32, const char *);
-void hfsplus_attr_build_key_uni(hfsplus_btree_key *key,
-					u32 cnid,
-					struct hfsplus_attr_unistr *name);
 int hfsplus_find_attr(struct super_block *, u32,
 			const char *, struct hfs_find_data *);
 int hfsplus_attr_exists(struct inode *inode, const char *name);
@@ -417,6 +414,7 @@ void hfs_bnode_free(struct hfs_bnode *);
 struct hfs_bnode *hfs_bnode_create(struct hfs_btree *, u32);
 void hfs_bnode_get(struct hfs_bnode *);
 void hfs_bnode_put(struct hfs_bnode *);
+bool hfs_bnode_need_zeroout(struct hfs_btree *);
 
 /* brec.c */
 u16 hfs_brec_lenoff(struct hfs_bnode *, u16, u16 *);
@@ -444,8 +442,10 @@ int hfsplus_cat_case_cmp_key(const hfsplus_btree_key *,
 		const hfsplus_btree_key *);
 int hfsplus_cat_bin_cmp_key(const hfsplus_btree_key *,
 		const hfsplus_btree_key *);
-void hfsplus_cat_build_key(struct super_block *sb,
+int hfsplus_cat_build_key(struct super_block *sb,
 		hfsplus_btree_key *, u32, struct qstr *);
+void hfsplus_cat_build_key_with_cnid(struct super_block *sb,
+		hfsplus_btree_key *, u32);
 int hfsplus_find_cat(struct super_block *, u32, struct hfs_find_data *);
 int hfsplus_create_cat(u32, struct inode *, struct qstr *, struct inode *);
 int hfsplus_delete_cat(u32, struct inode *, struct qstr *);
@@ -463,7 +463,7 @@ int hfsplus_ext_write_extent(struct inode *);
 int hfsplus_get_block(struct inode *, sector_t, struct buffer_head *, int);
 int hfsplus_free_fork(struct super_block *, u32,
 		struct hfsplus_fork_raw *, int);
-int hfsplus_file_extend(struct inode *);
+int hfsplus_file_extend(struct inode *, bool zeroout);
 void hfsplus_file_truncate(struct inode *);
 
 /* inode.c */
