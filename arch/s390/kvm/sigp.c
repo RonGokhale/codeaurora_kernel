@@ -235,7 +235,6 @@ static int __sigp_set_prefix(struct kvm_vcpu *vcpu, u16 cpu_addr, u32 address,
 	struct kvm_vcpu *dst_vcpu = NULL;
 	struct kvm_s390_interrupt_info *inti;
 	int rc;
-	u8 tmp;
 
 	if (cpu_addr < KVM_MAX_VCPUS)
 		dst_vcpu = kvm_get_vcpu(vcpu->kvm, cpu_addr);
@@ -243,10 +242,13 @@ static int __sigp_set_prefix(struct kvm_vcpu *vcpu, u16 cpu_addr, u32 address,
 		return SIGP_CC_NOT_OPERATIONAL;
 	li = &dst_vcpu->arch.local_int;
 
-	/* make sure that the new value is valid memory */
-	address = address & 0x7fffe000u;
-	if (copy_from_guest_absolute(vcpu, &tmp, address, 1) ||
-	   copy_from_guest_absolute(vcpu, &tmp, address + PAGE_SIZE, 1)) {
+	/*
+	 * Make sure the new value is valid memory. We only need to check the
+	 * first page, since address is 8k aligned and memory pieces are always
+	 * at least 1MB aligned and have at least a size of 1MB.
+	 */
+	address &= 0x7fffe000u;
+	if (kvm_is_error_gpa(vcpu->kvm, address)) {
 		*reg &= 0xffffffff00000000UL;
 		*reg |= SIGP_STATUS_INVALID_PARAMETER;
 		return SIGP_CC_STATUS_STORED;
@@ -455,4 +457,39 @@ int kvm_s390_handle_sigp(struct kvm_vcpu *vcpu)
 
 	kvm_s390_set_psw_cc(vcpu, rc);
 	return 0;
+}
+
+/*
+ * Handle SIGP partial execution interception.
+ *
+ * This interception will occur at the source cpu when a source cpu sends an
+ * external call to a target cpu and the target cpu has the WAIT bit set in
+ * its cpuflags. Interception will occurr after the interrupt indicator bits at
+ * the target cpu have been set. All error cases will lead to instruction
+ * interception, therefore nothing is to be checked or prepared.
+ */
+int kvm_s390_handle_sigp_pei(struct kvm_vcpu *vcpu)
+{
+	int r3 = vcpu->arch.sie_block->ipa & 0x000f;
+	u16 cpu_addr = vcpu->run->s.regs.gprs[r3];
+	struct kvm_vcpu *dest_vcpu;
+	u8 order_code = kvm_s390_get_base_disp_rs(vcpu);
+
+	trace_kvm_s390_handle_sigp_pei(vcpu, order_code, cpu_addr);
+
+	if (order_code == SIGP_EXTERNAL_CALL) {
+		dest_vcpu = kvm_get_vcpu(vcpu->kvm, cpu_addr);
+		BUG_ON(dest_vcpu == NULL);
+
+		spin_lock_bh(&dest_vcpu->arch.local_int.lock);
+		if (waitqueue_active(&dest_vcpu->wq))
+			wake_up_interruptible(&dest_vcpu->wq);
+		dest_vcpu->preempted = true;
+		spin_unlock_bh(&dest_vcpu->arch.local_int.lock);
+
+		kvm_s390_set_psw_cc(vcpu, SIGP_CC_ORDER_CODE_ACCEPTED);
+		return 0;
+	}
+
+	return -EOPNOTSUPP;
 }
