@@ -130,21 +130,13 @@ static void blk_flush_restore_request(struct request *rq)
 	blk_clear_rq_complete(rq);
 }
 
-static void mq_flush_run(struct work_struct *work)
-{
-	struct request *rq;
-
-	rq = container_of(work, struct request, mq_flush_work);
-
-	memset(&rq->csd, 0, sizeof(rq->csd));
-	blk_mq_insert_request(rq, false, true, false);
-}
-
 static bool blk_flush_queue_rq(struct request *rq, bool add_front)
 {
 	if (rq->q->mq_ops) {
-		INIT_WORK(&rq->mq_flush_work, mq_flush_run);
-		kblockd_schedule_work(rq->q, &rq->mq_flush_work);
+		struct request_queue *q = rq->q;
+
+		blk_mq_add_to_requeue_list(rq, add_front);
+		blk_mq_kick_requeue_list(q);
 		return false;
 	} else {
 		if (add_front)
@@ -306,23 +298,9 @@ static bool blk_kick_flush(struct request_queue *q)
 	 */
 	q->flush_pending_idx ^= 1;
 
-	if (q->mq_ops) {
-		struct blk_mq_ctx *ctx = first_rq->mq_ctx;
-		struct blk_mq_hw_ctx *hctx = q->mq_ops->map_queue(q, ctx->cpu);
-
-		blk_mq_rq_init(hctx, q->flush_rq);
-		q->flush_rq->mq_ctx = ctx;
-
-		/*
-		 * Reuse the tag value from the fist waiting request,
-		 * with blk-mq the tag is generated during request
-		 * allocation and drivers can rely on it being inside
-		 * the range they asked for.
-		 */
-		q->flush_rq->tag = first_rq->tag;
-	} else {
-		blk_rq_init(q, q->flush_rq);
-	}
+	blk_rq_init(q, q->flush_rq);
+	if (q->mq_ops)
+		blk_mq_clone_flush_request(q->flush_rq, first_rq);
 
 	q->flush_rq->cmd_type = REQ_TYPE_FS;
 	q->flush_rq->cmd_flags = WRITE_FLUSH | REQ_FLUSH_SEQ;
