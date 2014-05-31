@@ -5,6 +5,8 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/fixes-not-urgent-signed
 	patch
 		ARM: msm: Silence readb/writeb warnings due to missing IOMEM()
+	renesas/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-fixes-for-v3.16
 
 next/cleanup
 	versatile/leds
@@ -94,6 +96,8 @@ next/soc
 		contains samsung/s3c24xx-clk
 	samsung/clk2
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk-2
+	qcom/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.16-2
 
 next/soc2
 	renesas/soc
@@ -160,6 +164,8 @@ next/defconfig
 		Merge tag 'v3.15-rc6' into next/defconfig
 	patch
 		ARM: configs: update Allwinner options
+	qcom/defconfig2
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-3.16-2
 
 next/boards
 	shmobile/defconfig
@@ -259,6 +265,8 @@ next/dt
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
 	omap/dt3
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/dt-part3
+	qcom/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.16-2
 
 next/drivers
 	socfpga/reset-driver
@@ -292,6 +300,8 @@ next/drivers
 		contains samsung/clk
 		contains samsung/mcpm
 		contains samsung/s3c24xx-clk
+	<no branch> (31964ffebbb958c6cf289c7c12edd7530d6221b9)
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-drivers-for-3.16-2
 
 fixes
 
