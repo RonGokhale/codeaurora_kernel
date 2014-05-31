@@ -98,6 +98,13 @@ next/soc
 		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk-2
 	qcom/soc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.16-2
+	samsung/clk3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-clk-3
+	samsung/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-exynos
+		contains samsung/cleanup
+	samsung/mcpm2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/exynos-mcpm-2
 
 next/soc2
 	renesas/soc
@@ -166,6 +173,8 @@ next/defconfig
 		ARM: configs: update Allwinner options
 	qcom/defconfig2
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-3.16-2
+	patch
+		ARM: multi_v7_defconfig: Enable Exynos platform
 
 next/boards
 	shmobile/defconfig
@@ -267,6 +276,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.16/dt-part3
 	qcom/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.16-2
+	samsung/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-3
 
 next/drivers
 	socfpga/reset-driver
@@ -300,8 +311,13 @@ next/drivers
 		contains samsung/clk
 		contains samsung/mcpm
 		contains samsung/s3c24xx-clk
-	<no branch> (31964ffebbb958c6cf289c7c12edd7530d6221b9)
+	qcom/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-drivers-for-3.16-2
+	samsung/drivers2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-drivers-2
+		contains samsung/cleanup
+		contains samsung/clk2
+		contains samsung/soc
 
 fixes
 
