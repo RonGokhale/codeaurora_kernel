@@ -105,6 +105,8 @@ next/soc
 		contains samsung/cleanup
 	samsung/mcpm2
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/exynos-mcpm-2
+	patch
+		ARM: exynos: Fix "allmodconfig" build errors in mcpm and hotplug
 
 next/soc2
 	renesas/soc
