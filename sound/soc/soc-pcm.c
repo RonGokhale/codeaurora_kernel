@@ -2541,8 +2541,6 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 			substream[SNDRV_PCM_STREAM_PLAYBACK]->private_data = rtd;
 		if (capture)
 			substream[SNDRV_PCM_STREAM_CAPTURE]->private_data = rtd;
-		if (platform->driver->pcm_new != NULL)
-			rtd->platform->driver->pcm_new(rtd);
 		goto out;
 	}
 

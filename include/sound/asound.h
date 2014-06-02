@@ -95,10 +95,9 @@ enum {
 	SNDRV_HWDEP_IFACE_SB_RC,	/* SB Extigy/Audigy2NX remote control */
 	SNDRV_HWDEP_IFACE_HDA,		/* HD-audio */
 	SNDRV_HWDEP_IFACE_USB_STREAM,	/* direct access to usb stream */
-	SNDRV_HWDEP_IFACE_QC_AUDIO_BE_CTRL, /* Backend Audio Control */
 
 	/* Don't forget to change the following: */
-	SNDRV_HWDEP_IFACE_LAST = SNDRV_HWDEP_IFACE_QC_AUDIO_BE_CTRL
+	SNDRV_HWDEP_IFACE_LAST = SNDRV_HWDEP_IFACE_USB_STREAM
 };
 
 struct snd_hwdep_info {
@@ -947,27 +946,5 @@ struct snd_ctl_event {
 #define SNDRV_CTL_NAME_IEC958_PRO_MASK			"Pro Mask"
 #define SNDRV_CTL_NAME_IEC958_PCM_STREAM		"PCM Stream"
 #define SNDRV_CTL_NAME_IEC958(expl,direction,what)	"IEC958 " expl SNDRV_CTL_NAME_##direction SNDRV_CTL_NAME_IEC958_##what
-/* DTS Eagle start */
-#define AUDPROC_MODULE_ID_DTS_HPX_PREMIX 0x0001077C
-#define AUDPROC_MODULE_ID_DTS_HPX_POSTMIX 0x0001077B
-#define EAGLE_DRIVER_ID 0xF2
-#define DTS_EAGLE_IOCTL_GET_CACHE_SIZE _IOR(EAGLE_DRIVER_ID, 0, int)
-#define DTS_EAGLE_IOCTL_SET_CACHE_SIZE _IOW(EAGLE_DRIVER_ID, 1, int)
-#define DTS_EAGLE_IOCTL_GET_PARAM _IOR(EAGLE_DRIVER_ID, 2, int)
-#define DTS_EAGLE_IOCTL_SET_PARAM _IOW(EAGLE_DRIVER_ID, 3, int)
-#define DTS_EAGLE_IOCTL_SET_CACHE_BLOCK _IOW(EAGLE_DRIVER_ID, 4, int)
-#define DTS_EAGLE_IOCTL_SET_ACTIVE_DEVICE _IOW(EAGLE_DRIVER_ID, 5, int)
-#define DTS_EAGLE_IOCTL_GET_LICENSE _IOR(EAGLE_DRIVER_ID, 6, int)
-#define DTS_EAGLE_IOCTL_SET_LICENSE _IOW(EAGLE_DRIVER_ID, 7, int)
-#define DTS_EAGLE_IOCTL_SEND_LICENSE _IOW(EAGLE_DRIVER_ID, 8, int)
-#define DTS_EAGLE_IOCTL_SET_VOLUME_COMMANDS _IOW(EAGLE_DRIVER_ID, 9, int)
-
-struct dts_eagle_param_desc {
-	int id;
-	int size;
-	int offset;
-	int device;
-} __packed;
-/* DTS Eagle end */
 
 #endif /* __SOUND_ASOUND_H */
