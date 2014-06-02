@@ -495,52 +495,6 @@ out:
 	spin_unlock_bh(&session->reorder_q.lock);
 }
 
-static inline int l2tp_verify_udp_checksum(struct sock *sk,
-					   struct sk_buff *skb)
-{
-	struct udphdr *uh = udp_hdr(skb);
-	u16 ulen = ntohs(uh->len);
-	__wsum psum;
-
-	if (sk->sk_no_check || skb_csum_unnecessary(skb))
-		return 0;
-
-#if IS_ENABLED(CONFIG_IPV6)
-	if (sk->sk_family == PF_INET6 && !l2tp_tunnel(sk)->v4mapped) {
-		if (!uh->check) {
-			LIMIT_NETDEBUG(KERN_INFO "L2TP: IPv6: checksum is 0\n");
-			return 1;
-		}
-		if ((skb->ip_summed == CHECKSUM_COMPLETE) &&
-		    !csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
-				     &ipv6_hdr(skb)->daddr, ulen,
-				     IPPROTO_UDP, skb->csum)) {
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
-			return 0;
-		}
-		skb->csum = ~csum_unfold(csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
-							 &ipv6_hdr(skb)->daddr,
-							 skb->len, IPPROTO_UDP,
-							 0));
-	} else
-#endif
-	{
-		struct inet_sock *inet;
-		if (!uh->check)
-			return 0;
-		inet = inet_sk(sk);
-		psum = csum_tcpudp_nofold(inet->inet_saddr, inet->inet_daddr,
-					  ulen, IPPROTO_UDP, 0);
-
-		if ((skb->ip_summed == CHECKSUM_COMPLETE) &&
-		    !csum_fold(csum_add(psum, skb->csum)))
-			return 0;
-		skb->csum = psum;
-	}
-
-	return __skb_checksum_complete(skb);
-}
-
 static int l2tp_seq_check_rx_window(struct l2tp_session *session, u32 nr)
 {
 	u32 nws;
@@ -895,8 +849,7 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb,
 	u16 version;
 	int length;
 
-	if (tunnel->sock && l2tp_verify_udp_checksum(tunnel->sock, skb))
-		goto discard_bad_csum;
+	/* UDP has verifed checksum */
 
 	/* UDP always verifies the packet length. */
 	__skb_pull(skb, sizeof(struct udphdr));
@@ -976,14 +929,6 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb,
 	}
 
 	l2tp_recv_common(session, skb, ptr, optr, hdrflags, length, payload_hook);
-
-	return 0;
-
-discard_bad_csum:
-	LIMIT_NETDEBUG("%s: UDP: bad checksum\n", tunnel->name);
-	UDP_INC_STATS_USER(tunnel->l2tp_net, UDP_MIB_INERRORS, 0);
-	atomic_long_inc(&tunnel->stats.rx_errors);
-	kfree_skb(skb);
 
 	return 0;
 
@@ -1128,7 +1073,7 @@ static int l2tp_xmit_core(struct l2tp_session *session, struct sk_buff *skb,
 	}
 
 	/* Queue the packet to IP for output */
-	skb->local_df = 1;
+	skb->ignore_df = 1;
 #if IS_ENABLED(CONFIG_IPV6)
 	if (tunnel->sock->sk_family == PF_INET6 && !tunnel->v4mapped)
 		error = inet6_csk_xmit(tunnel->sock, skb, NULL);
@@ -1157,7 +1102,9 @@ static void l2tp_xmit_ipv6_csum(struct sock *sk, struct sk_buff *skb,
 	struct ipv6_pinfo *np = inet6_sk(sk);
 	struct udphdr *uh = udp_hdr(skb);
 
-	if (!skb_dst(skb) || !skb_dst(skb)->dev ||
+	if (udp_get_no_check6_tx(sk))
+		skb->ip_summed = CHECKSUM_NONE;
+	else if (!skb_dst(skb) || !skb_dst(skb)->dev ||
 	    !(skb_dst(skb)->dev->features & NETIF_F_IPV6_CSUM)) {
 		__wsum csum = skb_checksum(skb, 0, udp_len, 0);
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
@@ -1243,7 +1190,7 @@ int l2tp_xmit_skb(struct l2tp_session *session, struct sk_buff *skb, int hdr_len
 			l2tp_xmit_ipv6_csum(sk, skb, udp_len);
 		else
 #endif
-		if (sk->sk_no_check == UDP_CSUM_NOXMIT)
+		if (sk->sk_no_check_tx)
 			skb->ip_summed = CHECKSUM_NONE;
 		else if ((skb_dst(skb) && skb_dst(skb)->dev) &&
 			 (!(skb_dst(skb)->dev->features & NETIF_F_V4_CSUM))) {
@@ -1490,6 +1437,11 @@ static int l2tp_tunnel_sock_create(struct net *net,
 					     sizeof(udp6_addr), 0);
 			if (err < 0)
 				goto out;
+
+			if (cfg->udp6_zero_tx_checksums)
+				udp_set_no_check6_tx(sock->sk, true);
+			if (cfg->udp6_zero_rx_checksums)
+				udp_set_no_check6_rx(sock->sk, true);
 		} else
 #endif
 		{
@@ -1518,7 +1470,7 @@ static int l2tp_tunnel_sock_create(struct net *net,
 		}
 
 		if (!cfg->use_udp_checksums)
-			sock->sk->sk_no_check = UDP_CSUM_NOXMIT;
+			sock->sk->sk_no_check_tx = 1;
 
 		break;
 

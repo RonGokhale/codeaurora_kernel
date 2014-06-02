@@ -35,7 +35,7 @@ static inline u32 WIL_GET_BITS(u32 x, int b0, int b1)
 #define WIL6210_MEM_SIZE (2*1024*1024UL)
 
 #define WIL6210_RX_RING_SIZE	(128)
-#define WIL6210_TX_RING_SIZE	(128)
+#define WIL6210_TX_RING_SIZE	(512)
 #define WIL6210_MAX_TX_RINGS	(24) /* HW limit */
 #define WIL6210_MAX_CID		(8) /* HW limit */
 #define WIL6210_NAPI_BUDGET	(16) /* arbitrary */
@@ -301,6 +301,7 @@ struct wil_tid_ampdu_rx {
 	u16 buf_size;
 	u16 timeout;
 	u8 dialog_token;
+	bool first_time; /* is it 1-st time this buffer used? */
 };
 
 struct wil6210_stats {
@@ -507,7 +508,7 @@ void wil_wdev_free(struct wil6210_priv *wil);
 int wmi_set_mac_address(struct wil6210_priv *wil, void *addr);
 int wmi_pcp_start(struct wil6210_priv *wil, int bi, u8 wmi_nettype, u8 chan);
 int wmi_pcp_stop(struct wil6210_priv *wil);
-void wil6210_disconnect(struct wil6210_priv *wil, void *bssid);
+void wil6210_disconnect(struct wil6210_priv *wil, const u8 *bssid);
 
 int wil_rx_init(struct wil6210_priv *wil);
 void wil_rx_fini(struct wil6210_priv *wil);

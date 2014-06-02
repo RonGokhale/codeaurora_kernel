@@ -246,7 +246,7 @@ int udp_lib_get_port(struct sock *sk, unsigned short snum,
 			do {
 				if (low <= snum && snum <= high &&
 				    !test_bit(snum >> udptable->log, bitmap) &&
-				    !inet_is_reserved_local_port(snum))
+				    !inet_is_local_reserved_port(net, snum))
 					goto found;
 				snum += rand;
 			} while (snum != first);
@@ -785,7 +785,7 @@ static int udp_send_skb(struct sk_buff *skb, struct flowi4 *fl4)
 	if (is_udplite)  				 /*     UDP-Lite      */
 		csum = udplite_csum(skb);
 
-	else if (sk->sk_no_check == UDP_CSUM_NOXMIT) {   /* UDP csum disabled */
+	else if (sk->sk_no_check_tx) {   /* UDP csum disabled */
 
 		skb->ip_summed = CHECKSUM_NONE;
 		goto send;
@@ -1495,6 +1495,10 @@ int udp_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 		if (skb->len > sizeof(struct udphdr) && encap_rcv != NULL) {
 			int ret;
 
+			/* Verify checksum before giving to encap */
+			if (udp_lib_checksum_complete(skb))
+				goto csum_error;
+
 			ret = encap_rcv(sk, skb);
 			if (ret <= 0) {
 				UDP_INC_STATS_BH(sock_net(sk),
@@ -1672,7 +1676,6 @@ static int __udp4_lib_mcast_deliver(struct net *net, struct sk_buff *skb,
 static inline int udp4_csum_init(struct sk_buff *skb, struct udphdr *uh,
 				 int proto)
 {
-	const struct iphdr *iph;
 	int err;
 
 	UDP_SKB_CB(skb)->partial_cov = 0;
@@ -1684,22 +1687,8 @@ static inline int udp4_csum_init(struct sk_buff *skb, struct udphdr *uh,
 			return err;
 	}
 
-	iph = ip_hdr(skb);
-	if (uh->check == 0) {
-		skb->ip_summed = CHECKSUM_UNNECESSARY;
-	} else if (skb->ip_summed == CHECKSUM_COMPLETE) {
-		if (!csum_tcpudp_magic(iph->saddr, iph->daddr, skb->len,
-				      proto, skb->csum))
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
-	}
-	if (!skb_csum_unnecessary(skb))
-		skb->csum = csum_tcpudp_nofold(iph->saddr, iph->daddr,
-					       skb->len, proto, 0);
-	/* Probably, we should checksum udp header (it should be in cache
-	 * in any case) and data in tiny packets (< rx copybreak).
-	 */
-
-	return 0;
+	return skb_checksum_init_zero_check(skb, proto, uh->check,
+					    inet_compute_pseudo);
 }
 
 /*
@@ -1886,7 +1875,7 @@ static struct sock *__udp4_lib_demux_lookup(struct net *net,
 	unsigned int hash2 = udp4_portaddr_hash(net, loc_addr, hnum);
 	unsigned int slot2 = hash2 & udp_table.mask;
 	struct udp_hslot *hslot2 = &udp_table.hash2[slot2];
-	INET_ADDR_COOKIE(acookie, rmt_addr, loc_addr)
+	INET_ADDR_COOKIE(acookie, rmt_addr, loc_addr);
 	const __portpair ports = INET_COMBINED_PORTS(rmt_port, hnum);
 
 	rcu_read_lock();
@@ -1979,7 +1968,7 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 		       int (*push_pending_frames)(struct sock *))
 {
 	struct udp_sock *up = udp_sk(sk);
-	int val;
+	int val, valbool;
 	int err = 0;
 	int is_udplite = IS_UDPLITE(sk);
 
@@ -1988,6 +1977,8 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 
 	if (get_user(val, (int __user *)optval))
 		return -EFAULT;
+
+	valbool = val ? 1 : 0;
 
 	switch (optname) {
 	case UDP_CORK:
@@ -2016,6 +2007,14 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 			err = -ENOPROTOOPT;
 			break;
 		}
+		break;
+
+	case UDP_NO_CHECK6_TX:
+		up->no_check6_tx = valbool;
+		break;
+
+	case UDP_NO_CHECK6_RX:
+		up->no_check6_rx = valbool;
 		break;
 
 	/*
@@ -2098,6 +2097,14 @@ int udp_lib_getsockopt(struct sock *sk, int level, int optname,
 
 	case UDP_ENCAP:
 		val = up->encap_type;
+		break;
+
+	case UDP_NO_CHECK6_TX:
+		val = up->no_check6_tx;
+		break;
+
+	case UDP_NO_CHECK6_RX:
+		val = up->no_check6_rx;
 		break;
 
 	/* The following two cannot be changed on UDP sockets, the return is

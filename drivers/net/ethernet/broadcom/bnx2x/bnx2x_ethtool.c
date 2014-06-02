@@ -6,7 +6,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
  * Written by: Eliezer Tamir
  * Based on code from Michael Chan's bnx2 driver
  * UDP CSUM errata workaround by Arik Gendelman
@@ -3506,8 +3506,6 @@ static const struct ethtool_ops bnx2x_vf_ethtool_ops = {
 
 void bnx2x_set_ethtool_ops(struct bnx2x *bp, struct net_device *netdev)
 {
-	if (IS_PF(bp))
-		SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
-	else /* vf */
-		SET_ETHTOOL_OPS(netdev, &bnx2x_vf_ethtool_ops);
+	netdev->ethtool_ops = (IS_PF(bp)) ?
+		&bnx2x_ethtool_ops : &bnx2x_vf_ethtool_ops;
 }
