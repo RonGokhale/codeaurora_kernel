@@ -657,7 +657,9 @@ static struct dma_async_tx_descriptor *shdma_prep_slave_sg(
 			     direction, flags, false);
 }
 
-struct dma_async_tx_descriptor *shdma_prep_dma_cyclic(
+#define SHDMA_MAX_SG_LEN 32
+
+static struct dma_async_tx_descriptor *shdma_prep_dma_cyclic(
 	struct dma_chan *chan, dma_addr_t buf_addr, size_t buf_len,
 	size_t period_len, enum dma_transfer_direction direction,
 	unsigned long flags, void *context)
@@ -668,7 +670,7 @@ struct dma_async_tx_descriptor *shdma_prep_dma_cyclic(
 	unsigned int sg_len = buf_len / period_len;
 	int slave_id = schan->slave_id;
 	dma_addr_t slave_addr;
-	struct scatterlist sgl[sg_len];
+	struct scatterlist sgl[SHDMA_MAX_SG_LEN];
 	int i;
 
 	if (!chan)
@@ -676,10 +678,16 @@ struct dma_async_tx_descriptor *shdma_prep_dma_cyclic(
 
 	BUG_ON(!schan->desc_num);
 
+	if (sg_len > SHDMA_MAX_SG_LEN) {
+		dev_err(schan->dev, "sg length %d exceds limit %d",
+				sg_len, SHDMA_MAX_SG_LEN);
+		return NULL;
+	}
+
 	/* Someone calling slave DMA on a generic channel? */
 	if (slave_id < 0 || (buf_len < period_len)) {
 		dev_warn(schan->dev,
-			"%s: bad parameter: buf_len=%d, period_len=%d, id=%d\n",
+			"%s: bad parameter: buf_len=%zu, period_len=%zu, id=%d\n",
 			__func__, buf_len, period_len, slave_id);
 		return NULL;
 	}
