@@ -1,4 +1,4 @@
-/* Copyright (c) 2011, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,16 +24,17 @@
 #include <linux/regulator/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/mutex.h>
+#include <linux/of.h>
 
 /*
  * Time QFPROM requires to reliably burn a fuse.
  */
-#define QFPROM_BLOW_TIMEOUT_US      10
+#define QFPROM_BLOW_TIMEOUT_US      20
 #define QFPROM_BLOW_TIMER_OFFSET    0x2038
 /*
  * Denotes number of cycles required to blow the fuse.
  */
-#define QFPROM_BLOW_TIMER_VALUE     (QFPROM_BLOW_TIMEOUT_US * 83)
+#define QFPROM_BLOW_TIMER_VALUE     0xF0
 
 #define QFPROM_BLOW_STATUS_OFFSET   0x204C
 #define QFPROM_BLOW_STATUS_BUSY     0x01
@@ -42,17 +43,49 @@
 #define QFP_FUSE_READY              0x01
 #define QFP_FUSE_OFF                0x00
 
+#define QFP_FUSE_BUF_SIZE           64
+#define UINT32_MAX                  (0xFFFFFFFFU)
+
+static const char *blow_supply = "vdd-blow";
+
 struct qfp_priv_t {
-	uint32_t base;
-	uint32_t end;
+	void __iomem *base;
+	uint32_t size;
+	uint32_t blow_status_offset;
+	uint32_t blow_timer;
 	struct mutex lock;
 	struct regulator *fuse_vdd;
 	u8 state;
 };
 
+struct qfp_resource {
+	resource_size_t	start;
+	resource_size_t	size;
+	uint32_t	blow_status_offset;
+	uint32_t	blow_timer;
+	const char	*regulator_name;
+};
+
 /* We need only one instance of this for the driver */
 static struct qfp_priv_t *qfp_priv;
 
+static inline bool is_usr_req_valid(const struct qfp_fuse_req *req)
+{
+	uint32_t size = qfp_priv->size;
+	uint32_t req_size;
+
+	if (req->size >= (UINT32_MAX / sizeof(uint32_t)))
+		return false;
+	req_size = req->size * sizeof(uint32_t);
+	if ((req_size == 0) || (req_size > size))
+		return false;
+	if (req->offset >= size)
+		return false;
+	if ((req->offset + req_size) > size)
+		return false;
+
+	return true;
+}
 
 static int qfp_fuse_open(struct inode *inode, struct file *filp)
 {
@@ -79,7 +112,7 @@ static inline int qfp_fuse_wait_for_fuse_blow(u32 *status)
 	udelay(400);
 	do {
 		*status = readl_relaxed(
-			qfp_priv->base + QFPROM_BLOW_STATUS_OFFSET);
+			qfp_priv->base + qfp_priv->blow_status_offset);
 
 		if (!(*status & QFPROM_BLOW_STATUS_BUSY))
 			return 0;
@@ -116,7 +149,7 @@ static int qfp_fuse_write_word(u32 *addr, u32 data)
 	int err;
 
 	/* Set QFPROM  blow timer register */
-	writel_relaxed(QFPROM_BLOW_TIMER_VALUE,
+	writel_relaxed(qfp_priv->blow_timer,
 			qfp_priv->base + QFPROM_BLOW_TIMER_OFFSET);
 	mb();
 
@@ -177,7 +210,9 @@ qfp_fuse_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int err = 0;
 	struct qfp_fuse_req req;
-	u32 *buf = NULL;
+	u32 fuse_buf[QFP_FUSE_BUF_SIZE];
+	u32 *buf = fuse_buf;
+	u32 *ptr = NULL;
 	int i;
 
 	/* Verify user arguments. */
@@ -199,25 +234,21 @@ qfp_fuse_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		/* Check for limits */
-		if (!req.size) {
-			pr_err("Request size zero.\n");
-			err = -EFAULT;
+		if (is_usr_req_valid(&req) == false) {
+			pr_err("Invalid request\n");
+			err = -EINVAL;
 			break;
 		}
 
-		if (qfp_priv->base + req.offset + (req.size - 1) * 4 >
-				qfp_priv->end) {
-			pr_err("Req size exceeds QFPROM addr space\n");
-			err = -EFAULT;
-			break;
-		}
-
-		/* Allocate memory for buffer */
-		buf = kzalloc(req.size * 4, GFP_KERNEL);
-		if (buf == NULL) {
-			pr_alert("No memory for data\n");
-			err = -ENOMEM;
-			break;
+		if (req.size > QFP_FUSE_BUF_SIZE) {
+			/* Allocate memory for buffer */
+			ptr = kzalloc(req.size * 4, GFP_KERNEL);
+			if (ptr == NULL) {
+				pr_alert("No memory for data\n");
+				err = -ENOMEM;
+				break;
+			}
+			buf = ptr;
 		}
 
 		if (mutex_lock_interruptible(&qfp_priv->lock)) {
@@ -250,25 +281,23 @@ qfp_fuse_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			err = -EFAULT;
 			break;
 		}
+
 		/* Check for limits */
-		if (!req.size) {
-			pr_err("Request size zero.\n");
-			err = -EFAULT;
-			break;
-		}
-		if (qfp_priv->base + req.offset + (req.size - 1) * 4 >
-				qfp_priv->end) {
-			pr_err("Req size exceeds QFPROM space\n");
-			err = -EFAULT;
+		if (is_usr_req_valid(&req) == false) {
+			pr_err("Invalid request\n");
+			err = -EINVAL;
 			break;
 		}
 
-		/* Allocate memory for buffer */
-		buf = kzalloc(4 * (req.size), GFP_KERNEL);
-		if (buf == NULL) {
-			pr_alert("No memory for data\n");
-			err = -ENOMEM;
-			break;
+		if (req.size > QFP_FUSE_BUF_SIZE) {
+			/* Allocate memory for buffer */
+			ptr = kzalloc(req.size * 4, GFP_KERNEL);
+			if (ptr == NULL) {
+				pr_alert("No memory for data\n");
+				err = -ENOMEM;
+				break;
+			}
+			buf = ptr;
 		}
 
 		/* Copy user data to local buffer */
@@ -296,7 +325,9 @@ qfp_fuse_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		pr_err("Invalid ioctl command.\n");
 		return -ENOTTY;
 	}
-	kfree(buf);
+
+	kfree(ptr);
+
 	return err;
 }
 
@@ -313,20 +344,64 @@ static struct miscdevice qfp_fuse_dev = {
 	.fops = &qfp_fuse_fops
 };
 
-
-static int qfp_fuse_probe(struct platform_device *pdev)
+static int qfp_get_resource(struct platform_device *pdev,
+			    struct qfp_resource *qfp_res)
 {
-	int ret = 0;
 	struct resource *res;
-	const char *regulator_name = pdev->dev.platform_data;
-
+	const char *regulator_name = NULL;
+	uint32_t blow_status_offset = QFPROM_BLOW_STATUS_OFFSET;
+	uint32_t blow_timer = QFPROM_BLOW_TIMER_VALUE;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res)
 		return -ENODEV;
 
+	if (pdev->dev.of_node) {
+		struct device_node *np = pdev->dev.of_node;
+
+		if (of_property_read_u32(np, "qcom,blow-status-offset",
+					 &blow_status_offset) == 0) {
+			if ((res->start + blow_status_offset) > res->end) {
+				pr_err("Invalid blow-status-offset\n");
+				return -EINVAL;
+			}
+		}
+
+		if (of_property_read_bool(np, "vdd-blow-supply")) {
+			/* For backward compatibility, use the name
+			 * from blow_supply */
+			regulator_name = blow_supply;
+		} else {
+			pr_err("Failed to find regulator-name property\n");
+			return -EINVAL;
+		}
+
+		of_property_read_u32(np, "qcom,blow-timer", &blow_timer);
+
+	} else {
+		regulator_name = pdev->dev.platform_data;
+	}
+
 	if (!regulator_name)
 		return -EINVAL;
+
+	qfp_res->start = res->start;
+	qfp_res->size = resource_size(res);
+	qfp_res->blow_status_offset = blow_status_offset;
+	qfp_res->blow_timer = blow_timer;
+	qfp_res->regulator_name = regulator_name;
+
+	return 0;
+}
+
+static int qfp_fuse_probe(struct platform_device *pdev)
+{
+	int ret = 0;
+	struct qfp_resource res;
+
+	ret = qfp_get_resource(pdev, &res);
+	if (ret)
+		return ret;
 
 	/* Initialize */
 	qfp_priv = kzalloc(sizeof(struct qfp_priv_t), GFP_KERNEL);
@@ -336,15 +411,20 @@ static int qfp_fuse_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	/* The driver is passed ioremapped address */
-	qfp_priv->base = res->start;
-	qfp_priv->end = res->end;
+	qfp_priv->base = ioremap(res.start, res.size);
+	if (!qfp_priv->base) {
+		pr_warn("ioremap failed\n");
+		goto err;
+	}
+	qfp_priv->size = res.size;
+	qfp_priv->blow_status_offset = res.blow_status_offset;
+	qfp_priv->blow_timer = res.blow_timer;
 
 	/* Get regulator for QFPROM writes */
-	qfp_priv->fuse_vdd = regulator_get(NULL, regulator_name);
+	qfp_priv->fuse_vdd = regulator_get(&pdev->dev, res.regulator_name);
 	if (IS_ERR(qfp_priv->fuse_vdd)) {
 		ret = PTR_ERR(qfp_priv->fuse_vdd);
-		pr_err("Err (%d) getting %s\n", ret, regulator_name);
+		pr_err("Err (%d) getting %s\n", ret, res.regulator_name);
 		qfp_priv->fuse_vdd = NULL;
 		goto err;
 	}
@@ -355,7 +435,8 @@ static int qfp_fuse_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err;
 
-	pr_info("Fuse driver base:%x end:%x\n", qfp_priv->base, qfp_priv->end);
+	pr_info("Fuse driver base:%p end:%p\n", qfp_priv->base,
+			qfp_priv->base + qfp_priv->size);
 	return 0;
 
 err:
@@ -369,11 +450,12 @@ err:
 
 }
 
-static int __devexit qfp_fuse_remove(struct platform_device *plat)
+static int qfp_fuse_remove(struct platform_device *plat)
 {
 	if (qfp_priv && qfp_priv->fuse_vdd)
 		regulator_put(qfp_priv->fuse_vdd);
 
+	iounmap((void __iomem *)qfp_priv->base);
 	kfree(qfp_priv);
 	qfp_priv = NULL;
 
@@ -382,12 +464,18 @@ static int __devexit qfp_fuse_remove(struct platform_device *plat)
 	return 0;
 }
 
+static struct of_device_id __attribute__ ((unused)) qfp_fuse_of_match[] = {
+	{ .compatible = "qcom,qfp-fuse", },
+	{}
+};
+
 static struct platform_driver qfp_fuse_driver = {
 	.probe = qfp_fuse_probe,
 	.remove = qfp_fuse_remove,
 	.driver = {
 		.name = "qfp_fuse_driver",
 		.owner = THIS_MODULE,
+		.of_match_table = of_match_ptr(qfp_fuse_of_match),
 	},
 };
 

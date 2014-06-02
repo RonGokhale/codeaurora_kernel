@@ -76,7 +76,7 @@ void of_device_make_bus_id(struct device *dev)
 {
 	static atomic_t bus_no_reg_magic;
 	struct device_node *node = dev->of_node;
-	const u32 *reg;
+	const __be32 *reg;
 	u64 addr;
 	const __be32 *addrp;
 	int magic;
@@ -327,10 +327,9 @@ static const struct of_dev_auxdata *of_dev_lookup(const struct of_dev_auxdata *l
 	for(; lookup->compatible != NULL; lookup++) {
 		if (!of_device_is_compatible(np, lookup->compatible))
 			continue;
-		if (of_address_to_resource(np, 0, &res))
-			continue;
-		if (res.start != lookup->phys_addr)
-			continue;
+		if (!of_address_to_resource(np, 0, &res))
+			if (res.start != lookup->phys_addr)
+				continue;
 		pr_debug("%s: devname=%s\n", np->full_name, lookup->name);
 		return lookup;
 	}
@@ -437,6 +436,7 @@ EXPORT_SYMBOL(of_platform_bus_probe);
  * of_platform_populate() - Populate platform_devices from device tree data
  * @root: parent of the first level to probe or NULL for the root of the tree
  * @matches: match table, NULL to use the default
+ * @lookup: auxdata table for matching id and platform_data with device nodes
  * @parent: parent to hook devices from, NULL for toplevel
  *
  * Similar to of_platform_bus_probe(), this function walks the device tree
@@ -472,4 +472,5 @@ int of_platform_populate(struct device_node *root,
 	of_node_put(root);
 	return rc;
 }
+EXPORT_SYMBOL_GPL(of_platform_populate);
 #endif /* CONFIG_OF_ADDRESS */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,18 +19,21 @@
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/qpnp/clkdiv.h>
 #include <linux/regulator/consumer.h>
+#include <linux/io.h>
+#include <soc/qcom/subsystem_notif.h>
+#include <soc/qcom/socinfo.h>
 #include <sound/core.h>
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
 #include <sound/jack.h>
 #include <sound/q6afe-v2.h>
-#include <asm/mach-types.h>
-#include <mach/socinfo.h>
 #include <sound/pcm_params.h>
+
 #include "qdsp6v2/msm-pcm-routing-v2.h"
+#include "qdsp6v2/q6core.h"
+#include "../codecs/wcd9xxx-common.h"
 #include "../codecs/wcd9320.h"
-#include <linux/io.h>
 
 #define DRV_NAME "apq8074-asoc-taiko"
 
@@ -81,6 +84,10 @@ static int apq8074_auxpcm_rate = 8000;
 #define EXT_CLASS_AB_DELAY_DELTA 1000
 
 #define NUM_OF_AUXPCM_GPIOS 4
+
+static void *adsp_state_notifier;
+
+#define ADSP_STATE_READY_TIMEOUT_MS 3000
 
 static inline int param_is_mask(int p)
 {
@@ -245,8 +252,12 @@ static int apq8074_liquid_ext_spk_power_amp_init(void)
 
 static void apq8074_liquid_ext_ult_spk_power_amp_enable(u32 on)
 {
+	int ret;
+
 	if (on) {
-		regulator_enable(ext_spk_amp_regulator);
+		ret = regulator_enable(ext_spk_amp_regulator);
+		if (ret)
+			pr_err("%s: regulator enable failed\n", __func__);
 		gpio_direction_output(ext_ult_spk_amp_gpio, 1);
 		/* time takes enable the external power class AB amplifier */
 		usleep_range(EXT_CLASS_AB_EN_DELAY,
@@ -265,8 +276,12 @@ static void apq8074_liquid_ext_ult_spk_power_amp_enable(u32 on)
 
 static void apq8074_liquid_ext_spk_power_amp_enable(u32 on)
 {
+	int ret;
+
 	if (on) {
-		regulator_enable(ext_spk_amp_regulator);
+		ret = regulator_enable(ext_spk_amp_regulator);
+		if (ret)
+			pr_err("%s: regulator enable failed\n", __func__);
 		gpio_direction_output(ext_spk_amp_gpio, on);
 		/*time takes enable the external power amplifier*/
 		usleep_range(EXT_CLASS_D_EN_DELAY,
@@ -651,7 +666,8 @@ static const struct snd_soc_dapm_widget apq8074_dapm_widgets[] = {
 static const char *const spk_function[] = {"Off", "On"};
 static const char *const slim0_rx_ch_text[] = {"One", "Two"};
 static const char *const slim0_tx_ch_text[] = {"One", "Two", "Three", "Four",
-						"Five"};
+						"Five", "Six", "Seven",
+						"Eight"};
 static char const *hdmi_rx_ch_text[] = {"Two", "Three", "Four", "Five",
 					"Six", "Seven", "Eight"};
 static char const *rx_bit_format_text[] = {"S16_LE", "S24_LE"};
@@ -1192,7 +1208,7 @@ static int msm_be_hw_params_fixup(struct snd_soc_pcm_runtime *rtd,
 static const struct soc_enum msm_snd_enum[] = {
 	SOC_ENUM_SINGLE_EXT(2, spk_function),
 	SOC_ENUM_SINGLE_EXT(2, slim0_rx_ch_text),
-	SOC_ENUM_SINGLE_EXT(5, slim0_tx_ch_text),
+	SOC_ENUM_SINGLE_EXT(8, slim0_tx_ch_text),
 	SOC_ENUM_SINGLE_EXT(7, hdmi_rx_ch_text),
 	SOC_ENUM_SINGLE_EXT(2, rx_bit_format_text),
 	SOC_ENUM_SINGLE_EXT(3, slim0_rx_sample_rate_text),
@@ -1228,6 +1244,101 @@ static bool apq8074_swap_gnd_mic(struct snd_soc_codec *codec)
 	pr_debug("%s: swap select switch %d to %d\n", __func__, value, !value);
 	gpio_set_value_cansleep(pdata->us_euro_gpio, !value);
 	return true;
+}
+
+static int msm_afe_set_config(struct snd_soc_codec *codec)
+{
+	int rc;
+	void *config_data;
+
+	pr_debug("%s: enter\n", __func__);
+	config_data = taiko_get_afe_config(codec, AFE_CDC_REGISTERS_CONFIG);
+	rc = afe_set_config(AFE_CDC_REGISTERS_CONFIG, config_data, 0);
+	if (rc) {
+		pr_err("%s: Failed to set codec registers config %d\n",
+		       __func__, rc);
+		return rc;
+	}
+
+	config_data = taiko_get_afe_config(codec, AFE_SLIMBUS_SLAVE_CONFIG);
+	rc = afe_set_config(AFE_SLIMBUS_SLAVE_CONFIG, config_data, 0);
+	if (rc) {
+		pr_err("%s: Failed to set slimbus slave config %d\n", __func__,
+		       rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static void msm_afe_clear_config(void)
+{
+	afe_clear_config(AFE_CDC_REGISTERS_CONFIG);
+	afe_clear_config(AFE_SLIMBUS_SLAVE_CONFIG);
+}
+
+static int  msm8974_adsp_state_callback(struct notifier_block *nb,
+		unsigned long value, void *priv)
+{
+	if (value == SUBSYS_BEFORE_SHUTDOWN) {
+		pr_debug("%s: ADSP is about to shutdown. Clearing AFE config\n",
+			 __func__);
+		msm_afe_clear_config();
+	} else if (value == SUBSYS_AFTER_POWERUP) {
+		pr_debug("%s: ADSP is up\n", __func__);
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block adsp_state_notifier_block = {
+	.notifier_call = msm8974_adsp_state_callback,
+	.priority = -INT_MAX,
+};
+
+static int msm8974_taiko_codec_up(struct snd_soc_codec *codec)
+{
+	int err;
+	unsigned long timeout;
+	int adsp_ready = 0;
+
+	timeout = jiffies +
+		msecs_to_jiffies(ADSP_STATE_READY_TIMEOUT_MS);
+
+	do {
+		if (!q6core_is_adsp_ready()) {
+			pr_err("%s: ADSP Audio isn't ready\n", __func__);
+		} else {
+			pr_debug("%s: ADSP Audio is ready\n", __func__);
+			adsp_ready = 1;
+			break;
+		}
+	} while (time_after(timeout, jiffies));
+
+	if (!adsp_ready) {
+		pr_err("%s: timed out waiting for ADSP Audio\n", __func__);
+		return -ETIMEDOUT;
+	}
+
+	err = msm_afe_set_config(codec);
+	if (err)
+		pr_err("%s: Failed to set AFE config. err %d\n",
+				__func__, err);
+	return err;
+}
+
+static int apq8074_taiko_event_cb(struct snd_soc_codec *codec,
+		enum wcd9xxx_codec_event codec_event)
+{
+	switch (codec_event) {
+	case WCD9XXX_CODEC_EVENT_CODEC_UP:
+		return msm8974_taiko_codec_up(codec);
+		break;
+	default:
+		pr_err("%s: UnSupported codec event %d\n",
+				__func__, codec_event);
+		return -EINVAL;
+	}
 }
 
 static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
@@ -1291,19 +1402,9 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 				    tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
 
 
-	config_data = taiko_get_afe_config(codec, AFE_CDC_REGISTERS_CONFIG);
-	err = afe_set_config(AFE_CDC_REGISTERS_CONFIG, config_data, 0);
+	err = msm_afe_set_config(codec);
 	if (err) {
-		pr_err("%s: Failed to set codec registers config %d\n",
-		       __func__, err);
-		goto out;
-	}
-
-	config_data = taiko_get_afe_config(codec, AFE_SLIMBUS_SLAVE_CONFIG);
-	err = afe_set_config(AFE_SLIMBUS_SLAVE_CONFIG, config_data, 0);
-	if (err) {
-		pr_err("%s: Failed to set slimbus slave config %d\n", __func__,
-		       err);
+		pr_err("%s: Failed to set AFE config %d\n", __func__, err);
 		goto out;
 	}
 
@@ -1340,12 +1441,23 @@ static int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		err = taiko_hs_detect(codec, &mbhc_cfg);
 		if (err)
 			goto out;
-		else
-			return err;
 	} else {
 		err = -ENOMEM;
 		goto out;
 	}
+	adsp_state_notifier =
+	    subsys_notif_register_notifier("adsp",
+					   &adsp_state_notifier_block);
+	if (!adsp_state_notifier) {
+		pr_err("%s: Failed to register adsp state notifier\n",
+		       __func__);
+		err = -EFAULT;
+		taiko_hs_detect_exit(codec);
+		goto out;
+	}
+
+	taiko_event_register(apq8074_taiko_event_cb, rtd->codec);
+	return 0;
 out:
 	clk_put(codec_clk);
 	return err;
@@ -1708,7 +1820,7 @@ static struct snd_soc_dai_link apq8074_common_dai_links[] = {
 		.name = "MSM8974 Compr",
 		.stream_name = "COMPR",
 		.cpu_dai_name	= "MultiMedia4",
-		.platform_name  = "msm-compr-dsp",
+		.platform_name  = "msm-compress-dsp",
 		.dynamic = 1,
 		.trigger = {SND_SOC_DPCM_TRIGGER_POST,
 			 SND_SOC_DPCM_TRIGGER_POST},
@@ -2263,7 +2375,7 @@ static int apq8074_prepare_us_euro(struct snd_soc_card *card)
 	return 0;
 }
 
-static __devinit int apq8074_asoc_machine_probe(struct platform_device *pdev)
+static int apq8074_asoc_machine_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = &snd_soc_card_apq8074;
 	struct apq8074_asoc_mach_data *pdata;
@@ -2429,7 +2541,7 @@ err:
 	return ret;
 }
 
-static int __devexit apq8074_asoc_machine_remove(struct platform_device *pdev)
+static int apq8074_asoc_machine_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	struct apq8074_asoc_mach_data *pdata = snd_soc_card_get_drvdata(card);
@@ -2476,7 +2588,7 @@ static struct platform_driver apq8074_asoc_machine_driver = {
 		.of_match_table = apq8074_asoc_machine_of_match,
 	},
 	.probe = apq8074_asoc_machine_probe,
-	.remove = __devexit_p(apq8074_asoc_machine_remove),
+	.remove = apq8074_asoc_machine_remove,
 };
 module_platform_driver(apq8074_asoc_machine_driver);
 

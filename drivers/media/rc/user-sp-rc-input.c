@@ -113,7 +113,7 @@ const struct file_operations sp_fops = {
 	.release = user_sp_input_release,
 };
 
-static int __devinit user_sp_input_probe(struct platform_device *pdev)
+static int user_sp_input_probe(struct platform_device *pdev)
 {
 	struct user_sp_input_dev *user_sp_dev;
 	struct rc_dev *spdev;
@@ -204,7 +204,7 @@ err:
 	return retval;
 }
 
-static int __devexit user_sp_input_remove(struct platform_device *pdev)
+static int user_sp_input_remove(struct platform_device *pdev)
 {
 	struct user_sp_input_dev *user_sp_dev = platform_get_drvdata(pdev);
 
@@ -223,7 +223,7 @@ static int __devexit user_sp_input_remove(struct platform_device *pdev)
 
 static struct platform_driver user_sp_input_driver = {
 	.probe  = user_sp_input_probe,
-	.remove = __devexit_p(user_sp_input_remove),
+	.remove = user_sp_input_remove,
 	.driver = {
 		.name   = USER_SP_INPUT_DRV_NAME,
 		.owner  = THIS_MODULE,

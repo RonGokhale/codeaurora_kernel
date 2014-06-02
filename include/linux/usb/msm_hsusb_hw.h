@@ -23,8 +23,10 @@
 #define USB_CAPLENGTH        (MSM_USB_BASE + 0x0100) /* 8 bit */
 #define USB_HS_GPTIMER_BASE  (MSM_USB_BASE + 0x80)
 
-#define GENCFG2_SESS_VLD_CTRL_EN	BIT(7)
-#define GENCFG2_LINESTATE_DIFF_WAKEUP_EN BIT(12)
+#define GENCFG2_SESS_VLD_CTRL_EN		BIT(7)
+#define GENCFG2_LINESTATE_DIFF_WAKEUP_EN	BIT(12)
+#define GENCFG2_SYS_CLK_HOST_DEV_GATE_EN	BIT(13)
+#define GENCFG2_DPSE_DMSE_HV_INTR_EN		BIT(15)
 
 #define USB_USBCMD           (MSM_USB_BASE + 0x0140)
 #define USB_USBSTS           (MSM_USB_BASE + 0x0144)
@@ -49,11 +51,17 @@
 #define L1_CONFIG_PHY_LPM	BIT(10)
 #define L1_CONFIG_PLL		BIT(11)
 
-#define PORTSC_PHCD            (1 << 23) /* phy suspend mode */
+#define AHB2AHB_BYPASS		BIT(31)
+#define AHB2AHB_BYPASS_BIT_MASK        BIT(31)
+#define AHB2AHB_BYPASS_CLEAR   (0 << 31)
+
 #define PORTSC_PTS_MASK         (3 << 30)
 #define PORTSC_PTS_ULPI         (3 << 30)
+#define PORTSC_PHCD             (1 << 23) /* phy suspend mode */
 #define PORTSC_LS               (3 << 10)
 #define PORTSC_LS_DM            (1 << 10)
+#define PORTSC_SUSP_MASK        (1 << 7)  /* Port Suspend */
+#define PORTSC_FPR_MASK         (1 << 6)
 #define PORTSC_CSC              (1 << 1)
 #define PORTSC_CCS              (1 << 0)
 

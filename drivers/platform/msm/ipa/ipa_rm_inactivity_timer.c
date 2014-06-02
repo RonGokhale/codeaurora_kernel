@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,7 +17,7 @@
 #include <linux/timer.h>
 #include <linux/unistd.h>
 #include <linux/workqueue.h>
-#include <mach/ipa.h>
+#include <linux/ipa.h>
 #include "ipa_i.h"
 
 /**
@@ -125,6 +125,7 @@ int ipa_rm_inactivity_timer_init(enum ipa_rm_resource_name resource_name,
 
 	return 0;
 }
+EXPORT_SYMBOL(ipa_rm_inactivity_timer_init);
 
 /**
 * ipa_rm_inactivity_timer_destroy() - De-Init function for IPA
@@ -152,11 +153,14 @@ int ipa_rm_inactivity_timer_destroy(enum ipa_rm_resource_name resource_name)
 		return -EINVAL;
 	}
 
+	cancel_delayed_work_sync(&ipa_rm_it_handles[resource_name].work);
+
 	memset(&ipa_rm_it_handles[resource_name], 0,
 	       sizeof(struct ipa_rm_it_private));
 
 	return 0;
 }
+EXPORT_SYMBOL(ipa_rm_inactivity_timer_destroy);
 
 /**
 * ipa_rm_inactivity_timer_request_resource() - Same as
@@ -196,6 +200,7 @@ int ipa_rm_inactivity_timer_request_resource(
 	IPADBG("%s: resource %d: returning %d\n", __func__, resource_name, ret);
 	return ret;
 }
+EXPORT_SYMBOL(ipa_rm_inactivity_timer_request_resource);
 
 /**
 * ipa_rm_inactivity_timer_release_resource() - Sets the
@@ -246,4 +251,5 @@ int ipa_rm_inactivity_timer_release_resource(
 
 	return 0;
 }
+EXPORT_SYMBOL(ipa_rm_inactivity_timer_release_resource);
 

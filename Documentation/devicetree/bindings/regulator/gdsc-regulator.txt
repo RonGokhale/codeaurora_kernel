@@ -11,7 +11,7 @@ Required properties:
 
 Optional properties:
  - parent-supply:   phandle to the parent supply/regulator node
- - qcom,clock-names: List of string names for core clocks
+ - clock-names:     List of string names for core clocks
  - qcom,retain-mem:  Presence denotes a hardware requirement to leave the
 		     forced core memory retention signals in the core's clock
 		     branch control registers asserted.
@@ -20,6 +20,15 @@ Optional properties:
 		     branch control registers asserted.
  - qcom,skip-logic-collapse: Presence denotes a requirement to leave power to
                              the core's logic enabled.
+ - qcom,support-hw-trigger: Presence denotes a hardware feature to switch
+			    on/off this regulator based on internal HW signals
+			    to save more power.
+ - qcom,enable-root-clk: Presence denotes that the clocks in the "clocks"
+			property are requried to be enabled before gdsc is
+			turned on and disabled before turning off gdsc. This
+			will be used in susbsystems where reset is synchronous
+			and root clk is active without sw being aware of its
+			state.
 
 Example:
 	gdsc_oxili_gx: qcom,gdsc@fd8c4024 {
@@ -27,5 +36,5 @@ Example:
 		regulator-name = "gdsc_oxili_gx";
 		parent-supply = <&pm8841_s4>;
 		reg = <0xfd8c4024 0x4>;
-		qcom,clock-names = "core_clk";
+		clock-names = "core_clk";
 	};

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,6 +14,7 @@
 #ifndef _SPI_QSD_H
 #define _SPI_QSD_H
 
+#include <linux/pinctrl/consumer.h>
 #define SPI_DRV_NAME                  "spi_qsd"
 
 #if defined(CONFIG_SPI_QSD) || defined(CONFIG_SPI_QSD_MODULE)
@@ -196,7 +197,6 @@ static char const * const spi_cs_rsrcs[] = {
 enum msm_spi_mode {
 	SPI_FIFO_MODE  = 0x0,  /* 00 */
 	SPI_BLOCK_MODE = 0x1,  /* 01 */
-	SPI_DMOV_MODE  = 0x2,  /* 10 */
 	SPI_BAM_MODE   = 0x3,  /* 11 */
 	SPI_MODE_NONE  = 0xFF, /* invalid value */
 };
@@ -206,17 +206,6 @@ struct spi_cs_gpio {
 	int  gpio_num;
 	bool valid;
 };
-
-/* Structures for Data Mover */
-struct spi_dmov_cmd {
-	dmov_box box;      /* data aligned to max(dm_burst_size, block_size)
-							   (<= fifo_size) */
-	dmov_s single_pad; /* data unaligned to max(dm_burst_size, block_size)
-			      padded to fit */
-	dma_addr_t cmd_ptr;
-};
-
-static struct pm_qos_request qos_req_list;
 
 #ifdef CONFIG_DEBUG_FS
 /* Used to create debugfs entries */
@@ -285,12 +274,16 @@ struct msm_spi_bam_pipe {
 
 struct msm_spi_bam {
 	void __iomem            *base;
-	u32                      phys_addr;
-	u32                      handle;
+	phys_addr_t              phys_addr;
+	uintptr_t                handle;
 	u32                      irq;
 	struct msm_spi_bam_pipe  prod;
 	struct msm_spi_bam_pipe  cons;
 	bool                     deregister_required;
+	u32			 curr_rx_bytes_recvd;
+	u32			 curr_tx_bytes_sent;
+	u32			 bam_rx_len;
+	u32			 bam_tx_len;
 };
 
 struct msm_spi {
@@ -300,9 +293,6 @@ struct msm_spi {
 	struct device           *dev;
 	spinlock_t               queue_lock;
 	struct mutex             core_lock;
-	struct list_head         queue;
-	struct workqueue_struct *workqueue;
-	struct work_struct       work_data;
 	struct spi_message      *cur_msg;
 	struct spi_transfer     *cur_transfer;
 	struct completion        transfer_complete;
@@ -339,14 +329,6 @@ struct msm_spi {
 	int                      (*dma_init) (struct msm_spi *dd);
 	void                     (*dma_teardown) (struct msm_spi *dd);
 	struct msm_spi_bam       bam;
-	/* Data Mover Commands */
-	struct spi_dmov_cmd      *tx_dmov_cmd;
-	struct spi_dmov_cmd      *rx_dmov_cmd;
-	/* Physical address of the tx dmov box command */
-	dma_addr_t               tx_dmov_cmd_dma;
-	dma_addr_t               rx_dmov_cmd_dma;
-	struct msm_dmov_cmd      tx_hdr;
-	struct msm_dmov_cmd      rx_hdr;
 	int                      input_block_size;
 	int                      output_block_size;
 	int                      input_burst_size;
@@ -361,21 +343,13 @@ struct msm_spi {
 	u32                      tx_unaligned_len;
 	u32                      rx_unaligned_len;
 	/* DMA statistics */
-	int                      stat_dmov_tx_err;
-	int                      stat_dmov_rx_err;
 	int                      stat_rx;
-	int                      stat_dmov_rx;
 	int                      stat_tx;
-	int                      stat_dmov_tx;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dent_spi;
 	struct dentry *debugfs_spi_regs[ARRAY_SIZE(debugfs_spi_regs)];
 #endif
 	struct msm_spi_platform_data *pdata; /* Platform data */
-	/* Remote Spinlock Data */
-	bool                     use_rlock;
-	remote_mutex_t           r_lock;
-	uint32_t                 pm_lat;
 	/* When set indicates multiple transfers in a single message */
 	bool                     multi_xfr;
 	bool                     done;
@@ -391,6 +365,20 @@ struct msm_spi {
 	struct spi_cs_gpio       cs_gpios[ARRAY_SIZE(spi_cs_rsrcs)];
 	enum msm_spi_qup_version qup_ver;
 	int			 max_trfr_len;
+	int			 num_xfrs_grped;
+	u16			 xfrs_delay_usec;
+	struct pinctrl		*pinctrl;
+	struct pinctrl_state	*pins_active;
+	struct pinctrl_state	*pins_sleep;
+	struct pinctrl_state	 *pins_cs_active[SPI_NUM_CHIPSELECTS];
+	struct pinctrl_state	 *pins_cs_sleep[SPI_NUM_CHIPSELECTS];
+};
+
+static const char *pinctrl_cs_pin_name[][SPI_NUM_CHIPSELECTS] = {
+	{"cs0_active", "cs0_sleep"},
+	{"cs1_active", "cs1_sleep"},
+	{"cs2_active", "cs2_sleep"},
+	{"cs3_active", "cs3_sleep"},
 };
 
 /* Forward declaration */

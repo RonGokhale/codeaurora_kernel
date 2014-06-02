@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -50,6 +50,11 @@
 					  MAX_NUM_FRAMES_PER_BUFFER)
 #define COMPRE_OUTPUT_METADATA_SIZE	(sizeof(struct output_meta_data_st))
 #define COMPRESSED_LR_VOL_MAX_STEPS	0x20002000
+
+#define MAX_AC3_PARAM_SIZE		(18*2*sizeof(int))
+#define AMR_WB_BAND_MODE 8
+#define AMR_WB_DTX_MODE 0
+
 
 const DECLARE_TLV_DB_LINEAR(compr_rx_vol_gain, 0,
 			    COMPRESSED_LR_VOL_MAX_STEPS);
@@ -106,11 +111,29 @@ static unsigned int supported_sample_rates[] = {
 	8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000
 };
 
+/* Add supported codecs for compress capture path */
+static uint32_t supported_compr_capture_codecs[] = {
+	SND_AUDIOCODEC_AMRWB
+};
+
 static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
 	.count = ARRAY_SIZE(supported_sample_rates),
 	.list = supported_sample_rates,
 	.mask = 0,
 };
+
+static bool msm_compr_capture_codecs(uint32_t req_codec)
+{
+	int i;
+	pr_debug("%s req_codec:%d\n", __func__, req_codec);
+	if (req_codec == 0)
+		return false;
+	for (i = 0; i < ARRAY_SIZE(supported_compr_capture_codecs); i++) {
+		if (req_codec == supported_compr_capture_codecs[i])
+			return true;
+	}
+	return false;
+}
 
 static void compr_event_handler(uint32_t opcode,
 		uint32_t token, uint32_t *payload, void *priv)
@@ -122,6 +145,7 @@ static void compr_event_handler(uint32_t opcode,
 	struct audio_aio_write_param param;
 	struct audio_aio_read_param read_param;
 	struct audio_buffer *buf = NULL;
+	phys_addr_t temp;
 	struct output_meta_data_st output_meta_data;
 	uint32_t *ptrmem = (uint32_t *)payload;
 	int i = 0;
@@ -167,10 +191,9 @@ static void compr_event_handler(uint32_t opcode,
 		buf = prtd->audio_client->port[IN].buf;
 		pr_debug("%s:writing %d bytes of buffer[%d] to dsp 2\n",
 				__func__, prtd->pcm_count, prtd->out_head);
-		pr_debug("%s:writing buffer[%d] from 0x%08x\n",
-				__func__, prtd->out_head,
-				((unsigned int)buf[0].phys
-				+ (prtd->out_head * prtd->pcm_count)));
+		temp = buf[0].phys + (prtd->out_head * prtd->pcm_count);
+		pr_debug("%s:writing buffer[%d] from 0x%pa\n",
+			__func__, prtd->out_head, &temp);
 
 		if (runtime->tstamp_mode == SNDRV_PCM_TSTAMP_ENABLE)
 			time_stamp_flag = SET_TIMESTAMP;
@@ -191,16 +214,12 @@ static void compr_event_handler(uint32_t opcode,
 			pr_debug("Recieved a zero length buffer-break out");
 			break;
 		}
-		param.paddr = (unsigned long)buf[0].phys
-				+ (prtd->out_head * prtd->pcm_count)
-				+ output_meta_data.meta_data_length;
+		param.paddr = temp + output_meta_data.meta_data_length;
 		param.len = buffer_length;
 		param.msw_ts = output_meta_data.timestamp_msw;
 		param.lsw_ts = output_meta_data.timestamp_lsw;
 		param.flags = time_stamp_flag;
-		param.uid =  (unsigned long)buf[0].phys
-				+ (prtd->out_head * prtd->pcm_count
-				+ output_meta_data.meta_data_length);
+		param.uid = prtd->session_id;
 		for (i = 0; i < sizeof(struct audio_aio_write_param)/4;
 					i++, ++ptrmem)
 			pr_debug("cmd[%d]=0x%08x\n", i, *ptrmem);
@@ -249,10 +268,11 @@ static void compr_event_handler(uint32_t opcode,
 			break;
 		}
 		buf = prtd->audio_client->port[OUT].buf;
-		pr_debug("pcm_irq_pos=%d, buf[0].phys = 0x%X\n",
-				prtd->pcm_irq_pos, (uint32_t)buf[0].phys);
+
+		pr_debug("pcm_irq_pos=%d, buf[0].phys = 0x%pa\n",
+				prtd->pcm_irq_pos, &buf[0].phys);
 		read_param.len = prtd->pcm_count - COMPRE_CAPTURE_HEADER_SIZE;
-		read_param.paddr = (unsigned long)(buf[0].phys) +
+		read_param.paddr = buf[0].phys +
 			prtd->pcm_irq_pos + COMPRE_CAPTURE_HEADER_SIZE;
 		prtd->pcm_irq_pos += prtd->pcm_count;
 
@@ -272,13 +292,12 @@ static void compr_event_handler(uint32_t opcode,
 			}
 			if (!atomic_read(&prtd->pending_buffer))
 				break;
-			pr_debug("%s:writing %d bytes of buffer[%d] to dsp\n",
+			pr_debug("%s: writing %d bytes of buffer[%d] to dsp\n",
 				__func__, prtd->pcm_count, prtd->out_head);
 			buf = prtd->audio_client->port[IN].buf;
-			pr_debug("%s:writing buffer[%d] from 0x%08x\n",
-				__func__, prtd->out_head,
-				((unsigned int)buf[0].phys
-				+ (prtd->out_head * prtd->pcm_count)));
+			pr_debug("%s: writing buffer[%d] from 0x%pa head %d count %d\n",
+				__func__, prtd->out_head, &buf[0].phys,
+				prtd->pcm_count, prtd->out_head);
 			if (runtime->tstamp_mode == SNDRV_PCM_TSTAMP_ENABLE)
 				time_stamp_flag = SET_TIMESTAMP;
 			else
@@ -293,14 +312,14 @@ static void compr_event_handler(uint32_t opcode,
 			pr_debug("timestamp_msw: %d, timestamp_lsw: %d\n",
 				 output_meta_data.timestamp_msw,
 				 output_meta_data.timestamp_lsw);
-			param.paddr = (unsigned long)buf[prtd->out_head].phys
+			param.paddr = buf[prtd->out_head].phys
 					+ output_meta_data.meta_data_length;
 			param.len = buffer_length;
 			param.msw_ts = output_meta_data.timestamp_msw;
 			param.lsw_ts = output_meta_data.timestamp_lsw;
 			param.flags = time_stamp_flag;
-			param.uid =  (unsigned long)buf[prtd->out_head].phys
-					+ output_meta_data.meta_data_length;
+			param.uid = prtd->session_id;
+			param.metadata_len = COMPRE_OUTPUT_METADATA_SIZE;
 			if (q6asm_async_write(prtd->audio_client,
 						&param) < 0)
 				pr_err("%s:q6asm_async_write failed\n",
@@ -349,11 +368,67 @@ static int msm_compr_playback_prepare(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct compr_audio *compr = runtime->private_data;
+	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct msm_audio *prtd = &compr->prtd;
+	struct snd_pcm_hw_params *params;
 	struct asm_aac_cfg aac_cfg;
+	uint16_t bits_per_sample = 16;
 	int ret;
 
-	pr_debug("compressed stream prepare\n");
+	struct asm_softpause_params softpause = {
+		.enable = SOFT_PAUSE_ENABLE,
+		.period = SOFT_PAUSE_PERIOD,
+		.step = SOFT_PAUSE_STEP,
+		.rampingcurve = SOFT_PAUSE_CURVE_LINEAR,
+	};
+	struct asm_softvolume_params softvol = {
+		.period = SOFT_VOLUME_PERIOD,
+		.step = SOFT_VOLUME_STEP,
+		.rampingcurve = SOFT_VOLUME_CURVE_LINEAR,
+	};
+
+	pr_debug("%s\n", __func__);
+
+	params = &soc_prtd->dpcm[substream->stream].hw_params;
+	if (runtime->format == SNDRV_PCM_FORMAT_S24_LE)
+		bits_per_sample = 24;
+
+	ret = q6asm_open_write_v2(prtd->audio_client,
+			compr->codec, bits_per_sample);
+	if (ret < 0) {
+		pr_err("%s: Session out open failed\n",
+				__func__);
+		return -ENOMEM;
+	}
+	msm_pcm_routing_reg_phy_stream(
+			soc_prtd->dai_link->be_id,
+			prtd->audio_client->perf_mode,
+			prtd->session_id,
+			substream->stream);
+	/*
+	 * the number of channels are required to call volume api
+	 * accoridngly. So, get channels from hw params
+	 */
+	if ((params_channels(params) > 0) &&
+			(params_periods(params) <= runtime->hw.channels_max))
+		prtd->channel_mode = params_channels(params);
+
+	ret = q6asm_set_softpause(prtd->audio_client, &softpause);
+	if (ret < 0)
+		pr_err("%s: Send SoftPause Param failed ret=%d\n",
+				__func__, ret);
+	ret = q6asm_set_softvolume(prtd->audio_client, &softvol);
+	if (ret < 0)
+		pr_err("%s: Send SoftVolume Param failed ret=%d\n",
+				__func__, ret);
+
+	ret = q6asm_set_io_mode(prtd->audio_client,
+			(COMPRESSED_IO | ASYNC_IO_MODE));
+	if (ret < 0) {
+		pr_err("%s: Set IO mode failed\n", __func__);
+		return -ENOMEM;
+	}
+
 	prtd->pcm_size = snd_pcm_lib_buffer_bytes(substream);
 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
 	prtd->pcm_irq_pos = 0;
@@ -418,13 +493,75 @@ static int msm_compr_capture_prepare(struct snd_pcm_substream *substream)
 	struct msm_audio *prtd = &compr->prtd;
 	struct audio_buffer *buf = prtd->audio_client->port[OUT].buf;
 	struct snd_codec *codec = &compr->info.codec_param.codec;
+	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct audio_aio_read_param read_param;
+	uint16_t bits_per_sample = 16;
 	int ret = 0;
 	int i;
+
 	prtd->pcm_size = snd_pcm_lib_buffer_bytes(substream);
 	prtd->pcm_count = snd_pcm_lib_period_bytes(substream);
 	prtd->pcm_irq_pos = 0;
 
+	if (runtime->format == SNDRV_PCM_FORMAT_S24_LE)
+		bits_per_sample = 24;
+
+	if (!msm_compr_capture_codecs(
+				compr->info.codec_param.codec.id)) {
+		/*
+		 * request codec invalid or not supported,
+		 * use default compress format
+		 */
+		compr->info.codec_param.codec.id =
+			SND_AUDIOCODEC_AMRWB;
+	}
+	switch (compr->info.codec_param.codec.id) {
+	case SND_AUDIOCODEC_AMRWB:
+		pr_debug("q6asm_open_read(FORMAT_AMRWB)\n");
+		ret = q6asm_open_read(prtd->audio_client,
+				FORMAT_AMRWB);
+		if (ret < 0) {
+			pr_err("%s: compressed Session out open failed\n",
+					__func__);
+			return -ENOMEM;
+		}
+		pr_debug("msm_pcm_routing_reg_phy_stream\n");
+		msm_pcm_routing_reg_phy_stream(
+				soc_prtd->dai_link->be_id,
+				prtd->audio_client->perf_mode,
+				prtd->session_id, substream->stream);
+		break;
+	default:
+		pr_debug("q6asm_open_read_compressed(COMPRESSED_META_DATA_MODE)\n");
+		/*
+		   ret = q6asm_open_read_compressed(prtd->audio_client,
+		   MAX_NUM_FRAMES_PER_BUFFER,
+		   COMPRESSED_META_DATA_MODE);
+		 */
+			ret = -EINVAL;
+			break;
+	}
+
+	if (ret < 0) {
+		pr_err("%s: compressed Session out open failed\n",
+				__func__);
+		return -ENOMEM;
+	}
+
+	ret = q6asm_set_io_mode(prtd->audio_client,
+		(COMPRESSED_IO | ASYNC_IO_MODE));
+		if (ret < 0) {
+			pr_err("%s: Set IO mode failed\n", __func__);
+				return -ENOMEM;
+		}
+
+	if (!msm_compr_capture_codecs(codec->id)) {
+		/*
+		 * request codec invalid or not supported,
+		 * use default compress format
+		 */
+		codec->id = SND_AUDIOCODEC_AMRWB;
+	}
 	/* rate and channels are sent to audio driver */
 	prtd->samp_rate = runtime->rate;
 	prtd->channel_mode = runtime->channels;
@@ -438,8 +575,13 @@ static int msm_compr_capture_prepare(struct snd_pcm_substream *substream)
 		pr_debug("SND_AUDIOCODEC_AMRWB\n");
 		ret = q6asm_enc_cfg_blk_amrwb(prtd->audio_client,
 			MAX_NUM_FRAMES_PER_BUFFER,
-			codec->options.generic.reserved[0] /*bitrate 0-8*/,
-			codec->options.generic.reserved[1] /*dtx mode 0/1*/);
+			/*
+			 * use fixed band mode and dtx mode
+			 * band mode - 23.85 kbps
+			 */
+			AMR_WB_BAND_MODE,
+			/* dtx mode - disable */
+			AMR_WB_DTX_MODE);
 		if (ret < 0)
 			pr_err("%s: CMD Format block" \
 				"failed: %d\n", __func__, ret);
@@ -458,16 +600,16 @@ static int msm_compr_capture_prepare(struct snd_pcm_substream *substream)
 		case SND_AUDIOCODEC_AMRWB:
 			read_param.len = prtd->pcm_count
 					- COMPRE_CAPTURE_HEADER_SIZE;
-			read_param.paddr = (unsigned long)(buf[i].phys)
+			read_param.paddr = buf[i].phys
 					+ COMPRE_CAPTURE_HEADER_SIZE;
 			pr_debug("Push buffer [%d] to DSP, "\
-					"paddr: %p, vaddr: %p\n",
-					i, (void *) read_param.paddr,
+					"paddr: %pa, vaddr: %p\n",
+					i, &read_param.paddr,
 					buf[i].data);
 			q6asm_async_read(prtd->audio_client, &read_param);
 			break;
 		default:
-			read_param.paddr = (unsigned long)(buf[i].phys);
+			read_param.paddr = buf[i].phys;
 			/*q6asm_async_read_compressed(prtd->audio_client,
 				&read_param);*/
 			pr_debug("%s: To add support for read compressed\n",
@@ -497,6 +639,15 @@ static int msm_compr_trigger(struct snd_pcm_substream *substream, int cmd)
 		prtd->pcm_irq_pos = 0;
 
 		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+			if (!msm_compr_capture_codecs(
+				compr->info.codec_param.codec.id)) {
+				/*
+				 * request codec invalid or not supported,
+				 * use default compress format
+				 */
+				compr->info.codec_param.codec.id =
+				SND_AUDIOCODEC_AMRWB;
+			}
 			switch (compr->info.codec_param.codec.id) {
 			case SND_AUDIOCODEC_AMRWB:
 				break;
@@ -717,6 +868,7 @@ static int msm_compr_close(struct snd_pcm_substream *substream)
 		ret = msm_compr_capture_close(substream);
 	return ret;
 }
+
 static int msm_compr_prepare(struct snd_pcm_substream *substream)
 {
 	int ret = 0;
@@ -770,107 +922,16 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
-	struct snd_soc_pcm_runtime *soc_prtd = substream->private_data;
 	struct compr_audio *compr = runtime->private_data;
 	struct msm_audio *prtd = &compr->prtd;
 	struct snd_dma_buffer *dma_buf = &substream->dma_buffer;
 	struct audio_buffer *buf;
 	int dir, ret;
-	uint16_t bits_per_sample = 16;
 
-	struct asm_softpause_params softpause = {
-		.enable = SOFT_PAUSE_ENABLE,
-		.period = SOFT_PAUSE_PERIOD,
-		.step = SOFT_PAUSE_STEP,
-		.rampingcurve = SOFT_PAUSE_CURVE_LINEAR,
-	};
-	struct asm_softvolume_params softvol = {
-		.period = SOFT_VOLUME_PERIOD,
-		.step = SOFT_VOLUME_STEP,
-		.rampingcurve = SOFT_VOLUME_CURVE_LINEAR,
-	};
-
-	pr_debug("%s\n", __func__);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
 		dir = IN;
 	else
 		dir = OUT;
-
-	if (runtime->format == SNDRV_PCM_FORMAT_S24_LE)
-		bits_per_sample = 24;
-
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		ret = q6asm_open_write_v2(prtd->audio_client,
-				compr->codec, bits_per_sample);
-		if (ret < 0) {
-			pr_err("%s: Session out open failed\n",
-				__func__);
-			return -ENOMEM;
-		}
-		msm_pcm_routing_reg_phy_stream(
-			soc_prtd->dai_link->be_id,
-			prtd->audio_client->perf_mode,
-			prtd->session_id,
-			substream->stream);
-		/* the number of channels are required to call volume api
-		   accoridngly. So, get channels from hw params */
-		if ((params_channels(params) > 0) &&
-		    (params_periods(params) <= runtime->hw.channels_max))
-			prtd->channel_mode = params_channels(params);
-
-		ret = compressed_set_volume(prtd, 0);
-		if (ret < 0)
-			pr_err("%s : Set Volume failed : %d", __func__, ret);
-
-		ret = q6asm_set_softpause(prtd->audio_client, &softpause);
-		if (ret < 0)
-			pr_err("%s: Send SoftPause Param failed ret=%d\n",
-				__func__, ret);
-		ret = q6asm_set_softvolume(prtd->audio_client, &softvol);
-		if (ret < 0)
-			pr_err("%s: Send SoftVolume Param failed ret=%d\n",
-				__func__, ret);
-	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
-		switch (compr->info.codec_param.codec.id) {
-		case SND_AUDIOCODEC_AMRWB:
-			pr_debug("q6asm_open_read(FORMAT_AMRWB)\n");
-			ret = q6asm_open_read(prtd->audio_client,
-				FORMAT_AMRWB);
-			if (ret < 0) {
-				pr_err("%s: compressed Session out open failed\n",
-					__func__);
-				return -ENOMEM;
-			}
-			pr_debug("msm_pcm_routing_reg_phy_stream\n");
-			msm_pcm_routing_reg_phy_stream(
-					soc_prtd->dai_link->be_id,
-					prtd->audio_client->perf_mode,
-					prtd->session_id, substream->stream);
-			break;
-		default:
-			pr_debug("q6asm_open_read_compressed(COMPRESSED_META_DATA_MODE)\n");
-			/*
-			ret = q6asm_open_read_compressed(prtd->audio_client,
-				MAX_NUM_FRAMES_PER_BUFFER,
-				COMPRESSED_META_DATA_MODE);
-			*/
-			ret = -EINVAL;
-			break;
-		}
-
-		if (ret < 0) {
-			pr_err("%s: compressed Session out open failed\n",
-				__func__);
-			return -ENOMEM;
-		}
-	}
-
-	ret = q6asm_set_io_mode(prtd->audio_client,
-					(COMPRESSED_IO | ASYNC_IO_MODE));
-	if (ret < 0) {
-		pr_err("%s: Set IO mode failed\n", __func__);
-		return -ENOMEM;
-	}
 	/* Modifying kernel hardware params based on userspace config */
 	if (params_periods(params) > 0 &&
 		(params_periods(params) != runtime->hw.periods_max)) {
@@ -882,7 +943,7 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 	}
 	runtime->hw.buffer_bytes_max =
 			runtime->hw.period_bytes_min * runtime->hw.periods_max;
-	pr_debug("allocate %d buffers each of size %d\n",
+	pr_debug("allocate %zd buffers each of size %d\n",
 		runtime->hw.period_bytes_min,
 		runtime->hw.periods_max);
 	ret = q6asm_audio_client_buf_alloc_contiguous(dir,
@@ -903,10 +964,10 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 	dma_buf->addr =  buf[0].phys;
 	dma_buf->bytes = runtime->hw.buffer_bytes_max;
 
-	pr_debug("%s: buf[%p]dma_buf->area[%p]dma_buf->addr[%p]\n"
-		 "dma_buf->bytes[%d]\n", __func__,
+	pr_debug("%s: buf[%p]dma_buf->area[%p]dma_buf->addr[%pa]\n"
+		 "dma_buf->bytes[%zd]\n", __func__,
 		 (void *)buf, (void *)dma_buf->area,
-		 (void *)dma_buf->addr, dma_buf->bytes);
+		 &dma_buf->addr, dma_buf->bytes);
 	if (!dma_buf->area)
 		return -ENOMEM;
 
@@ -914,7 +975,7 @@ static int msm_compr_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int msm_compr_ioctl(struct snd_pcm_substream *substream,
+static int msm_compr_ioctl_shared(struct snd_pcm_substream *substream,
 		unsigned int cmd, void *arg)
 {
 	int rc = 0;
@@ -926,10 +987,10 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 
 	switch (cmd) {
 	case SNDRV_COMPRESS_TSTAMP: {
-		struct snd_compr_tstamp tstamp;
+		struct snd_compr_tstamp *tstamp;
 		pr_debug("SNDRV_COMPRESS_TSTAMP\n");
-
-		memset(&tstamp, 0x0, sizeof(struct snd_compr_tstamp));
+		tstamp = arg;
+		memset(tstamp, 0x0, sizeof(*tstamp));
 		rc = q6asm_get_session_time(prtd->audio_client, &timestamp);
 		if (rc < 0) {
 			pr_err("%s: Get Session Time return value =%lld\n",
@@ -939,33 +1000,25 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 		temp = (timestamp * 2 * runtime->channels);
 		temp = temp * (runtime->rate/1000);
 		temp = div_u64(temp, 1000);
-		tstamp.sampling_rate = runtime->rate;
-		tstamp.timestamp = timestamp;
+		tstamp->sampling_rate = runtime->rate;
+		tstamp->timestamp = timestamp;
 		pr_debug("%s: bytes_consumed:,timestamp = %lld,\n",
 						__func__,
-			tstamp.timestamp);
-		if (copy_to_user((void *) arg, &tstamp,
-			sizeof(struct snd_compr_tstamp)))
-				return -EFAULT;
+			tstamp->timestamp);
 		return 0;
 	}
-	case SNDRV_COMPRESS_GET_CAPS:
+	case SNDRV_COMPRESS_GET_CAPS: {
+		struct snd_compr_caps *caps;
+		caps = arg;
+		memset(caps, 0, sizeof(*caps));
 		pr_debug("SNDRV_COMPRESS_GET_CAPS\n");
-		if (copy_to_user((void *) arg, &compr->info.compr_cap,
-			sizeof(struct snd_compr_caps))) {
-			rc = -EFAULT;
-			pr_err("%s: ERROR: copy to user\n", __func__);
-			return rc;
-		}
+		memcpy(caps, &compr->info.compr_cap, sizeof(*caps));
 		return 0;
+	}
 	case SNDRV_COMPRESS_SET_PARAMS:
 		pr_debug("SNDRV_COMPRESS_SET_PARAMS:\n");
-		if (copy_from_user(&compr->info.codec_param, (void *) arg,
-			sizeof(struct snd_compr_params))) {
-			rc = -EFAULT;
-			pr_err("%s: ERROR: copy from user\n", __func__);
-			return rc;
-		}
+		memcpy(&compr->info.codec_param, (void *) arg,
+			sizeof(struct snd_compr_params));
 		switch (compr->info.codec_param.codec.id) {
 		case SND_AUDIOCODEC_MP3:
 			/* For MP3 we dont need any other parameter */
@@ -977,21 +1030,34 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 			compr->codec = FORMAT_MPEG4_AAC;
 			break;
 		case SND_AUDIOCODEC_AC3: {
-			char params_value[18*2*sizeof(int)];
+			char params_value[MAX_AC3_PARAM_SIZE];
 			int *params_value_data = (int *)params_value;
 			/* 36 is the max param length for ddp */
 			int i;
 			struct snd_dec_ddp *ddp =
 				&compr->info.codec_param.codec.options.ddp;
-			int params_length = ddp->params_length*sizeof(int);
+			uint32_t params_length = 0;
+			/* check integer overflow */
+			if (ddp->params_length > UINT_MAX/sizeof(int)) {
+				pr_err("%s: Integer overflow ddp->params_length %d\n",
+				__func__, ddp->params_length);
+				return -EINVAL;
+			}
+			params_length = ddp->params_length*sizeof(int);
+			if (params_length > MAX_AC3_PARAM_SIZE) {
+				/*MAX is 36*sizeof(int) this should not happen*/
+				pr_err("%s: params_length(%d) is greater than %zd\n",
+				__func__, params_length, MAX_AC3_PARAM_SIZE);
+				return -EINVAL;
+			}
 			pr_debug("SND_AUDIOCODEC_AC3\n");
 			compr->codec = FORMAT_AC3;
 			if (copy_from_user(params_value, (void *)ddp->params,
 					params_length))
-				pr_err("%s: ERROR: copy ddp params value\n",
-					__func__);
+				pr_err("%s: copy ddp params value, size=%d\n",
+					__func__, params_length);
 			pr_debug("params_length: %d\n", ddp->params_length);
-			for (i = 0; i < params_length; i++)
+			for (i = 0; i < params_length/sizeof(int); i++)
 				pr_debug("params_value[%d]: %x\n", i,
 					params_value_data[i]);
 			for (i = 0; i < ddp->params_length/2; i++) {
@@ -1008,19 +1074,31 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 			break;
 		}
 		case SND_AUDIOCODEC_EAC3: {
-			char params_value[18*2*sizeof(int)];
+			char params_value[MAX_AC3_PARAM_SIZE];
 			int *params_value_data = (int *)params_value;
 			/* 36 is the max param length for ddp */
 			int i;
 			struct snd_dec_ddp *ddp =
 				&compr->info.codec_param.codec.options.ddp;
-			int params_length = ddp->params_length*sizeof(int);
+			uint32_t params_length = 0;
+			/* check integer overflow */
+			if (ddp->params_length > UINT_MAX/sizeof(int)) {
+				pr_err("%s: Integer overflow ddp->params_length %d\n",
+				__func__, ddp->params_length);
+				return -EINVAL;
+			}
+			if (params_length > MAX_AC3_PARAM_SIZE) {
+				/*MAX is 36*sizeof(int) this should not happen*/
+				pr_err("%s: params_length(%d) is greater than %zd\n",
+				__func__, params_length, MAX_AC3_PARAM_SIZE);
+				return -EINVAL;
+			}
 			pr_debug("SND_AUDIOCODEC_EAC3\n");
 			compr->codec = FORMAT_EAC3;
 			if (copy_from_user(params_value, (void *)ddp->params,
 					params_length))
-				pr_err("%s: ERROR: copy ddp params value\n",
-					__func__);
+				pr_err("%s: copy ddp params value, size=%d\n",
+					__func__, params_length);
 			pr_debug("params_length: %d\n", ddp->params_length);
 			for (i = 0; i < ddp->params_length; i++)
 				pr_debug("params_value[%d]: %x\n", i,
@@ -1104,6 +1182,74 @@ static int msm_compr_ioctl(struct snd_pcm_substream *substream,
 	return snd_pcm_lib_ioctl(substream, cmd, arg);
 }
 
+static int msm_compr_ioctl(struct snd_pcm_substream *substream,
+		unsigned int cmd, void *arg)
+{
+	int err = 0;
+	if (!substream) {
+		pr_err("%s: Invalid params\n", __func__);
+		return -EINVAL;
+	}
+	pr_debug("%s called with cmd = %d\n", __func__, cmd);
+	switch (cmd) {
+	case SNDRV_COMPRESS_TSTAMP: {
+		struct snd_compr_tstamp tstamp;
+		if (!arg) {
+			pr_err("%s: Invalid params Tstamp\n", __func__);
+			return -EINVAL;
+		}
+		err = msm_compr_ioctl_shared(substream, cmd, &tstamp);
+		if (err)
+			pr_err("%s: COMPRESS_TSTAMP failed rc %d\n",
+			__func__, err);
+		if (!err && copy_to_user(arg, &tstamp, sizeof(tstamp))) {
+			pr_err("%s: copytouser failed COMPRESS_TSTAMP\n",
+			__func__);
+			err = -EFAULT;
+		}
+		break;
+	}
+	case SNDRV_COMPRESS_GET_CAPS: {
+		struct snd_compr_caps cap;
+		if (!arg) {
+			pr_err("%s: Invalid params getcaps\n", __func__);
+			return -EINVAL;
+		}
+		pr_debug("SNDRV_COMPRESS_GET_CAPS\n");
+		err = msm_compr_ioctl_shared(substream, cmd, &cap);
+		if (err)
+			pr_err("%s: GET_CAPS failed rc %d\n",
+			__func__, err);
+		if (!err && copy_to_user(arg, &cap, sizeof(cap))) {
+			pr_err("%s: copytouser failed GET_CAPS\n",
+			__func__);
+			err = -EFAULT;
+		}
+		break;
+	}
+	case SNDRV_COMPRESS_SET_PARAMS: {
+		struct snd_compr_params params;
+		if (!arg) {
+			pr_err("%s: Invalid params setparam\n", __func__);
+			return -EINVAL;
+		}
+		if (copy_from_user(&params, arg,
+			sizeof(struct snd_compr_params))) {
+			pr_err("%s: SET_PARAMS\n", __func__);
+			return -EFAULT;
+		}
+		err = msm_compr_ioctl_shared(substream, cmd, &params);
+		if (err)
+			pr_err("%s: SET_PARAMS failed rc %d\n",
+			__func__, err);
+		break;
+	}
+	default:
+		err = msm_compr_ioctl_shared(substream, cmd, arg);
+	}
+	return err;
+}
+
 static int msm_compr_restart(struct snd_pcm_substream *substream)
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
@@ -1149,9 +1295,7 @@ static int msm_compr_restart(struct snd_pcm_substream *substream)
 		param.msw_ts = output_meta_data.timestamp_msw;
 		param.lsw_ts = output_meta_data.timestamp_lsw;
 		param.flags = time_stamp_flag;
-		param.uid =  (unsigned long)buf[0].phys
-				+ (prtd->out_head * prtd->pcm_count
-				+ output_meta_data.meta_data_length);
+		param.uid = prtd->session_id;
 		if (q6asm_async_write(prtd->audio_client,
 					&param) < 0)
 			pr_err("%s:q6asm_async_write failed\n",
@@ -1258,7 +1402,7 @@ static struct snd_soc_platform_driver msm_soc_platform = {
 	.pcm_new	= msm_asoc_pcm_new,
 };
 
-static __devinit int msm_compr_probe(struct platform_device *pdev)
+static int msm_compr_probe(struct platform_device *pdev)
 {
 	if (pdev->dev.of_node)
 		dev_set_name(&pdev->dev, "%s", "msm-compr-dsp");
@@ -1290,7 +1434,7 @@ static struct platform_driver msm_compr_driver = {
 		.of_match_table = msm_compr_dt_match,
 	},
 	.probe = msm_compr_probe,
-	.remove = __devexit_p(msm_compr_remove),
+	.remove = msm_compr_remove,
 };
 
 static int __init msm_soc_platform_init(void)

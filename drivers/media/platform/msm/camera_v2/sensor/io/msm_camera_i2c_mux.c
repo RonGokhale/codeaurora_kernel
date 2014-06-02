@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundatation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundatation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,8 +14,6 @@
 #include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
-#include <mach/board.h>
-#include <mach/camera.h>
 #include "msm_camera_i2c_mux.h"
 
 /* TODO move this somewhere else */
@@ -111,7 +109,7 @@ static const struct v4l2_subdev_ops msm_i2c_mux_subdev_ops = {
 	.core = &msm_i2c_mux_subdev_core_ops,
 };
 
-static int __devinit i2c_mux_probe(struct platform_device *pdev)
+static int i2c_mux_probe(struct platform_device *pdev)
 {
 	struct i2c_mux_device *mux_device;
 	int rc = 0;

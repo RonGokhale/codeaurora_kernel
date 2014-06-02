@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,8 +12,8 @@
 
 #ifndef __Q6CORE_H__
 #define __Q6CORE_H__
-#include <mach/qdsp6v2/apr.h>
-#include <mach/ocmem.h>
+#include <linux/qdsp6v2/apr.h>
+#include <soc/qcom/ocmem.h>
 
 
 #define AVCS_CMD_GET_LOW_POWER_SEGMENTS_INFO              0x00012903

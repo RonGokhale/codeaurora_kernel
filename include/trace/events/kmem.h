@@ -6,7 +6,7 @@
 
 #include <linux/types.h>
 #include <linux/tracepoint.h>
-#include "gfpflags.h"
+#include <trace/events/gfpflags.h>
 
 DECLARE_EVENT_CLASS(kmem_alloc,
 
@@ -214,7 +214,7 @@ TRACE_EVENT(mm_page_alloc,
 
 	TP_printk("page=%p pfn=%lu order=%d migratetype=%d gfp_flags=%s",
 		__entry->page,
-		page_to_pfn(__entry->page),
+		__entry->page ? page_to_pfn(__entry->page) : 0,
 		__entry->order,
 		__entry->migratetype,
 		show_gfp_flags(__entry->gfp_flags))
@@ -240,7 +240,7 @@ DECLARE_EVENT_CLASS(mm_page,
 
 	TP_printk("page=%p pfn=%lu order=%u migratetype=%d percpu_refill=%d",
 		__entry->page,
-		page_to_pfn(__entry->page),
+		__entry->page ? page_to_pfn(__entry->page) : 0,
 		__entry->order,
 		__entry->migratetype,
 		__entry->order == 0)
@@ -562,17 +562,17 @@ DEFINE_EVENT(ion_alloc_pages, alloc_pages_sys_fail,
 
 DECLARE_EVENT_CLASS(smmu_map,
 
-	TP_PROTO(unsigned int va,
+	TP_PROTO(unsigned long va,
 		phys_addr_t pa,
-		unsigned int chunk_size,
+		unsigned long chunk_size,
 		size_t len),
 
 	TP_ARGS(va, pa, chunk_size, len),
 
 	TP_STRUCT__entry(
-		__field(unsigned int, va)
+		__field(unsigned long, va)
 		__field(phys_addr_t, pa)
-		__field(unsigned int, chunk_size)
+		__field(unsigned long, chunk_size)
 		__field(size_t, len)
 		),
 
@@ -583,7 +583,7 @@ DECLARE_EVENT_CLASS(smmu_map,
 		__entry->len = len;
 		),
 
-	TP_printk("v_addr=%p p_addr=%pa chunk_size=0x%x len=%zu",
+	TP_printk("v_addr=%p p_addr=%pa chunk_size=0x%lu len=%zu",
 		(void *)__entry->va,
 		&__entry->pa,
 		__entry->chunk_size,
@@ -591,13 +591,111 @@ DECLARE_EVENT_CLASS(smmu_map,
 	);
 
 DEFINE_EVENT(smmu_map, iommu_map_range,
-	TP_PROTO(unsigned int va,
+	TP_PROTO(unsigned long va,
 		phys_addr_t pa,
-		unsigned int chunk_size,
+		unsigned long chunk_size,
 		size_t len),
 
 	TP_ARGS(va, pa, chunk_size, len)
 	);
+
+DECLARE_EVENT_CLASS(ion_secure_cma_add_to_pool,
+
+	TP_PROTO(unsigned long len,
+		 int pool_total,
+		 bool is_prefetch),
+
+	TP_ARGS(len, pool_total, is_prefetch),
+
+	TP_STRUCT__entry(
+		__field(unsigned long, len)
+		__field(int, pool_total)
+		__field(bool, is_prefetch)
+		),
+
+	TP_fast_assign(
+		__entry->len = len;
+		__entry->pool_total = pool_total;
+		__entry->is_prefetch = is_prefetch;
+		),
+
+	TP_printk("len %lx, pool total %x is_prefetch %d",
+		__entry->len,
+		__entry->pool_total,
+		__entry->is_prefetch)
+	);
+
+DEFINE_EVENT(ion_secure_cma_add_to_pool, ion_secure_cma_add_to_pool_start,
+	TP_PROTO(unsigned long len,
+		int pool_total,
+		bool is_prefetch),
+
+	TP_ARGS(len, pool_total, is_prefetch)
+	);
+
+DEFINE_EVENT(ion_secure_cma_add_to_pool, ion_secure_cma_add_to_pool_end,
+	TP_PROTO(unsigned long len,
+		int pool_total,
+		bool is_prefetch),
+
+	TP_ARGS(len, pool_total, is_prefetch)
+	);
+
+DECLARE_EVENT_CLASS(ion_secure_cma_shrink_pool,
+
+	TP_PROTO(unsigned long drained_size,
+		 unsigned long skipped_size),
+
+	TP_ARGS(drained_size, skipped_size),
+
+	TP_STRUCT__entry(
+		__field(unsigned long, drained_size)
+		__field(unsigned long, skipped_size)
+		),
+
+	TP_fast_assign(
+		__entry->drained_size = drained_size;
+		__entry->skipped_size = skipped_size;
+		),
+
+	TP_printk("drained size %lx, skipped size %lx",
+		__entry->drained_size,
+		__entry->skipped_size)
+	);
+
+DEFINE_EVENT(ion_secure_cma_shrink_pool, ion_secure_cma_shrink_pool_start,
+	TP_PROTO(unsigned long drained_size,
+		 unsigned long skipped_size),
+
+	TP_ARGS(drained_size, skipped_size)
+	);
+
+DEFINE_EVENT(ion_secure_cma_shrink_pool, ion_secure_cma_shrink_pool_end,
+	TP_PROTO(unsigned long drained_size,
+		 unsigned long skipped_size),
+
+	TP_ARGS(drained_size, skipped_size)
+	);
+
+TRACE_EVENT(ion_prefetching,
+
+	TP_PROTO(unsigned long len),
+
+	TP_ARGS(len),
+
+	TP_STRUCT__entry(
+		__field(unsigned long, len)
+		),
+
+	TP_fast_assign(
+		__entry->len = len;
+		),
+
+	TP_printk("prefetch size %lx",
+		__entry->len)
+	);
+
+
 
 #endif /* _TRACE_KMEM_H */
 

@@ -39,8 +39,7 @@
 	@ Write the 1 character to UARTDM_TF
 	str	\rd, [\rx, #UARTDM_TF_OFFSET]
 #else
-	teq     \rx, #0
-	strne   \rd, [\rx, #0x0C]
+	str	\rd, [\rx, #0x0C]
 #endif
 	.endm
 

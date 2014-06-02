@@ -18,7 +18,6 @@
 #include "config.c"
 #include "composite.c"
 
-#include "f_tcm.c"
 
 #define UAS_VENDOR_ID	0x0525	/* NetChip */
 #define UAS_PRODUCT_ID	0xa4a5	/* Linux-USB File-backed Storage Gadget */
@@ -35,18 +34,14 @@ static struct usb_device_descriptor usbg_device_desc = {
 	.bDeviceClass =		USB_CLASS_PER_INTERFACE,
 	.idVendor =		cpu_to_le16(UAS_VENDOR_ID),
 	.idProduct =		cpu_to_le16(UAS_PRODUCT_ID),
-	.iManufacturer =	USB_G_STR_MANUFACTOR,
-	.iProduct =		USB_G_STR_PRODUCT,
-	.iSerialNumber =	USB_G_STR_SERIAL,
-
 	.bNumConfigurations =   1,
 };
 
 static struct usb_string	usbg_us_strings[] = {
-	{ USB_G_STR_MANUFACTOR,	"Target Manufactor"},
-	{ USB_G_STR_PRODUCT,	"Target Product"},
-	{ USB_G_STR_SERIAL,	"000000000001"},
-	{ USB_G_STR_CONFIG,	"default config"},
+	[USB_GADGET_MANUFACTURER_IDX].s	= "Target Manufactor",
+	[USB_GADGET_PRODUCT_IDX].s	= "Target Product",
+	[USB_GADGET_SERIAL_IDX].s	= "000000000001",
+	[USB_G_STR_CONFIG].s		= "default config",
 	{ },
 };
 
@@ -63,7 +58,6 @@ static struct usb_gadget_strings *usbg_strings[] = {
 static struct usb_configuration usbg_config_driver = {
 	.label                  = "Linux Target",
 	.bConfigurationValue    = 1,
-	.iConfiguration		= USB_G_STR_CONFIG,
 	.bmAttributes           = USB_CONFIG_ATT_SELFPOWER,
 };
 
@@ -76,9 +70,24 @@ static int usb_target_bind(struct usb_composite_dev *cdev)
 {
 	int ret;
 
+	ret = usb_string_ids_tab(cdev, usbg_us_strings);
+	if (ret)
+		return ret;
+
+	usbg_device_desc.iManufacturer =
+		usbg_us_strings[USB_GADGET_MANUFACTURER_IDX].id;
+	usbg_device_desc.iProduct = usbg_us_strings[USB_GADGET_PRODUCT_IDX].id;
+	usbg_device_desc.iSerialNumber =
+		usbg_us_strings[USB_GADGET_SERIAL_IDX].id;
+	usbg_config_driver.iConfiguration =
+		usbg_us_strings[USB_G_STR_CONFIG].id;
+
 	ret = usb_add_config(cdev, &usbg_config_driver,
 			usbg_cfg_bind);
-	return ret;
+	if (ret)
+		return ret;
+	usb_composite_overwrite_options(cdev, &coverwrite);
+	return 0;
 }
 
 static int guas_unbind(struct usb_composite_dev *cdev)
@@ -86,11 +95,12 @@ static int guas_unbind(struct usb_composite_dev *cdev)
 	return 0;
 }
 
-static struct usb_composite_driver usbg_driver = {
+static __refdata struct usb_composite_driver usbg_driver = {
 	.name           = "g_target",
 	.dev            = &usbg_device_desc,
 	.strings        = usbg_strings,
 	.max_speed      = USB_SPEED_SUPER,
+	.bind		= usb_target_bind,
 	.unbind         = guas_unbind,
 };
 

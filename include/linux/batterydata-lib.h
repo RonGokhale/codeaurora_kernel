@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,6 +27,7 @@
 #define MAX_SINGLE_LUT_COLS	20
 
 #define MAX_BATT_ID_NUM		4
+#define DEGC_SCALE		10
 
 struct single_row_lut {
 	int x[MAX_SINGLE_LUT_COLS];
@@ -124,11 +125,13 @@ struct bms_battery_data {
 	int			cutoff_uv;
 	int			iterm_ua;
 	int			batt_id_kohm;
+	const char		*battery_type;
 };
 
 #if defined(CONFIG_PM8921_BMS) || \
 	defined(CONFIG_PM8921_BMS_MODULE) || \
-	defined(CONFIG_QPNP_BMS)
+	defined(CONFIG_QPNP_BMS) || \
+	defined(CONFIG_QPNP_VM_BMS)
 extern struct bms_battery_data  palladium_1500_data;
 extern struct bms_battery_data  desay_5200_data;
 extern struct bms_battery_data  oem_batt_data;
@@ -143,6 +146,8 @@ int interpolate_pc(struct pc_temp_ocv_lut *pc_temp_ocv,
 				int batt_temp_degc, int ocv);
 int interpolate_ocv(struct pc_temp_ocv_lut *pc_temp_ocv,
 				int batt_temp_degc, int pc);
+int interpolate_slope(struct pc_temp_ocv_lut *pc_temp_ocv,
+					int batt_temp, int pc);
 int linear_interpolate(int y0, int x0, int y1, int x1, int x);
 int is_between(int left, int right, int value);
 #else
@@ -168,6 +173,11 @@ static inline int interpolate_pc(struct pc_temp_ocv_lut *pc_temp_ocv,
 }
 static inline int interpolate_ocv(struct pc_temp_ocv_lut *pc_temp_ocv,
 			int batt_temp_degc, int pc)
+{
+	return -EINVAL;
+}
+static inline int interpolate_slope(struct pc_temp_ocv_lut *pc_temp_ocv,
+					int batt_temp, int pc)
 {
 	return -EINVAL;
 }

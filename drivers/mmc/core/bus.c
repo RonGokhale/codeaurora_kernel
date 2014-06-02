@@ -311,8 +311,7 @@ static void mmc_release_card(struct device *dev)
 
 	sdio_free_common_cis(card);
 
-	if (card->info)
-		kfree(card->info);
+	kfree(card->info);
 
 	kfree(card);
 }
@@ -414,19 +413,24 @@ int mmc_add_card(struct mmc_card *card)
 #endif
 	mmc_init_context_info(card->host);
 
-	if (mmc_use_core_runtime_pm(card->host)) {
-		ret = pm_runtime_set_active(&card->dev);
-		if (ret)
-			pr_err("%s: %s: failed setting runtime active: ret: %d\n",
-			       mmc_hostname(card->host), __func__, ret);
-		else if (!mmc_card_sdio(card))
-			pm_runtime_enable(&card->dev);
-	}
+	ret = pm_runtime_set_active(&card->dev);
+	if (ret)
+		pr_err("%s: %s: failed setting runtime active: ret: %d\n",
+		       mmc_hostname(card->host), __func__, ret);
+	else if (!mmc_card_sdio(card) && mmc_use_core_runtime_pm(card->host))
+		pm_runtime_enable(&card->dev);
 
+	if (mmc_card_sdio(card)) {
+		ret = device_init_wakeup(&card->dev, true);
+		if (ret)
+			pr_err("%s: %s: failed to init wakeup: %d\n",
+			       mmc_hostname(card->host), __func__, ret);
+	}
 	ret = device_add(&card->dev);
 	if (ret)
 		return ret;
 
+	device_enable_async_suspend(&card->dev);
 	if (mmc_use_core_runtime_pm(card->host) && !mmc_card_sdio(card)) {
 		card->rpm_attrib.show = show_rpm_delay;
 		card->rpm_attrib.store = store_rpm_delay;
@@ -469,6 +473,7 @@ void mmc_remove_card(struct mmc_card *card)
 	}
 
 	kfree(card->wr_pack_stats.packing_events);
+	kfree(card->cached_ext_csd);
 
 	put_device(&card->dev);
 }

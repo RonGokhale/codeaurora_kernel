@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,19 +22,26 @@
  * future strings.
  */
 static char *descriptions =
-	"0  msm: perf: add debug patch logging framework\n"
-	"1  Perf: Restore counter after powercollapse for generic ARM PMU's\n"
-	"2  Perf: Toggle PMU IRQ when CPU's are hotplugged\n"
-	"3  Perf: Correct irq for CPU hotplug detection\n"
-	"4  Perf: Check perf activity on correct CPU\n"
-	"5  Perf: Add DT support for L1 and L2 PMU\n"
-	"6  Perf: Add cortex A5 device tree support\n"
-	"7  Perf: Add L1 counters to tracepoints\n"
-	"8  Perf: Add cortex A7 perf support\n"
-	"9  ARM: dts: msm: add perf-events support for msm8226\n"
-	"10 Perf: Fix counts across power collapse\n"
-	"11 ARM: dts: msm: add perf-events support for msm8x10, msm8x12\n"
-	"12 Perf: Make per-process counters configurable\n"
+	" 0 msm: perf: add debug patch logging framework\n"
+	" 1 Perf: port perf-events to 3.10 kernel\n"
+	" 2 Perf: keep events across hotplug\n"
+	" 3 Perf: bring CPU online if needed when disabling irq\n"
+	" 4 Perf: Support sw events across hotplug\n"
+	" 5 msm: perf: initialise krait perf L2 counter enables\n"
+	" 6 msm: perf: clean up duplicate constraint events\n"
+	" 7 Perf: Add L1 counters to tracepoints\n"
+	" 8 Perf: Make per-process counters configurable\n"
+	" 9 msm: perf: Add L2 support for tracecounters\n"
+	"10 ARM: dts: msm: add perf-events support for apq8084\n"
+	"11 ARM: dts: msm: add perf-events support for msmsamarium\n"
+	"12 Perf: Make per-process counters cumulative\n"
+	"13 Perf: Fix PID for tracepoints\n"
+	"14 Perf: preserve registers across hotplug\n"
+	"15 msm: perf: Fix cpu id logic in tracectr notifier\n"
+	"16 msm: perf: tracectr: Initialize cnts after hotplug\n"
+	"17 Perf: Reset pmu after hotplug\n"
+	"18 ARM: dts: msm: add perf-events support for msm8916\n"
+	"19 Perf: Enable pmuv3 on 32 bit kernel\n"
 ;
 
 static ssize_t desc_read(struct file *fp, char __user *buf,

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,39 +29,40 @@
 #define RMNET_CTRL_DEV_READY	1
 #define RMNET_CTRL_DEV_MUX_EN	2
 
-/*MUX header bit masks*/
-#define MUX_CTRL_MASK	0x1
+/*data MUX header bit mask*/
 #define MUX_PAD_SHIFT	0x2
+
+/*big endian format ctrl MUX header bit masks*/
+#define MUX_CTRL_PADLEN_MASK	0x3F
+#define MUX_CTRL_MASK	0x80
 
 /*max padding bytes for n byte alignment*/
 #define MAX_PAD_BYTES(n)	(n-1)
 
 /*
- *MUX Header Format
- *BIT 0 : Mux type 0: Data, 1: control
- *BIT 1: Reserved
- *BIT 2-7: Pad bytes
+ *MUX Header big endian Format
+ *BIT 0 - 5 : Pad bytes
+ *BIT 6: Reserved
+ *BIT 7: Mux type 0: Data, 1: control
  *BIT 8-15: Mux ID
  *BIT 16-31: PACKET_LEN_WITH_PADDING (Bytes)
  */
 struct mux_hdr {
 	__u8	padding_info;
 	__u8	mux_id;
-	__le16	pkt_len_w_padding;
+	__u16	pkt_len_w_padding;
 } __packed;
 
-struct rmnet_ctrl_dev {
+struct rmnet_ctrl_udev {
 
-	/*for debugging purpose*/
-	char			name[CTRL_DEV_MAX_LEN];
+	/*
+	 * In case of non-mux ctrl channel there is a one to one mapping
+	 * between rmnet_ctrl_dev and rmnet_ctrl_udev. Save the claimed
+	 * device id.
+	 */
+	unsigned int	ctrldev_id;
 
-	struct cdev		cdev;
-	struct device		*devicep;
-	unsigned		ch_id;
-
-	/*to identify the usb device*/
-	unsigned		id;
-
+	unsigned int	rdev_num;
 	struct usb_interface	*intf;
 	unsigned int		int_pipe;
 	struct urb		*rcvurb;
@@ -72,15 +73,39 @@ struct rmnet_ctrl_dev {
 	void			*intbuf;
 	struct usb_ctrlrequest	*in_ctlreq;
 
+	struct workqueue_struct *wq;
+	struct work_struct	get_encap_work;
+
+	unsigned long		status;
+
+	/*counters*/
+	unsigned int		snd_encap_cmd_cnt;
+	unsigned int		get_encap_resp_cnt;
+	unsigned int		resp_avail_cnt;
+	unsigned int		get_encap_failure_cnt;
+	unsigned int		set_ctrl_line_state_cnt;
+	unsigned int		tx_ctrl_err_cnt;
+	unsigned int		zlp_cnt;
+	unsigned int		invalid_mux_id_cnt;
+	unsigned int		ignore_encap_work;
+};
+
+struct rmnet_ctrl_dev {
+
+	/*for debugging purpose*/
+	char			name[CTRL_DEV_MAX_LEN];
+
+	struct cdev		cdev;
+	struct device		*devicep;
+	unsigned		ch_id;
+
+	struct rmnet_ctrl_udev *cudev;
+
 	spinlock_t		rx_lock;
 	struct mutex		dev_lock;
 	struct list_head	rx_list;
 	wait_queue_head_t	read_wait_queue;
 	wait_queue_head_t	open_wait_queue;
-
-	struct workqueue_struct	*wq;
-	struct work_struct	get_encap_work;
-
 	unsigned long		status;
 
 	bool			claimed;
@@ -91,27 +116,20 @@ struct rmnet_ctrl_dev {
 	unsigned int		cbits_tolocal;
 	/*output control lines (DTR, RTS)*/
 	unsigned int		cbits_tomdm;
-
-	/*counters*/
-	unsigned int		snd_encap_cmd_cnt;
-	unsigned int		get_encap_resp_cnt;
-	unsigned int		resp_avail_cnt;
-	unsigned int		get_encap_failure_cnt;
-	unsigned int		set_ctrl_line_state_cnt;
-	unsigned int		tx_ctrl_err_cnt;
-	unsigned int		zlp_cnt;
 };
 
 extern struct workqueue_struct	*usbnet_wq;
 
-extern int rmnet_usb_ctrl_start_rx(struct rmnet_ctrl_dev *);
-extern int rmnet_usb_ctrl_suspend(struct rmnet_ctrl_dev *dev);
-extern int rmnet_usb_ctrl_init(int num_devs, int insts_per_dev);
-extern void rmnet_usb_ctrl_exit(int num_devs, int insts_per_dev);
+extern int rmnet_usb_ctrl_start_rx(struct rmnet_ctrl_udev *);
+extern int rmnet_usb_ctrl_suspend(struct rmnet_ctrl_udev *dev);
+extern int rmnet_usb_ctrl_init(int num_devs, int insts_per_dev,
+		unsigned long mux_info);
+extern void rmnet_usb_ctrl_exit(int num_devs, int insts_per_dev,
+		unsigned long mux_info);
 extern int rmnet_usb_ctrl_probe(struct usb_interface *intf,
 				struct usb_host_endpoint *int_in,
 				unsigned long rmnet_devnum,
 				unsigned long *data);
-extern void rmnet_usb_ctrl_disconnect(struct rmnet_ctrl_dev *);
+extern void rmnet_usb_ctrl_disconnect(struct rmnet_ctrl_udev *);
 
 #endif /* __RMNET_USB_H*/

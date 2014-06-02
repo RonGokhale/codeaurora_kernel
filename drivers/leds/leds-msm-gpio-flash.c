@@ -83,7 +83,7 @@ static enum led_brightness led_gpio_brightness_get(struct led_classdev
 	return flash_led->brightness;
 }
 
-int __devinit led_gpio_flash_probe(struct platform_device *pdev)
+int led_gpio_flash_probe(struct platform_device *pdev)
 {
 	int rc = 0;
 	const char *temp_str;
@@ -170,7 +170,7 @@ error:
 	return rc;
 }
 
-int __devexit led_gpio_flash_remove(struct platform_device *pdev)
+int led_gpio_flash_remove(struct platform_device *pdev)
 {
 	struct led_gpio_flash_data *flash_led =
 	    (struct led_gpio_flash_data *)platform_get_drvdata(pdev);
@@ -182,7 +182,7 @@ int __devexit led_gpio_flash_remove(struct platform_device *pdev)
 
 static struct platform_driver led_gpio_flash_driver = {
 	.probe = led_gpio_flash_probe,
-	.remove = __devexit_p(led_gpio_flash_remove),
+	.remove = led_gpio_flash_remove,
 	.driver = {
 		   .name = LED_GPIO_FLASH_DRIVER_NAME,
 		   .owner = THIS_MODULE,

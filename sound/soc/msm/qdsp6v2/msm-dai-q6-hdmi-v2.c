@@ -129,12 +129,25 @@ static int msm_dai_q6_hdmi_hw_params(struct snd_pcm_substream *substream,
 		break;
 	}
 
+	/*refer to HDMI spec CEA-861-E: Table 28 Audio InfoFrame Data Byte 4*/
 	switch (dai_data->channels) {
 	case 2:
 		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0;
 		break;
+	case 3:
+		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x02;
+		break;
+	case 4:
+		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x06;
+		break;
+	case 5:
+		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x0A;
+		break;
 	case 6:
 		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x0B;
+		break;
+	case 7:
+		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x12;
 		break;
 	case 8:
 		dai_data->port_config.hdmi_multi_ch.channel_allocation = 0x13;
@@ -210,7 +223,7 @@ static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 	struct msm_dai_q6_hdmi_dai_data *dai_data;
 	const struct snd_kcontrol_new *kcontrol;
 	int rc = 0;
-
+	struct snd_soc_dapm_route intercon;
 	dai_data = kzalloc(sizeof(struct msm_dai_q6_hdmi_dai_data),
 		GFP_KERNEL);
 
@@ -231,6 +244,29 @@ static int msm_dai_q6_hdmi_dai_probe(struct snd_soc_dai *dai)
 	rc = snd_ctl_add(dai->card->snd_card,
 					 snd_ctl_new1(kcontrol, dai_data));
 
+	memset(&intercon, 0 , sizeof(intercon));
+	if (!rc && dai && dai->driver) {
+		if (dai->driver->playback.stream_name &&
+			dai->driver->playback.aif_name) {
+			dev_dbg(dai->dev, "%s add route for widget %s",
+				   __func__, dai->driver->playback.stream_name);
+			intercon.source = dai->driver->playback.aif_name;
+			intercon.sink = dai->driver->playback.stream_name;
+			dev_dbg(dai->dev, "%s src %s sink %s\n",
+				   __func__, intercon.source, intercon.sink);
+			snd_soc_dapm_add_routes(&dai->dapm, &intercon, 1);
+		}
+		if (dai->driver->capture.stream_name &&
+		   dai->driver->capture.aif_name) {
+			dev_dbg(dai->dev, "%s add route for widget %s",
+				   __func__, dai->driver->capture.stream_name);
+			intercon.sink = dai->driver->capture.aif_name;
+			intercon.source = dai->driver->capture.stream_name;
+			dev_dbg(dai->dev, "%s src %s sink %s\n",
+				   __func__, intercon.source, intercon.sink);
+			snd_soc_dapm_add_routes(&dai->dapm, &intercon, 1);
+		}
+	}
 	return rc;
 }
 
@@ -251,7 +287,7 @@ static int msm_dai_q6_hdmi_dai_remove(struct snd_soc_dai *dai)
 		clear_bit(STATUS_PORT_STARTED, dai_data->status_mask);
 	}
 	kfree(dai_data);
-	snd_soc_unregister_dai(dai->dev);
+	snd_soc_unregister_component(dai->dev);
 
 	return 0;
 }
@@ -264,6 +300,8 @@ static struct snd_soc_dai_ops msm_dai_q6_hdmi_ops = {
 
 static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 	.playback = {
+		.stream_name = "HDMI Playback",
+		.aif_name = "HDMI",
 		.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000 |
 		 SNDRV_PCM_RATE_192000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
@@ -277,9 +315,12 @@ static struct snd_soc_dai_driver msm_dai_q6_hdmi_hdmi_rx_dai = {
 	.remove = msm_dai_q6_hdmi_dai_remove,
 };
 
+static const struct snd_soc_component_driver msm_dai_hdmi_q6_component = {
+	.name		= "msm-dai-q6-hdmi",
+};
 
 /* To do: change to register DAIs as batch */
-static __devinit int msm_dai_q6_hdmi_dev_probe(struct platform_device *pdev)
+static int msm_dai_q6_hdmi_dev_probe(struct platform_device *pdev)
 {
 	int rc, id;
 	const char *q6_dev_id = "qcom,msm-dai-q6-dev-id";
@@ -299,8 +340,9 @@ static __devinit int msm_dai_q6_hdmi_dev_probe(struct platform_device *pdev)
 
 	switch (pdev->id) {
 	case HDMI_RX:
-		rc = snd_soc_register_dai(&pdev->dev,
-				&msm_dai_q6_hdmi_hdmi_rx_dai);
+		rc = snd_soc_register_component(&pdev->dev,
+			&msm_dai_hdmi_q6_component,
+			&msm_dai_q6_hdmi_hdmi_rx_dai, 1);
 		break;
 	default:
 		dev_err(&pdev->dev, "invalid device ID %d\n", pdev->id);
@@ -310,9 +352,9 @@ static __devinit int msm_dai_q6_hdmi_dev_probe(struct platform_device *pdev)
 	return rc;
 }
 
-static __devexit int msm_dai_q6_hdmi_dev_remove(struct platform_device *pdev)
+static int msm_dai_q6_hdmi_dev_remove(struct platform_device *pdev)
 {
-	snd_soc_unregister_dai(&pdev->dev);
+	snd_soc_unregister_component(&pdev->dev);
 	return 0;
 }
 

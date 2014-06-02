@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009, 2012-2013 The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2009, 2012-2014 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,7 +11,7 @@
  *
  */
 /*
- * SPI driver for Qualcomm MSM platforms.
+ * SPI driver for Qualcomm Technologies, Inc. MSM platforms.
  */
 
 /**
@@ -22,6 +22,9 @@
  *       runtime pm (optimizes for power).
  * @master_id master id number of the controller's wrapper (BLSP or GSBI).
  *       When zero, clock path voting is disabled.
+ * @rt when set, spi will pump transaction messages with high (realtime)
+ *	priority to reduce the transfer latency on the bus by minimising
+ *	the delay between a transfer request.
  */
 struct msm_spi_platform_data {
 	u32 max_clock_speed;
@@ -37,4 +40,6 @@ struct msm_spi_platform_data {
 	bool use_bam;
 	u32  bam_consumer_pipe_index;
 	u32  bam_producer_pipe_index;
+	bool rt_priority;
+	bool use_pinctrl;
 };

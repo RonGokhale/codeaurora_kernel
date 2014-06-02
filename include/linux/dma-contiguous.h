@@ -65,12 +65,17 @@ struct device;
  */
 #define MAX_CMA_AREAS	(1 + CONFIG_CMA_AREAS)
 
+
+phys_addr_t cma_get_base(struct device *dev);
+
 extern struct cma *dma_contiguous_def_area;
 
 void dma_contiguous_reserve(phys_addr_t addr_limit);
 
 int dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t *res_base,
-				  phys_addr_t limit, const char *name);
+				  phys_addr_t limit, const char *name,
+				  bool in_system,
+				  bool remove);
 
 int dma_contiguous_add_device(struct device *dev, phys_addr_t base);
 
@@ -91,15 +96,29 @@ static inline int dma_declare_contiguous(struct device *dev, phys_addr_t size,
 					 phys_addr_t base, phys_addr_t limit)
 {
 	int ret;
-	ret = dma_contiguous_reserve_area(size, &base, limit, NULL);
+	ret = dma_contiguous_reserve_area(size, &base, limit, NULL, true,
+						false);
 	if (ret == 0)
 		ret = dma_contiguous_add_device(dev, base);
 	return ret;
 }
 
-struct page *dma_alloc_from_contiguous(struct device *dev, int count,
+static inline int dma_declare_contiguous_reserved(struct device *dev,
+					 phys_addr_t size,
+					 phys_addr_t base,
+					 phys_addr_t limit)
+{
+	int ret;
+	ret = dma_contiguous_reserve_area(size, &base, limit, NULL, false,
+						false);
+	if (ret == 0)
+		ret = dma_contiguous_add_device(dev, base);
+	return ret;
+}
+
+unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 				       unsigned int order);
-bool dma_release_from_contiguous(struct device *dev, struct page *pages,
+bool dma_release_from_contiguous(struct device *dev, unsigned long pfn,
 				 int count);
 
 #else
@@ -116,17 +135,23 @@ int dma_declare_contiguous(struct device *dev, phys_addr_t size,
 }
 
 static inline
-struct page *dma_alloc_from_contiguous(struct device *dev, int count,
+unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 				       unsigned int order)
 {
-	return NULL;
+	return 0;
 }
 
 static inline
-bool dma_release_from_contiguous(struct device *dev, struct page *pages,
+bool dma_release_from_contiguous(struct device *dev, unsigned long pfn,
 				 int count)
 {
 	return false;
+}
+
+
+static inline phys_addr_t cma_get_base(struct device *dev)
+{
+	return 0;
 }
 
 #endif

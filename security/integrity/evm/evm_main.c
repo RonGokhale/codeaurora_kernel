@@ -26,6 +26,7 @@ int evm_initialized;
 
 char *evm_hmac = "hmac(sha1)";
 char *evm_hash = "sha1";
+int evm_hmac_version = CONFIG_EVM_HMAC_VERSION;
 
 char *evm_config_xattrnames[] = {
 #ifdef CONFIG_SECURITY_SELINUX
@@ -33,6 +34,9 @@ char *evm_config_xattrnames[] = {
 #endif
 #ifdef CONFIG_SECURITY_SMACK
 	XATTR_NAME_SMACK,
+#endif
+#ifdef CONFIG_IMA_APPRAISE
+	XATTR_NAME_IMA,
 #endif
 	XATTR_NAME_CAPS,
 	NULL
@@ -422,15 +426,6 @@ static int __init init_evm(void)
 	return 0;
 err:
 	return error;
-}
-
-static void __exit cleanup_evm(void)
-{
-	evm_cleanup_secfs();
-	if (hmac_tfm)
-		crypto_free_shash(hmac_tfm);
-	if (hash_tfm)
-		crypto_free_shash(hash_tfm);
 }
 
 /*

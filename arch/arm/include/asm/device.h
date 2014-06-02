@@ -25,6 +25,13 @@ struct pdev_archdata {
 #ifdef CONFIG_ARCH_OMAP
 	struct omap_device *od;
 #endif
+	u64 dma_mask;
 };
+
+#ifdef CONFIG_ARM_DMA_USE_IOMMU
+#define to_dma_iommu_mapping(dev) ((dev)->archdata.mapping)
+#else
+#define to_dma_iommu_mapping(dev) NULL
+#endif
 
 #endif

@@ -24,7 +24,6 @@
 
 #define FIRST_BOARD_GPIO	NR_GPIO_IRQS
 
-extern struct irq_chip msm_gpio_irq_extn;
 
 /**
  * struct msm_gpio - GPIO pin description
@@ -227,11 +226,6 @@ static inline int msm_gpio_install_direct_irq(unsigned gpio, unsigned irq,
 {
 	return -ENOSYS;
 }
-#endif
-
-#ifdef CONFIG_OF
-int __init msm_gpio_of_init(struct device_node *node,
-			    struct device_node *parent);
 #endif
 
 #endif /* __ASM_ARCH_MSM_GPIO_H */

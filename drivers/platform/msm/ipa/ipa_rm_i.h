@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -14,7 +14,15 @@
 #define _IPA_RM_I_H_
 
 #include <linux/workqueue.h>
-#include <mach/ipa.h>
+#include <linux/ipa.h>
+#include "ipa_rm_resource.h"
+
+#define IPA_RM_DRV_NAME "ipa_rm"
+
+#define IPA_RM_DBG(fmt, args...) \
+	pr_debug(IPA_RM_DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args)
+#define IPA_RM_ERR(fmt, args...) \
+	pr_err(IPA_RM_DRV_NAME " %s:%d " fmt, __func__, __LINE__, ## args)
 
 #define IPA_RM_RESOURCE_CONS_MAX \
 	(IPA_RM_RESOURCE_MAX - IPA_RM_RESOURCE_PROD_MAX)
@@ -23,9 +31,24 @@
 #define IPA_RM_RESORCE_IS_CONS(x) \
 	(x >= IPA_RM_RESOURCE_PROD_MAX && x < IPA_RM_RESOURCE_MAX)
 #define IPA_RM_INDEX_INVALID	(-1)
+#define IPA_RM_RELEASE_DELAY_IN_MSEC 1000
 
 int ipa_rm_prod_index(enum ipa_rm_resource_name resource_name);
 int ipa_rm_cons_index(enum ipa_rm_resource_name resource_name);
+
+/**
+ * struct ipa_rm_delayed_release_work_type - IPA RM delayed resource release
+ *				work type
+ * @delayed_work: work struct
+ * @ipa_rm_resource_name: name of the resource on which this work should be done
+ * @needed_bw: bandwidth required for resource in Mbps
+ */
+struct ipa_rm_delayed_release_work_type {
+	struct delayed_work		work;
+	enum ipa_rm_resource_name	resource_name;
+	u32				needed_bw;
+
+};
 
 /**
  * enum ipa_rm_wq_cmd - workqueue commands
@@ -56,14 +79,47 @@ struct ipa_rm_wq_work_type {
 	bool				notify_registered_only;
 };
 
+/**
+ * struct ipa_rm_wq_suspend_resume_work_type - IPA RM worqueue resume or
+ *				suspend work type
+ * @work: work struct
+ * @resource_name: name of the resource on which this work
+ *			should be done
+ * @prev_state:
+ * @needed_bw:
+ */
+struct ipa_rm_wq_suspend_resume_work_type {
+	struct work_struct		work;
+	enum ipa_rm_resource_name	resource_name;
+	enum ipa_rm_resource_state	prev_state;
+	u32				needed_bw;
+
+};
+
 int ipa_rm_wq_send_cmd(enum ipa_rm_wq_cmd wq_cmd,
 		enum ipa_rm_resource_name resource_name,
 		enum ipa_rm_event event,
 		bool notify_registered_only);
 
+int ipa_rm_wq_send_resume_cmd(enum ipa_rm_resource_name resource_name,
+		enum ipa_rm_resource_state prev_state,
+		u32 needed_bw);
+
+int ipa_rm_wq_send_suspend_cmd(enum ipa_rm_resource_name resource_name,
+		enum ipa_rm_resource_state prev_state,
+		u32 needed_bw);
+
 int ipa_rm_initialize(void);
 
 int ipa_rm_stat(char *buf, int size);
+
+const char *ipa_rm_resource_str(enum ipa_rm_resource_name resource_name);
+
+void ipa_rm_perf_profile_change(enum ipa_rm_resource_name resource_name);
+
+int ipa_rm_request_resource_with_timer(enum ipa_rm_resource_name resource_name);
+
+void delayed_release_work_func(struct work_struct *work);
 
 void ipa_rm_exit(void);
 

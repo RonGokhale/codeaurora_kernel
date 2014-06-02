@@ -4,7 +4,7 @@
  * Copyright (C) 2003-2005,2008 David Brownell
  * Copyright (C) 2003-2004 Robert Schwebel, Benedikt Spranger
  * Copyright (C) 2008 Nokia Corporation
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2
@@ -83,6 +83,7 @@ int gether_qc_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 /* connect/disconnect is handled by individual functions */
 struct net_device *gether_qc_connect_name(struct qc_gether *link,
 		const char *netname, bool netif_enable);
+struct net_device *gether_qc_get_net(const char *netname);
 void gether_qc_disconnect_name(struct qc_gether *link, const char *netname);
 
 /* each configuration may bind one instance of an ethernet link */
@@ -91,8 +92,9 @@ int ecm_qc_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 
 int
 rndis_qc_bind_config_vendor(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
-					 u32 vendorID, const char *manufacturer,
-					 u8 maxPktPerXfer);
+				u32 vendorID, const char *manufacturer,
+				u8 maxPktPerXfer, u8 pkt_alignment_factor,
+				char *xport_name);
 
 void gether_qc_get_macs(u8 dev_mac[ETH_ALEN], u8 host_mac[ETH_ALEN]);
 

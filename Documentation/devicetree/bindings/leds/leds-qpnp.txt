@@ -10,20 +10,21 @@ Each LED module is represented as a node of "leds-qpnp". This
 node will further contain the type of LED supported and its
 properties.  At least one child node is required for each LED
 module.  Each must have the required properties below, in addition
-to the properties for the LED type, WLED, Flash or RGB.
+to the properties for the LED type, WLED, Flash, RGB and MPP.
 
 Required properties for each child node, WLED, Flash and RGB:
 - compatible		: should be "qcom,leds-qpnp"
 - qcom,id		: must be one of values supported in enum qpnp_led
 - label			: type of led that will be used, ie "wled"
-- qcom,max-current	: maximum current that the LED can sustain
+- qcom,max-current	: maximum current that the LED can sustain in mA
 - linux,name		: name of the led that is used in led framework
 
 WLED is primarily used as display backlight. Display subsystem uses
 LED triggers for WLED to control the brightness as needed.
 
 Optional properties for WLED:
-- qcom,num-strings: number of wled strings supported
+- qcom,num-strings: number of wled strings to be configured
+- qcom,num-physical-strings: number of physical wled strings supported
 - qcom,ovp-val: over voltage protection threshold,
 		follows enum wled_ovp_threshold
 - qcom,boost-curr-lim: boot currnet limit, follows enum wled_current_bost_limit
@@ -46,6 +47,8 @@ Optional properties for flash:
 - linux,default-trigger: trigger the led from external modules such as display
 - qcom,default-state:  default state of the led, should be "on" or "off"
 - qcom,torch-enable: set flash led to torch mode functionality and triggers software workaround for torch if hardware does not support
+- qcom,sw_vreg_ok: Specify if software strobe is used to inform the readiness of flash module to fire the flash LED when there is no smbb support
+- qcom,no-smbb-support: Specify if smbb boost is not required and there is a single regulator for both flash and torch.
 - flash-boost-supply: SMBB regulator for LED flash mode
 - torch-boost-supply: SMBB regulator for LED torch mode
 
@@ -85,6 +88,10 @@ Optional properties for MPP LED:
 - qcom,vin-ctrl: select input source, supported values are 0 to 3
 - qcom,use-blink: Use blink sysfs entry for switching into lpg mode.  For optimal use, set default mode to pwm.  All required lpg parameters must be supplied.
 - qcom,min-brightness - Lowest possible brightness supported on this LED other than 0.
+- qcom,current-setting: default current value for wled used as button backlight in mA
+- mpp-power-supply: regulator support for MPP LED
+- qcom,mpp-power-max-voltage - maximum voltage for MPP LED regulator. This should not be specified when no regulator is in use.
+- qcom,mpp-power-min-voltage - minimum voltage for MPP LED regulator. This should not be specified when no regulator is in use.
 
 Required properties for PWM mode only:
 - qcom,pwm-channel: pwm channel the led will operate on
@@ -129,7 +136,33 @@ Optional properties for LPG mode only:
 - qcom,ramp-step-ms: step between each cycle (ms)
 - qcom,lut-flags: flags to be used in lut configuration
 
+GPIO LED is an LED controlled through a PMIC GPIO.
+
+Optional properties for GPIO LED:
+- linux,default-trigger: trigger the led from external modules such as charging
+- qcom,default-state: default state of the led, should be "on" or "off"
+- qcom,turn-off-delay-ms: delay in millisecond for turning off the led when its default-state is "on". Value is being ignored in case default-state is "off".
+- qcom,source-sel: select power source, default 1 (enabled)
+- qcom,mode-ctrl: select operation mode, default 0x60 = Mode Sink
+- qcom,vin-ctrl: select input source, supported values are 0 to 7
+
 Example:
+
+	qcom,leds@a100 {
+		status = "okay";
+		qcom,led_mpp_2 {
+			label = "mpp";
+			linux,name = "button-backlight";
+			linux,default-trigger = "hr-trigger";
+			qcom,default-state = "off";
+			qcom,current-setting = <20>;
+			qcom,max-current = <40>;
+			qcom,id = <6>;
+			qcom,source-sel = <1>;
+			qcom,mode-ctrl = <0x61>;
+			qcom,mode = "manual";
+		};
+	};
 
 	qcom,leds@a200 {
 		status = "okay";
@@ -294,4 +327,22 @@ Example:
 			qcom,row-src-en;
 		};
 
+	};
+
+	qcom,leds@c900 {
+		compatible = "qcom,leds-qpnp";
+		reg = <0xc900 0x100>;
+		status = "okay";
+		qcom,led_gpio_10 {
+			label = "gpio";
+			linux,name = "led:notification";
+			qcom,max-current = <40>;
+			qcom,id = <8>;
+			linux,default-trigger = "notification";
+			qcom,default-state = "on";
+			qcom,turn-off-delay-ms = <1000>;
+			qcom,source-sel = <1>;
+			qcom,mode-ctrl = <0x10>;
+			qcom,vin-ctrl = <0x02>;
+		};
 	};

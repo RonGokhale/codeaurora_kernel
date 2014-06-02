@@ -16,7 +16,9 @@ Required properties:
 			"kpdpwr-resin-bark". Bark interrupts are associated with system
 			reset configuration to allow default reset configuration to be
 			activated. If system reset configuration is not supported then
-			bark interrupts are nops.
+			bark interrupts are nops. Additionally, the "pmic-wd-bark"
+			interrupt can be added if the system needs to handle PMIC
+			watch dog barks.
 
 Optional properties:
 - qcom,pon-dbc-delay		The debounce delay for the power-key interrupt
@@ -36,6 +38,10 @@ Optional properties:
 				to include it more than once.
 - qcom,s3-debounce		The debounce delay for stage3 reset trigger in
 				secs. The values range from 0 to 128.
+- qcom,s3-src			The source for stage 3 reset. It can be one of
+				"kpdpwr", "resin", "kpdpwr-or-resin" or
+				"kpdpwr-and-resin". The default value is
+				"kpdpwr-and-resin".
 
 All the below properties are in the sub-node section (properties of the child
 node).
@@ -56,7 +62,7 @@ Sub-node optional properties:
 				0 = Not supported
 				1 = Supported
 				This property is set to '0' if not specified.
-- qcom,use-bark			Specify if this pon type needs to handle bark irq
+- qcom,use-bark                        Specify if this pon type needs to handle bark irq
 - qcom,s1-timer			The debounce timer for the BARK interrupt for
 				that reset source. Value is specified in ms.
 				Supported values are -
@@ -92,6 +98,7 @@ Example:
 		qcom,pon-dbc-delay = <15625>;
 		qcom,system-reset;
 		qcom,s3-debounce = <32>;
+		qcom,s3-src = "resin";
 
 		qcom,pon_1 {
 			qcom,pon-type = <0>;

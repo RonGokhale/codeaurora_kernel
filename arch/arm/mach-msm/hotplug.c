@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2002 ARM Ltd.
  *  All Rights Reserved
- *  Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -11,18 +11,15 @@
 #include <linux/errno.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
+#include <linux/notifier.h>
+#include <linux/msm_rtb.h>
+#include <soc/qcom/spm.h>
+#include <soc/qcom/pm.h>
 
-#include <asm/cacheflush.h>
 #include <asm/smp_plat.h>
 #include <asm/vfp.h>
 
-#include <mach/jtag.h>
-#include <mach/msm_rtb.h>
-
-#include "pm.h"
-#include "spm.h"
-
-extern volatile int pen_release;
+#include <soc/qcom/jtag.h>
 
 static cpumask_t cpu_dying_mask;
 
@@ -30,9 +27,6 @@ static DEFINE_PER_CPU(unsigned int, warm_boot_flag);
 
 static inline void cpu_enter_lowpower(void)
 {
-	/* Just flush the cache. Changing the coherency is not yet
-	 * available on msm. */
-	flush_cache_all();
 }
 
 static inline void cpu_leave_lowpower(void)
@@ -44,7 +38,7 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 	/* Just enter wfi for now. TODO: Properly shut off the cpu. */
 	for (;;) {
 
-		msm_pm_cpu_enter_lowpower(cpu);
+		lpm_cpu_hotplug_enter(cpu);
 		if (pen_release == cpu_logical_map(cpu)) {
 			/*
 			 * OK, proper wakeup, we're done
@@ -64,7 +58,7 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 	}
 }
 
-int platform_cpu_kill(unsigned int cpu)
+int msm_cpu_kill(unsigned int cpu)
 {
 	int ret = 0;
 
@@ -79,7 +73,7 @@ int platform_cpu_kill(unsigned int cpu)
  *
  * Called with IRQs disabled
  */
-void platform_cpu_die(unsigned int cpu)
+void __ref msm_cpu_die(unsigned int cpu)
 {
 	int spurious = 0;
 
@@ -99,15 +93,6 @@ void platform_cpu_die(unsigned int cpu)
 
 	if (spurious)
 		pr_warn("CPU%u: %u spurious wakeup calls\n", cpu, spurious);
-}
-
-int platform_cpu_disable(unsigned int cpu)
-{
-	/*
-	 * we don't allow CPU 0 to be shutdown (it is still too special
-	 * e.g. clock tick interrupts)
-	 */
-	return cpu == 0 ? -EPERM : 0;
 }
 
 #define CPU_SHIFT	0

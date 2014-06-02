@@ -19,9 +19,9 @@
 #include <linux/device.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
+#include <soc/qcom/hsic_sysmon.h>
+#include <soc/qcom/sysmon.h>
 
-#include "hsic_sysmon.h"
-#include "sysmon.h"
 
 #define DRIVER_DESC	"HSIC System monitor driver test"
 
@@ -63,9 +63,13 @@ static ssize_t sysmon_test_write(struct file *file, const char __user *ubuf,
 	if (!dev)
 		return -ENODEV;
 
+	/* Add check for user buf count greater than RD_BUF_SIZE */
+	if (count > RD_BUF_SIZE)
+		count = RD_BUF_SIZE;
+
 	if (copy_from_user(dev->buf, ubuf, count)) {
 		pr_err("error copying for writing");
-		return 0;
+		return -EFAULT;
 	}
 
 	ret = hsic_sysmon_write(id, dev->buf, count, 1000);

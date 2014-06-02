@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,9 @@ static const char *const pmic_names[] = {
 	"PMA8084",
 	"PMI8962",
 	"PMD9635",
+	"PM8994",
+	"PMI8994",
+	"PM8916",
 };
 
 struct revid_chip {
@@ -128,7 +131,7 @@ static size_t build_pmic_string(char *buf, size_t n, int sid,
 
 #define PMIC_PERIPHERAL_TYPE		0x51
 #define PMIC_STRING_MAXLENGTH		80
-static int __devinit qpnp_revid_probe(struct spmi_device *spmi)
+static int qpnp_revid_probe(struct spmi_device *spmi)
 {
 	u8 rev1, rev2, rev3, rev4, pmic_type, pmic_subtype, pmic_status;
 	u8 option1, option2, option3, option4;

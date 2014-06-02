@@ -310,7 +310,8 @@ static long ts72xx_wdt_ioctl(struct file *file, unsigned int cmd,
 
 	case WDIOC_GETSTATUS:
 	case WDIOC_GETBOOTSTATUS:
-		return put_user(0, p);
+		error = put_user(0, p);
+		break;
 
 	case WDIOC_KEEPALIVE:
 		ts72xx_wdt_kick(wdt);
@@ -390,7 +391,7 @@ static struct miscdevice ts72xx_wdt_miscdev = {
 	.fops		= &ts72xx_wdt_fops,
 };
 
-static __devinit int ts72xx_wdt_probe(struct platform_device *pdev)
+static int ts72xx_wdt_probe(struct platform_device *pdev)
 {
 	struct ts72xx_wdt *wdt;
 	struct resource *r1, *r2;
@@ -476,7 +477,7 @@ fail:
 	return error;
 }
 
-static __devexit int ts72xx_wdt_remove(struct platform_device *pdev)
+static int ts72xx_wdt_remove(struct platform_device *pdev)
 {
 	struct ts72xx_wdt *wdt = platform_get_drvdata(pdev);
 	struct resource *res;
@@ -499,7 +500,7 @@ static __devexit int ts72xx_wdt_remove(struct platform_device *pdev)
 
 static struct platform_driver ts72xx_wdt_driver = {
 	.probe		= ts72xx_wdt_probe,
-	.remove		= __devexit_p(ts72xx_wdt_remove),
+	.remove		= ts72xx_wdt_remove,
 	.driver		= {
 		.name	= "ts72xx-wdt",
 		.owner	= THIS_MODULE,

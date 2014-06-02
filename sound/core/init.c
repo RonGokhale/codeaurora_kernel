@@ -106,7 +106,7 @@ static void snd_card_id_read(struct snd_info_entry *entry,
 	snd_iprintf(buffer, "%s\n", entry->card->id);
 }
 
-static int snd_card_state_read(struct snd_info_entry *entry,
+static ssize_t snd_card_state_read(struct snd_info_entry *entry,
 			       void *file_private_data, struct file *file,
 			       char __user *buf, size_t count, loff_t pos)
 {
@@ -193,7 +193,7 @@ static inline int init_info_for_card(struct snd_card *card)
  *  space for the driver to use freely.  The allocated struct is stored
  *  in the given card_ret pointer.
  *
- *  Returns zero if successful or a negative error code.
+ *  Return: Zero if successful or a negative error code.
  */
 int snd_card_create(int idx, const char *xid,
 		    struct module *module, int extra_size,
@@ -262,6 +262,7 @@ int snd_card_create(int idx, const char *xid,
 	spin_lock_init(&card->files_lock);
 	INIT_LIST_HEAD(&card->files_list);
 	init_waitqueue_head(&card->shutdown_sleep);
+	atomic_set(&card->refcount, 0);
 #ifdef CONFIG_PM
 	mutex_init(&card->power_lock);
 	init_waitqueue_head(&card->power_sleep);
@@ -386,7 +387,7 @@ static const struct file_operations snd_shutdown_f_ops =
  *
  *  Disconnects all APIs from the file-operations (user space).
  *
- *  Returns zero, otherwise a negative error code.
+ *  Return: Zero, otherwise a negative error code.
  *
  *  Note: The current implementation replaces all active file->f_op with special
  *        dummy file operations (they do nothing except release).
@@ -464,7 +465,7 @@ EXPORT_SYMBOL(snd_card_disconnect);
  *  devices automatically.  That is, you don't have to release the devices
  *  by yourself.
  *
- *  Returns zero. Frees all associated devices and frees the control
+ *  Return: Zero. Frees all associated devices and frees the control
  *  interface associated to given soundcard.
  */
 static int snd_card_do_free(struct snd_card *card)
@@ -496,21 +497,36 @@ static int snd_card_do_free(struct snd_card *card)
 	return 0;
 }
 
+/**
+ * snd_card_unref - release the reference counter
+ * @card: the card instance
+ *
+ * Decrements the reference counter.  When it reaches to zero, wake up
+ * the sleeper and call the destructor if needed.
+ */
+void snd_card_unref(struct snd_card *card)
+{
+	if (atomic_dec_and_test(&card->refcount)) {
+		wake_up(&card->shutdown_sleep);
+		if (card->free_on_last_close)
+			snd_card_do_free(card);
+	}
+}
+EXPORT_SYMBOL(snd_card_unref);
+
 int snd_card_free_when_closed(struct snd_card *card)
 {
-	int free_now = 0;
-	int ret = snd_card_disconnect(card);
-	if (ret)
+	int ret;
+
+	atomic_inc(&card->refcount);
+	ret = snd_card_disconnect(card);
+	if (ret) {
+		atomic_dec(&card->refcount);
 		return ret;
+	}
 
-	spin_lock(&card->files_lock);
-	if (list_empty(&card->files_list))
-		free_now = 1;
-	else
-		card->free_on_last_close = 1;
-	spin_unlock(&card->files_lock);
-
-	if (free_now)
+	card->free_on_last_close = 1;
+	if (atomic_dec_and_test(&card->refcount))
 		snd_card_do_free(card);
 	return 0;
 }
@@ -524,7 +540,7 @@ int snd_card_free(struct snd_card *card)
 		return ret;
 
 	/* wait, until all devices are ready for the free operation */
-	wait_event(card->shutdown_sleep, list_empty(&card->files_list));
+	wait_event(card->shutdown_sleep, !atomic_read(&card->refcount));
 	snd_card_do_free(card);
 	return 0;
 }
@@ -691,7 +707,7 @@ static struct device_attribute card_number_attrs =
  *  external accesses.  Thus, you should call this function at the end
  *  of the initialization of the card.
  *
- *  Returns zero otherwise a negative error code if the registration failed.
+ *  Return: Zero otherwise a negative error code if the registration failed.
  */
 int snd_card_register(struct snd_card *card)
 {
@@ -852,7 +868,7 @@ int __exit snd_card_info_done(void)
  *  This function adds the component id string to the supported list.
  *  The component can be referred from the alsa-lib.
  *
- *  Returns zero otherwise a negative error code.
+ *  Return: Zero otherwise a negative error code.
  */
   
 int snd_component_add(struct snd_card *card, const char *component)
@@ -886,7 +902,7 @@ EXPORT_SYMBOL(snd_component_add);
  *  This linked-list is used to keep tracking the connection state,
  *  and to avoid the release of busy resources by hotplug.
  *
- *  Returns zero or a negative error code.
+ *  Return: zero or a negative error code.
  */
 int snd_card_file_add(struct snd_card *card, struct file *file)
 {
@@ -905,6 +921,7 @@ int snd_card_file_add(struct snd_card *card, struct file *file)
 		return -ENODEV;
 	}
 	list_add(&mfile->list, &card->files_list);
+	atomic_inc(&card->refcount);
 	spin_unlock(&card->files_lock);
 	return 0;
 }
@@ -922,12 +939,11 @@ EXPORT_SYMBOL(snd_card_file_add);
  *  called beforehand, it processes the pending release of
  *  resources.
  *
- *  Returns zero or a negative error code.
+ *  Return: Zero or a negative error code.
  */
 int snd_card_file_remove(struct snd_card *card, struct file *file)
 {
 	struct snd_monitor_file *mfile, *found = NULL;
-	int last_close = 0;
 
 	spin_lock(&card->files_lock);
 	list_for_each_entry(mfile, &card->files_list, list) {
@@ -942,19 +958,13 @@ int snd_card_file_remove(struct snd_card *card, struct file *file)
 			break;
 		}
 	}
-	if (list_empty(&card->files_list))
-		last_close = 1;
 	spin_unlock(&card->files_lock);
-	if (last_close) {
-		wake_up(&card->shutdown_sleep);
-		if (card->free_on_last_close)
-			snd_card_do_free(card);
-	}
 	if (!found) {
 		snd_printk(KERN_ERR "ALSA card file remove problem (%p)\n", file);
 		return -ENOENT;
 	}
 	kfree(found);
+	snd_card_unref(card);
 	return 0;
 }
 
@@ -996,6 +1006,8 @@ EXPORT_SYMBOL(snd_card_is_online_state);
  *  @power_state: expected power state
  *
  *  Waits until the power-state is changed.
+ *
+ *  Return: Zero if successful, or a negative error code.
  *
  *  Note: the power lock must be active before call.
  */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,7 +18,7 @@ struct v4l2_subdev *msm_buf_mngr_get_subdev(void)
 	return &msm_buf_mngr_dev->subdev.sd;
 }
 
-static int msm_buf_mngr_get_buf(struct msm_buf_mngr_device *buf_mngr_dev,
+static int32_t msm_buf_mngr_get_buf(struct msm_buf_mngr_device *buf_mngr_dev,
 	void __user *argp)
 {
 	unsigned long flags;
@@ -48,12 +48,12 @@ static int msm_buf_mngr_get_buf(struct msm_buf_mngr_device *buf_mngr_dev,
 	return 0;
 }
 
-static int msm_buf_mngr_buf_done(struct msm_buf_mngr_device *buf_mngr_dev,
+static int32_t msm_buf_mngr_buf_done(struct msm_buf_mngr_device *buf_mngr_dev,
 	struct msm_buf_mngr_info *buf_info)
 {
 	unsigned long flags;
 	struct msm_get_bufs *bufs, *save;
-	int ret = -EINVAL;
+	int32_t ret = -EINVAL;
 
 	spin_lock_irqsave(&buf_mngr_dev->buf_q_spinlock, flags);
 	list_for_each_entry_safe(bufs, save, &buf_mngr_dev->buf_qhead, entry) {
@@ -77,12 +77,12 @@ static int msm_buf_mngr_buf_done(struct msm_buf_mngr_device *buf_mngr_dev,
 }
 
 
-static int msm_buf_mngr_put_buf(struct msm_buf_mngr_device *buf_mngr_dev,
+static int32_t msm_buf_mngr_put_buf(struct msm_buf_mngr_device *buf_mngr_dev,
 	struct msm_buf_mngr_info *buf_info)
 {
 	unsigned long flags;
 	struct msm_get_bufs *bufs, *save;
-	int ret = -EINVAL;
+	int32_t ret = -EINVAL;
 
 	spin_lock_irqsave(&buf_mngr_dev->buf_q_spinlock, flags);
 	list_for_each_entry_safe(bufs, save, &buf_mngr_dev->buf_qhead, entry) {
@@ -100,10 +100,55 @@ static int msm_buf_mngr_put_buf(struct msm_buf_mngr_device *buf_mngr_dev,
 	return ret;
 }
 
+static void msm_buf_mngr_sd_shutdown(struct msm_buf_mngr_device *buf_mngr_dev)
+{
+	unsigned long flags;
+	struct msm_get_bufs *bufs, *save;
+
+	spin_lock_irqsave(&buf_mngr_dev->buf_q_spinlock, flags);
+	if (!list_empty(&buf_mngr_dev->buf_qhead)) {
+		list_for_each_entry_safe(bufs,
+			save, &buf_mngr_dev->buf_qhead, entry) {
+			pr_err("%s: Error delete invalid bufs =%lx, ses_id=%d, str_id=%d, idx=%d\n",
+				__func__, (unsigned long)bufs, bufs->session_id,
+				bufs->stream_id, bufs->vb2_buf->v4l2_buf.index);
+			list_del_init(&bufs->entry);
+			kfree(bufs);
+		}
+	}
+	spin_unlock_irqrestore(&buf_mngr_dev->buf_q_spinlock, flags);
+}
+
+static int msm_generic_buf_mngr_open(struct v4l2_subdev *sd,
+	struct v4l2_subdev_fh *fh)
+{
+	int rc = 0;
+	struct msm_buf_mngr_device *buf_mngr_dev = v4l2_get_subdevdata(sd);
+	if (!buf_mngr_dev) {
+		pr_err("%s buf manager device NULL\n", __func__);
+		rc = -ENODEV;
+		return rc;
+	}
+	return rc;
+}
+
+static int msm_generic_buf_mngr_close(struct v4l2_subdev *sd,
+	struct v4l2_subdev_fh *fh)
+{
+	int rc = 0;
+	struct msm_buf_mngr_device *buf_mngr_dev = v4l2_get_subdevdata(sd);
+	if (!buf_mngr_dev) {
+		pr_err("%s buf manager device NULL\n", __func__);
+		rc = -ENODEV;
+		return rc;
+	}
+	return rc;
+}
+
 static long msm_buf_mngr_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
-	int rc = 0;
+	int32_t rc = 0;
 	struct msm_buf_mngr_device *buf_mngr_dev = v4l2_get_subdevdata(sd);
 	void __user *argp = (void __user *)arg;
 
@@ -123,14 +168,97 @@ static long msm_buf_mngr_subdev_ioctl(struct v4l2_subdev *sd,
 	case VIDIOC_MSM_BUF_MNGR_PUT_BUF:
 		rc = msm_buf_mngr_put_buf(buf_mngr_dev, argp);
 		break;
+	case VIDIOC_MSM_BUF_MNGR_INIT:
+		rc = msm_generic_buf_mngr_open(sd, NULL);
+		break;
+	case VIDIOC_MSM_BUF_MNGR_DEINIT:
+		rc = msm_generic_buf_mngr_close(sd, NULL);
+		break;
+	case MSM_SD_SHUTDOWN:
+		msm_buf_mngr_sd_shutdown(buf_mngr_dev);
+		break;
 	default:
 		return -ENOIOCTLCMD;
 	}
 	return rc;
 }
 
+#ifdef CONFIG_COMPAT
+static long msm_bmgr_subdev_fops_compat_ioctl(struct file *file,
+		unsigned int cmd, unsigned long arg)
+{
+	struct video_device *vdev = video_devdata(file);
+	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
+	int32_t rc = 0;
+
+	void __user *up = (void __user *)arg;
+
+	struct msm_buf_mngr_info32_t buf_info32;
+	struct msm_buf_mngr_info buf_info;
+
+	if (copy_from_user(&buf_info32, (void __user *)up,
+				sizeof(struct msm_buf_mngr_info32_t)))
+		return -EFAULT;
+
+	buf_info.session_id = buf_info32.session_id;
+	buf_info.stream_id = buf_info32.stream_id;
+	buf_info.frame_id = buf_info32.frame_id;
+	buf_info.index = buf_info32.index;
+	buf_info.timestamp.tv_sec = (long) buf_info32.timestamp.tv_sec;
+	buf_info.timestamp.tv_usec = (long) buf_info32.timestamp.tv_usec;
+
+	/* Convert 32 bit IOCTL ID's to 64 bit IOCTL ID's
+	 * except VIDIOC_MSM_CPP_CFG32, which needs special
+	 * processing
+	 */
+	switch (cmd) {
+	case VIDIOC_MSM_BUF_MNGR_GET_BUF32:
+		cmd = VIDIOC_MSM_BUF_MNGR_GET_BUF;
+		break;
+	case VIDIOC_MSM_BUF_MNGR_BUF_DONE32:
+		cmd = VIDIOC_MSM_BUF_MNGR_BUF_DONE;
+		break;
+	case VIDIOC_MSM_BUF_MNGR_PUT_BUF32:
+		cmd = VIDIOC_MSM_BUF_MNGR_PUT_BUF;
+		break;
+	default:
+		pr_debug("%s : unsupported compat type", __func__);
+		break;
+	}
+
+	switch (cmd) {
+	case VIDIOC_MSM_BUF_MNGR_GET_BUF:
+	case VIDIOC_MSM_BUF_MNGR_BUF_DONE:
+	case VIDIOC_MSM_BUF_MNGR_PUT_BUF:
+		rc = v4l2_subdev_call(sd, core, ioctl, cmd, &buf_info);
+		break;
+	default:
+		pr_debug("%s : unsupported compat type", __func__);
+		break;
+	}
+
+	buf_info32.session_id = buf_info.session_id;
+	buf_info32.stream_id = buf_info.stream_id;
+	buf_info32.index = buf_info.index;
+	buf_info32.timestamp.tv_sec = (int32_t) buf_info.timestamp.tv_sec;
+	buf_info32.timestamp.tv_usec = (int32_t) buf_info.timestamp.tv_usec;
+
+	if (copy_to_user((void __user *)up, &buf_info32,
+			sizeof(struct msm_buf_mngr_info32_t)))
+		return -EFAULT;
+
+	return 0;
+}
+#endif
+
 static struct v4l2_subdev_core_ops msm_buf_mngr_subdev_core_ops = {
 	.ioctl = msm_buf_mngr_subdev_ioctl,
+};
+
+static const struct v4l2_subdev_internal_ops
+	msm_generic_buf_mngr_subdev_internal_ops = {
+	.open  = msm_generic_buf_mngr_open,
+	.close = msm_generic_buf_mngr_close,
 };
 
 static const struct v4l2_subdev_ops msm_buf_mngr_subdev_ops = {
@@ -139,11 +267,30 @@ static const struct v4l2_subdev_ops msm_buf_mngr_subdev_ops = {
 
 static const struct of_device_id msm_buf_mngr_dt_match[] = {
 	{.compatible = "qcom,msm_buf_mngr"},
+	{}
 };
 
-static int __init msm_buf_mngr_init(void)
+static struct v4l2_file_operations msm_buf_v4l2_subdev_fops;
+
+static long msm_bmgr_subdev_do_ioctl(
+		struct file *file, unsigned int cmd, void *arg)
 {
-	int rc = 0;
+	struct video_device *vdev = video_devdata(file);
+	struct v4l2_subdev *sd = vdev_to_v4l2_subdev(vdev);
+
+	return v4l2_subdev_call(sd, core, ioctl, cmd, arg);
+}
+
+
+static long msm_buf_subdev_fops_ioctl(struct file *file, unsigned int cmd,
+		unsigned long arg)
+{
+	return video_usercopy(file, cmd, arg, msm_bmgr_subdev_do_ioctl);
+}
+
+static int32_t __init msm_buf_mngr_init(void)
+{
+	int32_t rc = 0;
 	msm_buf_mngr_dev = kzalloc(sizeof(*msm_buf_mngr_dev),
 		GFP_KERNEL);
 	if (WARN_ON(!msm_buf_mngr_dev)) {
@@ -153,6 +300,17 @@ static int __init msm_buf_mngr_init(void)
 	/* Sub-dev */
 	v4l2_subdev_init(&msm_buf_mngr_dev->subdev.sd,
 		&msm_buf_mngr_subdev_ops);
+
+	msm_buf_v4l2_subdev_fops.owner = v4l2_subdev_fops.owner;
+	msm_buf_v4l2_subdev_fops.open = v4l2_subdev_fops.open;
+	msm_buf_v4l2_subdev_fops.unlocked_ioctl = msm_buf_subdev_fops_ioctl;
+	msm_buf_v4l2_subdev_fops.release = v4l2_subdev_fops.release;
+	msm_buf_v4l2_subdev_fops.poll = v4l2_subdev_fops.poll;
+
+#ifdef CONFIG_COMPAT
+	msm_buf_v4l2_subdev_fops.compat_ioctl32 =
+			msm_bmgr_subdev_fops_compat_ioctl;
+#endif
 	snprintf(msm_buf_mngr_dev->subdev.sd.name,
 		ARRAY_SIZE(msm_buf_mngr_dev->subdev.sd.name), "msm_buf_mngr");
 	msm_buf_mngr_dev->subdev.sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
@@ -162,12 +320,16 @@ static int __init msm_buf_mngr_init(void)
 	msm_buf_mngr_dev->subdev.sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
 	msm_buf_mngr_dev->subdev.sd.entity.group_id =
 		MSM_CAMERA_SUBDEV_BUF_MNGR;
+	msm_buf_mngr_dev->subdev.sd.internal_ops =
+		&msm_generic_buf_mngr_subdev_internal_ops;
 	msm_buf_mngr_dev->subdev.close_seq = MSM_SD_CLOSE_4TH_CATEGORY;
 	rc = msm_sd_register(&msm_buf_mngr_dev->subdev);
 	if (rc != 0) {
 		pr_err("%s: msm_sd_register error = %d\n", __func__, rc);
 		goto end;
 	}
+
+	msm_buf_mngr_dev->subdev.sd.devnode->fops = &msm_buf_v4l2_subdev_fops;
 
 	v4l2_subdev_notify(&msm_buf_mngr_dev->subdev.sd, MSM_SD_NOTIFY_REQ_CB,
 		&msm_buf_mngr_dev->vb2_ops);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,14 +13,16 @@
 
 #include <linux/slab.h>
 #include <linux/iommu.h>
-#include <mach/iommu_domains.h>
-#include <mach/qdsp6v2/apr.h>
-#include <mach/subsystem_restart.h>
+#include <linux/msm_iommu_domains.h>
+#include <linux/qdsp6v2/apr.h>
+#include <soc/qcom/subsystem_restart.h>
 #include "hfi_packetization.h"
 #include "msm_vidc_debug.h"
 #include "q6_hfi.h"
 #include "vidc_hfi_api.h"
 
+
+#if defined(CONFIG_MSM_QDSP6_APR) || defined(CONFIG_MSM_QDSP6_APRV2)
 static struct hal_device_data hal_ctxt;
 
 static int write_queue(void *info, u8 *packet)
@@ -31,7 +33,7 @@ static int write_queue(void *info, u8 *packet)
 	u32 *write_ptr;
 
 	if (!info || !packet) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 
@@ -40,7 +42,7 @@ static int write_queue(void *info, u8 *packet)
 	packet_size_in_words = (*(u32 *)packet) >> 2;
 
 	if (packet_size_in_words == 0) {
-		dprintk(VIDC_ERR, "Zero packet size");
+		dprintk(VIDC_ERR, "Zero packet size\n");
 		return -ENODATA;
 	}
 
@@ -50,7 +52,7 @@ static int write_queue(void *info, u8 *packet)
 		(qinfo->q_size - (qinfo->write_idx -  read_idx)) :
 		(read_idx - qinfo->write_idx);
 	if (empty_space <= packet_size_in_words) {
-		dprintk(VIDC_ERR, "Insufficient size (%d) to write (%d)",
+		dprintk(VIDC_ERR, "Insufficient size (%d) to write (%d)\n",
 					  empty_space, packet_size_in_words);
 		return -ENOTEMPTY;
 	}
@@ -78,7 +80,7 @@ static int read_queue(void *info, u8 *packet)
 	struct q6_iface_q_info *qinfo;
 
 	if (!info || !packet) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 
@@ -90,7 +92,7 @@ static int read_queue(void *info, u8 *packet)
 	read_ptr = (u32 *)(qinfo->buffer + (qinfo->read_idx << 2));
 	packet_size_in_words = (*read_ptr) >> 2;
 	if (packet_size_in_words == 0) {
-		dprintk(VIDC_ERR, "Zero packet size");
+		dprintk(VIDC_ERR, "Zero packet size\n");
 		return -ENODATA;
 	}
 
@@ -119,13 +121,13 @@ static int q6_hfi_iface_eventq_write(struct q6_hfi_device *device, void *pkt)
 	unsigned long flags = 0;
 
 	if (!device || !pkt) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 
 	q_info = &device->event_queue;
 	if (!q_info->buffer) {
-		dprintk(VIDC_ERR, "cannot write to shared Q");
+		dprintk(VIDC_ERR, "cannot write to shared Q\n");
 		rc = -ENODATA;
 		goto err_q_write;
 	}
@@ -133,7 +135,7 @@ static int q6_hfi_iface_eventq_write(struct q6_hfi_device *device, void *pkt)
 	spin_lock_irqsave(&q_info->lock, flags);
 	rc = write_queue(q_info, (u8 *)pkt);
 	if (rc)
-		dprintk(VIDC_ERR, "q6_hfi_iface_eventq_write: queue_full");
+		dprintk(VIDC_ERR, "q6_hfi_iface_eventq_write: queue_full\n");
 
 	spin_unlock_irqrestore(&q_info->lock, flags);
 err_q_write:
@@ -146,15 +148,15 @@ static int q6_hfi_iface_eventq_read(struct q6_hfi_device *device, void *pkt)
 	struct q6_iface_q_info *q_info;
 	unsigned long flags = 0;
 
-	if (!pkt) {
-		dprintk(VIDC_ERR, "Invalid Params");
+	if (!device || !pkt) {
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 
 	q_info = &device->event_queue;
 
 	if (!q_info->buffer) {
-		dprintk(VIDC_ERR, "cannot read from shared Q");
+		dprintk(VIDC_ERR, "cannot read from shared Q\n");
 		rc = -ENODATA;
 		goto read_error;
 	}
@@ -162,7 +164,7 @@ static int q6_hfi_iface_eventq_read(struct q6_hfi_device *device, void *pkt)
 	spin_lock_irqsave(&q_info->lock, flags);
 	rc = read_queue(q_info, (u8 *)pkt);
 	if (rc) {
-		dprintk(VIDC_INFO, "q6_hfi_iface_eventq_read:queue_empty");
+		dprintk(VIDC_INFO, "q6_hfi_iface_eventq_read:queue_empty\n");
 		rc = -ENODATA;
 	}
 	spin_unlock_irqrestore(&q_info->lock, flags);
@@ -189,7 +191,7 @@ static void q6_hfi_core_work_handler(struct work_struct *work)
 	} while (!rc);
 
 	if (rc != -ENODATA)
-		dprintk(VIDC_ERR, "Failed to read from event queue");
+		dprintk(VIDC_ERR, "Failed to read from event queue\n");
 }
 
 static int q6_hfi_register_iommu_domains(struct q6_hfi_device *device)
@@ -200,7 +202,7 @@ static int q6_hfi_register_iommu_domains(struct q6_hfi_device *device)
 	struct iommu_info *iommu_map;
 
 	if (!device || !device->res) {
-		dprintk(VIDC_ERR, "Invalid parameter: %p", device);
+		dprintk(VIDC_ERR, "Invalid parameter: %p\n", device);
 		return -EINVAL;
 	}
 
@@ -210,22 +212,25 @@ static int q6_hfi_register_iommu_domains(struct q6_hfi_device *device)
 		iommu_map = &iommu_group_set->iommu_maps[i];
 		iommu_map->group = iommu_group_find(iommu_map->name);
 		if (!iommu_map->group) {
-			dprintk(VIDC_ERR, "Failed to find group :%s\n",
+			dprintk(VIDC_DBG, "Failed to find group :%s\n",
 					iommu_map->name);
+			rc = -EPROBE_DEFER;
 			goto fail_group;
 		}
 		domain = iommu_group_get_iommudata(iommu_map->group);
 		if (IS_ERR_OR_NULL(domain)) {
 			dprintk(VIDC_ERR,
-					"Failed to get domain data for group %p",
+					"Failed to get domain data for group %p\n",
 					iommu_map->group);
+			rc = -EINVAL;
 			goto fail_group;
 		}
 		iommu_map->domain = msm_find_domain_no(domain);
 		if (iommu_map->domain < 0) {
 			dprintk(VIDC_ERR,
-					"Failed to get domain index for domain %p",
+					"Failed to get domain index for domain %p\n",
 					domain);
+			rc = -EINVAL;
 			goto fail_group;
 		}
 	}
@@ -239,7 +244,7 @@ fail_group:
 		iommu_map->group = NULL;
 		iommu_map->domain = -1;
 	}
-	return -EINVAL;
+	return rc;
 }
 
 static void q6_hfi_deregister_iommu_domains(struct q6_hfi_device *device)
@@ -249,7 +254,7 @@ static void q6_hfi_deregister_iommu_domains(struct q6_hfi_device *device)
 	int i = 0;
 
 	if (!device || !device->res) {
-		dprintk(VIDC_ERR, "Invalid parameter: %p", device);
+		dprintk(VIDC_ERR, "Invalid parameter: %p\n", device);
 		return;
 	}
 
@@ -269,14 +274,18 @@ static int q6_hfi_init_resources(struct q6_hfi_device *device,
 	int rc = 0;
 
 	if (!device || !res) {
-		dprintk(VIDC_ERR, "Invalid device or resources");
+		dprintk(VIDC_ERR, "Invalid device or resources\n");
 		return -EINVAL;
 	}
 
 	device->res = res;
 	rc = q6_hfi_register_iommu_domains(device);
-	if (rc)
-		dprintk(VIDC_ERR, "Failed to register iommu domains: %d\n", rc);
+	if (rc) {
+		if (rc != -EPROBE_DEFER) {
+			dprintk(VIDC_ERR,
+				"Failed to register iommu domains: %d\n", rc);
+		}
+	}
 
 	return rc;
 }
@@ -292,14 +301,14 @@ static void *q6_hfi_add_device(u32 device_id,
 	struct q6_hfi_device *hdevice = NULL;
 
 	if (!callback) {
-		dprintk(VIDC_ERR, "Invalid Paramters");
+		dprintk(VIDC_ERR, "Invalid Paramters\n");
 		return NULL;
 	}
 
 	hdevice = (struct q6_hfi_device *)
 			kzalloc(sizeof(struct q6_hfi_device), GFP_KERNEL);
 	if (!hdevice) {
-		dprintk(VIDC_ERR, "failed to allocate new device");
+		dprintk(VIDC_ERR, "failed to allocate new device\n");
 		goto err_alloc;
 	}
 
@@ -351,14 +360,15 @@ static void *q6_hfi_get_device(u32 device_id,
 
 	rc = q6_hfi_init_resources(device, res);
 	if (rc) {
-		dprintk(VIDC_ERR, "Failed to init resources: %d\n", rc);
+		if (rc != -EPROBE_DEFER)
+			dprintk(VIDC_ERR, "Failed to init resources: %d\n", rc);
 		goto err_fail_init_res;
 	}
 	return device;
 
 err_fail_init_res:
 	q6_hfi_delete_device(device);
-	return NULL;
+	return ERR_PTR(rc);
 }
 
 void q6_hfi_delete_device(void *device)
@@ -406,15 +416,15 @@ static int q6_hfi_apr_callback(struct apr_client_data *data, void *priv)
 	int rc = 0;
 
 	if (!data || !device) {
-		dprintk(VIDC_ERR, "%s - Invalid arguments", __func__);
+		dprintk(VIDC_ERR, "%s - Invalid arguments\n", __func__);
 		return -EINVAL;
 	}
 
-	dprintk(VIDC_DBG, "%s opcode = %u payload size = %u", __func__,
+	dprintk(VIDC_DBG, "%s opcode = %u payload size = %u\n", __func__,
 				data->opcode, data->payload_size);
 
 	if (data->opcode == RESET_EVENTS) {
-		dprintk(VIDC_ERR, "%s Received subsystem reset event: %d",
+		dprintk(VIDC_ERR, "%s Received subsystem reset event: %d\n",
 				__func__, data->reset_event);
 		pkt.packet_type = HFI_MSG_EVENT_NOTIFY;
 		pkt.size = sizeof(pkt);
@@ -425,13 +435,13 @@ static int q6_hfi_apr_callback(struct apr_client_data *data, void *priv)
 	} else if (data->payload_size > 0) {
 		payload = data->payload;
 	} else {
-		dprintk(VIDC_ERR, "%s - Invalid payload size", __func__);
+		dprintk(VIDC_ERR, "%s - Invalid payload size\n", __func__);
 		return -EINVAL;
 	}
 
 	rc = q6_hfi_iface_eventq_write(device, payload);
 	if (rc) {
-		dprintk(VIDC_ERR, "%s failed to write to event queue",
+		dprintk(VIDC_ERR, "%s failed to write to event queue\n",
 				__func__);
 		return rc;
 	}
@@ -453,14 +463,14 @@ static int q6_init_event_queue(struct q6_hfi_device *dev)
 	struct q6_iface_q_info *iface_q;
 
 	if (!dev) {
-		dprintk(VIDC_ERR, "Invalid device");
+		dprintk(VIDC_ERR, "Invalid device\n");
 		return -EINVAL;
 	}
 
 	iface_q = &dev->event_queue;
 	iface_q->buffer = kzalloc(Q6_IFACEQ_QUEUE_SIZE, GFP_KERNEL);
 	if (!iface_q->buffer) {
-		dprintk(VIDC_ERR, "iface_q alloc failed");
+		dprintk(VIDC_ERR, "iface_q alloc failed\n");
 		q6_release_event_queue(dev);
 		return -ENOMEM;
 	} else {
@@ -489,11 +499,11 @@ static int q6_hfi_core_init(void *device)
 	if (!dev->event_queue.buffer) {
 		rc = q6_init_event_queue(dev);
 		if (rc) {
-			dprintk(VIDC_ERR, "q6_init_event_queue failed");
+			dprintk(VIDC_ERR, "q6_init_event_queue failed\n");
 			goto err_core_init;
 		}
 	} else {
-		dprintk(VIDC_ERR, "queue buffer exists");
+		dprintk(VIDC_ERR, "queue buffer exists\n");
 		rc = -EEXIST;
 		goto err_core_init;
 	}
@@ -502,13 +512,13 @@ static int q6_hfi_core_init(void *device)
 
 	rc = create_pkt_cmd_sys_init(&apr.pkt, HFI_VIDEO_ARCH_OX);
 	if (rc) {
-		dprintk(VIDC_ERR, "Failed to create sys init pkt");
+		dprintk(VIDC_ERR, "Failed to create sys init pkt\n");
 		goto err_core_init;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -531,7 +541,7 @@ static int q6_hfi_core_release(void *device)
 	return 0;
 }
 
-static void *q6_hfi_session_init(void *device, u32 session_id,
+static void *q6_hfi_session_init(void *device, void *session_id,
 	enum hal_domain session_type, enum hal_video_codec codec_type)
 {
 	struct q6_apr_cmd_sys_session_init_packet apr;
@@ -546,7 +556,11 @@ static void *q6_hfi_session_init(void *device, u32 session_id,
 
 	new_session = (struct hal_session *)
 		kzalloc(sizeof(struct hal_session), GFP_KERNEL);
-	new_session->session_id = (u32) session_id;
+	if (!new_session) {
+		dprintk(VIDC_ERR, "new session fail: Out of memory\n");
+		return NULL;
+	}
+	new_session->session_id = session_id;
 	if (session_type == 1)
 		new_session->is_decoder = 0;
 	else if (session_type == 2)
@@ -555,22 +569,33 @@ static void *q6_hfi_session_init(void *device, u32 session_id,
 
 	q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-	if (create_pkt_cmd_sys_session_init(&apr.pkt, (u32)new_session,
+	if (create_pkt_cmd_sys_session_init(&apr.pkt, new_session,
 					session_type, codec_type)) {
-		dprintk(VIDC_ERR, "session_init: failed to create packet");
+		dprintk(VIDC_ERR, "session_init: failed to create packet\n");
 		goto err_session_init;
 	}
-
-	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
-	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
-				__func__, rc);
-		rc = -EBADE;
-		goto err_session_init;
-	}
+	/*
+	 * Add session id to the list entry and then send the apr pkt.
+	 * This will avoid scenarios where apr_send_pkt is taking more
+	 * time and Q6 is returning an ack even before the session id
+	 * gets added to the session list.
+	 */
 	mutex_lock(&dev->session_lock);
 	list_add_tail(&new_session->list, &dev->sess_head);
 	mutex_unlock(&dev->session_lock);
+
+	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
+	if (rc != apr.hdr.pkt_size) {
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
+				__func__, rc);
+		/* Delete the session id as the send pkt is not successful */
+		mutex_lock(&dev->session_lock);
+		list_del(&new_session->list);
+		mutex_unlock(&dev->session_lock);
+		rc = -EBADE;
+		goto err_session_init;
+	}
+
 	return new_session;
 
 err_session_init:
@@ -594,15 +619,15 @@ static int q6_hal_send_session_cmd(void *sess,
 
 	q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-	rc = create_pkt_cmd_session_cmd(&apr.pkt, pkt_type, (u32)session);
+	rc = create_pkt_cmd_session_cmd(&apr.pkt, pkt_type, session);
 	if (rc) {
-		dprintk(VIDC_ERR, "send session cmd: create pkt failed");
+		dprintk(VIDC_ERR, "send session cmd: create pkt failed\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -627,11 +652,11 @@ static int q6_hfi_session_clean(void *session)
 {
 	struct hal_session *sess_close;
 	if (!session) {
-		dprintk(VIDC_ERR, "Invalid Params %s", __func__);
+		dprintk(VIDC_ERR, "Invalid Params %s\n", __func__);
 		return -EINVAL;
 	}
 	sess_close = session;
-	dprintk(VIDC_DBG, "deleted the session: 0x%x",
+	dprintk(VIDC_DBG, "deleted the session: 0x%p\n",
 			sess_close->session_id);
 	mutex_lock(&((struct q6_hfi_device *)
 			sess_close->device)->session_lock);
@@ -663,17 +688,17 @@ static int q6_hfi_session_set_buffers(void *sess,
 
 	q6_hfi_add_apr_hdr(dev, &apr->hdr, VIDC_IFACEQ_VAR_LARGE_PKT_SIZE);
 
-	rc = create_pkt_cmd_session_set_buffers(&apr->pkt,
-			(u32)session, buffer_info);
+	rc = create_pkt_cmd_session_set_buffers(
+					&apr->pkt, session, buffer_info);
 	if (rc) {
-		dprintk(VIDC_ERR, "set buffers: failed to create packet");
+		dprintk(VIDC_ERR, "set buffers: failed to create packet\n");
 		goto err_create_pkt;
 	}
 
-	dprintk(VIDC_INFO, "set buffers: 0x%x", buffer_info->buffer_type);
+	dprintk(VIDC_INFO, "set buffers: 0x%x\n", buffer_info->buffer_type);
 	rc = apr_send_pkt(dev->apr, (uint32_t *)apr);
 	if (rc != apr->hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -705,18 +730,18 @@ static int q6_hfi_session_release_buffers(void *sess,
 
 	q6_hfi_add_apr_hdr(dev, &apr->hdr, VIDC_IFACEQ_VAR_LARGE_PKT_SIZE);
 
-	rc = create_pkt_cmd_session_release_buffers(&apr->pkt,
-					(u32)session, buffer_info);
+	rc = create_pkt_cmd_session_release_buffers(
+					&apr->pkt, session, buffer_info);
 	if (rc) {
-		dprintk(VIDC_ERR, "release buffers: failed to create packet");
+		dprintk(VIDC_ERR, "release buffers: failed to create packet\n");
 		goto err_create_pkt;
 	}
 
-	dprintk(VIDC_INFO, "Release buffers: 0x%x", buffer_info->buffer_type);
+	dprintk(VIDC_INFO, "Release buffers: 0x%x\n", buffer_info->buffer_type);
 	rc = apr_send_pkt(dev->apr, (uint32_t *)apr);
 
 	if (rc != apr->hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -769,7 +794,7 @@ static int q6_hfi_session_etb(void *sess,
 	struct q6_hfi_device *dev;
 
 	if (!session || !input_frame || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 
@@ -779,19 +804,19 @@ static int q6_hfi_session_etb(void *sess,
 		struct q6_apr_cmd_session_empty_buffer_compressed_packet apr;
 		q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-		rc = create_pkt_cmd_session_etb_decoder(&apr.pkt,
-					(u32)session, input_frame);
+		rc = create_pkt_cmd_session_etb_decoder(
+						&apr.pkt, session, input_frame);
 		if (rc) {
 			dprintk(VIDC_ERR,
-				"Session etb decoder: failed to create pkt");
+				"Session etb decoder: failed to create pkt\n");
 			goto err_create_pkt;
 		}
-		dprintk(VIDC_DBG, "Q DECODER INPUT BUFFER");
-		dprintk(VIDC_DBG, "addr = 0x%x ts = %lld",
-			input_frame->device_addr, input_frame->timestamp);
+		dprintk(VIDC_DBG, "Q DECODER INPUT BUFFER\n");
+		dprintk(VIDC_DBG, "addr = 0x%pa ts = %lld\n",
+			&input_frame->device_addr, input_frame->timestamp);
 		rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 		if (rc != apr.hdr.pkt_size) {
-			dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+			dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 					__func__, rc);
 			rc = -EBADE;
 		} else
@@ -801,17 +826,17 @@ static int q6_hfi_session_etb(void *sess,
 		q6_apr_cmd_session_empty_buffer_uncompressed_plane0_packet apr;
 		q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-		rc =  create_pkt_cmd_session_etb_encoder(&apr.pkt,
-					(u32)session, input_frame);
+		rc =  create_pkt_cmd_session_etb_encoder(
+						&apr.pkt, session, input_frame);
 		if (rc) {
 			dprintk(VIDC_ERR,
-				"Session etb encoder: failed to create pkt");
+				"Session etb encoder: failed to create pkt\n");
 			goto err_create_pkt;
 		}
-		dprintk(VIDC_DBG, "Q ENCODER INPUT BUFFER");
+		dprintk(VIDC_DBG, "Q ENCODER INPUT BUFFER\n");
 		rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 		if (rc != apr.hdr.pkt_size) {
-			dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+			dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 					__func__, rc);
 			rc = -EBADE;
 		} else
@@ -830,23 +855,23 @@ static int q6_hfi_session_ftb(void *sess,
 	struct q6_hfi_device *dev;
 
 	if (!session || !output_frame || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
 
 	q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-	rc = create_pkt_cmd_session_ftb(&apr.pkt, (u32)session, output_frame);
+	rc = create_pkt_cmd_session_ftb(&apr.pkt, session, output_frame);
 	if (rc) {
-		dprintk(VIDC_ERR, "Session ftb: failed to create pkt");
+		dprintk(VIDC_ERR, "Session ftb: failed to create pkt\n");
 		goto err_create_pkt;
 	}
 
-	dprintk(VIDC_INFO, "Q OUTPUT BUFFER");
+	dprintk(VIDC_INFO, "Q OUTPUT BUFFER\n");
 	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -865,7 +890,7 @@ static int q6_hfi_session_parse_seq_hdr(void *sess,
 	struct q6_hfi_device *dev;
 
 	if (!session || !seq_hdr || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
@@ -874,17 +899,17 @@ static int q6_hfi_session_parse_seq_hdr(void *sess,
 
 	q6_hfi_add_apr_hdr(dev, &apr->hdr, VIDC_IFACEQ_VAR_SMALL_PKT_SIZE);
 
-	rc = create_pkt_cmd_session_parse_seq_header(&apr->pkt,
-					(u32)session, seq_hdr);
+	rc = create_pkt_cmd_session_parse_seq_header(
+						&apr->pkt, session, seq_hdr);
 	if (rc) {
 		dprintk(VIDC_ERR,
-			"Session parse seq hdr: failed to create pkt");
+			"Session parse seq hdr: failed to create pkt\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)apr);
 	if (rc != apr->hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -903,7 +928,7 @@ static int q6_hfi_session_get_seq_hdr(void *sess,
 	struct q6_hfi_device *dev;
 
 	if (!session || !seq_hdr || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
@@ -912,16 +937,15 @@ static int q6_hfi_session_get_seq_hdr(void *sess,
 
 	q6_hfi_add_apr_hdr(dev, &apr->hdr, VIDC_IFACEQ_VAR_SMALL_PKT_SIZE);
 
-	rc = create_pkt_cmd_session_get_seq_hdr(&apr->pkt, (u32)session,
-						seq_hdr);
+	rc = create_pkt_cmd_session_get_seq_hdr(&apr->pkt, session, seq_hdr);
 	if (rc) {
-		dprintk(VIDC_ERR, "Session get seq hdr: failed to create pkt");
+		dprintk(VIDC_ERR, "Session get seqhdr: failed to create pkt\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)apr);
 	if (rc != apr->hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -939,22 +963,22 @@ static int q6_hfi_session_get_buf_req(void *sess)
 	struct q6_hfi_device *dev;
 
 	if (!session || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
 
 	q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-	rc = create_pkt_cmd_session_get_buf_req(&apr.pkt, (u32)session);
+	rc = create_pkt_cmd_session_get_buf_req(&apr.pkt, session);
 	if (rc) {
-		dprintk(VIDC_ERR, "Session get buf req: failed to create pkt");
+		dprintk(VIDC_ERR, "Session get bufreq: failed to create pkt\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -971,22 +995,22 @@ static int q6_hfi_session_flush(void *sess, enum hal_flush flush_mode)
 	struct q6_hfi_device *dev;
 
 	if (!session || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
 
 	q6_hfi_add_apr_hdr(dev, &apr.hdr, sizeof(apr));
 
-	rc = create_pkt_cmd_session_flush(&apr.pkt, (u32)session, flush_mode);
+	rc = create_pkt_cmd_session_flush(&apr.pkt, session, flush_mode);
 	if (rc) {
-		dprintk(VIDC_ERR, "Session flush: failed to create pkt");
+		dprintk(VIDC_ERR, "Session flush: failed to create pkt\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)&apr);
 	if (rc != apr.hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -1007,24 +1031,24 @@ static int q6_hfi_session_set_property(void *sess,
 	struct q6_hfi_device *dev;
 
 	if (!session || !pdata || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
-	dprintk(VIDC_DBG, "in set_prop,with prop id: 0x%x", ptype);
+	dprintk(VIDC_DBG, "in set_prop,with prop id: 0x%x\n", ptype);
 
 	q6_hfi_add_apr_hdr(dev, &apr->hdr, VIDC_IFACEQ_VAR_LARGE_PKT_SIZE);
 
-	rc = create_pkt_cmd_session_set_property(&apr->pkt,
-				(u32)session, ptype, pdata);
+	rc = create_pkt_cmd_session_set_property(
+					&apr->pkt, session, ptype, pdata);
 	if (rc) {
-		dprintk(VIDC_ERR, "set property: failed to create packet");
+		dprintk(VIDC_ERR, "set property: failed to create packet\n");
 		goto err_create_pkt;
 	}
 
 	rc = apr_send_pkt(dev->apr, (uint32_t *)apr);
 	if (rc != apr->hdr.pkt_size) {
-		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d",
+		dprintk(VIDC_ERR, "%s: apr_send_pkt failed rc: %d\n",
 				__func__, rc);
 		rc = -EBADE;
 	} else
@@ -1035,18 +1059,18 @@ err_create_pkt:
 }
 
 static int q6_hfi_session_get_property(void *sess,
-	enum hal_property ptype, void *pdata)
+	enum hal_property ptype)
 {
 	struct hal_session *session = sess;
 	struct q6_hfi_device *dev;
 
-	if (!session || !pdata || !session->device) {
-		dprintk(VIDC_ERR, "Invalid Params");
+	if (!session || !session->device) {
+		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
 	}
 	dev = session->device;
 
-	dprintk(VIDC_DBG, "IN func: , with property id: %d", ptype);
+	dprintk(VIDC_DBG, "IN func: , with property id: %d\n", ptype);
 
 	switch (ptype) {
 	case HAL_CONFIG_FRAME_RATE:
@@ -1152,7 +1176,7 @@ static int q6_hfi_session_get_property(void *sess,
 	case HAL_CONFIG_VENC_TIMESTAMP_SCALE:
 	case HAL_PARAM_VENC_LOW_LATENCY:
 	default:
-		dprintk(VIDC_INFO, "DEFAULT: Calling 0x%x", ptype);
+		dprintk(VIDC_INFO, "DEFAULT: Calling 0x%x\n", ptype);
 		break;
 	}
 	return 0;
@@ -1171,7 +1195,7 @@ static int q6_hfi_iommu_get_domain_partition(void *dev, u32 flags,
 {
 	(void)dev;
 
-	dprintk(VIDC_ERR, "Not implemented: %s", __func__);
+	dprintk(VIDC_ERR, "Not implemented: %s\n", __func__);
 
 	return -ENOTSUPP;
 }
@@ -1186,7 +1210,7 @@ static int q6_hfi_iommu_attach(struct q6_hfi_device *device)
 	struct iommu_info *iommu_map;
 
 	if (!device || !device->res) {
-		dprintk(VIDC_ERR, "Invalid parameter: %p", device);
+		dprintk(VIDC_ERR, "Invalid parameter: %p\n", device);
 		return -EINVAL;
 	}
 
@@ -1196,16 +1220,16 @@ static int q6_hfi_iommu_attach(struct q6_hfi_device *device)
 		group = iommu_map->group;
 		domain = msm_get_iommu_domain(iommu_map->domain);
 		if (IS_ERR_OR_NULL(domain)) {
-			dprintk(VIDC_ERR, "Failed to get domain: %s",
+			dprintk(VIDC_ERR, "Failed to get domain: %s\n",
 					iommu_map->name);
-			rc = IS_ERR(domain) ? PTR_ERR(domain) : -EINVAL;
+			rc = PTR_ERR(domain) ?: -EINVAL;
 			break;
 		}
-		dprintk(VIDC_DBG, "Attaching domain(id:%d) %p to group %p",
+		dprintk(VIDC_DBG, "Attaching domain(id:%d) %p to group %p\n",
 				iommu_map->domain, domain, group);
 		rc = iommu_attach_group(domain, group);
 		if (rc) {
-			dprintk(VIDC_ERR, "IOMMU attach failed: %s",
+			dprintk(VIDC_ERR, "IOMMU attach failed: %s\n",
 					iommu_map->name);
 			break;
 		}
@@ -1232,7 +1256,7 @@ static void q6_hfi_iommu_detach(struct q6_hfi_device *device)
 	int i;
 
 	if (!device || !device->res) {
-		dprintk(VIDC_ERR, "Invalid parameter: %p", device);
+		dprintk(VIDC_ERR, "Invalid parameter: %p\n", device);
 		return;
 	}
 
@@ -1272,14 +1296,14 @@ static int q6_hfi_load_fw(void *dev)
 				device);
 
 	if (device->apr == NULL) {
-		dprintk(VIDC_ERR, "Failed to register with QDSP6");
+		dprintk(VIDC_ERR, "Failed to register with QDSP6\n");
 		rc = -EINVAL;
 		goto fail_apr_register;
 	}
 
 	rc = q6_hfi_iommu_attach(device);
 	if (rc) {
-		dprintk(VIDC_ERR, "Failed to attach iommu");
+		dprintk(VIDC_ERR, "Failed to attach iommu\n");
 		goto fail_iommu_attach;
 	}
 
@@ -1310,7 +1334,7 @@ static void q6_hfi_unload_fw(void *hfi_device_data)
 
 	if (device->apr) {
 		if (apr_deregister(device->apr))
-			dprintk(VIDC_ERR, "Failed to deregister APR");
+			dprintk(VIDC_ERR, "Failed to deregister APR\n");
 		device->apr = NULL;
 	}
 }
@@ -1361,12 +1385,17 @@ int q6_hfi_initialize(struct hfi_device *hdev, u32 device_id,
 	int rc = 0;
 
 	if (!hdev || !res || !callback) {
-		dprintk(VIDC_ERR, "Invalid params: %p %p %p",
+		dprintk(VIDC_ERR, "Invalid params: %p %p %p\n",
 				hdev, res, callback);
 		rc = -EINVAL;
 		goto err_hfi_init;
 	}
 	hdev->hfi_device_data = q6_hfi_get_device(device_id, res, callback);
+
+	if (IS_ERR_OR_NULL(hdev->hfi_device_data)) {
+		rc = PTR_ERR(hdev->hfi_device_data) ?: -EINVAL;
+		goto err_hfi_init;
+	}
 
 	q6_init_hfi_callbacks(hdev);
 
@@ -1374,3 +1403,16 @@ err_hfi_init:
 	return rc;
 }
 
+#else
+int q6_hfi_initialize(struct hfi_device *hdev, u32 device_id,
+		struct msm_vidc_platform_resources *res,
+		hfi_cmd_response_callback callback)
+{
+	return -ENODEV;
+}
+
+void q6_hfi_delete_device(void *device)
+{
+	/* Nothing to do! */
+}
+#endif

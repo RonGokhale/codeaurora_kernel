@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -48,15 +48,13 @@ extern struct clock_init_data qds8x50_clock_init_data;
 extern struct clock_init_data msm8625_dummy_clock_init_data;
 extern struct clock_init_data msm8930_clock_init_data;
 extern struct clock_init_data msm8930_pm8917_clock_init_data;
-extern struct clock_init_data msm8974_clock_init_data;
-extern struct clock_init_data msm8974_rumi_clock_init_data;
 extern struct clock_init_data msm8610_clock_init_data;
 extern struct clock_init_data msm8610_rumi_clock_init_data;
-extern struct clock_init_data msm8226_clock_init_data;
-extern struct clock_init_data msm8226_rumi_clock_init_data;
-extern struct clock_init_data msm8084_clock_init_data;
-extern struct clock_init_data mpq8092_clock_init_data;
-extern struct clock_init_data msmkrypton_clock_init_data;
+extern int __init msm_gcc_8226_init(void);
+extern struct clock_init_data apq8084_clock_init_data;
+extern struct clock_init_data apq8084_rumi_clock_init_data;
+extern struct clock_init_data fsm9900_clock_init_data;
+extern struct clock_init_data fsm9900_dummy_clock_init_data;
 
 int msm_clock_init(struct clock_init_data *data);
 int find_vdd_level(struct clk *clk, unsigned long rate);

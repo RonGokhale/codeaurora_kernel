@@ -32,6 +32,7 @@
 #include <linux/debugfs.h>
 #include <linux/irq.h>
 #include <linux/memblock.h>
+#include <linux/of.h>
 
 #include <asm/prom.h>
 #include <asm/rtas.h>
@@ -49,11 +50,11 @@
 #include <asm/btext.h>
 #include <asm/sections.h>
 #include <asm/machdep.h>
-#include <asm/pSeries_reconfig.h>
 #include <asm/pci-bridge.h>
 #include <asm/kexec.h>
 #include <asm/opal.h>
 #include <asm/fadump.h>
+#include <asm/debug.h>
 
 #include <mm/mmu_decl.h>
 
@@ -78,7 +79,7 @@ static int __init early_parse_mem(char *p)
 		return 1;
 
 	memory_limit = PAGE_ALIGN(memparse(p, &p));
-	DBG("memory limit = 0x%llx\n", (unsigned long long)memory_limit);
+	DBG("memory limit = 0x%llx\n", memory_limit);
 
 	return 0;
 }
@@ -543,14 +544,8 @@ void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 	memblock_add(base, size);
 }
 
-void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
-{
-	return __va(memblock_alloc(size, align));
-}
-
 #ifdef CONFIG_BLK_DEV_INITRD
-void __init early_init_dt_setup_initrd_arch(unsigned long start,
-		unsigned long end)
+void __init early_init_dt_setup_initrd_arch(u64 start, u64 end)
 {
 	initrd_start = (unsigned long)__va(start);
 	initrd_end = (unsigned long)__va(end);
@@ -661,7 +656,7 @@ void __init early_init_devtree(void *params)
 
 	/* make sure we've parsed cmdline for mem= before this */
 	if (memory_limit)
-		first_memblock_size = min(first_memblock_size, memory_limit);
+		first_memblock_size = min_t(u64, first_memblock_size, memory_limit);
 	setup_initial_memory_limit(memstart_addr, first_memblock_size);
 	/* Reserve MEMBLOCK regions used by kernel, initrd, dt, etc... */
 	memblock_reserve(PHYSICAL_START, __pa(klimit) - PHYSICAL_START);
@@ -802,7 +797,7 @@ static int prom_reconfig_notifier(struct notifier_block *nb,
 	int err;
 
 	switch (action) {
-	case PSERIES_RECONFIG_ADD:
+	case OF_RECONFIG_ATTACH_NODE:
 		err = of_finish_dynamic_node(node);
 		if (err < 0)
 			printk(KERN_ERR "finish_node returned %d\n", err);
@@ -821,54 +816,10 @@ static struct notifier_block prom_reconfig_nb = {
 
 static int __init prom_reconfig_setup(void)
 {
-	return pSeries_reconfig_notifier_register(&prom_reconfig_nb);
+	return of_reconfig_notifier_register(&prom_reconfig_nb);
 }
 __initcall(prom_reconfig_setup);
 #endif
-
-/* Find the device node for a given logical cpu number, also returns the cpu
- * local thread number (index in ibm,interrupt-server#s) if relevant and
- * asked for (non NULL)
- */
-struct device_node *of_get_cpu_node(int cpu, unsigned int *thread)
-{
-	int hardid;
-	struct device_node *np;
-
-	hardid = get_hard_smp_processor_id(cpu);
-
-	for_each_node_by_type(np, "cpu") {
-		const u32 *intserv;
-		unsigned int plen, t;
-
-		/* Check for ibm,ppc-interrupt-server#s. If it doesn't exist
-		 * fallback to "reg" property and assume no threads
-		 */
-		intserv = of_get_property(np, "ibm,ppc-interrupt-server#s",
-				&plen);
-		if (intserv == NULL) {
-			const u32 *reg = of_get_property(np, "reg", NULL);
-			if (reg == NULL)
-				continue;
-			if (*reg == hardid) {
-				if (thread)
-					*thread = 0;
-				return np;
-			}
-		} else {
-			plen /= sizeof(u32);
-			for (t = 0; t < plen; t++) {
-				if (hardid == intserv[t]) {
-					if (thread)
-						*thread = t;
-					return np;
-				}
-			}
-		}
-	}
-	return NULL;
-}
-EXPORT_SYMBOL(of_get_cpu_node);
 
 #if defined(CONFIG_DEBUG_FS) && defined(DEBUG)
 static struct debugfs_blob_wrapper flat_dt_blob;

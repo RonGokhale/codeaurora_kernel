@@ -300,6 +300,14 @@ void sym_calc_value(struct symbol *sym)
 
 	if (sym->flags & SYMBOL_VALID)
 		return;
+
+	if (sym_is_choice_value(sym) &&
+	    sym->flags & SYMBOL_NEED_SET_CHOICE_VALUES) {
+		sym->flags &= ~SYMBOL_NEED_SET_CHOICE_VALUES;
+		prop = sym_get_choice_prop(sym);
+		sym_calc_value(prop_get_symbol(prop));
+	}
+
 	sym->flags |= SYMBOL_VALID;
 
 	oldval = sym->curr;
@@ -425,6 +433,9 @@ void sym_calc_value(struct symbol *sym)
 
 	if (sym->flags & SYMBOL_AUTO)
 		sym->flags &= ~SYMBOL_WRITE;
+
+	if (sym->flags & SYMBOL_NEED_SET_CHOICE_VALUES)
+		set_all_choice_values(sym);
 }
 
 void sym_clear_all_valid(void)
@@ -656,11 +667,11 @@ bool sym_set_string_value(struct symbol *sym, const char *newval)
 	size = strlen(newval) + 1;
 	if (sym->type == S_HEX && (newval[0] != '0' || (newval[1] != 'x' && newval[1] != 'X'))) {
 		size += 2;
-		sym->def[S_DEF_USER].val = val = malloc(size);
+		sym->def[S_DEF_USER].val = val = xmalloc(size);
 		*val++ = '0';
 		*val++ = 'x';
 	} else if (!oldval || strcmp(oldval, newval))
-		sym->def[S_DEF_USER].val = val = malloc(size);
+		sym->def[S_DEF_USER].val = val = xmalloc(size);
 	else
 		return true;
 
@@ -812,7 +823,7 @@ struct symbol *sym_lookup(const char *name, int flags)
 		hash = 0;
 	}
 
-	symbol = malloc(sizeof(*symbol));
+	symbol = xmalloc(sizeof(*symbol));
 	memset(symbol, 0, sizeof(*symbol));
 	symbol->name = new_name;
 	symbol->type = S_UNKNOWN;
@@ -863,7 +874,7 @@ const char *sym_expand_string_value(const char *in)
 	size_t reslen;
 
 	reslen = strlen(in) + 1;
-	res = malloc(reslen);
+	res = xmalloc(reslen);
 	res[0] = '\0';
 
 	while ((src = strchr(in, '$'))) {
@@ -921,7 +932,7 @@ const char *sym_escape_string_value(const char *in)
 		p++;
 	}
 
-	res = malloc(reslen);
+	res = xmalloc(reslen);
 	res[0] = '\0';
 
 	strcat(res, "\"");
@@ -1228,7 +1239,7 @@ struct property *prop_alloc(enum prop_type type, struct symbol *sym)
 	struct property *prop;
 	struct property **propp;
 
-	prop = malloc(sizeof(*prop));
+	prop = xmalloc(sizeof(*prop));
 	memset(prop, 0, sizeof(*prop));
 	prop->type = type;
 	prop->sym = sym;

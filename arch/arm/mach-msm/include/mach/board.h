@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/include/mach/board.h
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -24,8 +24,23 @@
 #include <linux/leds-pmic8058.h>
 #include <linux/clkdev.h>
 #include <linux/of_platform.h>
-#include <linux/msm_ssbi.h>
-#include <mach/msm_bus.h>
+#include <linux/ssbi.h>
+#include <linux/msm-bus.h>
+
+#define RF_TYPE_16 0x10
+#define RF_TYPE_17 0x11
+#define RF_TYPE_18 0x12
+#define RF_TYPE_19 0x13
+#define RF_TYPE_32 0x20
+#define RF_TYPE_33 0x21
+#define RF_TYPE_48 0x30
+#define RF_TYPE_49 0x31
+
+#define WLAN_RF_REG_ADDR_START_OFFSET   0x3
+#define WLAN_RF_REG_DATA_START_OFFSET   0xf
+#define WLAN_RF_READ_REG_CMD            0x3
+#define WLAN_RF_WRITE_REG_CMD           0x2
+#define WLAN_RF_READ_CMD_MASK           0x3fff
 
 struct msm_camera_io_ext {
 	uint32_t mdcphy;
@@ -183,7 +198,8 @@ struct msm_gpio_set_tbl {
 };
 
 struct msm_camera_gpio_num_info {
-	uint16_t gpio_num[7];
+	uint16_t gpio_num[10];
+	uint8_t valid[10];
 };
 
 struct msm_camera_gpio_conf {
@@ -513,14 +529,20 @@ struct msm_mhl_platform_data {
 /**
  * msm_i2c_platform_data: i2c-qup driver configuration data
  *
- * @active_only when set, votes when system active and removes the vote when
- *       system goes idle (optimises for performance). When unset, voting using
- *       runtime pm (optimizes for power).
+ * @clk_ctl_xfer : When true, the clocks's state (prepare_enable/
+ *       unprepare_disable) is controlled by i2c-transaction's begining and
+ *       ending. When false, the clock's state is controlled by runtime-pm
+ *       events.
  * @master_id master id number of the i2c core or its wrapper (BLSP/GSBI).
  *       When zero, clock path voting is disabled.
+ * @noise_rjct_sda Number of low samples on data line to consider it low.
+ *       Range of values is 0-3. When missing default to 0.
+ * @noise_rjct_scl Number of low samples on clock line to consider it low.
+ *       Range of values is 0-3. When missing default to 0.
  */
 struct msm_i2c_platform_data {
 	int clk_freq;
+	bool clk_ctl_xfer;
 	uint32_t rmutex;
 	const char *rsl_id;
 	uint32_t pm_lat;
@@ -529,16 +551,17 @@ struct msm_i2c_platform_data {
 	int aux_clk;
 	int aux_dat;
 	int src_clk_rate;
+	int noise_rjct_sda;
+	int noise_rjct_scl;
 	int use_gsbi_shared_mode;
 	int keep_ahb_clk_on;
 	void (*msm_i2c_config_gpio)(int iface, int config_type);
-	bool active_only;
 	uint32_t master_id;
 };
 
 struct msm_i2c_ssbi_platform_data {
 	const char *rsl_id;
-	enum msm_ssbi_controller_type controller_type;
+	enum ssbi_controller_type controller_type;
 };
 
 struct msm_vidc_platform_data {
@@ -612,10 +635,11 @@ void msm_map_msm7x30_io(void);
 void msm_map_fsm9xxx_io(void);
 void msm_map_fsm9900_io(void);
 void fsm9900_init_gpiomux(void);
+void fsm9900_rf_init_gpiomux(void);
 void msm_map_8974_io(void);
 void msm_map_8084_io(void);
-void msm_map_msmkrypton_io(void);
-void msm_map_msmsamarium_io(void);
+void msm_map_mdm9630_io(void);
+void msm_map_msmzirc_io(void);
 void msm_map_msm8625_io(void);
 void msm_map_msm9625_io(void);
 void msm_init_irq(void);
@@ -626,10 +650,8 @@ void msm_8974_very_early(void);
 void msm_8974_init_gpiomux(void);
 void apq8084_init_gpiomux(void);
 void msm9625_init_gpiomux(void);
-void msmkrypton_init_gpiomux(void);
-void msmsamarium_init_gpiomux(void);
-void msm_map_mpq8092_io(void);
-void mpq8092_init_gpiomux(void);
+void mdm9630_init_gpiomux(void);
+void msm_map_msm8916_io(void);
 void msm_map_msm8226_io(void);
 void msm8226_init_irq(void);
 void msm8226_init_gpiomux(void);
@@ -668,7 +690,10 @@ void msm_snddev_hsed_voltage_off(void);
 void msm_snddev_tx_route_config(void);
 void msm_snddev_tx_route_deconfig(void);
 
-extern phys_addr_t msm_shared_ram_phys; /* defined in arch/arm/mach-msm/io.c */
-
+#if defined(CONFIG_MSM_SMD) && defined(CONFIG_DEBUG_FS)
+int smd_debugfs_init(void);
+#else
+static inline int smd_debugfs_init(void) { return 0; }
+#endif
 
 #endif

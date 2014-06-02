@@ -18,6 +18,7 @@
 #include <linux/init.h>
 #include <linux/serial_core.h>
 #include <linux/platform_device.h>
+#include <linux/reboot.h>
 #include <linux/device.h>
 #include <linux/syscore_ops.h>
 #include <linux/clk.h>
@@ -36,11 +37,7 @@
 #include <mach/regs-clock.h>
 #include <plat/regs-serial.h>
 #include <mach/regs-gpio.h>
-#include <mach/regs-gpioj.h>
-#include <mach/regs-dsc.h>
 
-#include <plat/s3c2410.h>
-#include <plat/s3c244x.h>
 #include <plat/clock.h>
 #include <plat/devs.h>
 #include <plat/cpu.h>
@@ -48,6 +45,8 @@
 #include <plat/pll.h>
 #include <plat/nand-core.h>
 #include <plat/watchdog-reset.h>
+
+#include "regs-dsc.h"
 
 static struct map_desc s3c244x_iodesc[] __initdata = {
 	IODESC_ENT(CLKPWR),
@@ -199,9 +198,9 @@ struct syscore_ops s3c244x_pm_syscore_ops = {
 	.resume		= s3c244x_resume,
 };
 
-void s3c244x_restart(char mode, const char *cmd)
+void s3c244x_restart(enum reboot_mode mode, const char *cmd)
 {
-	if (mode == 's')
+	if (mode == REBOOT_SOFT)
 		soft_restart(0);
 
 	arch_wdt_reset();

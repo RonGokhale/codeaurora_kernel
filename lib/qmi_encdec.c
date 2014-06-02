@@ -88,6 +88,8 @@ static int _qmi_kernel_decode(struct elem_info *ei_array,
 			      void *out_c_struct,
 			      void *in_buf, uint32_t in_buf_len,
 			      int dec_level);
+static struct elem_info *skip_to_next_elem(struct elem_info *ei_array,
+					   int level);
 
 /**
  * qmi_calc_max_msg_len() - Calculate the maximum length of a QMI message
@@ -115,8 +117,9 @@ static int qmi_calc_max_msg_len(struct elem_info *ei_array,
 					sizeof(uint8_t) : sizeof(uint16_t));
 			continue;
 		} else if (temp_ei->data_type == QMI_STRUCT) {
-			max_msg_len += qmi_calc_max_msg_len(temp_ei->ei_array,
-							    (level + 1));
+			max_msg_len += (temp_ei->elem_len *
+					qmi_calc_max_msg_len(temp_ei->ei_array,
+							    (level + 1)));
 		} else {
 			max_msg_len += (temp_ei->elem_len * temp_ei->elem_size);
 		}
@@ -129,6 +132,53 @@ static int qmi_calc_max_msg_len(struct elem_info *ei_array,
 			max_msg_len += (TLV_TYPE_SIZE + TLV_LEN_SIZE);
 	}
 	return max_msg_len;
+}
+
+/**
+ * qmi_calc_min_msg_len() - Calculate the minimum length of a QMI message
+ * @ei_array: Struct info array describing the structure.
+ * @level: Level to identify the depth of the nested structures.
+ *
+ * @return: expected minimum length of the QMI message or 0 on failure.
+ */
+static int qmi_calc_min_msg_len(struct elem_info *ei_array,
+				int level)
+{
+	int min_msg_len = 0;
+	struct elem_info *temp_ei = ei_array;
+
+	if (!ei_array)
+		return min_msg_len;
+
+	while (temp_ei->data_type != QMI_EOTI) {
+		/* Optional elements do not count in minimum length */
+		if (temp_ei->data_type == QMI_OPT_FLAG) {
+			temp_ei = skip_to_next_elem(temp_ei, level);
+			continue;
+		}
+
+		if (temp_ei->data_type == QMI_DATA_LEN) {
+			min_msg_len += (temp_ei->elem_size == sizeof(uint8_t) ?
+					sizeof(uint8_t) : sizeof(uint16_t));
+			temp_ei++;
+			continue;
+		} else if (temp_ei->data_type == QMI_STRUCT) {
+			min_msg_len += qmi_calc_min_msg_len(temp_ei->ei_array,
+							    (level + 1));
+			temp_ei++;
+		} else {
+			min_msg_len += (temp_ei->elem_len * temp_ei->elem_size);
+			temp_ei++;
+		}
+
+		/*
+		 * Type & Length info. not prepended for elements in the
+		 * nested structure.
+		 */
+		if (level == 1)
+			min_msg_len += (TLV_TYPE_SIZE + TLV_LEN_SIZE);
+	}
+	return min_msg_len;
 }
 
 /**
@@ -168,12 +218,28 @@ int qmi_kernel_encode(struct msg_desc *desc,
 		      void *in_c_struct)
 {
 	int enc_level = 1;
-	int ret, calc_max_msg_len;
+	int ret, calc_max_msg_len, calc_min_msg_len;
 
-	if (!desc || !desc->ei_array)
+	if (!desc)
 		return -EINVAL;
 
-	if (!out_buf || !in_c_struct)
+	/* Check the possibility of a zero length QMI message */
+	if (!in_c_struct) {
+		calc_min_msg_len = qmi_calc_min_msg_len(desc->ei_array, 1);
+		if (calc_min_msg_len) {
+			pr_err("%s: Calc. len %d != 0, but NULL in_c_struct\n",
+				__func__, calc_min_msg_len);
+			return -EINVAL;
+		} else {
+			return 0;
+		}
+	}
+
+	/*
+	 * Not a zero-length message. Ensure the output buffer and
+	 * element information array are not NULL.
+	 */
+	if (!out_buf || !desc->ei_array)
 		return -EINVAL;
 
 	if (desc->max_msg_len < out_buf_len)
@@ -263,6 +329,7 @@ static int qmi_encode_struct_elem(struct elem_info *ei_array,
 /**
  * skip_to_next_elem() - Skip to next element in the structure to be encoded
  * @ei_array: Struct info describing the element to be skipped.
+ * @level: Depth level of encoding/decoding to identify nested structures.
  *
  * @return: Struct info of the next element that can be encoded.
  *
@@ -271,15 +338,20 @@ static int qmi_encode_struct_elem(struct elem_info *ei_array,
  * optional element can be skipped. This function can be used to perform
  * that operation.
  */
-static struct elem_info *skip_to_next_elem(struct elem_info *ei_array)
+static struct elem_info *skip_to_next_elem(struct elem_info *ei_array,
+					   int level)
 {
 	struct elem_info *temp_ei = ei_array;
 	uint8_t tlv_type;
 
-	do {
-		tlv_type = temp_ei->tlv_type;
+	if (level > 1) {
 		temp_ei = temp_ei + 1;
-	} while (tlv_type == temp_ei->tlv_type);
+	} else {
+		do {
+			tlv_type = temp_ei->tlv_type;
+			temp_ei = temp_ei + 1;
+		} while (tlv_type == temp_ei->tlv_type);
+	}
 
 	return temp_ei;
 }
@@ -314,7 +386,8 @@ static int _qmi_kernel_encode(struct elem_info *ei_array,
 
 	tlv_pointer = buf_dst;
 	tlv_len = 0;
-	buf_dst = buf_dst + (TLV_LEN_SIZE + TLV_TYPE_SIZE);
+	if (enc_level == 1)
+		buf_dst = buf_dst + (TLV_LEN_SIZE + TLV_TYPE_SIZE);
 
 	while (temp_ei->data_type != QMI_EOTI) {
 		buf_src = in_c_struct + temp_ei->offset;
@@ -337,7 +410,7 @@ static int _qmi_kernel_encode(struct elem_info *ei_array,
 			if (opt_flag_value)
 				temp_ei = temp_ei + 1;
 			else
-				temp_ei = skip_to_next_elem(temp_ei);
+				temp_ei = skip_to_next_elem(temp_ei, enc_level);
 			break;
 
 		case QMI_DATA_LEN:
@@ -353,13 +426,11 @@ static int _qmi_kernel_encode(struct elem_info *ei_array,
 			}
 			rc = qmi_encode_basic_elem(buf_dst, &data_len_value,
 						   1, data_len_sz);
-			if (data_len_value) {
-				UPDATE_ENCODE_VARIABLES(temp_ei, buf_dst,
-					encoded_bytes, tlv_len, encode_tlv, rc);
-				encode_tlv = 0;
-			} else {
-				temp_ei = skip_to_next_elem(temp_ei);
-			}
+			UPDATE_ENCODE_VARIABLES(temp_ei, buf_dst,
+				encoded_bytes, tlv_len, encode_tlv, rc);
+			encode_tlv = 0;
+			if (!data_len_value)
+				temp_ei = skip_to_next_elem(temp_ei, enc_level);
 			break;
 
 		case QMI_UNSIGNED_1_BYTE:
@@ -501,6 +572,11 @@ static int qmi_decode_struct_elem(struct elem_info *ei_array, void *buf_dst,
 	int i, rc, decoded_bytes = 0;
 	struct elem_info *temp_ei = ei_array;
 
+	if (dec_level > 2 && !tlv_len) {
+		tlv_len = qmi_calc_max_msg_len(temp_ei->ei_array, dec_level);
+		tlv_len = tlv_len * elem_len;
+	}
+
 	for (i = 0; i < elem_len; i++) {
 		rc = _qmi_kernel_decode(temp_ei->ei_array, buf_dst, buf_src,
 					(tlv_len/elem_len), dec_level);
@@ -572,6 +648,9 @@ static int _qmi_kernel_decode(struct elem_info *ei_array,
 
 	QMI_DECODE_LOG_MSG(in_buf, in_buf_len);
 	while (decoded_bytes < in_buf_len) {
+		if (dec_level > 2 && temp_ei->data_type == QMI_EOTI)
+			return decoded_bytes;
+
 		if (dec_level == 1) {
 			tlv_pointer = buf_src;
 			QMI_ENCDEC_DECODE_TLV(&tlv_type,
@@ -601,6 +680,8 @@ static int _qmi_kernel_decode(struct elem_info *ei_array,
 			memcpy(buf_dst, &data_len_value, sizeof(uint32_t));
 			temp_ei = temp_ei + 1;
 			buf_dst = out_c_struct + temp_ei->offset;
+			if (dec_level == 1 && tlv_len)
+				tlv_len -= data_len_sz;
 			UPDATE_DECODE_VARIABLES(buf_src, decoded_bytes, rc);
 		}
 

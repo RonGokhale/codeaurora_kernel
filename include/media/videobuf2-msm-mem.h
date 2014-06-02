@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,7 +16,7 @@
 #define _VIDEOBUF2_PMEM_CONTIG_H
 
 #include <media/videobuf2-core.h>
-#include <mach/iommu_domains.h>
+#include <linux/msm_iommu_domains.h>
 #include <linux/msm_ion.h>
 
 struct videobuf2_mapping {
@@ -43,7 +43,7 @@ struct videobuf2_msm_offset {
 struct videobuf2_contig_pmem {
 	u32 magic;
 	void *vaddr;
-	int phyaddr;
+	dma_addr_t phyaddr;
 	unsigned long size;
 	int is_userptr;
 	/* Offset of the plane inside the buffer */

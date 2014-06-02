@@ -167,7 +167,7 @@ static ssize_t pmic8xxx_debounce_store(struct device *dev,
 
 static DEVICE_ATTR(debounce_us, 0664, NULL, pmic8xxx_debounce_store);
 
-static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
+static int pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 {
 	struct input_dev *pwr;
 	int key_release_irq = platform_get_irq(pdev, 0);
@@ -277,7 +277,7 @@ free_pwrkey:
 	return err;
 }
 
-static int __devexit pmic8xxx_pwrkey_remove(struct platform_device *pdev)
+static int pmic8xxx_pwrkey_remove(struct platform_device *pdev)
 {
 	struct pmic8xxx_pwrkey *pwrkey = platform_get_drvdata(pdev);
 	int key_release_irq = platform_get_irq(pdev, 0);
@@ -297,7 +297,7 @@ static int __devexit pmic8xxx_pwrkey_remove(struct platform_device *pdev)
 
 static struct platform_driver pmic8xxx_pwrkey_driver = {
 	.probe		= pmic8xxx_pwrkey_probe,
-	.remove		= __devexit_p(pmic8xxx_pwrkey_remove),
+	.remove		= pmic8xxx_pwrkey_remove,
 	.driver		= {
 		.name	= PM8XXX_PWRKEY_DEV_NAME,
 		.owner	= THIS_MODULE,

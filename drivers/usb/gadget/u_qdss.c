@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,12 +13,14 @@
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/usb/msm_hsusb.h>
-#include <mach/usb_bam.h>
+#include <linux/usb_bam.h>
+
+#include "gadget_chips.h"
 
 struct  usb_qdss_bam_connect_info {
 	u32 usb_bam_pipe_idx;
 	u32 peer_pipe_idx;
-	u32 usb_bam_handle;
+	unsigned long usb_bam_handle;
 	struct sps_mem_buffer *data_fifo;
 };
 
@@ -62,13 +64,13 @@ static int set_qdss_data_connection(struct usb_gadget *gadget,
 	struct usb_ep *data_ep, u8 data_addr, int enable)
 {
 	int res = 0;
-	u8 idx;
+	int idx;
 
 	pr_debug("set_qdss_data_connection\n");
 
 	/* There is only one qdss pipe, so the pipe number can be set to 0 */
 	idx = usb_bam_get_connection_idx(gadget->name, QDSS_P_BAM,
-		PEER_PERIPHERAL_TO_USB, 0);
+		PEER_PERIPHERAL_TO_USB, USB_BAM_DEVICE, 0);
 	if (idx < 0) {
 		pr_err("%s: usb_bam_get_connection_idx failed\n", __func__);
 		return idx;
@@ -77,7 +79,7 @@ static int set_qdss_data_connection(struct usb_gadget *gadget,
 	if (enable) {
 		res = usb_bam_connect(idx, &(bam_info.usb_bam_pipe_idx));
 		bam_info.data_fifo =
-			kzalloc(sizeof(struct sps_mem_buffer *), GFP_KERNEL);
+			kzalloc(sizeof(struct sps_mem_buffer), GFP_KERNEL);
 		if (!bam_info.data_fifo) {
 			pr_err("qdss_data_connection: memory alloc failed\n");
 			return -ENOMEM;
@@ -88,8 +90,11 @@ static int set_qdss_data_connection(struct usb_gadget *gadget,
 			&bam_info.usb_bam_pipe_idx, &bam_info.peer_pipe_idx,
 			NULL, bam_info.data_fifo);
 
-		msm_data_fifo_config(data_ep, bam_info.data_fifo->phys_base,
-			bam_info.data_fifo->size, bam_info.usb_bam_pipe_idx);
+		if (gadget_is_dwc3(gadget))
+			msm_data_fifo_config(data_ep,
+					     bam_info.data_fifo->phys_base,
+					     bam_info.data_fifo->size,
+					     bam_info.usb_bam_pipe_idx);
 	} else {
 		kfree(bam_info.data_fifo);
 		res = usb_bam_disconnect_pipe(idx);

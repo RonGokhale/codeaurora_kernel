@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 #include <linux/of.h>
 #include <linux/spmi.h>
 #include <linux/delay.h>
+#include <linux/debugfs.h>
 
 #define KRAIT_REG_PMIC_DEV_NAME "qcom,krait-regulator-pmic"
 
@@ -52,13 +53,15 @@
 #define REG_PHASE_CTL		0x52
 #define BALANCE_EN_BIT		BIT(7)
 
+#define REG_SS_CTL		0x60
 #define REG_VS_CTL		0x61
-#define VS_CTL_VAL		0x85
+#define VS_CTL_VAL		0x82
 
 #define REG_GANG_CTL2		0xC1
 #define GANG_EN_BIT		BIT(7)
 
-#define REG_PWM_CL			0x60
+#define REG_PWM_CL		0x60
+#define REG_SEC_ACCESS		0xD0
 
 struct krait_vreg_pmic_chip {
 	struct spmi_device	*spmi;
@@ -67,6 +70,25 @@ struct krait_vreg_pmic_chip {
 	u16			freq_base;
 	u8			ctrl_dig_major;
 	u8			ctrl_dig_minor;
+	u32			unexpected_config;
+	u8			orig_ss_ctl;
+	u8			wrkarnd_ss_ctl;
+	bool			is_ss_same_as_vs_ctl;
+	struct dentry		*dent;
+};
+
+enum {
+	BAD_VCTL_VAL_BIT	= BIT(0),
+	BAD_AUTO_BIT		= BIT(1),
+	BAD_NPM_BIT		= BIT(2),
+	BAD_EN_BIT		= BIT(3),
+	BAD_PD_CTL_BIT		= BIT(4),
+	BAD_MULTIPHASE_EN_BIT	= BIT(5),
+	BAD_BALANCE_EN_BIT	= BIT(6),
+	BAD_VS_CTL_BIT		= BIT(7),
+	BAD_CTRL_GANG_EN_BIT	= BIT(8),
+	BAD_PS_GANG_EN_BIT	= BIT(9),
+	BAD_FREQ_GANG_EN_BIT	= BIT(10),
 };
 
 static struct krait_vreg_pmic_chip *the_chip;
@@ -102,6 +124,85 @@ static int write_byte(struct spmi_device *spmi, u16 addr, u8 *val)
 	return 0;
 }
 
+static int write_secure_byte(struct spmi_device *spmi, u16 base,
+							u16 addr, u8 *val)
+{
+	int rc;
+	u8 sec_val = 0xA5;
+
+	rc = spmi_ext_register_writel(spmi->ctrl, spmi->sid,
+					base + REG_SEC_ACCESS, &sec_val, 1);
+	if (rc) {
+		pr_err("SPMI write failed [%d,0x%04x] val = 0x%02x rc=%d\n",
+				spmi->sid, base + REG_SEC_ACCESS, sec_val, rc);
+		return rc;
+	}
+	rc = spmi_ext_register_writel(spmi->ctrl, spmi->sid,
+					base + addr, val, 1);
+	if (rc) {
+		pr_err("SPMI write failed [%d,0x%04x] val = 0x%02x rc=%d\n",
+						spmi->sid, addr, *val, rc);
+		return rc;
+	}
+	return 0;
+}
+
+/**
+ * krait_pmic_pre_disable - workarounds after enabling
+ *
+ * Context: Can be called in atomic context
+ *
+ * Returns: 0 on success, error code on failure
+ */
+int krait_pmic_pre_disable(void)
+{
+	int rc = 0;
+
+	if (the_chip == NULL) {
+		pr_debug("krait_regulator_pmic not ready yet\n");
+		return 0;
+	}
+
+	if (the_chip->is_ss_same_as_vs_ctl == true) {
+		the_chip->is_ss_same_as_vs_ctl = false;
+		rc = write_byte(the_chip->spmi,
+				the_chip->ctrl_base + REG_SS_CTL,
+				&the_chip->orig_ss_ctl);
+		pr_debug("wrote 0x%02x->[%d 0x%04x] rc = %d\n",
+				the_chip->orig_ss_ctl, the_chip->spmi->sid,
+				the_chip->ctrl_base + REG_SS_CTL, rc);
+	}
+	return rc;
+}
+
+/**
+ * krait_pmic_pre_multiphase_enable - workarounds after enabling
+ *
+ * Context: Can be called in atomic context
+ *
+ * Returns: 0 on success, error code on failure
+ */
+int krait_pmic_pre_multiphase_enable(void)
+{
+	int rc = 0;
+
+	if (the_chip == NULL) {
+		pr_debug("krait_regulator_pmic not ready yet\n");
+		return 0;
+	}
+
+	if (the_chip->is_ss_same_as_vs_ctl == false) {
+		the_chip->is_ss_same_as_vs_ctl = true;
+		rc = write_byte(the_chip->spmi,
+				the_chip->ctrl_base + REG_SS_CTL,
+				&the_chip->wrkarnd_ss_ctl);
+		pr_debug("wrote 0x%02x->[%d 0x%04x] rc = %d\n",
+				the_chip->wrkarnd_ss_ctl, the_chip->spmi->sid,
+				the_chip->ctrl_base + REG_SS_CTL, rc);
+	}
+	return rc;
+}
+
 #define ISTEP_MA			500
 #define IOFFSET_MA			1000
 #define OVERSHOOT_DIG_MAJOR		1
@@ -127,7 +228,7 @@ static bool v_overshoot_fixed(void)
 bool krait_pmic_is_ready(void)
 {
 	if (the_chip == NULL) {
-		pr_debug("kait_regulator_pmic not ready yet\n");
+		pr_debug("krait_regulator_pmic not ready yet\n");
 		return false;
 	}
 	return true;
@@ -149,7 +250,7 @@ int krait_pmic_post_pfm_entry(void)
 	int rc;
 
 	if (the_chip == NULL) {
-		pr_debug("kait_regulator_pmic not ready yet\n");
+		pr_debug("krait_regulator_pmic not ready yet\n");
 		return -ENXIO;
 	}
 
@@ -157,8 +258,8 @@ int krait_pmic_post_pfm_entry(void)
 		return 0;
 
 	setpoint = (I_PFM_MA - IOFFSET_MA) / ISTEP_MA;
-	rc = write_byte(the_chip->spmi,
-			the_chip->ps_base + REG_PWM_CL, &setpoint);
+	rc = write_secure_byte(the_chip->spmi,
+			the_chip->ps_base, REG_PWM_CL, &setpoint);
 	pr_debug("wrote 0x%02x->[%d 0x%04x] rc = %d\n", setpoint,
 			the_chip->spmi->sid,
 			the_chip->ps_base + REG_PWM_CL, rc);
@@ -180,7 +281,7 @@ int krait_pmic_post_pwm_entry(void)
 	int rc;
 
 	if (the_chip == NULL) {
-		pr_debug("kait_regulator_pmic not ready yet\n");
+		pr_debug("krait_regulator_pmic not ready yet\n");
 		return -ENXIO;
 	}
 
@@ -190,8 +291,8 @@ int krait_pmic_post_pwm_entry(void)
 	udelay(50);
 	setpoint = (I_PWM_MA - IOFFSET_MA) / ISTEP_MA;
 
-	rc = write_byte(the_chip->spmi,
-			the_chip->ps_base + REG_PWM_CL, &setpoint);
+	rc = write_secure_byte(the_chip->spmi,
+			the_chip->ps_base, REG_PWM_CL, &setpoint);
 	pr_debug("wrote 0x%02x->[%d 0x%04x] rc = %d\n", setpoint,
 			the_chip->spmi->sid,
 			the_chip->ps_base + REG_PWM_CL, rc);
@@ -213,48 +314,85 @@ static int gang_configuration_check(struct krait_vreg_pmic_chip *chip)
 	int rc;
 	int i;
 
-	return 0;
-
 	READ_BYTE(chip, chip->ctrl_base + REG_V_CTL1, val, rc);
 	if (rc)
 		return rc;
-	BUG_ON(val != V_CTL1_VAL);
+	if (val != V_CTL1_VAL) {
+		pr_err("v ctl1 addr = 0x%05x val = 0x%x expected val = 0x%x\n",
+				chip->ctrl_base + REG_V_CTL1, val, V_CTL1_VAL);
+		chip->unexpected_config |= BAD_VCTL_VAL_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_MODE_CTL, val, rc);
 	if (rc)
 		return rc;
 	/* The Auto mode should be off */
-	BUG_ON(val & AUTO_MODE_BIT);
+	if (val & AUTO_MODE_BIT) {
+		pr_err("mode addr = 0x%05x val = 0x%x expect bit 0x%x to be not set\n",
+				chip->ctrl_base + REG_MODE_CTL, val,
+				(u32)AUTO_MODE_BIT);
+		chip->unexpected_config |= BAD_AUTO_BIT;
+	}
 	/* The NPM mode should be on */
-	BUG_ON(!(val & NPM_MODE_BIT));
+	if (!(val & NPM_MODE_BIT)) {
+		pr_err("mode ctl addr = 0x%05x val = 0x%x expect bit 0x%x to be set\n",
+				chip->ctrl_base + REG_MODE_CTL, val,
+				(u32)NPM_MODE_BIT);
+		chip->unexpected_config |= BAD_NPM_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_EN_CTL, val, rc);
 	if (rc)
 		return rc;
 	/* The en bit should be set */
-	BUG_ON(val & EN_BIT);
+	if (!(val & EN_BIT)) {
+		pr_err("en ctl addr = 0x%05x val = 0x%x expect bit 0x%x to be set\n",
+				chip->ctrl_base + REG_EN_CTL, val,
+				(u32)EN_BIT);
+		chip->unexpected_config |= BAD_EN_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_PD_CTL, val, rc);
 	if (rc)
 		return rc;
-	BUG_ON(val != PD_CTL_VAL);
+	if (val != PD_CTL_VAL) {
+		pr_err("pd ctl addr = 0x%05x val = 0x%x expected val = 0x%x\n",
+				chip->ctrl_base + REG_PD_CTL, val,
+				(u32)PD_CTL_VAL);
+		chip->unexpected_config |= BAD_PD_CTL_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_MULTIPHASE_CTL, val, rc);
 	if (rc)
 		return rc;
-	BUG_ON(!(val & MULTIPHASE_EN_BIT));
+	if (!(val & MULTIPHASE_EN_BIT)) {
+		pr_err("multi ctl addr = 0x%05x val = 0x%x expect bit 0x%x to be set\n",
+				chip->ctrl_base + REG_MULTIPHASE_CTL, val,
+				(u32)MULTIPHASE_EN_BIT);
+		chip->unexpected_config |= BAD_MULTIPHASE_EN_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_PHASE_CTL, val, rc);
 	if (rc)
 		return rc;
-	BUG_ON(!(val & BALANCE_EN_BIT));
+	if (!(val & BALANCE_EN_BIT)) {
+		pr_err("phase ctl addr = 0x%05x val = 0x%x expect bit 0x%x to be set\n",
+				chip->ctrl_base + REG_PHASE_CTL, val,
+				(u32)BALANCE_EN_BIT);
+		chip->unexpected_config |= BAD_BALANCE_EN_BIT;
+	}
 
 	READ_BYTE(chip, chip->ctrl_base + REG_VS_CTL, val, rc);
 	if (rc)
 		return rc;
-	BUG_ON(val != VS_CTL_VAL);
+	if (val != VS_CTL_VAL) {
+		pr_err("vs ctl addr = 0x%05x val = 0x%x expected val = 0x%x\n",
+				chip->ctrl_base + REG_VS_CTL, val,
+				(u32)VS_CTL_VAL);
+		chip->unexpected_config |= BAD_VS_CTL_BIT;
+	}
 
-	for (i = 0; i < GANGED_VREG_COUNT; i++) {
+	for (i = 1; i < GANGED_VREG_COUNT; i++) {
 		READ_BYTE(chip,
 			chip->ctrl_base + i * 0x300 + REG_GANG_CTL2, val, rc);
 		if (rc)
@@ -262,7 +400,7 @@ static int gang_configuration_check(struct krait_vreg_pmic_chip *chip)
 
 		if (!(val & GANG_EN_BIT)) {
 			pr_err("buck = %d, ctrl gang not enabled\n", i);
-			BUG();
+			chip->unexpected_config |= BAD_CTRL_GANG_EN_BIT;
 		}
 	}
 
@@ -274,7 +412,7 @@ static int gang_configuration_check(struct krait_vreg_pmic_chip *chip)
 
 		if (!(val & GANG_EN_BIT)) {
 			pr_err("buck = %d, ps gang not enabled\n", i);
-			BUG();
+			chip->unexpected_config |= BAD_PS_GANG_EN_BIT;
 		}
 	}
 
@@ -286,13 +424,15 @@ static int gang_configuration_check(struct krait_vreg_pmic_chip *chip)
 
 		if (!(val & GANG_EN_BIT)) {
 			pr_err("buck = %d, freq gang not enabled\n", i);
-			BUG();
+			chip->unexpected_config |= BAD_FREQ_GANG_EN_BIT;
 		}
 	}
+
 	return 0;
 }
 
-static int __devinit krait_vreg_pmic_probe(struct spmi_device *spmi)
+#define REG_SS_CTL_MASK		0x0F
+static int krait_vreg_pmic_probe(struct spmi_device *spmi)
 {
 	u8 type, subtype;
 	int rc;
@@ -371,8 +511,21 @@ static int __devinit krait_vreg_pmic_probe(struct spmi_device *spmi)
 	if (rc)
 		return rc;
 
+	READ_BYTE(chip, chip->ctrl_base + REG_SS_CTL, chip->orig_ss_ctl, rc);
+	if (rc)
+		return rc;
+
+	READ_BYTE(chip, chip->ctrl_base + REG_VS_CTL, chip->wrkarnd_ss_ctl, rc);
+	if (rc)
+		return rc;
+
+	chip->wrkarnd_ss_ctl &= REG_SS_CTL_MASK;
+
 	gang_configuration_check(chip);
 
+	chip->dent = debugfs_create_dir("krait-regulator-pmic", NULL);
+	debugfs_create_x32("unexpected_config", 0444,
+				 chip->dent, &(chip->unexpected_config));
 	the_chip = chip;
 	return 0;
 }

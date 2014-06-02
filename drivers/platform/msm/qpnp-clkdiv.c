@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -178,7 +178,7 @@ cfg_err:
 }
 EXPORT_SYMBOL(qpnp_clkdiv_config);
 
-static int __devinit qpnp_clkdiv_probe(struct spmi_device *spmi)
+static int qpnp_clkdiv_probe(struct spmi_device *spmi)
 {
 	struct q_clkdiv *q_clkdiv;
 	struct device_node *node = spmi->dev.of_node;
@@ -202,6 +202,7 @@ static int __devinit qpnp_clkdiv_probe(struct spmi_device *spmi)
 	if (!res) {
 		dev_err(&spmi->dev, "%s: unable to get device reg resource\n",
 					__func__);
+		return -EINVAL;
 	}
 
 	q_clkdiv->slave = spmi->sid;
@@ -248,7 +249,7 @@ static int __devinit qpnp_clkdiv_probe(struct spmi_device *spmi)
 	return 0;
 }
 
-static int __devexit qpnp_clkdiv_remove(struct spmi_device *spmi)
+static int qpnp_clkdiv_remove(struct spmi_device *spmi)
 {
 	struct q_clkdiv *q_clkdiv = dev_get_drvdata(&spmi->dev);
 	list_del(&q_clkdiv->list);
@@ -267,7 +268,7 @@ static struct spmi_driver qpnp_clkdiv_driver = {
 		.of_match_table = spmi_match_table,
 	},
 	.probe		= qpnp_clkdiv_probe,
-	.remove		= __devexit_p(qpnp_clkdiv_remove),
+	.remove		= qpnp_clkdiv_remove,
 };
 
 static int __init qpnp_clkdiv_init(void)

@@ -10,7 +10,7 @@ Required properties:
 - cell-index: eeprom hardware core index
 - compatible :
     - "qcom,eeprom"
-- reg : offset and length of eeprom device registers.
+- reg : offset of eeprom device registers.
 - qcom,eeprom-name : should specify relevant names of the eeprom module
     library.
 - qcom,slave-addr : should specify the slave address of the eeprom.
@@ -29,7 +29,6 @@ Required properties:
     data type, delay in ms. size 0 stand for not used.
     - address type : 1 byte, 2 word.
     - data type : 1 byte, 2 word.
-- cam_vdig-supply : should contain regulator to be used for the digital vdd.
 - cam_vio-supply : should contain regulator to be used for the IO vdd.
 - qcom,cam-vreg-name : should specify the regulator name to be used for
     this eeprom.
@@ -57,6 +56,15 @@ Required properties:
 Optional properties:
 - qcom,pageen%d : number %d page enable reg size, start address, address type,
     data, data type, delay in ms. size 0 stand for not used.
+- cam_vdig-supply : should contain regulator to be used for the digital vdd.
+- qcom,saddr%d : property should specify the slave address for block (%d).
+
+Optional properties -EEPROM Camera Multimodule
+- qcom,cmm-data-support - Camera MultiModule data capability flag.
+- qcom,cmm-data-compressed - Camera MultiModule data compresion flag.
+- qcom,cmm-data-offset - Camera MultiModule data start offset.
+- qcom,cmm-data-size - Camera MultiModule data size.
+
 
 Example:
 
@@ -75,6 +83,12 @@ Example:
         qcom,pageen1 = <1 0x0202 2 0x01 1 10>;
         qcom,poll1 = <0 0x0 2 0 1 1>;
         qcom,mem1 = <32 0x3000 2 0 1 0>;
+        qcom,saddr1 = <0x62>;
+
+	qcom,cmm-data-support;
+	qcom,cmm-data-compressed;
+	qcom,cmm-data-offset = <0>;
+	qcom,cmm-data-size = <0>;
 
         cam_vdig-supply = <&pm8226_l5>;
         cam_vio-supply = <&pm8226_lvs1>;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,66 +22,28 @@
 #include <linux/memory.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/krait-regulator.h>
-#include <linux/msm_tsens.h>
-#include <linux/msm_thermal.h>
+#include <linux/regulator/rpm-smd-regulator.h>
 #include <asm/mach/map.h>
-#include <asm/hardware/gic.h>
 #include <asm/mach/map.h>
 #include <asm/mach/arch.h>
 #include <mach/board.h>
 #include <mach/gpiomux.h>
 #include <mach/msm_iomap.h>
-#ifdef CONFIG_ION_MSM
-#include <mach/ion.h>
-#endif
 #include <mach/msm_memtypes.h>
-#include <mach/msm_smd.h>
-#include <mach/restart.h>
-#include <mach/rpm-smd.h>
-#include <mach/rpm-regulator-smd.h>
-#include <mach/socinfo.h>
-#include <mach/msm_smem.h>
+#include <soc/qcom/restart.h>
+#include <soc/qcom/rpm-smd.h>
+#include <soc/qcom/socinfo.h>
+#include <soc/qcom/smd.h>
+#include <soc/qcom/smem.h>
+#include <soc/qcom/spm.h>
+#include <soc/qcom/pm.h>
 #include "board-dt.h"
 #include "clock.h"
-#include "devices.h"
-#include "spm.h"
-#include "pm.h"
-#include "modem_notifier.h"
 #include "platsmp.h"
-
-
-static struct memtype_reserve msm8974_reserve_table[] __initdata = {
-	[MEMTYPE_SMI] = {
-	},
-	[MEMTYPE_EBI0] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-	[MEMTYPE_EBI1] = {
-		.flags	=	MEMTYPE_FLAGS_1M_ALIGN,
-	},
-};
-
-static int msm8974_paddr_to_memtype(phys_addr_t paddr)
-{
-	return MEMTYPE_EBI1;
-}
-
-static struct reserve_info msm8974_reserve_info __initdata = {
-	.memtype_reserve_table = msm8974_reserve_table,
-	.paddr_to_memtype = msm8974_paddr_to_memtype,
-};
 
 void __init msm_8974_reserve(void)
 {
-	reserve_info = &msm8974_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_reserve, msm8974_reserve_table);
-	msm_reserve();
-}
-
-static void __init msm8974_early_memory(void)
-{
-	reserve_info = &msm8974_reserve_info;
-	of_scan_flat_dt(dt_scan_for_memory_hole, msm8974_reserve_table);
+	of_scan_flat_dt(dt_scan_for_memory_reserve, NULL);
 }
 
 /*
@@ -92,41 +54,26 @@ static void __init msm8974_early_memory(void)
  */
 void __init msm8974_add_drivers(void)
 {
-	msm_smem_init();
-	msm_init_modem_notifier_list();
 	msm_smd_init();
 	msm_rpm_driver_init();
 	msm_pm_sleep_status_init();
-	rpm_regulator_smd_driver_init();
+	rpm_smd_regulator_driver_init();
 	msm_spm_device_init();
 	krait_power_init();
-	if (of_board_is_rumi())
-		msm_clock_init(&msm8974_rumi_clock_init_data);
-	else
-		msm_clock_init(&msm8974_clock_init_data);
-	tsens_tm_init_driver();
-	msm_thermal_device_init();
 }
 
+static struct of_dev_auxdata msm_hsic_host_adata[] = {
+	OF_DEV_AUXDATA("qcom,hsic-host", 0xF9A00000, "msm_hsic_host", NULL),
+	{}
+};
+
 static struct of_dev_auxdata msm8974_auxdata_lookup[] __initdata = {
-	OF_DEV_AUXDATA("qcom,hsusb-otg", 0xF9A55000, \
-			"msm_otg", NULL),
-	OF_DEV_AUXDATA("qcom,ehci-host", 0xF9A55000, \
-			"msm_ehci_host", NULL),
-	OF_DEV_AUXDATA("qcom,dwc-usb3-msm", 0xF9200000, \
-			"msm_dwc3", NULL),
-	OF_DEV_AUXDATA("qcom,usb-bam-msm", 0xF9304000, \
-			"usb_bam", NULL),
+	OF_DEV_AUXDATA("qcom,hsusb-otg", 0xF9A55000, "msm_otg", NULL),
+	OF_DEV_AUXDATA("qcom,ehci-host", 0xF9A55000, "msm_ehci_host", NULL),
+	OF_DEV_AUXDATA("qcom,dwc-usb3-msm", 0xF9200000, "msm_dwc3", NULL),
+	OF_DEV_AUXDATA("qcom,usb-bam-msm", 0xF9304000, "usb_bam", NULL),
 	OF_DEV_AUXDATA("qcom,spi-qup-v2", 0xF9924000, \
 			"spi_qsd.1", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9824000, \
-			"msm_sdcc.1", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98A4000, \
-			"msm_sdcc.2", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF9864000, \
-			"msm_sdcc.3", NULL),
-	OF_DEV_AUXDATA("qcom,msm-sdcc", 0xF98E4000, \
-			"msm_sdcc.4", NULL),
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9824900, \
 			"msm_sdcc.1", NULL),
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF98A4900, \
@@ -148,6 +95,8 @@ static struct of_dev_auxdata msm8974_auxdata_lookup[] __initdata = {
 			"qcrypto.0", NULL),
 	OF_DEV_AUXDATA("qcom,hsic-host", 0xF9A00000, \
 			"msm_hsic_host", NULL),
+	OF_DEV_AUXDATA("qcom,hsic-smsc-hub", 0, "msm_smsc_hub",
+			msm_hsic_host_adata),
 	{}
 };
 
@@ -160,18 +109,22 @@ void __init msm8974_init(void)
 {
 	struct of_dev_auxdata *adata = msm8974_auxdata_lookup;
 
+	/*
+	 * populate devices from DT first so smem probe will get called as part
+	 * of msm_smem_init.  socinfo_init needs smem support so call
+	 * msm_smem_init before it.  msm_8974_init_gpiomux needs socinfo so
+	 * call socinfo_init before it.
+	 */
+	board_dt_populate(adata);
+
+	msm_smem_init();
+
 	if (socinfo_init() < 0)
 		pr_err("%s: socinfo_init() failed\n", __func__);
 
 	msm_8974_init_gpiomux();
 	regulator_has_full_constraints();
-	board_dt_populate(adata);
 	msm8974_add_drivers();
-}
-
-void __init msm8974_init_very_early(void)
-{
-	msm8974_early_memory();
 }
 
 static const char *msm8974_dt_match[] __initconst = {
@@ -180,15 +133,11 @@ static const char *msm8974_dt_match[] __initconst = {
 	NULL
 };
 
-DT_MACHINE_START(MSM8974_DT, "Qualcomm MSM 8974 (Flattened Device Tree)")
-	.map_io = msm8974_map_io,
-	.init_irq = msm_dt_init_irq,
-	.init_machine = msm8974_init,
-	.handle_irq = gic_handle_irq,
-	.timer = &msm_dt_timer,
-	.dt_compat = msm8974_dt_match,
-	.reserve = msm_8974_reserve,
-	.init_very_early = msm8974_init_very_early,
-	.restart = msm_restart,
-	.smp = &msm8974_smp_ops,
+DT_MACHINE_START(MSM8974_DT,
+		"Qualcomm Technologies, Inc. MSM 8974 (Flattened Device Tree)")
+	.map_io			= msm8974_map_io,
+	.init_machine		= msm8974_init,
+	.dt_compat		= msm8974_dt_match,
+	.reserve		= msm_8974_reserve,
+	.smp			= &msm8974_smp_ops,
 MACHINE_END

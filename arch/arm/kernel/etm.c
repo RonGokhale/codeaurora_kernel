@@ -344,7 +344,7 @@ static void sysrq_etm_dump(int key)
 
 static struct sysrq_key_op sysrq_etm_op = {
 	.handler = sysrq_etm_dump,
-	.help_msg = "ETM buffer dump",
+	.help_msg = "etm-buffer-dump(v)",
 	.action_msg = "etm",
 };
 
@@ -441,7 +441,7 @@ static struct miscdevice etb_miscdev = {
 	.fops = &etb_fops,
 };
 
-static int __devinit etb_probe(struct amba_device *dev, const struct amba_id *id)
+static int etb_probe(struct amba_device *dev, const struct amba_id *id)
 {
 	struct tracectx *t = &tracer;
 	int ret = 0;
@@ -856,7 +856,7 @@ static struct kobj_attribute trace_data_range_attr =
 	__ATTR(trace_data_range, 0644,
 		trace_data_range_show, trace_data_range_store);
 
-static int __devinit etm_probe(struct amba_device *dev, const struct amba_id *id)
+static int etm_probe(struct amba_device *dev, const struct amba_id *id)
 {
 	struct tracectx *t = &tracer;
 	int ret = 0;

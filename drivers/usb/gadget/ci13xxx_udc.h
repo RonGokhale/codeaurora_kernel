@@ -109,6 +109,7 @@ struct ci13xxx_ep {
 		struct ci13xxx_qh *ptr;
 		dma_addr_t         dma;
 	}                                      qh;
+	struct list_head                       rw_queue;
 	int                                    wedge;
 
 	/* global resources */
@@ -136,6 +137,7 @@ struct ci13xxx_udc_driver {
 #define CI13XXX_DISABLE_STREAMING	BIT(3)
 #define CI13XXX_ZERO_ITC		BIT(4)
 #define CI13XXX_IS_OTG			BIT(5)
+#define CI13XXX_ENABLE_AHB2AHB_BYPASS	BIT(6)
 
 #define CI13XXX_CONTROLLER_RESET_EVENT			0
 #define CI13XXX_CONTROLLER_CONNECT_EVENT		1
@@ -146,6 +148,8 @@ struct ci13xxx_udc_driver {
 #define CI13XXX_CONTROLLER_UDC_STARTED_EVENT		6
 
 	void	(*notify_event) (struct ci13xxx *udc, unsigned event);
+	bool    (*in_lpm) (struct ci13xxx *udc);
+	void    (*set_fpr_flag) (struct ci13xxx *udc);
 };
 
 /* CI13XXX UDC descriptor & global resources */
@@ -163,12 +167,10 @@ struct ci13xxx {
 	u32                        ep0_dir;    /* ep0 direction */
 #define ep0out ci13xxx_ep[0]
 #define ep0in  ci13xxx_ep[hw_ep_max / 2]
-	u8                         remote_wakeup; /* Is remote wakeup feature
-							enabled by the host? */
 	u8                         suspended;  /* suspended by the host */
 	u8                         configured;  /* is device configured */
 	u8                         test_mode;  /* the selected test mode */
-
+	bool                       rw_pending; /* Remote wakeup pending flag */
 	struct delayed_work        rw_work;    /* remote wakeup delayed work */
 	struct usb_gadget_driver  *driver;     /* 3rd party gadget driver */
 	struct ci13xxx_udc_driver *udc_driver; /* device controller driver */
@@ -196,6 +198,9 @@ struct ci13xxx {
 
 /* TESTMODE */
 #define TESTMODE_FORCE        BIT(0)
+
+/* AHB_MODE */
+#define AHB2AHB_BYPASS	      BIT(31)
 
 /* USBCMD */
 #define USBCMD_RS             BIT(0)

@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Samsung Electronics Co.Ltd
  * Author: Joonyoung Shim <jy0922.shim@samsung.com>
- * Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -15,6 +15,9 @@
 #define __LINUX_ATMEL_MXT_TS_H
 
 #include <linux/types.h>
+
+/* For key_map array */
+#define MXT_NUM_GPIO		4
 
 /* Orient */
 #define MXT_NORMAL		0x0
@@ -40,7 +43,7 @@
 /* Config data for a given maXTouch controller with a specific firmware */
 struct mxt_config_info {
 	const u8 *config;
-	size_t config_length;
+	int config_length;
 	u8 family_id;
 	u8 variant_id;
 	u8 version;
@@ -68,12 +71,15 @@ struct mxt_platform_data {
 	u32 disp_maxy;
 
 	unsigned long irqflags;
+	bool is_tp;
+	const unsigned int key_map[MXT_NUM_GPIO];
 	bool	i2c_pull_up;
 	bool	digital_pwr_regulator;
 	int reset_gpio;
 	u32 reset_gpio_flags;
 	int irq_gpio;
 	u32 irq_gpio_flags;
+	int i2cmode_gpio;
 	int *key_codes;
 	bool need_calibration;
 	bool no_force_update;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,9 +20,9 @@
 #include <linux/types.h>
 #include <linux/completion.h>
 #include <linux/wait.h>
-#include <mach/msm_bus.h>
-#include <mach/msm_bus_board.h>
-#include <mach/ocmem.h>
+#include <linux/msm-bus.h>
+#include <linux/msm-bus-board.h>
+#include <soc/qcom/ocmem.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
@@ -46,8 +46,6 @@
 #define MAX_SUPPORTED_WIDTH 3820
 #define MAX_SUPPORTED_HEIGHT 2160
 
-
-
 #define V4L2_EVENT_VIDC_BASE  10
 
 #define SYS_MSG_START VIDC_EVENT_CHANGE
@@ -68,6 +66,7 @@ enum vidc_ports {
 
 enum vidc_core_state {
 	VIDC_CORE_UNINIT = 0,
+	VIDC_CORE_LOADED,
 	VIDC_CORE_INIT,
 	VIDC_CORE_INIT_DONE,
 	VIDC_CORE_INVALID
@@ -190,6 +189,9 @@ struct msm_vidc_core_capability {
 	u32 pixelprocess_capabilities;
 	struct hal_capability_supported scale_x;
 	struct hal_capability_supported scale_y;
+	struct hal_capability_supported hier_p;
+	struct hal_capability_supported ltr_count;
+	struct hal_capability_supported mbs_per_frame;
 	u32 capability_set;
 	enum buffer_mode_type buffer_mode[MAX_PORT_NUM];
 };
@@ -207,27 +209,30 @@ struct msm_vidc_core {
 	struct completion completions[SYS_MSG_END - SYS_MSG_START + 1];
 	enum msm_vidc_hfi_type hfi_type;
 	struct msm_vidc_platform_resources resources;
+	u32 enc_codec_supported;
+	u32 dec_codec_supported;
 };
 
 struct msm_vidc_inst {
 	struct list_head list;
 	struct mutex sync_lock, lock;
 	struct msm_vidc_core *core;
-	int session_type;
+	enum session_type session_type;
 	void *session;
 	struct session_prop prop;
-	int state;
+	enum instance_state state;
 	struct msm_vidc_format *fmts[MAX_PORT_NUM];
 	struct buf_queue bufq[MAX_PORT_NUM];
 	struct list_head pendingq;
 	struct list_head internalbufs;
 	struct list_head persistbufs;
 	struct list_head outputbufs;
+	struct list_head pending_getpropq;
 	struct buffer_requirements buff_req;
 	void *mem_client;
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct completion completions[SESSION_MSG_END - SESSION_MSG_START + 1];
-	struct list_head ctrl_clusters;
+	struct v4l2_ctrl **cluster;
 	struct v4l2_fh event_handler;
 	struct msm_smem *extradata_handle;
 	wait_queue_head_t kernel_event_queue;
@@ -241,11 +246,12 @@ struct msm_vidc_inst {
 	struct msm_vidc_debug debug;
 	struct buf_count count;
 	enum msm_vidc_modes flags;
-	u32 multi_stream_mode;
 	struct msm_vidc_core_capability capability;
 	enum buffer_mode_type buffer_mode_set[MAX_PORT_NUM];
 	struct list_head registered_bufs;
 	bool map_output_buffer;
+	atomic_t get_seq_hdr_cnt;
+	struct v4l2_ctrl **ctrls;
 };
 
 extern struct msm_vidc_drv *vidc_driver;
@@ -264,15 +270,15 @@ struct msm_vidc_ctrl {
 	s32 default_value;
 	u32 step;
 	u32 menu_skip_mask;
+	u32 flags;
 	const char * const *qmenu;
-	u32 cluster;
-	struct v4l2_ctrl *priv;
 };
 
 void handle_cmd_response(enum command_response cmd, void *data);
 int msm_vidc_trigger_ssr(struct msm_vidc_core *core,
 	enum hal_ssr_trigger_type type);
 int msm_vidc_check_session_supported(struct msm_vidc_inst *inst);
+int msm_vidc_check_scaling_supported(struct msm_vidc_inst *inst);
 void msm_vidc_queue_v4l2_event(struct msm_vidc_inst *inst, int event_type);
 
 struct buffer_info {
@@ -282,8 +288,8 @@ struct buffer_info {
 	int fd[VIDEO_MAX_PLANES];
 	int buff_off[VIDEO_MAX_PLANES];
 	int size[VIDEO_MAX_PLANES];
-	u32 uvaddr[VIDEO_MAX_PLANES];
-	u32 device_addr[VIDEO_MAX_PLANES];
+	unsigned long uvaddr[VIDEO_MAX_PLANES];
+	ion_phys_addr_t device_addr[VIDEO_MAX_PLANES];
 	struct msm_smem *handle[VIDEO_MAX_PLANES];
 	enum v4l2_memory memory;
 	u32 v4l2_index;
@@ -297,7 +303,7 @@ struct buffer_info {
 };
 
 struct buffer_info *device_to_uvaddr(struct msm_vidc_inst *inst,
-			struct list_head *list, u32 device_addr);
+			struct list_head *list, ion_phys_addr_t device_addr);
 int buf_ref_get(struct msm_vidc_inst *inst, struct buffer_info *binfo);
 int buf_ref_put(struct msm_vidc_inst *inst, struct buffer_info *binfo);
 int output_buffer_cache_invalidate(struct msm_vidc_inst *inst,
@@ -306,4 +312,17 @@ int qbuf_dynamic_buf(struct msm_vidc_inst *inst,
 			struct buffer_info *binfo);
 int unmap_and_deregister_buf(struct msm_vidc_inst *inst,
 			struct buffer_info *binfo);
+
+void *msm_smem_new_client(enum smem_type mtype,
+				void *platform_resources);
+struct msm_smem *msm_smem_alloc(void *clt, size_t size, u32 align, u32 flags,
+		enum hal_buffer buffer_type, int map_kernel);
+void msm_smem_free(void *clt, struct msm_smem *mem);
+void msm_smem_delete_client(void *clt);
+int msm_smem_cache_operations(void *clt, struct msm_smem *mem,
+		enum smem_cache_ops);
+struct msm_smem *msm_smem_user_to_kernel(void *clt, int fd, u32 offset,
+				enum hal_buffer buffer_type);
+int msm_smem_get_domain_partition(void *clt, u32 flags, enum hal_buffer
+		buffer_type, int *domain_num, int *partition_num);
 #endif

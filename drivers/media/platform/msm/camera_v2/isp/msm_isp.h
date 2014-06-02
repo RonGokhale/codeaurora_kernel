@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,8 +22,8 @@
 #include <linux/avtimer.h>
 #include <media/v4l2-subdev.h>
 #include <media/msmb_isp.h>
-#include <mach/msm_bus.h>
-#include <mach/msm_bus_board.h>
+#include <linux/msm-bus.h>
+#include <linux/msm-bus-board.h>
 
 #include "msm_buf_mgr.h"
 
@@ -44,6 +44,8 @@
 #define VFE_PONG_FLAG 0x0
 
 #define VFE_MAX_CFG_TIMEOUT 3000
+#define VFE_CLK_INFO_MAX 16
+#define STATS_COMP_BIT_MASK 0xFF0000
 
 struct vfe_device;
 struct msm_vfe_axi_stream;
@@ -106,7 +108,7 @@ struct msm_vfe_axi_ops {
 		uint32_t reload_mask);
 	void (*enable_wm) (struct vfe_device *vfe_dev,
 		uint8_t wm_idx, uint8_t enable);
-	void (*cfg_io_format) (struct vfe_device *vfe_dev,
+	int32_t (*cfg_io_format) (struct vfe_device *vfe_dev,
 		enum msm_vfe_axi_stream_src stream_src,
 		uint32_t io_format);
 	void (*cfg_framedrop) (struct vfe_device *vfe_dev,
@@ -137,7 +139,7 @@ struct msm_vfe_axi_ops {
 	void (*cfg_ub) (struct vfe_device *vfe_dev);
 
 	void (*update_ping_pong_addr) (struct vfe_device *vfe_dev,
-		uint8_t wm_idx, uint32_t pingpong_status, unsigned long paddr);
+		uint8_t wm_idx, uint32_t pingpong_status, dma_addr_t paddr);
 
 	uint32_t (*get_wm_mask) (uint32_t irq_status0, uint32_t irq_status1);
 	uint32_t (*get_comp_mask) (uint32_t irq_status0, uint32_t irq_status1);
@@ -164,6 +166,7 @@ struct msm_vfe_core_ops {
 };
 struct msm_vfe_stats_ops {
 	int (*get_stats_idx) (enum msm_isp_stats_type stats_type);
+	int (*check_streams) (struct msm_vfe_stats_stream *stream_info);
 	void (*cfg_framedrop) (struct vfe_device *vfe_dev,
 		struct msm_vfe_stats_stream *stream_info);
 	void (*clear_framedrop) (struct vfe_device *vfe_dev,
@@ -187,7 +190,7 @@ struct msm_vfe_stats_ops {
 
 	void (*update_ping_pong_addr) (struct vfe_device *vfe_dev,
 		struct msm_vfe_stats_stream *stream_info,
-		uint32_t pingpong_status, unsigned long paddr);
+		uint32_t pingpong_status, dma_addr_t paddr);
 
 	uint32_t (*get_frame_id) (struct vfe_device *vfe_dev);
 	uint32_t (*get_wm_mask) (uint32_t irq_status0, uint32_t irq_status1);
@@ -267,7 +270,9 @@ struct msm_vfe_axi_stream {
 	uint32_t session_id;
 	uint32_t stream_id;
 	uint32_t bufq_handle;
+	uint32_t bufq_scratch_handle;
 	uint32_t stream_handle;
+	uint32_t request_frm_num;
 	uint8_t buf_divert;
 	enum msm_vfe_axi_stream_type stream_type;
 	uint32_t vt_enable;
@@ -300,7 +305,7 @@ struct msm_vfe_axi_composite_info {
 };
 
 struct msm_vfe_src_info {
-	unsigned long frame_id;
+	uint32_t frame_id;
 	uint8_t active;
 	uint8_t pix_stream_count;
 	uint8_t raw_stream_count;
@@ -332,12 +337,12 @@ struct msm_vfe_axi_shared_data {
 	enum msm_isp_camif_update_state pipeline_update;
 	struct msm_vfe_src_info src_info[VFE_SRC_MAX];
 	uint16_t stream_handle_cnt;
-	unsigned long event_mask;
+	uint32_t event_mask;
 };
 
 struct msm_vfe_stats_hardware_info {
 	uint32_t stats_capability_mask;
-	uint32_t stats_ping_pong_offset;
+	uint8_t *stats_ping_pong_offset;
 	uint8_t num_stats_type;
 	uint8_t num_stats_comp_mask;
 };
@@ -371,7 +376,7 @@ struct msm_vfe_stats_stream {
 struct msm_vfe_stats_shared_data {
 	struct msm_vfe_stats_stream stream_info[MSM_ISP_STATS_MAX];
 	uint8_t num_active_stream;
-	atomic_t stats_comp_mask;
+	atomic_t stats_comp_mask[MAX_NUM_STATS_COMP_MASK];
 	uint16_t stream_handle_cnt;
 	atomic_t stats_update;
 };
@@ -403,17 +408,16 @@ struct vfe_device {
 	struct resource *vfe_irq;
 	struct resource *vfe_mem;
 	struct resource *vfe_vbif_mem;
-	struct resource *tcsr_mem;
 	struct resource *vfe_io;
 	struct resource *vfe_vbif_io;
 	void __iomem *vfe_base;
 	void __iomem *vfe_vbif_base;
-	void __iomem *tcsr_base;
 
 	struct device *iommu_ctx[MAX_IOMMU_CTX];
 
 	struct regulator *fs_vfe;
 	struct clk *vfe_clk[7];
+	uint32_t num_clk;
 
 	uint32_t bus_perf_client;
 
@@ -433,7 +437,6 @@ struct vfe_device {
 	struct msm_vfe_tasklet_queue_cmd
 		tasklet_queue_cmd[MSM_VFE_TASKLETQ_SIZE];
 
-	uint32_t soc_hw_version;
 	uint32_t vfe_hw_version;
 	struct msm_vfe_hardware_info *hw_info;
 	struct msm_vfe_axi_shared_data axi_data;
@@ -446,6 +449,7 @@ struct vfe_device {
 	uint8_t vt_enable;
 	void __iomem *p_avtimer_msw;
 	void __iomem *p_avtimer_lsw;
+	uint8_t ignore_error;
 };
 
 #endif

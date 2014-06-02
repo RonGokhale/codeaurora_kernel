@@ -117,7 +117,7 @@ static const struct coresight_ops replicator_cs_ops = {
 	.link_ops	= &replicator_link_ops,
 };
 
-static int __devinit replicator_probe(struct platform_device *pdev)
+static int replicator_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device *dev = &pdev->dev;
@@ -176,7 +176,7 @@ static int __devinit replicator_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit replicator_remove(struct platform_device *pdev)
+static int replicator_remove(struct platform_device *pdev)
 {
 	struct replicator_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -191,7 +191,7 @@ static struct of_device_id replicator_match[] = {
 
 static struct platform_driver replicator_driver = {
 	.probe          = replicator_probe,
-	.remove         = __devexit_p(replicator_remove),
+	.remove         = replicator_remove,
 	.driver         = {
 		.name   = "coresight-replicator",
 		.owner	= THIS_MODULE,

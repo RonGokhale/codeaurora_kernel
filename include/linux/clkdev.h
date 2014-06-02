@@ -21,6 +21,7 @@ struct clk_lookup {
 	struct list_head	node;
 	const char		*dev_id;
 	const char		*con_id;
+	int			of_idx;
 	struct clk		*clk;
 };
 
@@ -39,5 +40,8 @@ void clkdev_drop(struct clk_lookup *cl);
 
 void clkdev_add_table(struct clk_lookup *, size_t);
 int clk_add_alias(const char *, const char *, char *, struct device *);
+
+int clk_register_clkdev(struct clk *, const char *, const char *, ...);
+int clk_register_clkdevs(struct clk *, struct clk_lookup *, size_t);
 
 #endif

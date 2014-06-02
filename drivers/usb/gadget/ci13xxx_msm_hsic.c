@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,12 +22,12 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/usb.h>
+#include <linux/clk/msm-clk.h>
 
 #include <linux/usb/gadget.h>
 #include <linux/usb/msm_hsusb_hw.h>
 #include <linux/usb/msm_hsusb.h>
 
-#include <mach/clk.h>
 #include <mach/msm_iomap.h>
 #include <mach/msm_xo.h>
 #include <mach/rpm-regulator.h>
@@ -383,11 +383,12 @@ static int msm_hsic_suspend(struct msm_hsic_per *mhsic)
 	mb();
 
 	if (!mhsic->pdata->core_clk_always_on_workaround || !mhsic->connected) {
-		clk_disable(mhsic->iface_clk);
-		clk_disable(mhsic->core_clk);
+		clk_disable_unprepare(mhsic->iface_clk);
+		clk_disable_unprepare(mhsic->core_clk);
 	}
-	clk_disable(mhsic->phy_clk);
-	clk_disable(mhsic->cal_clk);
+	clk_disable_unprepare(mhsic->phy_clk);
+	clk_disable_unprepare(mhsic->cal_clk);
+	clk_disable_unprepare(mhsic->alt_core_clk);
 
 	ret = msm_xo_mode_vote(mhsic->xo_handle, MSM_XO_MODE_OFF);
 	if (ret)
@@ -440,11 +441,12 @@ static int msm_hsic_resume(struct msm_hsic_per *mhsic)
 				__func__, ret);
 
 	if (!mhsic->pdata->core_clk_always_on_workaround || !mhsic->connected) {
-		clk_enable(mhsic->iface_clk);
-		clk_enable(mhsic->core_clk);
+		clk_prepare_enable(mhsic->iface_clk);
+		clk_prepare_enable(mhsic->core_clk);
 	}
-	clk_enable(mhsic->phy_clk);
-	clk_enable(mhsic->cal_clk);
+	clk_prepare_enable(mhsic->phy_clk);
+	clk_prepare_enable(mhsic->cal_clk);
+	clk_prepare_enable(mhsic->alt_core_clk);
 
 	temp = readl_relaxed(USB_USBCMD);
 	temp &= ~ASYNC_INTR_CTRL;
@@ -623,7 +625,7 @@ static void ci13xxx_msm_hsic_notify_event(struct ci13xxx *udc, unsigned event)
 		 * connected by a pullup (CI13XXX_CONTROLLER_CONNECT_EVENT)
 		 * Before suspend, finish required configurations.
 		 */
-		hw_device_state(_udc->ep0out.qh.dma);
+		hw_device_state(udc->ep0out.qh.dma);
 		msm_hsic_start();
 		usleep(10000);
 
@@ -647,7 +649,7 @@ static struct ci13xxx_udc_driver ci13xxx_msm_udc_hsic_driver = {
 	.notify_event		= ci13xxx_msm_hsic_notify_event,
 };
 
-static int __devinit msm_hsic_probe(struct platform_device *pdev)
+static int msm_hsic_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct msm_hsic_per *mhsic;
@@ -783,7 +785,7 @@ error:
 	return ret;
 }
 
-static int __devexit hsic_msm_remove(struct platform_device *pdev)
+static int hsic_msm_remove(struct platform_device *pdev)
 {
 	struct msm_hsic_per *mhsic = platform_get_drvdata(pdev);
 
@@ -805,7 +807,7 @@ static int __devexit hsic_msm_remove(struct platform_device *pdev)
 
 static struct platform_driver msm_hsic_peripheral_driver = {
 	.probe	= msm_hsic_probe,
-	.remove	= __devexit_p(hsic_msm_remove),
+	.remove	= hsic_msm_remove,
 	.driver = {
 		.name = "msm_hsic_peripheral",
 #ifdef CONFIG_PM

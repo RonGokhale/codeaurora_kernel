@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -18,11 +18,9 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/spinlock.h>
-#include <mach/ocmem.h>
-#include <mach/iommu_domains.h>
-
+#include <linux/msm_iommu_domains.h>
+#include <soc/qcom/ocmem.h>
 #include "vidc_hfi_api.h"
-#include "msm_smem.h"
 #include "vidc_hfi_helper.h"
 #include "vidc_hfi_api.h"
 #include "vidc_hfi.h"
@@ -77,12 +75,12 @@ struct hfi_queue_header {
 
 struct hfi_mem_map_table {
 	u32 mem_map_num_entries;
-	u32 *mem_map_table_base_addr;
+	u32 mem_map_table_base_addr;
 };
 
 struct hfi_mem_map {
-	u32 virtual_addr;
-	u32 physical_addr;
+	ion_phys_addr_t virtual_addr;
+	phys_addr_t physical_addr;
 	u32 size;
 	u32 attr;
 };
@@ -94,7 +92,7 @@ struct hfi_mem_map {
 	VIDC_IFACEQ_MAX_BUF_COUNT * VIDC_IFACE_MAX_PARALLEL_CLNTS)
 
 #define VIDC_IFACEQ_GET_QHDR_START_ADDR(ptr, i)     \
-	(void *)((((u32)ptr) + sizeof(struct hfi_queue_table_header)) + \
+	(void *)((ptr + sizeof(struct hfi_queue_table_header)) + \
 		(i * sizeof(struct hfi_queue_header)))
 
 #define QDSS_SIZE 4096
@@ -124,8 +122,14 @@ enum bus_index {
 	BUS_IDX_MAX
 };
 
+enum clock_state {
+	DISABLED_UNPREPARED,
+	ENABLED_PREPARED,
+	DISABLED_PREPARED
+};
+
 struct vidc_mem_addr {
-	u8 *align_device_addr;
+	ion_phys_addr_t align_device_addr;
 	u8 *align_virtual_addr;
 	u32 mem_size;
 	struct msm_smem *mem_data;
@@ -140,23 +144,9 @@ struct vidc_iface_q_info {
 
 struct hal_data {
 	u32 irq;
-	u32 device_base_addr;
-	u8 *register_base_addr;
-};
-
-enum vidc_clocks {
-	VCODEC_CLK,
-	VCODEC_AHB_CLK,
-	VCODEC_AXI_CLK,
-	VCODEC_OCMEM_CLK,
-	VCODEC_MAX_CLKS
-};
-
-struct venus_core_clock {
-	char name[VIDC_MAX_NAME_LENGTH];
-	struct clk *clk;
-	u32 count;
-	struct load_freq_table load_freq_tbl[8];
+	phys_addr_t firmware_base;
+	u8 __iomem *register_base;
+	u32 register_size;
 };
 
 struct venus_bus_info {
@@ -172,9 +162,12 @@ struct on_chip_mem {
 
 struct venus_resources {
 	struct msm_vidc_fw fw;
-	struct venus_core_clock clock[VCODEC_MAX_CLKS];
-	struct venus_bus_info bus_info;
 	struct on_chip_mem ocmem;
+};
+
+enum venus_hfi_state {
+	VENUS_STATE_DEINIT = 1,
+	VENUS_STATE_INIT,
 };
 
 struct venus_hfi_device {
@@ -183,10 +176,9 @@ struct venus_hfi_device {
 	u32 intr_status;
 	u32 device_id;
 	u32 clk_load;
-	u32 bus_load[MSM_VIDC_MAX_DEVICES];
-	u32 clocks_enabled;
-	u32 power_enabled;
-	enum vidc_clocks clk_gating_level;
+	struct vidc_bus_vote_data *bus_load;
+	enum clock_state clk_state;
+	bool power_enabled;
 	struct mutex read_lock;
 	struct mutex write_lock;
 	struct mutex clk_pwr_lock;
@@ -203,15 +195,9 @@ struct venus_hfi_device {
 	struct workqueue_struct *venus_pm_workq;
 	int spur_count;
 	int reg_count;
-	u32 base_addr;
-	u32 register_base;
-	u32 register_size;
-	u32 irq;
-	int clk_cnt;
-	int pwr_cnt;
 	struct venus_resources resources;
 	struct msm_vidc_platform_resources *res;
-	struct regulator *gdsc;
+	enum venus_hfi_state state;
 };
 
 void venus_hfi_delete_device(void *device);

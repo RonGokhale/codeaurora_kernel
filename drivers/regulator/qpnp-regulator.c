@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -56,6 +56,11 @@ enum qpnp_regulator_logical_type {
 	QPNP_REGULATOR_LOGICAL_TYPE_VS,
 	QPNP_REGULATOR_LOGICAL_TYPE_BOOST,
 	QPNP_REGULATOR_LOGICAL_TYPE_FTSMPS,
+	QPNP_REGULATOR_LOGICAL_TYPE_BOOST_BYP,
+	QPNP_REGULATOR_LOGICAL_TYPE_LN_LDO,
+	QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS,
+	QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS,
+	QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO,
 };
 
 enum qpnp_regulator_type {
@@ -64,6 +69,9 @@ enum qpnp_regulator_type {
 	QPNP_REGULATOR_TYPE_VS			= 0x05,
 	QPNP_REGULATOR_TYPE_BOOST		= 0x1B,
 	QPNP_REGULATOR_TYPE_FTS			= 0x1C,
+	QPNP_REGULATOR_TYPE_BOOST_BYP		= 0x1F,
+	QPNP_REGULATOR_TYPE_ULT_LDO		= 0x21,
+	QPNP_REGULATOR_TYPE_ULT_BUCK		= 0x22,
 };
 
 enum qpnp_regulator_subtype {
@@ -76,11 +84,13 @@ enum qpnp_regulator_subtype {
 	QPNP_REGULATOR_SUBTYPE_N1200		= 0x05,
 	QPNP_REGULATOR_SUBTYPE_N600_ST		= 0x06,
 	QPNP_REGULATOR_SUBTYPE_N1200_ST		= 0x07,
+	QPNP_REGULATOR_SUBTYPE_N300_ST		= 0x15,
 	QPNP_REGULATOR_SUBTYPE_P50		= 0x08,
 	QPNP_REGULATOR_SUBTYPE_P150		= 0x09,
 	QPNP_REGULATOR_SUBTYPE_P300		= 0x0A,
 	QPNP_REGULATOR_SUBTYPE_P600		= 0x0B,
 	QPNP_REGULATOR_SUBTYPE_P1200		= 0x0C,
+	QPNP_REGULATOR_SUBTYPE_LN		= 0x10,
 	QPNP_REGULATOR_SUBTYPE_LV_P50		= 0x28,
 	QPNP_REGULATOR_SUBTYPE_LV_P150		= 0x29,
 	QPNP_REGULATOR_SUBTYPE_LV_P300		= 0x2A,
@@ -94,6 +104,12 @@ enum qpnp_regulator_subtype {
 	QPNP_REGULATOR_SUBTYPE_OTG		= 0x11,
 	QPNP_REGULATOR_SUBTYPE_5V_BOOST		= 0x01,
 	QPNP_REGULATOR_SUBTYPE_FTS_CTL		= 0x08,
+	QPNP_REGULATOR_SUBTYPE_FTS2p5_CTL	= 0x09,
+	QPNP_REGULATOR_SUBTYPE_BB_2A		= 0x01,
+	QPNP_REGULATOR_SUBTYPE_ULT_HF_CTL1	= 0x0D,
+	QPNP_REGULATOR_SUBTYPE_ULT_HF_CTL2	= 0x0E,
+	QPNP_REGULATOR_SUBTYPE_ULT_HF_CTL3	= 0x0F,
+	QPNP_REGULATOR_SUBTYPE_ULT_HF_CTL4	= 0x10,
 };
 
 enum qpnp_common_regulator_registers {
@@ -118,6 +134,10 @@ enum qpnp_vs_registers {
 
 enum qpnp_boost_registers {
 	QPNP_BOOST_REG_CURRENT_LIMIT		= 0x4A,
+};
+
+enum qpnp_boost_byp_registers {
+	QPNP_BOOST_BYP_REG_CURRENT_LIMIT	= 0x4B,
 };
 
 /* Used for indexing into ctrl_reg.  These are offets from 0x40 */
@@ -182,15 +202,47 @@ enum qpnp_common_control_register_index {
  */
 #define VOLTAGE_UNKNOWN 1
 
+/* VSET value to decide the range of ULT SMPS */
+#define ULT_SMPS_RANGE_SPLIT 0x60
+
+/**
+ * struct qpnp_voltage_range - regulator set point voltage mapping description
+ * @min_uV:		Minimum programmable output voltage resulting from
+ *			set point register value 0x00
+ * @max_uV:		Maximum programmable output voltage
+ * @step_uV:		Output voltage increase resulting from the set point
+ *			register value increasing by 1
+ * @set_point_min_uV:	Minimum allowed voltage
+ * @set_point_max_uV:	Maximum allowed voltage.  This may be tweaked in order
+ *			to pick which range should be used in the case of
+ *			overlapping set points.
+ * @n_voltages:		Number of preferred voltage set points present in this
+ *			range
+ * @range_sel:		Voltage range register value corresponding to this range
+ *
+ * The following relationships must be true for the values used in this struct:
+ * (max_uV - min_uV) % step_uV == 0
+ * (set_point_min_uV - min_uV) % step_uV == 0*
+ * (set_point_max_uV - min_uV) % step_uV == 0*
+ * n_voltages = (set_point_max_uV - set_point_min_uV) / step_uV + 1
+ *
+ * *Note, set_point_min_uV == set_point_max_uV == 0 is allowed in order to
+ * specify that the voltage range has meaning, but is not preferred.
+ */
 struct qpnp_voltage_range {
 	int					min_uV;
 	int					max_uV;
 	int					step_uV;
 	int					set_point_min_uV;
+	int					set_point_max_uV;
 	unsigned				n_voltages;
 	u8					range_sel;
 };
 
+/*
+ * The ranges specified in the qpnp_voltage_set_points struct must be listed
+ * so that range[i].set_point_max_uV < range[i+1].set_point_min_uV.
+ */
 struct qpnp_voltage_set_points {
 	struct qpnp_voltage_range		*range;
 	int					count;
@@ -244,12 +296,13 @@ struct qpnp_regulator {
 		.hpm_min_load	= _hpm_min_load, \
 	}
 
-#define VOLTAGE_RANGE(_range_sel, _min_uV, _set_point_min_uV, _max_uV, \
-			_step_uV) \
+#define VOLTAGE_RANGE(_range_sel, _min_uV, _set_point_min_uV, \
+			_set_point_max_uV, _max_uV, _step_uV) \
 	{ \
 		.min_uV			= _min_uV, \
-		.set_point_min_uV	= _set_point_min_uV, \
 		.max_uV			= _max_uV, \
+		.set_point_min_uV	= _set_point_min_uV, \
+		.set_point_max_uV	= _set_point_max_uV, \
 		.step_uV		= _step_uV, \
 		.range_sel		= _range_sel, \
 	}
@@ -268,36 +321,70 @@ struct qpnp_regulator {
  * properties to hold.
  */
 static struct qpnp_voltage_range pldo_ranges[] = {
-	VOLTAGE_RANGE(2,  750000,  750000, 1537500, 12500),
-	VOLTAGE_RANGE(3, 1500000, 1550000, 3075000, 25000),
-	VOLTAGE_RANGE(4, 1750000, 3100000, 4900000, 50000),
+	VOLTAGE_RANGE(2,  750000,  750000, 1537500, 1537500, 12500),
+	VOLTAGE_RANGE(3, 1500000, 1550000, 3075000, 3075000, 25000),
+	VOLTAGE_RANGE(4, 1750000, 3100000, 4900000, 4900000, 50000),
 };
 
 static struct qpnp_voltage_range nldo1_ranges[] = {
-	VOLTAGE_RANGE(2,  750000,  750000, 1537500, 12500),
+	VOLTAGE_RANGE(2,  750000,  750000, 1537500, 1537500, 12500),
 };
 
 static struct qpnp_voltage_range nldo2_ranges[] = {
-	VOLTAGE_RANGE(1,  375000,  375000,  768750,  6250),
-	VOLTAGE_RANGE(2,  750000,  775000, 1537500, 12500),
+	VOLTAGE_RANGE(0,  375000,       0,       0, 1537500, 12500),
+	VOLTAGE_RANGE(1,  375000,  375000,  768750,  768750,  6250),
+	VOLTAGE_RANGE(2,  750000,  775000, 1537500, 1537500, 12500),
 };
 
 static struct qpnp_voltage_range nldo3_ranges[] = {
-	VOLTAGE_RANGE(0,  375000,  375000, 1537500, 12500),
+	VOLTAGE_RANGE(0,  375000,  375000, 1537500, 1537500, 12500),
+	VOLTAGE_RANGE(1,  375000,       0,       0, 1537500, 12500),
+	VOLTAGE_RANGE(2,  750000,       0,       0, 1537500, 12500),
+};
+
+static struct qpnp_voltage_range ln_ldo_ranges[] = {
+	VOLTAGE_RANGE(1,  690000,  690000, 1110000, 1110000, 60000),
+	VOLTAGE_RANGE(0, 1380000, 1380000, 2220000, 2220000, 120000),
 };
 
 static struct qpnp_voltage_range smps_ranges[] = {
-	VOLTAGE_RANGE(0,  375000,  375000, 1562500, 12500),
-	VOLTAGE_RANGE(1, 1550000, 1575000, 3125000, 25000),
+	VOLTAGE_RANGE(0,  375000,  375000, 1562500, 1562500, 12500),
+	VOLTAGE_RANGE(1, 1550000, 1575000, 3125000, 3125000, 25000),
 };
 
 static struct qpnp_voltage_range ftsmps_ranges[] = {
-	VOLTAGE_RANGE(0,       0,  350000, 1275000,  5000),
-	VOLTAGE_RANGE(1,       0, 1280000, 2040000, 10000),
+	VOLTAGE_RANGE(0,       0,  350000, 1275000, 1275000,  5000),
+	VOLTAGE_RANGE(1,       0, 1280000, 2040000, 2040000, 10000),
+};
+
+static struct qpnp_voltage_range ftsmps2p5_ranges[] = {
+	VOLTAGE_RANGE(0,   80000,  350000, 1355000, 1355000,  5000),
+	VOLTAGE_RANGE(1,  160000, 1360000, 2200000, 2200000, 10000),
 };
 
 static struct qpnp_voltage_range boost_ranges[] = {
-	VOLTAGE_RANGE(0, 4000000, 4000000, 5550000, 50000),
+	VOLTAGE_RANGE(0, 4000000, 4000000, 5550000, 5550000, 50000),
+};
+
+static struct qpnp_voltage_range boost_byp_ranges[] = {
+	VOLTAGE_RANGE(0, 2500000, 2500000, 5200000, 5650000, 50000),
+};
+
+static struct qpnp_voltage_range ult_lo_smps_ranges[] = {
+	VOLTAGE_RANGE(0,  375000,  375000, 1562500, 1562500, 12500),
+	VOLTAGE_RANGE(1,  750000,       0,       0, 1525000, 25000),
+};
+
+static struct qpnp_voltage_range ult_ho_smps_ranges[] = {
+	VOLTAGE_RANGE(0, 1550000, 1550000, 2325000, 2325000, 25000),
+};
+
+static struct qpnp_voltage_range ult_nldo_ranges[] = {
+	VOLTAGE_RANGE(0,  375000,  375000, 1537500, 1537500, 12500),
+};
+
+static struct qpnp_voltage_range ult_pldo_ranges[] = {
+	VOLTAGE_RANGE(0, 1750000, 1750000, 3337500, 3337500, 12500),
 };
 
 static struct qpnp_voltage_set_points pldo_set_points = SET_POINTS(pldo_ranges);
@@ -307,11 +394,25 @@ static struct qpnp_voltage_set_points nldo2_set_points
 					= SET_POINTS(nldo2_ranges);
 static struct qpnp_voltage_set_points nldo3_set_points
 					= SET_POINTS(nldo3_ranges);
+static struct qpnp_voltage_set_points ln_ldo_set_points
+					= SET_POINTS(ln_ldo_ranges);
 static struct qpnp_voltage_set_points smps_set_points = SET_POINTS(smps_ranges);
 static struct qpnp_voltage_set_points ftsmps_set_points
 					= SET_POINTS(ftsmps_ranges);
+static struct qpnp_voltage_set_points ftsmps2p5_set_points
+					= SET_POINTS(ftsmps2p5_ranges);
 static struct qpnp_voltage_set_points boost_set_points
 					= SET_POINTS(boost_ranges);
+static struct qpnp_voltage_set_points boost_byp_set_points
+					= SET_POINTS(boost_byp_ranges);
+static struct qpnp_voltage_set_points ult_lo_smps_set_points
+					= SET_POINTS(ult_lo_smps_ranges);
+static struct qpnp_voltage_set_points ult_ho_smps_set_points
+					= SET_POINTS(ult_ho_smps_ranges);
+static struct qpnp_voltage_set_points ult_nldo_set_points
+					= SET_POINTS(ult_nldo_ranges);
+static struct qpnp_voltage_set_points ult_pldo_set_points
+					= SET_POINTS(ult_pldo_ranges);
 static struct qpnp_voltage_set_points none_set_points;
 
 static struct qpnp_voltage_set_points *all_set_points[] = {
@@ -319,9 +420,16 @@ static struct qpnp_voltage_set_points *all_set_points[] = {
 	&nldo1_set_points,
 	&nldo2_set_points,
 	&nldo3_set_points,
+	&ln_ldo_set_points,
 	&smps_set_points,
 	&ftsmps_set_points,
+	&ftsmps2p5_set_points,
 	&boost_set_points,
+	&boost_byp_set_points,
+	&ult_lo_smps_set_points,
+	&ult_ho_smps_set_points,
+	&ult_nldo_set_points,
+	&ult_pldo_set_points,
 };
 
 /* Determines which label to add to a debug print statement. */
@@ -539,18 +647,86 @@ static int qpnp_regulator_common_disable(struct regulator_dev *rdev)
 	return rc;
 }
 
+/*
+ * Returns 1 if the voltage can be set in the current range, 0 if the voltage
+ * cannot be set in the current range, or errno if an error occurred.
+ */
+static int qpnp_regulator_select_voltage_same_range(struct qpnp_regulator *vreg,
+		int min_uV, int max_uV, int *range_sel, int *voltage_sel,
+		unsigned *selector)
+{
+	struct qpnp_voltage_range *range = NULL;
+	int uV = min_uV;
+	int i;
+
+	*range_sel = vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_RANGE];
+
+	for (i = 0; i < vreg->set_points->count; i++) {
+		if (vreg->set_points->range[i].range_sel == *range_sel) {
+			range = &vreg->set_points->range[i];
+			break;
+		}
+	}
+
+	if (!range) {
+		/* Unknown range */
+		return 0;
+	}
+
+	if (uV < range->min_uV && max_uV >= range->min_uV)
+		uV = range->min_uV;
+
+	if (uV < range->min_uV || uV > range->max_uV) {
+		/* Current range doesn't support the requested voltage. */
+		return 0;
+	}
+
+	/*
+	 * Force uV to be an allowed set point by applying a ceiling function to
+	 * the uV value.
+	 */
+	*voltage_sel = DIV_ROUND_UP(uV - range->min_uV, range->step_uV);
+	uV = *voltage_sel * range->step_uV + range->min_uV;
+
+	if (uV > max_uV) {
+		/*
+		 * No set point in the current voltage range is within the
+		 * requested min_uV to max_uV range.
+		 */
+		return 0;
+	}
+
+	*selector = 0;
+	for (i = 0; i < vreg->set_points->count; i++) {
+		if (uV >= vreg->set_points->range[i].set_point_min_uV
+		    && uV <= vreg->set_points->range[i].set_point_max_uV) {
+			*selector +=
+			    (uV - vreg->set_points->range[i].set_point_min_uV)
+				/ vreg->set_points->range[i].step_uV;
+			break;
+		} else {
+			*selector += vreg->set_points->range[i].n_voltages;
+		}
+	}
+
+	if (*selector >= vreg->set_points->n_voltages)
+		return 0;
+
+	return 1;
+}
+
 static int qpnp_regulator_select_voltage(struct qpnp_regulator *vreg,
 		int min_uV, int max_uV, int *range_sel, int *voltage_sel,
 		unsigned *selector)
 {
 	struct qpnp_voltage_range *range;
 	int uV = min_uV;
-	int lim_min_uV, lim_max_uV, i, range_id;
+	int lim_min_uV, lim_max_uV, i, range_id, range_max_uV;
 
 	/* Check if request voltage is outside of physically settable range. */
 	lim_min_uV = vreg->set_points->range[0].set_point_min_uV;
 	lim_max_uV =
-		vreg->set_points->range[vreg->set_points->count - 1].max_uV;
+	  vreg->set_points->range[vreg->set_points->count - 1].set_point_max_uV;
 
 	if (uV < lim_min_uV && max_uV >= lim_min_uV)
 		uV = lim_min_uV;
@@ -563,9 +739,12 @@ static int qpnp_regulator_select_voltage(struct qpnp_regulator *vreg,
 	}
 
 	/* Find the range which uV is inside of. */
-	for (i = vreg->set_points->count - 1; i > 0; i--)
-		if (uV > vreg->set_points->range[i - 1].max_uV)
+	for (i = vreg->set_points->count - 1; i > 0; i--) {
+		range_max_uV = vreg->set_points->range[i - 1].set_point_max_uV;
+		if (uV > range_max_uV && range_max_uV > 0)
 			break;
+	}
+
 	range_id = i;
 	range = &vreg->set_points->range[range_id];
 	*range_sel = range->range_sel;
@@ -601,9 +780,16 @@ static int qpnp_regulator_common_set_voltage(struct regulator_dev *rdev,
 	int rc, range_sel, voltage_sel;
 	u8 buf[2];
 
-	rc = qpnp_regulator_select_voltage(vreg, min_uV, max_uV, &range_sel,
-		&voltage_sel, selector);
-	if (rc) {
+	/*
+	 * Favor staying in the current voltage range if possible.  This avoids
+	 * voltage spikes that occur when changing the voltage range.
+	 */
+	rc = qpnp_regulator_select_voltage_same_range(vreg, min_uV, max_uV,
+		&range_sel, &voltage_sel, selector);
+	if (rc == 0)
+		rc = qpnp_regulator_select_voltage(vreg, min_uV, max_uV,
+			&range_sel, &voltage_sel, selector);
+	if (rc < 0) {
 		vreg_err(vreg, "could not set voltage, rc=%d\n", rc);
 		return rc;
 	}
@@ -659,7 +845,7 @@ static int qpnp_regulator_common_get_voltage(struct regulator_dev *rdev)
 	return range->step_uV * voltage_sel + range->min_uV;
 }
 
-static int qpnp_regulator_boost_set_voltage(struct regulator_dev *rdev,
+static int qpnp_regulator_single_range_set_voltage(struct regulator_dev *rdev,
 		int min_uV, int max_uV, unsigned *selector)
 {
 	struct qpnp_regulator *vreg = rdev_get_drvdata(rdev);
@@ -673,8 +859,8 @@ static int qpnp_regulator_boost_set_voltage(struct regulator_dev *rdev,
 	}
 
 	/*
-	 * Boost type regulators do not have range select register so only
-	 * voltage set register needs to be written.
+	 * Certain types of regulators do not have a range select register so
+	 * only voltage set register needs to be written.
 	 */
 	rc = qpnp_vreg_masked_write(vreg, QPNP_COMMON_REG_VOLTAGE_SET,
 	       voltage_sel, 0xFF, &vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET]);
@@ -687,12 +873,83 @@ static int qpnp_regulator_boost_set_voltage(struct regulator_dev *rdev,
 	return rc;
 }
 
-static int qpnp_regulator_boost_get_voltage(struct regulator_dev *rdev)
+static int qpnp_regulator_single_range_get_voltage(struct regulator_dev *rdev)
 {
 	struct qpnp_regulator *vreg = rdev_get_drvdata(rdev);
+	struct qpnp_voltage_range *range = &vreg->set_points->range[0];
 	int voltage_sel = vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET];
 
-	return boost_ranges[0].step_uV * voltage_sel + boost_ranges[0].min_uV;
+	return range->step_uV * voltage_sel + range->min_uV;
+}
+
+static int qpnp_regulator_ult_lo_smps_set_voltage(struct regulator_dev *rdev,
+		int min_uV, int max_uV, unsigned *selector)
+{
+	struct qpnp_regulator *vreg = rdev_get_drvdata(rdev);
+	int rc, range_sel, voltage_sel;
+
+	/*
+	 * Favor staying in the current voltage range if possible. This avoids
+	 * voltage spikes that occur when changing the voltage range.
+	 */
+	rc = qpnp_regulator_select_voltage_same_range(vreg, min_uV, max_uV,
+		&range_sel, &voltage_sel, selector);
+	if (rc == 0)
+		rc = qpnp_regulator_select_voltage(vreg, min_uV, max_uV,
+			&range_sel, &voltage_sel, selector);
+	if (rc < 0) {
+		vreg_err(vreg, "could not set voltage, rc=%d\n", rc);
+		return rc;
+	}
+
+	/*
+	 * Calculate VSET based on range
+	 * In case of range 0: voltage_sel is a 7 bit value, can be written
+	 *			witout any modification.
+	 * In case of range 1: voltage_sel is a 5 bit value, bits[7-5] set to
+	 *			[011].
+	 */
+	if (range_sel == 1)
+		voltage_sel |= ULT_SMPS_RANGE_SPLIT;
+
+	rc = qpnp_vreg_masked_write(vreg, QPNP_COMMON_REG_VOLTAGE_SET,
+	       voltage_sel, 0xFF, &vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET]);
+	if (rc) {
+		vreg_err(vreg, "SPMI write failed, rc=%d\n", rc);
+	} else {
+		vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_RANGE] = range_sel;
+		qpnp_vreg_show_state(rdev, QPNP_REGULATOR_ACTION_VOLTAGE);
+	}
+
+	return rc;
+}
+
+static int qpnp_regulator_ult_lo_smps_get_voltage(struct regulator_dev *rdev)
+{
+	struct qpnp_regulator *vreg = rdev_get_drvdata(rdev);
+	struct qpnp_voltage_range *range = NULL;
+	int range_sel, voltage_sel, i;
+
+	range_sel = vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_RANGE];
+	voltage_sel = vreg->ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET];
+
+	for (i = 0; i < vreg->set_points->count; i++) {
+		if (vreg->set_points->range[i].range_sel == range_sel) {
+			range = &vreg->set_points->range[i];
+			break;
+		}
+	}
+
+	if (!range) {
+		vreg_err(vreg, "voltage unknown, range %d is invalid\n",
+			range_sel);
+		return VOLTAGE_UNKNOWN;
+	}
+
+	if (range_sel == 1)
+		voltage_sel &= ~ULT_SMPS_RANGE_SPLIT;
+
+	return range->step_uV * voltage_sel + range->min_uV;
 }
 
 static int qpnp_regulator_common_list_voltage(struct regulator_dev *rdev,
@@ -857,7 +1114,7 @@ static irqreturn_t qpnp_regulator_vs_ocp_isr(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static const char const *qpnp_print_actions[] = {
+static const char * const qpnp_print_actions[] = {
 	[QPNP_REGULATOR_ACTION_INIT]	= "initial    ",
 	[QPNP_REGULATOR_ACTION_ENABLE]	= "enable     ",
 	[QPNP_REGULATOR_ACTION_DISABLE]	= "disable    ",
@@ -898,15 +1155,25 @@ static void qpnp_vreg_show_state(struct regulator_dev *rdev,
 
 	if (type == QPNP_REGULATOR_LOGICAL_TYPE_SMPS
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_LN_LDO
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_FTSMPS)
 		uV = qpnp_regulator_common_get_voltage(rdev);
 
-	if (type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST)
-		uV = qpnp_regulator_boost_get_voltage(rdev);
+	if (type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST_BYP
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO)
+		uV = qpnp_regulator_single_range_get_voltage(rdev);
+
+	if (type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS)
+		uV = qpnp_regulator_ult_lo_smps_get_voltage(rdev);
 
 	if (type == QPNP_REGULATOR_LOGICAL_TYPE_SMPS
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_FTSMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_VS) {
 		mode = qpnp_regulator_common_get_mode(rdev);
 		mode_label = mode == REGULATOR_MODE_NORMAL ? "HPM" : "LPM";
@@ -969,6 +1236,15 @@ static void qpnp_vreg_show_state(struct regulator_dev *rdev,
 			action_label, vreg->rdesc.name, enable_label, uV,
 			mode_label, pc_enable_label, pc_mode_label);
 		break;
+	case QPNP_REGULATOR_LOGICAL_TYPE_LN_LDO:
+		mode_reg = vreg->ctrl_reg[QPNP_COMMON_IDX_MODE];
+		pc_mode_label[0] =
+		     mode_reg & QPNP_COMMON_MODE_BYPASS_MASK ? 'B' : '_';
+
+		pr_info("%s %-11s: %s, v=%7d uV, alt_mode=%s\n",
+			action_label, vreg->rdesc.name, enable_label, uV,
+			pc_mode_label);
+		break;
 	case QPNP_REGULATOR_LOGICAL_TYPE_VS:
 		mode_reg = vreg->ctrl_reg[QPNP_COMMON_IDX_MODE];
 		pc_mode_label[0] =
@@ -984,11 +1260,34 @@ static void qpnp_vreg_show_state(struct regulator_dev *rdev,
 		pr_info("%s %-11s: %s, v=%7d uV\n",
 			action_label, vreg->rdesc.name, enable_label, uV);
 		break;
+	case QPNP_REGULATOR_LOGICAL_TYPE_BOOST_BYP:
+		pr_info("%s %-11s: %s, v=%7d uV\n",
+			action_label, vreg->rdesc.name, enable_label, uV);
+		break;
 	case QPNP_REGULATOR_LOGICAL_TYPE_FTSMPS:
 		mode_reg = vreg->ctrl_reg[QPNP_COMMON_IDX_MODE];
 		pc_mode_label[0] =
 		     mode_reg & QPNP_COMMON_MODE_AUTO_MASK          ? 'A' : '_';
 
+		pr_info("%s %-11s: %s, v=%7d uV, mode=%s, alt_mode=%s\n",
+			action_label, vreg->rdesc.name, enable_label, uV,
+			mode_label, pc_mode_label);
+		break;
+	case QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS:
+	case QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS:
+		mode_reg = vreg->ctrl_reg[QPNP_COMMON_IDX_MODE];
+		pc_mode_label[0] =
+		     mode_reg & QPNP_COMMON_MODE_FOLLOW_AWAKE_MASK  ? 'W' : '_';
+		pr_info("%s %-11s: %s, v=%7d uV, mode=%s, alt_mode=%s\n",
+			action_label, vreg->rdesc.name, enable_label, uV,
+			mode_label, pc_mode_label);
+		break;
+	case QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO:
+		mode_reg = vreg->ctrl_reg[QPNP_COMMON_IDX_MODE];
+		pc_mode_label[0] =
+		     mode_reg & QPNP_COMMON_MODE_BYPASS_MASK        ? 'B' : '_';
+		pc_mode_label[1] =
+		     mode_reg & QPNP_COMMON_MODE_FOLLOW_AWAKE_MASK  ? 'W' : '_';
 		pr_info("%s %-11s: %s, v=%7d uV, mode=%s, alt_mode=%s\n",
 			action_label, vreg->rdesc.name, enable_label, uV,
 			mode_label, pc_mode_label);
@@ -1024,6 +1323,16 @@ static struct regulator_ops qpnp_ldo_ops = {
 	.enable_time		= qpnp_regulator_common_enable_time,
 };
 
+static struct regulator_ops qpnp_ln_ldo_ops = {
+	.enable			= qpnp_regulator_common_enable,
+	.disable		= qpnp_regulator_common_disable,
+	.is_enabled		= qpnp_regulator_common_is_enabled,
+	.set_voltage		= qpnp_regulator_common_set_voltage,
+	.get_voltage		= qpnp_regulator_common_get_voltage,
+	.list_voltage		= qpnp_regulator_common_list_voltage,
+	.enable_time		= qpnp_regulator_common_enable_time,
+};
+
 static struct regulator_ops qpnp_vs_ops = {
 	.enable			= qpnp_regulator_vs_enable,
 	.disable		= qpnp_regulator_common_disable,
@@ -1035,8 +1344,8 @@ static struct regulator_ops qpnp_boost_ops = {
 	.enable			= qpnp_regulator_common_enable,
 	.disable		= qpnp_regulator_common_disable,
 	.is_enabled		= qpnp_regulator_common_is_enabled,
-	.set_voltage		= qpnp_regulator_boost_set_voltage,
-	.get_voltage		= qpnp_regulator_boost_get_voltage,
+	.set_voltage		= qpnp_regulator_single_range_set_voltage,
+	.get_voltage		= qpnp_regulator_single_range_get_voltage,
 	.list_voltage		= qpnp_regulator_common_list_voltage,
 	.enable_time		= qpnp_regulator_common_enable_time,
 };
@@ -1047,6 +1356,45 @@ static struct regulator_ops qpnp_ftsmps_ops = {
 	.is_enabled		= qpnp_regulator_common_is_enabled,
 	.set_voltage		= qpnp_regulator_common_set_voltage,
 	.get_voltage		= qpnp_regulator_common_get_voltage,
+	.list_voltage		= qpnp_regulator_common_list_voltage,
+	.set_mode		= qpnp_regulator_common_set_mode,
+	.get_mode		= qpnp_regulator_common_get_mode,
+	.get_optimum_mode	= qpnp_regulator_common_get_optimum_mode,
+	.enable_time		= qpnp_regulator_common_enable_time,
+};
+
+static struct regulator_ops qpnp_ult_lo_smps_ops = {
+	.enable			= qpnp_regulator_common_enable,
+	.disable		= qpnp_regulator_common_disable,
+	.is_enabled		= qpnp_regulator_common_is_enabled,
+	.set_voltage		= qpnp_regulator_ult_lo_smps_set_voltage,
+	.get_voltage		= qpnp_regulator_ult_lo_smps_get_voltage,
+	.list_voltage		= qpnp_regulator_common_list_voltage,
+	.set_mode		= qpnp_regulator_common_set_mode,
+	.get_mode		= qpnp_regulator_common_get_mode,
+	.get_optimum_mode	= qpnp_regulator_common_get_optimum_mode,
+	.enable_time		= qpnp_regulator_common_enable_time,
+};
+
+static struct regulator_ops qpnp_ult_ho_smps_ops = {
+	.enable			= qpnp_regulator_common_enable,
+	.disable		= qpnp_regulator_common_disable,
+	.is_enabled		= qpnp_regulator_common_is_enabled,
+	.set_voltage		= qpnp_regulator_single_range_set_voltage,
+	.get_voltage		= qpnp_regulator_single_range_get_voltage,
+	.list_voltage		= qpnp_regulator_common_list_voltage,
+	.set_mode		= qpnp_regulator_common_set_mode,
+	.get_mode		= qpnp_regulator_common_get_mode,
+	.get_optimum_mode	= qpnp_regulator_common_get_optimum_mode,
+	.enable_time		= qpnp_regulator_common_enable_time,
+};
+
+static struct regulator_ops qpnp_ult_ldo_ops = {
+	.enable			= qpnp_regulator_common_enable,
+	.disable		= qpnp_regulator_common_disable,
+	.is_enabled		= qpnp_regulator_common_is_enabled,
+	.set_voltage		= qpnp_regulator_single_range_set_voltage,
+	.get_voltage		= qpnp_regulator_single_range_get_voltage,
 	.list_voltage		= qpnp_regulator_common_list_voltage,
 	.set_mode		= qpnp_regulator_common_set_mode,
 	.get_mode		= qpnp_regulator_common_get_mode,
@@ -1074,6 +1422,7 @@ static const struct qpnp_regulator_mapping supported_regulators[] = {
 	QPNP_VREG_MAP(LDO,   P300,     0, INF, LDO,    ldo,    pldo,    10000),
 	QPNP_VREG_MAP(LDO,   P600,     0, INF, LDO,    ldo,    pldo,    10000),
 	QPNP_VREG_MAP(LDO,   P1200,    0, INF, LDO,    ldo,    pldo,    10000),
+	QPNP_VREG_MAP(LDO,   LN,       0, INF, LN_LDO, ln_ldo, ln_ldo,      0),
 	QPNP_VREG_MAP(LDO,   LV_P50,   0, INF, LDO,    ldo,    pldo,     5000),
 	QPNP_VREG_MAP(LDO,   LV_P150,  0, INF, LDO,    ldo,    pldo,    10000),
 	QPNP_VREG_MAP(LDO,   LV_P300,  0, INF, LDO,    ldo,    pldo,    10000),
@@ -1087,6 +1436,33 @@ static const struct qpnp_regulator_mapping supported_regulators[] = {
 	QPNP_VREG_MAP(VS,    OTG,      0, INF, VS,     vs,     none,        0),
 	QPNP_VREG_MAP(BOOST, 5V_BOOST, 0, INF, BOOST,  boost,  boost,       0),
 	QPNP_VREG_MAP(FTS,   FTS_CTL,  0, INF, FTSMPS, ftsmps, ftsmps, 100000),
+	QPNP_VREG_MAP(FTS, FTS2p5_CTL, 0, INF, FTSMPS, ftsmps, ftsmps2p5,
+								       100000),
+	QPNP_VREG_MAP(BOOST_BYP, BB_2A, 0, INF, BOOST_BYP, boost, boost_byp, 0),
+	QPNP_VREG_MAP(ULT_BUCK, ULT_HF_CTL1, 0, INF, ULT_LO_SMPS, ult_lo_smps,
+							ult_lo_smps,   100000),
+	QPNP_VREG_MAP(ULT_BUCK, ULT_HF_CTL2, 0, INF, ULT_LO_SMPS, ult_lo_smps,
+							ult_lo_smps,   100000),
+	QPNP_VREG_MAP(ULT_BUCK, ULT_HF_CTL3, 0, INF, ULT_LO_SMPS, ult_lo_smps,
+							ult_lo_smps,   100000),
+	QPNP_VREG_MAP(ULT_BUCK, ULT_HF_CTL4, 0, INF, ULT_HO_SMPS, ult_ho_smps,
+							ult_ho_smps,   100000),
+	QPNP_VREG_MAP(ULT_LDO, N300_ST, 0, INF, ULT_LDO, ult_ldo, ult_nldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, N600_ST, 0, INF, ULT_LDO, ult_ldo, ult_nldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, N1200_ST, 0, INF, ULT_LDO, ult_ldo, ult_nldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, LV_P150,  0, INF, ULT_LDO, ult_ldo, ult_pldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, LV_P300,  0, INF, ULT_LDO, ult_ldo, ult_pldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, P600,     0, INF, ULT_LDO, ult_ldo, ult_pldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, P150,     0, INF, ULT_LDO, ult_ldo, ult_pldo,
+									10000),
+	QPNP_VREG_MAP(ULT_LDO, P50,     0, INF, ULT_LDO, ult_ldo, ult_pldo,
+									 5000),
 };
 
 static int qpnp_regulator_match(struct qpnp_regulator *vreg)
@@ -1174,6 +1550,9 @@ static int qpnp_regulator_init_registers(struct qpnp_regulator *vreg,
 
 	/* Set up HPM control. */
 	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_SMPS
+	     || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS
+	     || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS
+	     || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO
 	     || type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
 	     || type == QPNP_REGULATOR_LOGICAL_TYPE_VS
 	     || type == QPNP_REGULATOR_LOGICAL_TYPE_FTSMPS)
@@ -1214,8 +1593,21 @@ static int qpnp_regulator_init_registers(struct qpnp_regulator *vreg,
 		       pdata->pin_ctrl_hpm & QPNP_COMMON_MODE_FOLLOW_AWAKE_MASK;
 	}
 
-	if (type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
-	    && pdata->bypass_mode_enable != QPNP_REGULATOR_USE_HW_DEFAULT) {
+	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS
+		|| type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS
+		|| type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO)
+		&& !(pdata->pin_ctrl_hpm
+			& QPNP_REGULATOR_PIN_CTRL_HPM_HW_DEFAULT)) {
+		ctrl_reg[QPNP_COMMON_IDX_MODE] &=
+			~QPNP_COMMON_MODE_FOLLOW_AWAKE_MASK;
+		ctrl_reg[QPNP_COMMON_IDX_MODE] |=
+		       pdata->pin_ctrl_hpm & QPNP_COMMON_MODE_FOLLOW_AWAKE_MASK;
+	}
+
+	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_LN_LDO
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO)
+	      && pdata->bypass_mode_enable != QPNP_REGULATOR_USE_HW_DEFAULT) {
 		ctrl_reg[QPNP_COMMON_IDX_MODE] &=
 			~QPNP_COMMON_MODE_BYPASS_MASK;
 		ctrl_reg[QPNP_COMMON_IDX_MODE] |=
@@ -1224,13 +1616,17 @@ static int qpnp_regulator_init_registers(struct qpnp_regulator *vreg,
 	}
 
 	/* Set boost current limit. */
-	if (type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST
+	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST_BYP)
 		&& pdata->boost_current_limit
 			!= QPNP_BOOST_CURRENT_LIMIT_HW_DEFAULT) {
 		reg = pdata->boost_current_limit;
 		mask = QPNP_BOOST_CURRENT_LIMIT_MASK;
 		rc = qpnp_vreg_masked_read_write(vreg,
-			QPNP_BOOST_REG_CURRENT_LIMIT, reg, mask);
+			(type == QPNP_REGULATOR_LOGICAL_TYPE_BOOST
+				? QPNP_BOOST_REG_CURRENT_LIMIT
+				: QPNP_BOOST_BYP_REG_CURRENT_LIMIT),
+			reg, mask);
 		if (rc) {
 			vreg_err(vreg, "spmi write failed, rc=%d\n", rc);
 			return rc;
@@ -1245,8 +1641,18 @@ static int qpnp_regulator_init_registers(struct qpnp_regulator *vreg,
 		return rc;
 	}
 
+	/* Setup initial range for ULT_LO_SMPS */
+	if (type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS) {
+		ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_RANGE] =
+			(ctrl_reg[QPNP_COMMON_IDX_VOLTAGE_SET]
+			 < ULT_SMPS_RANGE_SPLIT) ? 0 : 1;
+	}
+
 	/* Set pull down. */
 	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_SMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LO_SMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_HO_SMPS
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
 	    || type == QPNP_REGULATOR_LOGICAL_TYPE_VS)
 	    && pdata->pull_down_enable != QPNP_REGULATOR_USE_HW_DEFAULT) {
@@ -1274,7 +1680,8 @@ static int qpnp_regulator_init_registers(struct qpnp_regulator *vreg,
 	}
 
 	/* Set soft start for LDO. */
-	if (type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
+	if ((type == QPNP_REGULATOR_LOGICAL_TYPE_LDO
+	    || type == QPNP_REGULATOR_LOGICAL_TYPE_ULT_LDO)
 	    && pdata->soft_start_enable != QPNP_REGULATOR_USE_HW_DEFAULT) {
 		reg = pdata->soft_start_enable
 			? QPNP_LDO_SOFT_START_ENABLE_MASK : 0;
@@ -1393,8 +1800,9 @@ static struct of_device_id spmi_match_table[];
 
 #define MAX_NAME_LEN	127
 
-static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
+static int qpnp_regulator_probe(struct spmi_device *spmi)
 {
+	struct regulator_config reg_config = {};
 	struct qpnp_regulator_platform_data *pdata;
 	struct qpnp_regulator *vreg;
 	struct regulator_desc *rdesc;
@@ -1531,8 +1939,11 @@ static int __devinit qpnp_regulator_probe(struct spmi_device *spmi)
 		INIT_DELAYED_WORK(&vreg->ocp_work, qpnp_regulator_vs_ocp_work);
 	}
 
-	vreg->rdev = regulator_register(rdesc, &spmi->dev,
-			&(pdata->init_data), vreg, spmi->dev.of_node);
+	reg_config.dev = &spmi->dev;
+	reg_config.init_data = &pdata->init_data;
+	reg_config.driver_data = vreg;
+	reg_config.of_node = spmi->dev.of_node;
+	vreg->rdev = regulator_register(rdesc, &reg_config);
 	if (IS_ERR(vreg->rdev)) {
 		rc = PTR_ERR(vreg->rdev);
 		if (rc != -EPROBE_DEFER)
@@ -1558,7 +1969,7 @@ bail:
 	return rc;
 }
 
-static int __devexit qpnp_regulator_remove(struct spmi_device *spmi)
+static int qpnp_regulator_remove(struct spmi_device *spmi)
 {
 	struct qpnp_regulator *vreg;
 
@@ -1594,7 +2005,7 @@ static struct spmi_driver qpnp_regulator_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe		= qpnp_regulator_probe,
-	.remove		= __devexit_p(qpnp_regulator_remove),
+	.remove		= qpnp_regulator_remove,
 	.id_table	= qpnp_regulator_id,
 };
 
@@ -1613,9 +2024,11 @@ static void qpnp_regulator_set_point_init(void)
 		temp = 0;
 		for (j = 0; j < all_set_points[i]->count; j++) {
 			all_set_points[i]->range[j].n_voltages
-				= (all_set_points[i]->range[j].max_uV
+				= (all_set_points[i]->range[j].set_point_max_uV
 				 - all_set_points[i]->range[j].set_point_min_uV)
 				   / all_set_points[i]->range[j].step_uV + 1;
+			if (all_set_points[i]->range[j].set_point_max_uV == 0)
+				all_set_points[i]->range[j].n_voltages = 0;
 			temp += all_set_points[i]->range[j].n_voltages;
 		}
 		all_set_points[i]->n_voltages = temp;

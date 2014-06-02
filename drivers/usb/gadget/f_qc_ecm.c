@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2003-2005,2008 David Brownell
  * Copyright (C) 2008 Nokia Corporation
- * Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -35,7 +35,7 @@
 #include "u_qc_ether.h"
 
 #include "u_bam_data.h"
-#include <mach/ecm_ipa.h>
+#include <linux/ecm_ipa.h>
 
 
 /*
@@ -76,6 +76,9 @@ struct f_ecm_qc {
 	u8				notify_state;
 	bool				is_open;
 	struct data_port		bam_port;
+
+	const struct usb_endpoint_descriptor *in_ep_desc_backup;
+	const struct usb_endpoint_descriptor *out_ep_desc_backup;
 };
 
 static struct ecm_ipa_params ipa_params;
@@ -279,6 +282,78 @@ static struct usb_descriptor_header *ecm_qc_hs_function[] = {
 	NULL,
 };
 
+static struct usb_endpoint_descriptor ecm_qc_ss_notify_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+	.bEndpointAddress =	USB_DIR_IN,
+	.bmAttributes =		USB_ENDPOINT_XFER_INT,
+	.wMaxPacketSize =	cpu_to_le16(ECM_QC_STATUS_BYTECOUNT),
+	.bInterval =		ECM_QC_LOG2_STATUS_INTERVAL_MSEC + 4,
+};
+
+static struct usb_ss_ep_comp_descriptor ecm_qc_ss_notify_comp_desc = {
+	.bLength =		sizeof(ecm_qc_ss_notify_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 3 values can be tweaked if necessary */
+	/* .bMaxBurst =         0, */
+	/* .bmAttributes =      0, */
+	.wBytesPerInterval =	cpu_to_le16(ECM_QC_STATUS_BYTECOUNT),
+};
+
+static struct usb_endpoint_descriptor ecm_qc_ss_in_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+	.bEndpointAddress =	USB_DIR_IN,
+	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize =	__constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor ecm_qc_ss_in_comp_desc = {
+	.bLength =		sizeof(ecm_qc_ss_in_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 2 values can be tweaked if necessary */
+	/* .bMaxBurst =         0, */
+	/* .bmAttributes =      0, */
+};
+
+static struct usb_endpoint_descriptor ecm_qc_ss_out_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+	.bEndpointAddress =	USB_DIR_OUT,
+	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize =	__constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor ecm_qc_ss_out_comp_desc = {
+	.bLength =		sizeof(ecm_qc_ss_out_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	/* the following 2 values can be tweaked if necessary */
+	/* .bMaxBurst =         0, */
+	/* .bmAttributes =      0, */
+};
+
+static struct usb_descriptor_header *ecm_qc_ss_function[] = {
+	/* CDC ECM control descriptors */
+	(struct usb_descriptor_header *) &ecm_qc_control_intf,
+	(struct usb_descriptor_header *) &ecm_qc_header_desc,
+	(struct usb_descriptor_header *) &ecm_qc_union_desc,
+	(struct usb_descriptor_header *) &ecm_qc_desc,
+	/* NOTE: status endpoint might need to be removed */
+	(struct usb_descriptor_header *) &ecm_qc_ss_notify_desc,
+	(struct usb_descriptor_header *) &ecm_qc_ss_notify_comp_desc,
+	/* data interface, altsettings 0 and 1 */
+	(struct usb_descriptor_header *) &ecm_qc_data_nop_intf,
+	(struct usb_descriptor_header *) &ecm_qc_data_intf,
+	(struct usb_descriptor_header *) &ecm_qc_ss_in_desc,
+	(struct usb_descriptor_header *) &ecm_qc_ss_in_comp_desc,
+	(struct usb_descriptor_header *) &ecm_qc_ss_out_desc,
+	(struct usb_descriptor_header *) &ecm_qc_ss_out_comp_desc,
+	NULL,
+};
+
 /* string descriptors: */
 
 static struct usb_string ecm_qc_string_defs[] = {
@@ -395,11 +470,11 @@ static int ecm_qc_bam_connect(struct f_ecm_qc *dev)
 
 	/* currently we use the first connection */
 	src_connection_idx = usb_bam_get_connection_idx(gadget->name, peer_bam,
-		USB_TO_PEER_PERIPHERAL, 0);
+		USB_TO_PEER_PERIPHERAL, USB_BAM_DEVICE, 0);
 	dst_connection_idx = usb_bam_get_connection_idx(gadget->name, peer_bam,
-		PEER_PERIPHERAL_TO_USB, 0);
+		PEER_PERIPHERAL_TO_USB, USB_BAM_DEVICE, 0);
 	if (src_connection_idx < 0 || dst_connection_idx < 0) {
-		pr_err("%s: usb_bam_get_connection_idx failed\n", __func__);
+		pr_err("usb_bam_get_connection_idx failed\n");
 		return ret;
 	}
 	ret = bam_data_connect(&dev->bam_port, 0, dev->xport,
@@ -407,9 +482,10 @@ static int ecm_qc_bam_connect(struct f_ecm_qc *dev)
 	if (ret) {
 		pr_err("bam_data_connect failed: err:%d\n", ret);
 		return ret;
-	} else {
-		pr_debug("ecm bam connected\n");
 	}
+
+
+	pr_debug("ecm bam connected\n");
 
 	dev->is_open = true;
 	ecm_qc_notify(dev);
@@ -419,9 +495,12 @@ static int ecm_qc_bam_connect(struct f_ecm_qc *dev)
 
 static int ecm_qc_bam_disconnect(struct f_ecm_qc *dev)
 {
-	pr_debug("dev:%p. Disconnect BAM.\n", dev);
+	pr_debug("%s: dev:%p. Disconnect BAM.\n", __func__, dev);
 
 	bam_data_disconnect(&dev->bam_port, 0);
+
+	dev->bam_port.cdev = NULL;
+	dev->bam_port.func = NULL;
 
 	return 0;
 }
@@ -441,6 +520,10 @@ void *ecm_qc_get_ipa_priv(void)
 	return ipa_params.private;
 }
 
+bool ecm_qc_get_skip_ep_config(void)
+{
+	return ipa_params.skip_ep_cfg;
+}
 /*-------------------------------------------------------------------------*/
 
 
@@ -482,6 +565,7 @@ static int ecm_qc_setup(struct usb_function *f,
 	/* composite driver infrastructure handles everything except
 	 * CDC class messages; interface activation uses set_alt().
 	 */
+	pr_debug("Enter\n");
 	switch ((ctrl->bRequestType << 8) | ctrl->bRequest) {
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_SET_ETHERNET_PACKET_FILTER:
@@ -541,8 +625,10 @@ static int ecm_qc_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 	/* Control interface has only altsetting 0 */
 	if (intf == ecm->ctrl_id) {
-		if (alt != 0)
+		if (alt != 0) {
+			pr_warning("fail, alt setting is not 0\n");
 			goto fail;
+		}
 
 		if (ecm->notify->driver_data) {
 			VDBG(cdev, "reset ecm control %d\n", intf);
@@ -605,6 +691,16 @@ static int ecm_qc_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 					return PTR_ERR(net);
 			}
 
+			if (ecm->xport == USB_GADGET_XPORT_BAM2BAM_IPA &&
+			    gadget_is_dwc3(cdev->gadget)) {
+				if (msm_ep_config(ecm->port.in_ep) ||
+				    msm_ep_config(ecm->port.out_ep)) {
+					pr_err("%s: ep_config failed\n",
+						__func__);
+					goto fail;
+				}
+			}
+
 			if (ecm_qc_bam_connect(ecm))
 				goto fail;
 		}
@@ -649,6 +745,12 @@ static void ecm_qc_disable(struct usb_function *f)
 			gether_qc_disconnect_name(&ecm->port, "ecm0");
 	}
 
+	if (ecm->xport == USB_GADGET_XPORT_BAM2BAM_IPA &&
+			gadget_is_dwc3(cdev->gadget)) {
+		msm_ep_unconfig(ecm->port.out_ep);
+		msm_ep_unconfig(ecm->port.in_ep);
+	}
+
 	if (ecm->notify->driver_data) {
 		usb_ep_disable(ecm->notify);
 		ecm->notify->driver_data = NULL;
@@ -658,16 +760,56 @@ static void ecm_qc_disable(struct usb_function *f)
 
 static void ecm_qc_suspend(struct usb_function *f)
 {
-	pr_debug("ecm suspended\n");
+	struct f_ecm_qc	*ecm = func_to_ecm_qc(f);
 
-	bam_data_suspend(ECM_QC_ACTIVE_PORT);
+	/* Is DATA interface initialized? */
+	if (!ecm->bam_port.cdev) {
+		pr_debug("data interface not up\n");
+		return;
+	}
+
+	pr_debug("%s(): remote_wakeup:%d\n:", __func__,
+			f->config->cdev->gadget->remote_wakeup);
+	if (f->config->cdev->gadget->remote_wakeup ||
+			(f->config->cdev->gadget->speed == USB_SPEED_SUPER)) {
+		bam_data_suspend(ECM_QC_ACTIVE_PORT);
+	} else {
+		/*
+		 * When remote wakeup is disabled, IPA BAM is disconnected
+		 * because it cannot send new data until the USB bus is resumed.
+		 * Endpoint descriptors info is saved before it gets reset by
+		 * the BAM disconnect API. This lets us restore this info when
+		 * the USB bus is resumed.
+		 */
+		ecm->in_ep_desc_backup  = ecm->bam_port.in->desc;
+		ecm->out_ep_desc_backup = ecm->bam_port.out->desc;
+		ecm_qc_bam_disconnect(ecm);
+	}
+
+	pr_debug("ecm suspended\n");
 }
 
 static void ecm_qc_resume(struct usb_function *f)
 {
-	pr_debug("ecm resumed\n");
+	struct f_ecm_qc	*ecm = func_to_ecm_qc(f);
 
-	bam_data_resume(ECM_QC_ACTIVE_PORT);
+	/* Nothing to do if DATA interface wasn't initialized */
+	if (!ecm->bam_port.cdev) {
+		pr_debug("data interface was not up\n");
+		return;
+	}
+
+	if (f->config->cdev->gadget->remote_wakeup ||
+			(f->config->cdev->gadget->speed == USB_SPEED_SUPER)) {
+		bam_data_resume(ECM_QC_ACTIVE_PORT);
+	} else {
+		/* Restore endpoint descriptors info. */
+		ecm->bam_port.in->desc  = ecm->in_ep_desc_backup;
+		ecm->bam_port.out->desc = ecm->out_ep_desc_backup;
+		ecm_qc_bam_connect(ecm);
+	}
+
+	pr_debug("ecm resumed\n");
 }
 
 /*-------------------------------------------------------------------------*/
@@ -732,8 +874,10 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 	ecm_qc_union_desc.bMasterInterface0 = status;
 
 	status = usb_interface_id(c, f);
-	if (status < 0)
+	if (status < 0) {
+		pr_debug("no more interface IDs can be allocated\n");
 		goto fail;
+	}
 
 	ecm->data_id = status;
 
@@ -745,15 +889,19 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 
 	/* allocate instance-specific endpoints */
 	ep = usb_ep_autoconfig(cdev->gadget, &ecm_qc_fs_in_desc);
-	if (!ep)
+	if (!ep) {
+		pr_debug("can not allocate endpoint (fs_in)\n");
 		goto fail;
+	}
 
 	ecm->port.in_ep = ep;
 	ep->driver_data = cdev;	/* claim */
 
 	ep = usb_ep_autoconfig(cdev->gadget, &ecm_qc_fs_out_desc);
-	if (!ep)
+	if (!ep) {
+		pr_debug("can not allocate endpoint (fs_out)\n");
 		goto fail;
+	}
 
 	ecm->port.out_ep = ep;
 	ep->driver_data = cdev;	/* claim */
@@ -763,8 +911,10 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 	 * profiles (wireless handsets) no longer treat it as optional.
 	 */
 	ep = usb_ep_autoconfig(cdev->gadget, &ecm_qc_fs_notify_desc);
-	if (!ep)
+	if (!ep) {
+		pr_debug("can not allocate endpoint (fs_notify)\n");
 		goto fail;
+	}
 	ecm->notify = ep;
 	ep->driver_data = cdev;	/* claim */
 
@@ -772,8 +922,10 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 
 	/* allocate notification request and buffer */
 	ecm->notify_req = usb_ep_alloc_request(ep, GFP_KERNEL);
-	if (!ecm->notify_req)
+	if (!ecm->notify_req) {
+		pr_debug("can not allocate notification request\n");
 		goto fail;
+	}
 	ecm->notify_req->buf = kmalloc(ECM_QC_STATUS_BYTECOUNT, GFP_KERNEL);
 	if (!ecm->notify_req->buf)
 		goto fail;
@@ -781,8 +933,8 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 	ecm->notify_req->complete = ecm_qc_notify_complete;
 
 	/* copy descriptors, and track endpoint copies */
-	f->descriptors = usb_copy_descriptors(ecm_qc_fs_function);
-	if (!f->descriptors)
+	f->fs_descriptors = usb_copy_descriptors(ecm_qc_fs_function);
+	if (!f->fs_descriptors)
 		goto fail;
 
 	/* support all relevant hardware speeds... we expect that when
@@ -803,6 +955,19 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 			goto fail;
 	}
 
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		ecm_qc_ss_in_desc.bEndpointAddress =
+				ecm_qc_fs_in_desc.bEndpointAddress;
+		ecm_qc_ss_out_desc.bEndpointAddress =
+				ecm_qc_fs_out_desc.bEndpointAddress;
+		ecm_qc_ss_notify_desc.bEndpointAddress =
+				ecm_qc_fs_notify_desc.bEndpointAddress;
+
+		f->ss_descriptors = usb_copy_descriptors(ecm_qc_ss_function);
+		if (!f->hs_descriptors)
+			goto fail;
+	}
+
 	/* NOTE:  all that is done without knowing or caring about
 	 * the network link ... which is unavailable to this code
 	 * until we're activated via set_alt().
@@ -818,8 +983,13 @@ ecm_qc_bind(struct usb_configuration *c, struct usb_function *f)
 	return 0;
 
 fail:
-	if (f->descriptors)
-		usb_free_descriptors(f->descriptors);
+
+	if (f->ss_descriptors)
+		usb_free_descriptors(f->ss_descriptors);
+	if (f->hs_descriptors)
+		usb_free_descriptors(f->hs_descriptors);
+	if (f->fs_descriptors)
+		usb_free_descriptors(f->fs_descriptors);
 
 	if (ecm->notify_req) {
 		kfree(ecm->notify_req->buf);
@@ -846,10 +1016,11 @@ ecm_qc_unbind(struct usb_configuration *c, struct usb_function *f)
 
 	DBG(c->cdev, "ecm unbind\n");
 
-	bam_data_destroy(0);
+	if (gadget_is_superspeed(c->cdev->gadget))
+		usb_free_descriptors(f->ss_descriptors);
 	if (gadget_is_dualspeed(c->cdev->gadget))
 		usb_free_descriptors(f->hs_descriptors);
-	usb_free_descriptors(f->descriptors);
+	usb_free_descriptors(f->fs_descriptors);
 
 	kfree(ecm->notify_req->buf);
 	usb_ep_free_request(ecm->notify, ecm->notify_req);
@@ -860,6 +1031,7 @@ ecm_qc_unbind(struct usb_configuration *c, struct usb_function *f)
 		ecm_ipa_cleanup(ipa_params.private);
 
 	kfree(ecm);
+	bam_work_destroy();
 }
 
 /**
@@ -887,11 +1059,11 @@ ecm_qc_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 
 	status = ecm_qc_bam_setup();
 	if (status) {
-		pr_err("bam setup failed");
+		pr_err("bam setup failed\n");
 		return status;
 	}
 
-	pr_debug("data transport type is %s", xport_name);
+	pr_debug("data transport type is %s\n", xport_name);
 
 	/* maybe allocate device-global string IDs */
 	if (ecm_qc_string_defs[0].id == 0) {
@@ -924,7 +1096,7 @@ ecm_qc_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 		return -ENOMEM;
 
 	ecm->xport = str_to_xport(xport_name);
-	pr_debug("set xport = %d", ecm->xport);
+	pr_debug("set xport = %d\n", ecm->xport);
 
 	/* export host's Ethernet address in CDC format */
 	if (ecm->xport == USB_GADGET_XPORT_BAM2BAM_IPA) {
@@ -959,7 +1131,7 @@ ecm_qc_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 
 	status = usb_add_function(c, &ecm->port.func);
 	if (status) {
-		pr_err("failed to add function");
+		pr_err("failed to add function\n");
 		ecm_qc_string_defs[1].s = NULL;
 		kfree(ecm);
 		return status;
@@ -972,11 +1144,11 @@ ecm_qc_bind_config(struct usb_configuration *c, u8 ethaddr[ETH_ALEN],
 			ipa_params.host_ethaddr, ipa_params.device_ethaddr);
 	status = ecm_ipa_init(&ipa_params);
 	if (status) {
-		pr_err("failed to initialize ecm_ipa");
+		pr_err("failed to initialize ecm_ipa\n");
 		ecm_qc_string_defs[1].s = NULL;
 		kfree(ecm);
 	} else {
-		pr_debug("ecm_ipa successful created");
+		pr_debug("ecm_ipa successful created\n");
 	}
 
 	return status;

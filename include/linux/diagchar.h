@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,25 +13,33 @@
 #ifndef DIAGCHAR_SHARED
 #define DIAGCHAR_SHARED
 
-#define MSG_MASKS_TYPE			1
-#define LOG_MASKS_TYPE			2
-#define EVENT_MASKS_TYPE		4
-#define PKT_TYPE			8
-#define DEINIT_TYPE			16
-#define USER_SPACE_DATA_TYPE		32
-#define DCI_DATA_TYPE			64
-#define CALLBACK_DATA_TYPE		128
+#define MSG_MASKS_TYPE		0x00000001
+#define LOG_MASKS_TYPE		0x00000002
+#define EVENT_MASKS_TYPE	0x00000004
+#define PKT_TYPE		0x00000008
+#define DEINIT_TYPE		0x00000010
+#define USER_SPACE_DATA_TYPE	0x00000020
+#define DCI_DATA_TYPE		0x00000040
+#define CALLBACK_DATA_TYPE	0x00000080
+#define DCI_LOG_MASKS_TYPE	0x00000100
+#define DCI_EVENT_MASKS_TYPE	0x00000200
+#define DCI_PKT_TYPE		0x00000400
+
 #define USB_MODE			1
 #define MEMORY_DEVICE_MODE		2
 #define NO_LOGGING_MODE			3
 #define UART_MODE			4
 #define SOCKET_MODE			5
 #define CALLBACK_MODE			6
+
 /* different values that go in for diag_data_type */
+
 #define DATA_TYPE_EVENT         	0
 #define DATA_TYPE_F3            	1
 #define DATA_TYPE_LOG           	2
 #define DATA_TYPE_RESPONSE      	3
+#define DATA_TYPE_DCI_LOG		0x00000100
+#define DATA_TYPE_DCI_EVENT		0x00000200
 
 /* Different IOCTL values */
 #define DIAG_IOCTL_COMMAND_REG  	0
@@ -64,6 +72,10 @@
 #define MSM8627_TOOLS_ID	4080
 #define MSM8227_TOOLS_ID	4081
 #define MSM8974_TOOLS_ID	4083
+#define APQ8074_TOOLS_ID	4090
+#define MSM8916_TOOLS_ID	4094
+#define APQ8084_TOOLS_ID	4095
+#define MSM8939_TOOLS_ID	4103
 
 #define MSG_MASK_0			(0x00000001)
 #define MSG_MASK_1			(0x00000002)
@@ -119,10 +131,10 @@ the appropriate macros. */
 /* This needs to be modified manually now, when we add
  a new RANGE of SSIDs to the msg_mask_tbl */
 #define MSG_MASK_TBL_CNT		24
-#define EVENT_LAST_ID			0x09CB
+#define EVENT_LAST_ID			0x09F6
 
 #define MSG_SSID_0			0
-#define MSG_SSID_0_LAST			97
+#define MSG_SSID_0_LAST			101
 #define MSG_SSID_1			500
 #define MSG_SSID_1_LAST			506
 #define MSG_SSID_2			1000
@@ -138,7 +150,7 @@ the appropriate macros. */
 #define MSG_SSID_7			4600
 #define MSG_SSID_7_LAST			4614
 #define MSG_SSID_8			5000
-#define MSG_SSID_8_LAST			5030
+#define MSG_SSID_8_LAST			5031
 #define MSG_SSID_9			5500
 #define MSG_SSID_9_LAST			5516
 #define MSG_SSID_10			6000
@@ -154,7 +166,7 @@ the appropriate macros. */
 #define MSG_SSID_15			8000
 #define MSG_SSID_15_LAST		8000
 #define MSG_SSID_16			8500
-#define MSG_SSID_16_LAST		8523
+#define MSG_SSID_16_LAST		8524
 #define MSG_SSID_17			9000
 #define MSG_SSID_17_LAST		9008
 #define MSG_SSID_18			9500
@@ -166,15 +178,9 @@ the appropriate macros. */
 #define MSG_SSID_21			10300
 #define MSG_SSID_21_LAST		10300
 #define MSG_SSID_22			10350
-#define MSG_SSID_22_LAST		10374
+#define MSG_SSID_22_LAST		10377
 #define MSG_SSID_23			0xC000
 #define MSG_SSID_23_LAST		0xC063
-
-struct diagpkt_delay_params {
-	void *rsp_ptr;
-	int size;
-	int *num_bytes_ptr;
-};
 
 static const uint32_t msg_bld_masks_0[] = {
 	MSG_LVL_LOW,
@@ -182,7 +188,7 @@ static const uint32_t msg_bld_masks_0[] = {
 	MSG_LVL_LOW,
 	MSG_LVL_ERROR,
 	MSG_LVL_LOW,
-	MSG_LVL_MED,
+	MSG_LVL_LOW,
 	MSG_LVL_MED,
 	MSG_LVL_HIGH,
 	MSG_LVL_ERROR,
@@ -280,18 +286,22 @@ static const uint32_t msg_bld_masks_0[] = {
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
 	MSG_LVL_LOW|MSG_LVL_MED|MSG_LVL_HIGH|MSG_LVL_ERROR|MSG_LVL_FATAL,
-	MSG_LVL_MED,
-	MSG_LVL_LOW|MSG_LVL_MED|MSG_LVL_HIGH|MSG_LVL_ERROR|MSG_LVL_FATAL,
-	MSG_LVL_LOW,
-	MSG_LVL_MED,
-	MSG_LVL_LOW,
-	MSG_LVL_LOW,
-	MSG_LVL_LOW,
-	MSG_LVL_LOW,
-	MSG_LVL_LOW,
 	MSG_LVL_LOW,
 	MSG_LVL_LOW|MSG_LVL_MED|MSG_LVL_HIGH|MSG_LVL_ERROR|MSG_LVL_FATAL,
+	MSG_LVL_LOW,
 	MSG_LVL_MED,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW|MSG_LVL_MED|MSG_LVL_HIGH|MSG_LVL_ERROR|MSG_LVL_FATAL,
+	MSG_LVL_MED,
+	MSG_LVL_HIGH,
+	MSG_LVL_LOW,
+	MSG_LVL_HIGH,
+	MSG_LVL_HIGH
 };
 
 static const uint32_t msg_bld_masks_1[] = {
@@ -321,7 +331,8 @@ static const uint32_t msg_bld_masks_3[] = {
 	MSG_LVL_MED,
 	MSG_LVL_MED,
 	MSG_LVL_MED,
-	MSG_LVL_MED,
+	MSG_LVL_MED|MSG_MASK_5|MSG_MASK_6|MSG_MASK_7|
+			MSG_MASK_8|MSG_MASK_9|MSG_MASK_10,
 	MSG_LVL_MED,
 	MSG_LVL_MED,
 	MSG_LVL_MED
@@ -428,6 +439,7 @@ static const uint32_t msg_bld_masks_8[] = {
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
+	MSG_LVL_MED,
 	MSG_LVL_MED,
 	MSG_LVL_MED,
 	MSG_LVL_MED,
@@ -632,6 +644,7 @@ static const uint32_t msg_bld_masks_16[] = {
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
+	MSG_LVL_LOW,
 };
 
 static const uint32_t msg_bld_masks_17[] =  {
@@ -722,29 +735,34 @@ static const uint32_t msg_bld_masks_22[] = {
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
 	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
+	MSG_LVL_LOW,
 	MSG_LVL_LOW
 };
 
 /* LOG CODES */
+static const uint32_t log_code_last_tbl[] = {
+	0x0,	/* EQUIP ID 0 */
+	0x184A,	/* EQUIP ID 1 */
+	0x0,	/* EQUIP ID 2 */
+	0x0,	/* EQUIP ID 3 */
+	0x4910,	/* EQUIP ID 4 */
+	0x5420,	/* EQUIP ID 5 */
+	0x0,	/* EQUIP ID 6 */
+	0x74FF,	/* EQUIP ID 7 */
+	0x0,	/* EQUIP ID 8 */
+	0x0,	/* EQUIP ID 9 */
+	0xA38A,	/* EQUIP ID 10 */
+	0xB201,	/* EQUIP ID 11 */
+	0x0,	/* EQUIP ID 12 */
+	0x0,	/* EQUIP ID 13 */
+	0x0,	/* EQUIP ID 14 */
+	0x0,	/* EQUIP ID 15 */
+};
 
-#define LOG_0	0x0
-#define LOG_1	0x1808
-#define LOG_2	0x0
-#define LOG_3	0x0
-#define LOG_4	0x4910
-#define LOG_5	0x5420
-#define LOG_6	0x0
-#define LOG_7	0x74FF
-#define LOG_8	0x0
-#define LOG_9	0x0
-#define LOG_10	0xA38A
-#define LOG_11	0xB201
-#define LOG_12	0x0
-#define LOG_13	0x0
-#define LOG_14	0x0
-#define LOG_15	0x0
-
-#define LOG_GET_ITEM_NUM(xx_code) (xx_code & 0x0FFF)
-#define LOG_GET_EQUIP_ID(xx_code) ((xx_code & 0xF000) >> 12)
+#define LOG_GET_ITEM_NUM(xx_code)	(xx_code & 0x0FFF)
+#define LOG_GET_EQUIP_ID(xx_code)	((xx_code & 0xF000) >> 12)
+#define LOG_ITEMS_TO_SIZE(num_items)	((num_items+7)/8)
 
 #endif

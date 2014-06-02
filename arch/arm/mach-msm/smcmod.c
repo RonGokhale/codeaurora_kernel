@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,9 +27,10 @@
 #include <linux/slab.h>
 #include <linux/printk.h>
 #include <linux/msm_ion.h>
+#include <soc/qcom/scm.h>
+#include <soc/qcom/socinfo.h>
+
 #include <asm/smcmod.h>
-#include <mach/scm.h>
-#include <mach/socinfo.h>
 
 static DEFINE_MUTEX(ioctl_lock);
 
@@ -823,7 +824,7 @@ static void __exit smcmod_exit(void)
 	misc_deregister(&smcmod_misc_dev);
 }
 
-MODULE_DESCRIPTION("Qualcomm SMC Module");
+MODULE_DESCRIPTION("Qualcomm Technologies, Inc. SMC Module");
 MODULE_LICENSE("GPL v2");
 
 module_init(smcmod_init);

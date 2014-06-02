@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -208,6 +208,8 @@ struct hfi_buffer_info {
 	(HFI_PROPERTY_SYS_COMMON_START + 0x005)
 #define  HFI_PROPERTY_SYS_IMAGE_VERSION    \
 	(HFI_PROPERTY_SYS_COMMON_START + 0x006)
+#define  HFI_PROPERTY_SYS_CONFIG_COVERAGE    \
+	(HFI_PROPERTY_SYS_COMMON_START + 0x007)
 
 #define HFI_PROPERTY_PARAM_COMMON_START	\
 	(HFI_DOMAIN_BASE_COMMON + HFI_ARCH_COMMON_OFFSET + 0x1000)
@@ -305,11 +307,9 @@ struct hfi_buffer_info {
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x018)
 #define HFI_PROPERTY_PARAM_VENC_MULTIREF_P				\
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x019)
-#define HFI_PROPERTY_PARAM_VENC_HIER_P_NUM_ENH_LAYER	\
-	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x01A)
 #define HFI_PROPERTY_PARAM_VENC_H264_NAL_SVC_EXT		\
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x01B)
-#define HFI_PROPERTY_PARAM_VENC_H264_LTRMODE		\
+#define HFI_PROPERTY_PARAM_VENC_LTRMODE		\
 	 (HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x01C)
 #define HFI_PROPERTY_PARAM_VENC_VIDEO_FULL_RANGE	\
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x01D)
@@ -319,6 +319,17 @@ struct hfi_buffer_info {
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x01F)
 #define  HFI_PROPERTY_PARAM_VENC_MAX_NUM_B_FRAMES \
 	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x020)
+#define HFI_PROPERTY_PARAM_VENC_H264_VUI_BITSTREAM_RESTRC \
+	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x021)
+#define HFI_PROPERTY_PARAM_VENC_PRESERVE_TEXT_QUALITY \
+	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x023)
+#define HFI_PROPERTY_PARAM_VENC_HIER_P_MAX_NUM_ENH_LAYER	\
+	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x026)
+#define HFI_PROPERTY_PARAM_VENC_DISABLE_RC_TIMESTAMP \
+	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x027)
+#define HFI_PROPERTY_PARAM_VENC_INITIAL_QP	\
+	(HFI_PROPERTY_PARAM_VENC_COMMON_START + 0x028)
+
 #define HFI_PROPERTY_CONFIG_VENC_COMMON_START				\
 	(HFI_DOMAIN_BASE_VENC + HFI_ARCH_COMMON_OFFSET + 0x6000)
 #define HFI_PROPERTY_CONFIG_VENC_TARGET_BITRATE				\
@@ -338,7 +349,14 @@ struct hfi_buffer_info {
 	(HFI_DOMAIN_BASE_VPE + HFI_ARCH_COMMON_OFFSET + 0x7000)
 #define  HFI_PROPERTY_CONFIG_VENC_SYNC_FRAME_SEQUENCE_HEADER	\
 	(HFI_PROPERTY_CONFIG_VENC_COMMON_START + 0x008)
-
+#define  HFI_PROPERTY_CONFIG_VENC_MARKLTRFRAME			\
+	(HFI_PROPERTY_CONFIG_VENC_COMMON_START + 0x009)
+#define  HFI_PROPERTY_CONFIG_VENC_USELTRFRAME			\
+	(HFI_PROPERTY_CONFIG_VENC_COMMON_START + 0x00A)
+#define  HFI_PROPERTY_CONFIG_VENC_HIER_P_ENH_LAYER		\
+	(HFI_PROPERTY_CONFIG_VENC_COMMON_START + 0x00B)
+#define  HFI_PROPERTY_CONFIG_VENC_LTRPERIOD			\
+	(HFI_PROPERTY_CONFIG_VENC_COMMON_START + 0x00C)
 #define HFI_PROPERTY_CONFIG_VPE_COMMON_START				\
 	(HFI_DOMAIN_BASE_VPE + HFI_ARCH_COMMON_OFFSET + 0x8000)
 #define HFI_PROPERTY_CONFIG_VPE_DEINTERLACE				\
@@ -361,6 +379,7 @@ struct hfi_bitrate {
 #define HFI_CAPABILITY_BITRATE				(HFI_COMMON_BASE + 0x8)
 #define  HFI_CAPABILITY_BFRAME				(HFI_COMMON_BASE + 0x9)
 #define  HFI_CAPABILITY_HIER_P_NUM_ENH_LAYERS   (HFI_COMMON_BASE + 0x10)
+#define  HFI_CAPABILITY_ENC_LTR_COUNT      (HFI_COMMON_BASE + 0x11)
 
 struct hfi_capability_supported {
 	u32 capability_type;
@@ -447,6 +466,11 @@ struct hfi_max_num_b_frames {
 	u32 max_num_b_frames;
 };
 
+struct hfi_vc1e_perf_cfg_type {
+	u32 search_range_x_subsampled[3];
+	u32 search_range_y_subsampled[3];
+};
+
 struct hfi_conceal_color {
 	u32 conceal_color;
 };
@@ -525,10 +549,37 @@ struct hfi_quantization {
 	u32 layer_id;
 };
 
+struct hfi_initial_quantization {
+	u32 qp_i;
+	u32 qp_p;
+	u32 qp_b;
+	u32 init_qp_enable;
+};
+
 struct hfi_quantization_range {
 	u32 min_qp;
 	u32 max_qp;
 	u32 layer_id;
+};
+
+#define HFI_LTR_MODE_DISABLE	0x0
+#define HFI_LTR_MODE_MANUAL		0x1
+#define HFI_LTR_MODE_PERIODIC	0x2
+
+struct hfi_ltrmode {
+	u32 ltrmode;
+	u32 ltrcount;
+	u32 trustmode;
+};
+
+struct hfi_ltruse {
+	u32 refltr;
+	u32 useconstrnt;
+	u32 frames;
+};
+
+struct hfi_ltrmark {
+	u32 markframe;
 };
 
 struct hfi_frame_size {
@@ -620,7 +671,7 @@ struct hfi_operations {
 
 struct hfi_resource_ocmem {
 	u32 size;
-	u8 *mem;
+	u32 mem;
 };
 
 struct hfi_resource_ocmem_requirement {
@@ -687,7 +738,7 @@ struct hfi_aspect_ratio {
 #define HFI_MVC_BUFFER_LAYOUT_TOP_BOTTOM  (0)
 #define HFI_MVC_BUFFER_LAYOUT_SIDEBYSIDE  (1)
 #define HFI_MVC_BUFFER_LAYOUT_SEQ         (2)
-struct hfi_mvc_buffer_lauout_descp_type {
+struct hfi_mvc_buffer_layout_descp_type {
 	u32    layout_type;
 	u32    bright_view_first;
 	u32    ngap;
@@ -728,6 +779,7 @@ struct hfi_mvc_buffer_lauout_descp_type {
 #define HFI_MSG_SYS_SESSION_INIT_DONE	(HFI_MSG_SYS_COMMON_START + 0x6)
 #define HFI_MSG_SYS_SESSION_END_DONE	(HFI_MSG_SYS_COMMON_START + 0x7)
 #define HFI_MSG_SYS_IDLE		(HFI_MSG_SYS_COMMON_START + 0x8)
+#define HFI_MSG_SYS_COV                 (HFI_MSG_SYS_COMMON_START + 0x9)
 #define HFI_MSG_SYS_PROPERTY_INFO	(HFI_MSG_SYS_COMMON_START + 0xA)
 
 #define HFI_MSG_SESSION_COMMON_START		\
@@ -841,7 +893,7 @@ struct hfi_cmd_session_get_sequence_header_packet {
 	u32 packet_type;
 	u32 session_id;
 	u32 buffer_len;
-	u8 *packet_buffer;
+	u32 packet_buffer;
 };
 
 struct hfi_msg_event_notify_packet {
@@ -855,8 +907,8 @@ struct hfi_msg_event_notify_packet {
 };
 
 struct hfi_msg_release_buffer_ref_event_packet {
-	u8 *packet_buffer;
-	u8 *exra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 output_tag;
 };
 
@@ -903,13 +955,22 @@ struct hfi_msg_session_get_sequence_header_done_packet {
 	u32 session_id;
 	u32 error_type;
 	u32 header_len;
-	u8 *sequence_header;
+	u32 sequence_header;
 };
 
 struct hfi_msg_sys_debug_packet {
 	u32 size;
 	u32 packet_type;
 	u32 msg_type;
+	u32 msg_size;
+	u32 time_stamp_hi;
+	u32 time_stamp_lo;
+	u8 rg_msg_data[1];
+};
+
+struct hfi_msg_sys_coverage_packet {
+	u32 size;
+	u32 packet_type;
 	u32 msg_size;
 	u32 time_stamp_hi;
 	u32 time_stamp_lo;

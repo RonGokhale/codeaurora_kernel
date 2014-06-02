@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2010, 2013 The Linux Foundation. All rights reserved.
+/* Copyright (c) 2009-2010, 2013-2014 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -34,6 +34,7 @@
 
 static struct of_device_id bt_power_match_table[] = {
 	{	.compatible = "qca,ar3002" },
+	{	.compatible = "qca,qca6174" },
 	{}
 };
 
@@ -176,11 +177,6 @@ static int bt_configure_gpios(int on)
 		msleep(100);
 	} else {
 		gpio_set_value(bt_reset_gpio, 0);
-
-		rc = gpio_direction_input(bt_reset_gpio);
-		if (rc)
-			BT_PWR_ERR("Unable to set direction\n");
-
 		msleep(100);
 	}
 	return rc;
@@ -402,7 +398,7 @@ static int bt_power_populate_dt_pinfo(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devinit bt_power_probe(struct platform_device *pdev)
+static int bt_power_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 
@@ -451,7 +447,7 @@ free_pdata:
 	return ret;
 }
 
-static int __devexit bt_power_remove(struct platform_device *pdev)
+static int bt_power_remove(struct platform_device *pdev)
 {
 	dev_dbg(&pdev->dev, "%s\n", __func__);
 
@@ -467,7 +463,7 @@ static int __devexit bt_power_remove(struct platform_device *pdev)
 
 static struct platform_driver bt_power_driver = {
 	.probe = bt_power_probe,
-	.remove = __devexit_p(bt_power_remove),
+	.remove = bt_power_remove,
 	.driver = {
 		.name = "bt_power",
 		.owner = THIS_MODULE,

@@ -42,7 +42,6 @@
  *
  * IRQF_DISABLED - keep irqs disabled when calling the action handler.
  *                 DEPRECATED. This flag is a NOOP and scheduled to be removed
- * IRQF_SAMPLE_RANDOM - irq is used to feed the random generator
  * IRQF_SHARED - allow sharing the irq among several devices
  * IRQF_PROBE_SHARED - set by callers when they expect sharing mismatches to occur
  * IRQF_TIMER - Flag to mark this interrupt as timer interrupt
@@ -61,7 +60,6 @@
  *                resume time.
  */
 #define IRQF_DISABLED		0x00000020
-#define IRQF_SAMPLE_RANDOM	0x00000040
 #define IRQF_SHARED		0x00000080
 #define IRQF_PROBE_SHARED	0x00000100
 #define __IRQF_TIMER		0x00000200
@@ -93,27 +91,27 @@ typedef irqreturn_t (*irq_handler_t)(int, void *);
 /**
  * struct irqaction - per interrupt action descriptor
  * @handler:	interrupt handler function
- * @flags:	flags (see IRQF_* above)
  * @name:	name of the device
  * @dev_id:	cookie to identify the device
  * @percpu_dev_id:	cookie to identify the device
  * @next:	pointer to the next irqaction for shared interrupts
  * @irq:	interrupt number
- * @dir:	pointer to the proc/irq/NN/name entry
+ * @flags:	flags (see IRQF_* above)
  * @thread_fn:	interrupt handler function for threaded interrupts
  * @thread:	thread pointer for threaded interrupts
  * @thread_flags:	flags related to @thread
  * @thread_mask:	bitmask for keeping track of @thread activity
+ * @dir:	pointer to the proc/irq/NN/name entry
  */
 struct irqaction {
 	irq_handler_t		handler;
-	unsigned long		flags;
 	void			*dev_id;
 	void __percpu		*percpu_dev_id;
 	struct irqaction	*next;
-	int			irq;
 	irq_handler_t		thread_fn;
 	struct task_struct	*thread;
+	unsigned int		irq;
+	unsigned int		flags;
 	unsigned long		thread_flags;
 	unsigned long		thread_mask;
 	const char		*name;
@@ -122,7 +120,6 @@ struct irqaction {
 
 extern irqreturn_t no_action(int cpl, void *dev_id);
 
-#ifdef CONFIG_GENERIC_HARDIRQS
 extern int __must_check
 request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		     irq_handler_t thread_fn,
@@ -142,44 +139,6 @@ request_any_context_irq(unsigned int irq, irq_handler_t handler,
 extern int __must_check
 request_percpu_irq(unsigned int irq, irq_handler_t handler,
 		   const char *devname, void __percpu *percpu_dev_id);
-
-extern void exit_irq_thread(void);
-#else
-
-extern int __must_check
-request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
-	    const char *name, void *dev);
-
-/*
- * Special function to avoid ifdeffery in kernel/irq/devres.c which
- * gets magically built by GENERIC_HARDIRQS=n architectures (sparc,
- * m68k). I really love these $@%#!* obvious Makefile references:
- * ../../../kernel/irq/devres.o
- */
-static inline int __must_check
-request_threaded_irq(unsigned int irq, irq_handler_t handler,
-		     irq_handler_t thread_fn,
-		     unsigned long flags, const char *name, void *dev)
-{
-	return request_irq(irq, handler, flags, name, dev);
-}
-
-static inline int __must_check
-request_any_context_irq(unsigned int irq, irq_handler_t handler,
-			unsigned long flags, const char *name, void *dev_id)
-{
-	return request_irq(irq, handler, flags, name, dev_id);
-}
-
-static inline int __must_check
-request_percpu_irq(unsigned int irq, irq_handler_t handler,
-		   const char *devname, void __percpu *percpu_dev_id)
-{
-	return request_irq(irq, handler, 0, devname, percpu_dev_id);
-}
-
-static inline void exit_irq_thread(void) { }
-#endif
 
 extern void free_irq(unsigned int, void *);
 extern void free_percpu_irq(unsigned int, void __percpu *);
@@ -227,7 +186,6 @@ extern void enable_irq(unsigned int irq);
 extern void enable_percpu_irq(unsigned int irq, unsigned int type);
 
 /* The following three functions are for the core kernel use only. */
-#ifdef CONFIG_GENERIC_HARDIRQS
 extern void suspend_device_irqs(void);
 extern void resume_device_irqs(void);
 #ifdef CONFIG_PM_SLEEP
@@ -235,13 +193,8 @@ extern int check_wakeup_irqs(void);
 #else
 static inline int check_wakeup_irqs(void) { return 0; }
 #endif
-#else
-static inline void suspend_device_irqs(void) { };
-static inline void resume_device_irqs(void) { };
-static inline int check_wakeup_irqs(void) { return 0; }
-#endif
 
-#if defined(CONFIG_SMP) && defined(CONFIG_GENERIC_HARDIRQS)
+#if defined(CONFIG_SMP)
 
 extern cpumask_var_t irq_default_affinity;
 
@@ -274,11 +227,6 @@ struct irq_affinity_notify {
 extern int
 irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify);
 
-static inline void irq_run_affinity_notifiers(void)
-{
-	flush_scheduled_work();
-}
-
 #else /* CONFIG_SMP */
 
 static inline int irq_set_affinity(unsigned int irq, const struct cpumask *m)
@@ -298,9 +246,8 @@ static inline int irq_set_affinity_hint(unsigned int irq,
 {
 	return -EINVAL;
 }
-#endif /* CONFIG_SMP && CONFIG_GENERIC_HARDIRQS */
+#endif /* CONFIG_SMP */
 
-#ifdef CONFIG_GENERIC_HARDIRQS
 /*
  * Special lockdep variants of irq disabling/enabling.
  * These should be used for locking constructs that
@@ -366,33 +313,6 @@ static inline int disable_irq_wake(unsigned int irq)
 	return irq_set_irq_wake(irq, 0);
 }
 
-#else /* !CONFIG_GENERIC_HARDIRQS */
-/*
- * NOTE: non-genirq architectures, if they want to support the lock
- * validator need to define the methods below in their asm/irq.h
- * files, under an #ifdef CONFIG_LOCKDEP section.
- */
-#ifndef CONFIG_LOCKDEP
-#  define disable_irq_nosync_lockdep(irq)	disable_irq_nosync(irq)
-#  define disable_irq_nosync_lockdep_irqsave(irq, flags) \
-						disable_irq_nosync(irq)
-#  define disable_irq_lockdep(irq)		disable_irq(irq)
-#  define enable_irq_lockdep(irq)		enable_irq(irq)
-#  define enable_irq_lockdep_irqrestore(irq, flags) \
-						enable_irq(irq)
-# endif
-
-static inline int enable_irq_wake(unsigned int irq)
-{
-	return 0;
-}
-
-static inline int disable_irq_wake(unsigned int irq)
-{
-	return 0;
-}
-#endif /* CONFIG_GENERIC_HARDIRQS */
-
 
 #ifdef CONFIG_IRQ_FORCED_THREADING
 extern bool force_irqthreads;
@@ -436,6 +356,8 @@ enum
 
 	NR_SOFTIRQS
 };
+
+#define SOFTIRQ_STOP_IDLE_MASK (~(1 << RCU_SOFTIRQ))
 
 /* map softirq index to softirq name. update 'softirq_to_name' in
  * kernel/softirq.c when adding a new softirq.
@@ -665,7 +587,7 @@ void tasklet_hrtimer_cancel(struct tasklet_hrtimer *ttimer)
  * if more than one irq occurred.
  */
 
-#if defined(CONFIG_GENERIC_HARDIRQS) && !defined(CONFIG_GENERIC_IRQ_PROBE) 
+#if !defined(CONFIG_GENERIC_IRQ_PROBE) 
 static inline unsigned long probe_irq_on(void)
 {
 	return 0;

@@ -190,6 +190,7 @@ struct pm8921_charger_platform_data {
 	int				btc_panic_if_cant_stop_chg;
 	int				stop_chg_upon_expiry;
 	bool				disable_chg_rmvl_wrkarnd;
+	bool				enable_tcxo_warmup_delay;
 };
 
 enum pm8921_charger_source {
@@ -198,7 +199,7 @@ enum pm8921_charger_source {
 	PM8921_CHG_SRC_DC,
 };
 
-#if defined(CONFIG_PM8921_CHARGER) || defined(CONFIG_PM8921_CHARGER_MODULE)
+#if defined(CONFIG_PM8921_CHARGER_MODULE)
 void pm8921_charger_vbus_draw(unsigned int mA);
 int pm8921_charger_register_vbus_sn(void (*callback)(int));
 void pm8921_charger_unregister_vbus_sn(void (*callback)(int));

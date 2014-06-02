@@ -201,7 +201,7 @@ static const struct attribute_group *hwevent_attr_grps[] = {
 	NULL,
 };
 
-static int __devinit hwevent_probe(struct platform_device *pdev)
+static int hwevent_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct hwevent_drvdata *drvdata;
@@ -305,7 +305,7 @@ static int __devinit hwevent_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit hwevent_remove(struct platform_device *pdev)
+static int hwevent_remove(struct platform_device *pdev)
 {
 	struct hwevent_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -320,7 +320,7 @@ static struct of_device_id hwevent_match[] = {
 
 static struct platform_driver hwevent_driver = {
 	.probe		= hwevent_probe,
-	.remove		= __devexit_p(hwevent_remove),
+	.remove		= hwevent_remove,
 	.driver		= {
 		.name	= "coresight-hwevent",
 		.owner	= THIS_MODULE,

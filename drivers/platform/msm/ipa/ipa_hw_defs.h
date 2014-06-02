@@ -1,4 +1,4 @@
-/* Copyright (c) 2012, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,36 +17,23 @@
 /* This header defines various HW related data types */
 
 /* immediate command op-codes */
-#define IPA_DECIPH_INIT        (1)
-#define IPA_PPP_FRM_INIT       (2)
-#define IPA_IP_V4_FILTER_INIT  (3)
-#define IPA_IP_V6_FILTER_INIT  (4)
-#define IPA_IP_V4_NAT_INIT     (5)
-#define IPA_IP_V6_NAT_INIT     (6)
-#define IPA_IP_V4_ROUTING_INIT (7)
-#define IPA_IP_V6_ROUTING_INIT (8)
-#define IPA_HDR_INIT_LOCAL     (9)
-#define IPA_HDR_INIT_SYSTEM   (10)
-#define IPA_DECIPH_SETUP      (11)
-#define IPA_INSERT_NAT_RULE   (12)
-#define IPA_DELETE_NAT_RULE   (13)
-#define IPA_NAT_DMA           (14)
-#define IPA_IP_PACKET_TAG     (15)
-#define IPA_IP_PACKET_INIT    (16)
-
-#define IPA_INTERFACE_ID_EXCEPTION         (0)
-#define IPA_INTERFACE_ID_A2_WWAN        (0x10)
-#define IPA_INTERFACE_ID_HSUSB_RMNET1   (0x21)
-#define IPA_INTERFACE_ID_HSUSB_RMNET2   (0x22)
-#define IPA_INTERFACE_ID_HSUSB_RMNET3   (0x23)
-#define IPA_INTERFACE_ID_HSIC_WLAN_WAN  (0x31)
-#define IPA_INTERFACE_ID_HSIC_WLAN_LAN1 (0x32)
-#define IPA_INTERFACE_ID_HSIC_WLAN_LAN2 (0x33)
-#define IPA_INTERFACE_ID_HSIC_RMNET1    (0x41)
-#define IPA_INTERFACE_ID_HSIC_RMNET2    (0x42)
-#define IPA_INTERFACE_ID_HSIC_RMNET3    (0x43)
-#define IPA_INTERFACE_ID_HSIC_RMNET4    (0x44)
-#define IPA_INTERFACE_ID_HSIC_RMNET5    (0x45)
+#define IPA_DECIPH_INIT           (1)
+#define IPA_PPP_FRM_INIT          (2)
+#define IPA_IP_V4_FILTER_INIT     (3)
+#define IPA_IP_V6_FILTER_INIT     (4)
+#define IPA_IP_V4_NAT_INIT        (5)
+#define IPA_IP_V6_NAT_INIT        (6)
+#define IPA_IP_V4_ROUTING_INIT    (7)
+#define IPA_IP_V6_ROUTING_INIT    (8)
+#define IPA_HDR_INIT_LOCAL        (9)
+#define IPA_HDR_INIT_SYSTEM      (10)
+#define IPA_DECIPH_SETUP         (11)
+#define IPA_REGISTER_WRITE       (12)
+#define IPA_NAT_DMA              (14)
+#define IPA_IP_PACKET_TAG        (15)
+#define IPA_IP_PACKET_INIT       (16)
+#define IPA_DMA_SHARED_MEM       (19)
+#define IPA_IP_PACKET_TAG_STATUS (20)
 
 /**
  * struct ipa_flt_rule_hw_hdr - HW header of IPA filter rule
@@ -54,7 +41,15 @@
  * @en_rule: enable rule
  * @action: post routing action
  * @rt_tbl_idx: index in routing table
- * @rsvd: reserved
+ * @retain_hdr: added to add back to the packet the header removed
+ *  as part of header removal. This will be done as part of
+ *  header insertion block.
+ * @to_uc: direct IPA to sent the packet to uc instead of
+ *  the intended destination. This will be performed just after
+ *  routing block processing, so routing will have determined
+ *  destination end point and uc will receive this information
+ *  together with the packet as part of the HW packet TX commands
+ * @rsvd: reserved bits
  */
 struct ipa_flt_rule_hw_hdr {
 	union {
@@ -63,7 +58,9 @@ struct ipa_flt_rule_hw_hdr {
 			u32 en_rule:16;
 			u32 action:5;
 			u32 rt_tbl_idx:5;
-			u32 rsvd:6;
+			u32 retain_hdr:1;
+			u32 to_uc:1;
+			u32 rsvd:4;
 		} hdr;
 	} u;
 };
@@ -142,21 +139,23 @@ struct ipa_ip_v6_routing_init {
 
 /**
  * struct ipa_hdr_init_local - IPA_HDR_INIT_LOCAL command payload
- * @hdr_table_addr: address of header table
- * @size_hdr_table: size of the above
- * @hdr_addr: header address
+ * @hdr_table_src_addr: word address of header table in system memory where the
+ *  table starts (use as source for memory copying)
+ * @size_hdr_table: size of the above (in bytes)
+ * @hdr_table_dst_addr: header address in IPA sram (used as dst for memory copy)
  * @rsvd: reserved
  */
 struct ipa_hdr_init_local {
-	u64 hdr_table_addr:32;
+	u64 hdr_table_src_addr:32;
 	u64 size_hdr_table:12;
-	u64 hdr_addr:16;
+	u64 hdr_table_dst_addr:16;
 	u64 rsvd:4;
 };
 
 /**
  * struct ipa_hdr_init_system - IPA_HDR_INIT_SYSTEM command payload
- * @hdr_table_addr: address of header table
+ * @hdr_table_addr: word address of header table in system memory where the
+ *  table starts (use as source for memory copying)
  * @rsvd: reserved
  */
 struct ipa_hdr_init_system {
@@ -186,6 +185,22 @@ struct ipa_a5_mux_hdr {
 	u8 src_pipe_index;
 	u8 flags;
 	u32 metadata;
+};
+
+/**
+ * struct ipa_register_write - IPA_REGISTER_WRITE command payload
+ * @rsvd: reserved
+ * @skip_pipeline_clear: 0 to wait until IPA pipeline is clear
+ * @offset: offset from IPA base address
+ * @value: value to write to register
+ * @value_mask: mask specifying which value bits to write to the register
+ */
+struct ipa_register_write {
+	u32 rsvd:15;
+	u32 skip_pipeline_clear:1;
+	u32 offset:16;
+	u32 value:32;
+	u32 value_mask:32;
 };
 
 /**
@@ -261,6 +276,109 @@ struct ipa_ip_v4_nat_init {
  */
 struct ipa_ip_packet_tag {
 	u32 tag;
+};
+
+/**
+ * struct ipa_ip_packet_tag_status - IPA_IP_PACKET_TAG_STATUS command payload
+ * @rsvd: reserved
+ * @tag_f_1: tag value returned within status
+ * @tag_f_2: tag value returned within status
+ */
+struct ipa_ip_packet_tag_status {
+	u32 rsvd:16;
+	u32 tag_f_1:16;
+	u32 tag_f_2:32;
+};
+
+/*! @brief Struct for the the IPA UL packet status header */
+struct ipa_hw_pkt_status {
+	u32 status_opcode:8;
+	u32 exception:8;
+	u32 status_mask:16;
+	u32 pkt_len:16;
+	u32 endp_src_idx:5;
+	u32 reserved_1:3;
+	u32 endp_dest_idx:5;
+	u32 reserved_2:3;
+	u32 metadata:32;
+	u32 filt_local:1;
+	u32 filt_global:1;
+	u32 filt_pipe_idx:5;
+	u32 filt_match:1;
+	u32 filt_rule_idx:6;
+	u32 ret_hdr:1;
+	u32 reserved_3:1;
+	u32 tag_f_1:16;
+	u32 tag_f_2:32;
+	u32 time_day_ctr:32;
+	u32 nat_hit:1;
+	u32 nat_tbl_idx:13;
+	u32 nat_type:2;
+	u32 route_local:1;
+	u32 route_tbl_idx:5;
+	u32 route_match:1;
+	u32 reserved_4:1;
+	u32 route_rule_idx:8;
+	u32 hdr_local:1;
+	u32 hdr_offset:10;
+	u32 frag_hit:1;
+	u32 frag_rule:4;
+	u32 reserved_5:16;
+};
+
+#define IPA_PKT_STATUS_SIZE sizeof(struct ipa_hw_pkt_status)
+
+/*! @brief Status header opcodes */
+enum ipa_hw_status_opcode {
+	IPA_HW_STATUS_OPCODE_MIN,
+	IPA_HW_STATUS_OPCODE_PACKET = IPA_HW_STATUS_OPCODE_MIN,
+	IPA_HW_STATUS_OPCODE_NEW_FRAG_RULE,
+	IPA_HW_STATUS_OPCODE_DROPPED_PACKET,
+	IPA_HW_STATUS_OPCODE_MAX
+};
+
+/*! @brief Possible Masks received in status */
+enum ipa_hw_pkt_status_mask {
+	IPA_HW_PKT_STATUS_MASK_FRAG_PROCESS      = 0x1,
+	IPA_HW_PKT_STATUS_MASK_FILT_PROCESS      = 0x2,
+	IPA_HW_PKT_STATUS_MASK_NAT_PROCESS       = 0x4,
+	IPA_HW_PKT_STATUS_MASK_ROUTE_PROCESS     = 0x8,
+	IPA_HW_PKT_STATUS_MASK_TAG_VALID         = 0x10,
+	IPA_HW_PKT_STATUS_MASK_FRAGMENT          = 0x20,
+	IPA_HW_PKT_STATUS_MASK_FIRST_FRAGMENT    = 0x40,
+	IPA_HW_PKT_STATUS_MASK_V4                = 0x80,
+	IPA_HW_PKT_STATUS_MASK_CKSUM_PROCESS     = 0x100,
+	IPA_HW_PKT_STATUS_MASK_AGGR_PROCESS      = 0x200,
+	IPA_HW_PKT_STATUS_MASK_DEST_EOT          = 0x400,
+	IPA_HW_PKT_STATUS_MASK_DEAGGR_PROCESS    = 0x800,
+	IPA_HW_PKT_STATUS_MASK_DEAGG_FIRST       = 0x1000,
+	IPA_HW_PKT_STATUS_MASK_SRC_EOT           = 0x2000
+};
+
+/*! @brief Possible Exceptions received in status */
+enum ipa_hw_pkt_status_exception {
+	IPA_HW_PKT_STATUS_EXCEPTION_NONE           = 0x0,
+	IPA_HW_PKT_STATUS_EXCEPTION_DEAGGR         = 0x1,
+	IPA_HW_PKT_STATUS_EXCEPTION_REPL           = 0x2,
+	IPA_HW_PKT_STATUS_EXCEPTION_IPTYPE         = 0x4,
+	IPA_HW_PKT_STATUS_EXCEPTION_IHL            = 0x8,
+	IPA_HW_PKT_STATUS_EXCEPTION_FRAG_RULE_MISS = 0x10,
+	IPA_HW_PKT_STATUS_EXCEPTION_SW_FILT        = 0x20,
+	IPA_HW_PKT_STATUS_EXCEPTION_NAT            = 0x40,
+	IPA_HW_PKT_STATUS_EXCEPTION_ACTUAL_MAX,
+	IPA_HW_PKT_STATUS_EXCEPTION_MAX            = 0xFF
+};
+
+/*! @brief IPA_HW_IMM_CMD_DMA_SHARED_MEM Immediate Command Parameters */
+struct ipa_hw_imm_cmd_dma_shared_mem {
+	u32 reserved_1:16;
+	u32 size:16;
+	u32 system_addr:32;
+	u32 local_addr:16;
+	u32 direction:1;
+	u32 skip_pipeline_clear:1;
+	u32 reserved_2:14;
+	u32 padding:32;
 };
 
 #endif /* _IPA_HW_DEFS_H */

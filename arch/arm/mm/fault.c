@@ -25,7 +25,6 @@
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
-#include <asm/cputype.h>
 #if defined(CONFIG_ARCH_MSM_SCORPION) && !defined(CONFIG_MSM_SMP)
 #include <asm/io.h>
 #include <mach/msm_iomap.h>
@@ -33,7 +32,6 @@
 
 #include "fault.h"
 
-#define CREATE_TRACE_POINTS
 #include <trace/events/exception.h>
 
 #ifdef CONFIG_MMU
@@ -271,9 +269,7 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	int fault, sig, code;
-	int write = fsr & FSR_WRITE;
-	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE |
-				(write ? FAULT_FLAG_WRITE : 0);
+	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
 	if (notify_page_fault(regs, fsr))
 		return 0;
@@ -286,11 +282,16 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		local_irq_enable();
 
 	/*
-	 * If we're in an interrupt or have no user
+	 * If we're in an interrupt, or have no irqs, or have no user
 	 * context, we must not take the fault..
 	 */
-	if (in_atomic() || !mm)
+	if (in_atomic() || irqs_disabled() || !mm)
 		goto no_context;
+
+	if (user_mode(regs))
+		flags |= FAULT_FLAG_USER;
+	if (fsr & FSR_WRITE)
+		flags |= FAULT_FLAG_WRITE;
 
 	/*
 	 * As per x86, we may deadlock here.  However, since the kernel only
@@ -346,6 +347,7 @@ retry:
 			/* Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk
 			* of starvation. */
 			flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags |= FAULT_FLAG_TRIED;
 			goto retry;
 		}
 	}
@@ -358,6 +360,13 @@ retry:
 	if (likely(!(fault & (VM_FAULT_ERROR | VM_FAULT_BADMAP | VM_FAULT_BADACCESS))))
 		return 0;
 
+	/*
+	 * If we are in kernel mode at this point, we
+	 * have no context to handle this fault with.
+	 */
+	if (!user_mode(regs))
+		goto no_context;
+
 	if (fault & VM_FAULT_OOM) {
 		/*
 		 * We ran out of memory, call the OOM killer, and return to
@@ -367,13 +376,6 @@ retry:
 		pagefault_out_of_memory();
 		return 0;
 	}
-
-	/*
-	 * If we are in kernel mode at this point, we
-	 * have no context to handle this fault with.
-	 */
-	if (!user_mode(regs))
-		goto no_context;
 
 	if (fault & VM_FAULT_SIGBUS) {
 		/*
@@ -442,9 +444,6 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 
 	index = pgd_index(addr);
 
-	/*
-	 * FIXME: CP15 C1 is write only on ARMv3 architectures.
-	 */
 	pgd = cpu_get_pgd() + index;
 	pgd_k = init_mm.pgd + index;
 
@@ -589,75 +588,6 @@ hook_fault_code(int nr, int (*fn)(unsigned long, unsigned int, struct pt_regs *)
 	fsr_info[nr].name = name;
 }
 
-#ifdef CONFIG_MSM_KRAIT_TBB_ABORT_HANDLER
-static int krait_tbb_fixup(unsigned int fsr, struct pt_regs *regs)
-{
-	int base_cond, cond = 0;
-	unsigned int p1, cpsr_z, cpsr_c, cpsr_n, cpsr_v;
-
-	if ((read_cpuid_id() & 0xFFFFFFFC) != 0x510F04D0)
-		return 0;
-
-	if (!thumb_mode(regs))
-		return 0;
-
-	/* If ITSTATE is 0, return quickly */
-	if ((regs->ARM_cpsr & PSR_IT_MASK) == 0)
-		return 0;
-
-	cpsr_n = (regs->ARM_cpsr & PSR_N_BIT) ? 1 : 0;
-	cpsr_z = (regs->ARM_cpsr & PSR_Z_BIT) ? 1 : 0;
-	cpsr_c = (regs->ARM_cpsr & PSR_C_BIT) ? 1 : 0;
-	cpsr_v = (regs->ARM_cpsr & PSR_V_BIT) ? 1 : 0;
-
-	p1 = (regs->ARM_cpsr & BIT(12)) ? 1 : 0;
-
-	base_cond = (regs->ARM_cpsr >> 13) & 0x07;
-
-	switch (base_cond) {
-	case 0x0:	/* equal */
-		cond = cpsr_z;
-		break;
-
-	case 0x1:	/* carry set */
-		cond = cpsr_c;
-		break;
-
-	case 0x2:	/* minus / negative */
-		cond = cpsr_n;
-		break;
-
-	case 0x3:	/* overflow */
-		cond = cpsr_v;
-		break;
-
-	case 0x4:	/* unsigned higher */
-		cond = (cpsr_c == 1) && (cpsr_z == 0);
-		break;
-
-	case 0x5:	/* signed greater / equal */
-		cond = (cpsr_n == cpsr_v);
-		break;
-
-	case 0x6:	/* signed greater */
-		cond = (cpsr_z == 0) && (cpsr_n == cpsr_v);
-		break;
-
-	case 0x7:	/* always */
-		cond = 1;
-		break;
-	};
-
-	if (cond == p1) {
-		pr_debug("Conditional abort fixup, PC=%08x, base=%d, cond=%d\n",
-			 (unsigned int) regs->ARM_pc, base_cond, cond);
-		regs->ARM_pc += 2;
-		return 1;
-	}
-	return 0;
-}
-#endif
-
 /*
  * Dispatch a data abort to the relevant handler.
  */
@@ -667,13 +597,10 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	const struct fsr_info *inf = fsr_info + fsr_fs(fsr);
 	struct siginfo info;
 
-#ifdef CONFIG_MSM_KRAIT_TBB_ABORT_HANDLER
-	if (krait_tbb_fixup(fsr, regs))
-		return;
-#endif
-
 	if (!inf->fn(addr, fsr & ~FSR_LNX_PF, regs))
 		return;
+
+	trace_unhandled_abort(regs, addr, fsr);
 
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
@@ -706,6 +633,8 @@ do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 
 	if (!inf->fn(addr, ifsr | FSR_LNX_PF, regs))
 		return;
+
+	trace_unhandled_abort(regs, addr, ifsr);
 
 	printk(KERN_ALERT "Unhandled prefetch abort: %s (0x%03x) at 0x%08lx\n",
 		inf->name, ifsr, addr);

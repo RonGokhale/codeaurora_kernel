@@ -173,7 +173,7 @@ void coresight_csr_set_byte_cntr(uint32_t count)
 }
 EXPORT_SYMBOL(coresight_csr_set_byte_cntr);
 
-static int __devinit csr_probe(struct platform_device *pdev)
+static int csr_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device *dev = &pdev->dev;
@@ -231,7 +231,7 @@ static int __devinit csr_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit csr_remove(struct platform_device *pdev)
+static int csr_remove(struct platform_device *pdev)
 {
 	struct csr_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -246,7 +246,7 @@ static struct of_device_id csr_match[] = {
 
 static struct platform_driver csr_driver = {
 	.probe          = csr_probe,
-	.remove         = __devexit_p(csr_remove),
+	.remove         = csr_remove,
 	.driver         = {
 		.name   = "coresight-csr",
 		.owner	= THIS_MODULE,

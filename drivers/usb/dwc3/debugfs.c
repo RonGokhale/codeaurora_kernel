@@ -231,6 +231,7 @@ static const struct debugfs_reg32 dwc3_regs[] = {
 	dump_register(GEVNTCOUNT(0)),
 
 	dump_register(GHWPARAMS8),
+	dump_register(GFLADJ),
 	dump_register(DCFG),
 	dump_register(DCTL),
 	dump_register(DEVTEN),
@@ -373,29 +374,9 @@ static const struct debugfs_reg32 dwc3_regs[] = {
 
 	dump_register(OCFG),
 	dump_register(OCTL),
+	dump_register(OEVT),
 	dump_register(OEVTEN),
 	dump_register(OSTS),
-};
-
-static int dwc3_regdump_show(struct seq_file *s, void *unused)
-{
-	struct dwc3		*dwc = s->private;
-
-	seq_printf(s, "DesignWare USB3 Core Register Dump\n");
-	debugfs_print_regs32(s, dwc3_regs, ARRAY_SIZE(dwc3_regs),
-			     dwc->regs, "");
-	return 0;
-}
-
-static int dwc3_regdump_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, dwc3_regdump_show, inode->i_private);
-}
-
-static const struct file_operations dwc3_regdump_fops = {
-	.open			= dwc3_regdump_open,
-	.read			= seq_read,
-	.release		= single_release,
 };
 
 static int dwc3_mode_show(struct seq_file *s, void *unused)
@@ -599,8 +580,14 @@ static int dwc3_link_state_show(struct seq_file *s, void *unused)
 	case DWC3_LINK_STATE_LPBK:
 		seq_printf(s, "Loopback\n");
 		break;
+	case DWC3_LINK_STATE_RESET:
+		seq_printf(s, "Reset\n");
+		break;
+	case DWC3_LINK_STATE_RESUME:
+		seq_printf(s, "Resume\n");
+		break;
 	default:
-		seq_printf(s, "UNKNOWN %d\n", reg);
+		seq_printf(s, "UNKNOWN %d\n", state);
 	}
 
 	return 0;
@@ -794,9 +781,9 @@ const struct file_operations dwc3_ep_trb_list_fops = {
 	.release		= single_release,
 };
 
-static unsigned int ep_addr_rxdbg_mask;
+static unsigned int ep_addr_rxdbg_mask = 1;
 module_param(ep_addr_rxdbg_mask, uint, S_IRUGO | S_IWUSR);
-static unsigned int ep_addr_txdbg_mask;
+static unsigned int ep_addr_txdbg_mask = 1;
 module_param(ep_addr_txdbg_mask, uint, S_IRUGO | S_IWUSR);
 
 /* Maximum debug message length */
@@ -1053,7 +1040,110 @@ const struct file_operations dwc3_gadget_dbg_data_fops = {
 	.release		= single_release,
 };
 
-int __devinit dwc3_debugfs_init(struct dwc3 *dwc)
+static ssize_t dwc3_store_int_events(struct file *file,
+			const char __user *ubuf, size_t count, loff_t *ppos)
+{
+	int clear_stats, i;
+	unsigned long flags;
+	struct seq_file *s = file->private_data;
+	struct dwc3 *dwc = s->private;
+	struct dwc3_ep *dep;
+
+	if (ubuf == NULL) {
+		pr_err("[%s] EINVAL\n", __func__);
+		goto done;
+	}
+
+	if (sscanf(ubuf, "%u", &clear_stats) != 1 || clear_stats != 0) {
+		pr_err("Wrong value. To clear stats, enter value as 0.\n");
+		goto done;
+	}
+
+	spin_lock_irqsave(&dwc->lock, flags);
+
+	pr_debug("%s(): clearing debug interrupt buffers\n", __func__);
+	for (i = 0; i < DWC3_ENDPOINTS_NUM; i++) {
+		dep = dwc->eps[i];
+		memset(&dep->dbg_ep_events, 0, sizeof(dep->dbg_ep_events));
+	}
+	memset(&dwc->dbg_gadget_events, 0, sizeof(dwc->dbg_gadget_events));
+
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+done:
+	return count;
+}
+
+static int dwc3_gadget_int_events_show(struct seq_file *s, void *unused)
+{
+	unsigned long   flags;
+	struct dwc3 *dwc = s->private;
+	struct dwc3_gadget_events *dbg_gadget_events;
+	struct dwc3_ep *dep;
+	int i;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	dbg_gadget_events = &dwc->dbg_gadget_events;
+
+	for (i = 0; i < DWC3_ENDPOINTS_NUM; i++) {
+		dep = dwc->eps[i];
+
+		if (dep == NULL)
+			continue;
+
+		seq_printf(s, "\n\n===== dbg_ep_events for EP(%d) =====\n", i);
+		seq_printf(s, "xfercomplete:%u\n xfernotready:%u\n",
+				dep->dbg_ep_events.xfercomplete,
+				dep->dbg_ep_events.xfernotready);
+		seq_printf(s, "control_data:%u\n control_status:%u\n",
+				dep->dbg_ep_events.control_data,
+				dep->dbg_ep_events.control_status);
+		seq_printf(s, "xferinprogress:%u\n rxtxfifoevent:%u\n",
+				dep->dbg_ep_events.xferinprogress,
+				dep->dbg_ep_events.rxtxfifoevent);
+		seq_printf(s, "streamevent:%u\n epcmdcomplt:%u\n",
+				dep->dbg_ep_events.streamevent,
+				dep->dbg_ep_events.epcmdcomplete);
+		seq_printf(s, "cmdcmplt:%u\n unknown:%u\n",
+				dep->dbg_ep_events.cmdcmplt,
+				dep->dbg_ep_events.unknown_event);
+	}
+
+	seq_puts(s, "\n=== dbg_gadget events ==\n");
+	seq_printf(s, "disconnect:%u\n reset:%u\n",
+		dbg_gadget_events->disconnect, dbg_gadget_events->reset);
+	seq_printf(s, "connect:%u\n wakeup:%u\n",
+		dbg_gadget_events->connect, dbg_gadget_events->wakeup);
+	seq_printf(s, "link_status_change:%u\n eopf:%u\n",
+		dbg_gadget_events->link_status_change, dbg_gadget_events->eopf);
+	seq_printf(s, "sof:%u\n suspend:%u\n",
+		dbg_gadget_events->sof, dbg_gadget_events->suspend);
+	seq_printf(s, "erratic_error:%u\n overflow:%u\n",
+		dbg_gadget_events->erratic_error,
+		dbg_gadget_events->overflow);
+	seq_printf(s, "vendor_dev_test_lmp:%u\n cmdcmplt:%u\n",
+		dbg_gadget_events->vendor_dev_test_lmp,
+		dbg_gadget_events->cmdcmplt);
+	seq_printf(s, "unknown_event:%u\n", dbg_gadget_events->unknown_event);
+
+	spin_unlock_irqrestore(&dwc->lock, flags);
+	return 0;
+}
+
+static int dwc3_gadget_events_open(struct inode *inode, struct file *f)
+{
+	return single_open(f, dwc3_gadget_int_events_show, inode->i_private);
+}
+
+const struct file_operations dwc3_gadget_dbg_events_fops = {
+	.open		= dwc3_gadget_events_open,
+	.read		= seq_read,
+	.write		= dwc3_store_int_events,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+int dwc3_debugfs_init(struct dwc3 *dwc)
 {
 	struct dentry		*root;
 	struct dentry		*file;
@@ -1067,32 +1157,46 @@ int __devinit dwc3_debugfs_init(struct dwc3 *dwc)
 
 	dwc->root = root;
 
-	file = debugfs_create_file("regdump", S_IRUGO, root, dwc,
-			&dwc3_regdump_fops);
+	dwc->regset = kzalloc(sizeof(*dwc->regset), GFP_KERNEL);
+	if (!dwc->regset) {
+		ret = -ENOMEM;
+		goto err1;
+	}
+
+	dwc->regset->regs = dwc3_regs;
+	dwc->regset->nregs = ARRAY_SIZE(dwc3_regs);
+	dwc->regset->base = dwc->regs;
+
+	file = debugfs_create_regset32("regdump", S_IRUGO, root, dwc->regset);
 	if (!file) {
 		ret = -ENOMEM;
 		goto err1;
 	}
 
-	file = debugfs_create_file("mode", S_IRUGO | S_IWUSR, root,
-			dwc, &dwc3_mode_fops);
-	if (!file) {
-		ret = -ENOMEM;
-		goto err1;
+	if (IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)) {
+		file = debugfs_create_file("mode", S_IRUGO | S_IWUSR, root,
+				dwc, &dwc3_mode_fops);
+		if (!file) {
+			ret = -ENOMEM;
+			goto err1;
+		}
 	}
 
-	file = debugfs_create_file("testmode", S_IRUGO | S_IWUSR, root,
-			dwc, &dwc3_testmode_fops);
-	if (!file) {
-		ret = -ENOMEM;
-		goto err1;
-	}
+	if (IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE) ||
+			IS_ENABLED(CONFIG_USB_DWC3_GADGET)) {
+		file = debugfs_create_file("testmode", S_IRUGO | S_IWUSR, root,
+				dwc, &dwc3_testmode_fops);
+		if (!file) {
+			ret = -ENOMEM;
+			goto err1;
+		}
 
-	file = debugfs_create_file("link_state", S_IRUGO | S_IWUSR, root,
-			dwc, &dwc3_link_state_fops);
-	if (!file) {
-		ret = -ENOMEM;
-		goto err1;
+		file = debugfs_create_file("link_state", S_IRUGO | S_IWUSR, root,
+				dwc, &dwc3_link_state_fops);
+		if (!file) {
+			ret = -ENOMEM;
+			goto err1;
+		}
 	}
 
 	file = debugfs_create_file("trbs", S_IRUGO | S_IWUSR, root,
@@ -1122,6 +1226,14 @@ int __devinit dwc3_debugfs_init(struct dwc3 *dwc)
 		ret = -ENOMEM;
 		goto err1;
 	}
+
+	file = debugfs_create_file("int_events", S_IRUGO | S_IWUSR, root,
+			dwc, &dwc3_gadget_dbg_events_fops);
+	if (!file) {
+		ret = -ENOMEM;
+		goto err1;
+	}
+
 	return 0;
 
 err1:
@@ -1131,7 +1243,7 @@ err0:
 	return ret;
 }
 
-void __devexit dwc3_debugfs_exit(struct dwc3 *dwc)
+void dwc3_debugfs_exit(struct dwc3 *dwc)
 {
 	debugfs_remove_recursive(dwc->root);
 	dwc->root = NULL;

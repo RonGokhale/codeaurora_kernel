@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -15,18 +15,92 @@
 #include <linux/module.h>
 #include <linux/pm_qos.h>
 #include <linux/clk.h>
-#include <mach/clk.h>
 #include <linux/io.h>
-
-#include <mach/camera.h>
-#include <mach/iommu_domains.h>
-#include <mach/msm_bus.h>
-#include <mach/msm_bus_board.h>
+#include <linux/clk/msm-clk.h>
+#include <linux/msm_iommu_domains.h>
+#include <linux/msm-bus.h>
+#include <linux/msm-bus-board.h>
+#include <linux/msm_ion.h>
+#include <linux/iommu.h>
 
 #include "msm_jpeg_platform.h"
 #include "msm_jpeg_sync.h"
 #include "msm_jpeg_common.h"
 #include "msm_jpeg_hw.h"
+#include "msm_camera_io_util.h"
+
+#define JPEG_CLK_INFO_MAX 16
+
+static struct msm_cam_clk_info jpeg_8x_clk_info[JPEG_CLK_INFO_MAX];
+
+static int msm_jpeg_get_clk_info(struct msm_jpeg_device *jpeg_dev,
+	struct platform_device *pdev)
+{
+	uint32_t count;
+	int i, rc;
+	uint32_t rates[JPEG_CLK_INFO_MAX];
+
+	struct device_node *of_node;
+	of_node = pdev->dev.of_node;
+
+	count = of_property_count_strings(of_node, "clock-names");
+
+	JPEG_DBG("count = %d\n", count);
+	if (count == 0) {
+		pr_err("no clocks found in device tree, count=%d", count);
+		return 0;
+	}
+
+	if (count > JPEG_CLK_INFO_MAX) {
+		pr_err("invalid count=%d, max is %d\n", count,
+			JPEG_CLK_INFO_MAX);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < count; i++) {
+		rc = of_property_read_string_index(of_node, "clock-names",
+				i, &(jpeg_8x_clk_info[i].clk_name));
+		JPEG_DBG("clock-names[%d] = %s\n",
+			 i, jpeg_8x_clk_info[i].clk_name);
+		if (rc < 0) {
+			pr_err("%s failed %d\n", __func__, __LINE__);
+			return rc;
+		}
+	}
+	rc = of_property_read_u32_array(of_node, "qcom,clock-rates",
+		rates, count);
+	if (rc < 0) {
+		pr_err("%s failed %d\n", __func__, __LINE__);
+		return rc;
+	}
+	for (i = 0; i < count; i++) {
+		jpeg_8x_clk_info[i].clk_rate =
+			(rates[i] == 0) ? (long) -1 : (long) rates[i];
+		JPEG_DBG("clk_rate[%d] = %ld\n",
+			i, jpeg_8x_clk_info[i].clk_rate);
+	}
+	jpeg_dev->num_clk = count;
+	return 0;
+}
+
+
+int msm_jpeg_platform_set_clk_rate(struct msm_jpeg_device *pgmn_dev,
+		long clk_rate)
+{
+	int rc = 0;
+	struct clk *jpeg_clk;
+
+	jpeg_clk = clk_get(&pgmn_dev->pdev->dev, "core_clk");
+	if (IS_ERR(jpeg_clk)) {
+		JPEG_PR_ERR("%s get failed\n", "core_clk");
+		rc = PTR_ERR(jpeg_clk);
+		return rc;
+	}
+
+	rc = clk_set_rate(jpeg_clk, clk_rate);
+
+	return rc;
+}
 
 void msm_jpeg_platform_p2v(struct msm_jpeg_device *pgmn_dev, struct file  *file,
 	struct ion_handle **ionhandle, int domain_num)
@@ -39,7 +113,7 @@ void msm_jpeg_platform_p2v(struct msm_jpeg_device *pgmn_dev, struct file  *file,
 uint32_t msm_jpeg_platform_v2p(struct msm_jpeg_device *pgmn_dev, int fd,
 	uint32_t len, struct file **file_p, struct ion_handle **ionhandle,
 	int domain_num) {
-	unsigned long paddr;
+	dma_addr_t paddr;
 	unsigned long size;
 	int rc;
 	*ionhandle = ion_import_dma_buf(pgmn_dev->jpeg_client, fd);
@@ -68,13 +142,6 @@ error1:
 	ion_free(pgmn_dev->jpeg_client, *ionhandle);
 	return 0;
 }
-
-static struct msm_cam_clk_info jpeg_8x_clk_info[] = {
-	{"core_clk", JPEG_CLK_RATE},
-	{"iface_clk", -1},
-	{"bus_clk0", -1},
-	{"camss_top_ahb_clk", -1},
-};
 
 static void set_vbif_params(struct msm_jpeg_device *pgmn_dev,
 	 void *jpeg_vbif_base)
@@ -109,7 +176,7 @@ static void set_vbif_params(struct msm_jpeg_device *pgmn_dev,
 		jpeg_vbif_base + JPEG_VBIF_OUT_AXI_AOOO);
 	/*FE and WE QOS configuration need to be set when
 	QOS RR arbitration is enabled*/
-	if (pgmn_dev->hw_version == JPEG_8974_V2)
+	if (pgmn_dev->hw_version != JPEG_8974_V1)
 		writel_relaxed(0x00000003,
 				jpeg_vbif_base + JPEG_VBIF_ROUND_ROBIN_QOS_ARB);
 	else
@@ -157,6 +224,50 @@ static struct msm_bus_scale_pdata msm_jpeg_bus_client_pdata = {
 	.name = "msm_jpeg",
 };
 
+#ifdef CONFIG_MSM_IOMMU
+static int msm_jpeg_attach_iommu(struct msm_jpeg_device *pgmn_dev)
+{
+	int i;
+
+	for (i = 0; i < pgmn_dev->iommu_cnt; i++) {
+		int rc = iommu_attach_device(pgmn_dev->domain,
+				pgmn_dev->iommu_ctx_arr[i]);
+		if (rc < 0) {
+			JPEG_PR_ERR("%s: Device attach failed\n", __func__);
+			return -ENODEV;
+		}
+		JPEG_DBG("%s:%d] dom 0x%lx ctx 0x%lx", __func__, __LINE__,
+				(unsigned long)pgmn_dev->domain,
+				(unsigned long)pgmn_dev->iommu_ctx_arr[i]);
+	}
+	return 0;
+}
+static int msm_jpeg_detach_iommu(struct msm_jpeg_device *pgmn_dev)
+{
+	int i;
+
+	for (i = 0; i < pgmn_dev->iommu_cnt; i++) {
+		JPEG_DBG("%s:%d] dom 0x%lx ctx 0x%lx", __func__, __LINE__,
+				(unsigned long)pgmn_dev->domain,
+				(unsigned long)pgmn_dev->iommu_ctx_arr[i]);
+		iommu_detach_device(pgmn_dev->domain,
+				pgmn_dev->iommu_ctx_arr[i]);
+	}
+	return 0;
+}
+#else
+static int msm_jpeg_attach_iommu(struct msm_jpeg_device *pgmn_dev)
+{
+	return 0;
+}
+static int msm_jpeg_detach_iommu(struct msm_jpeg_device *pgmn_dev)
+{
+	return 0;
+}
+#endif
+
+
+
 int msm_jpeg_platform_init(struct platform_device *pdev,
 	struct resource **mem,
 	void **base,
@@ -165,9 +276,8 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 	void *context)
 {
 	int rc = -1;
-	int i = 0;
 	int jpeg_irq;
-	struct resource *jpeg_mem, *jpeg_io, *jpeg_irq_res;
+	struct resource *jpeg_mem, *vbif_mem, *jpeg_io, *jpeg_irq_res;
 	void *jpeg_base;
 	struct msm_jpeg_device *pgmn_dev =
 		(struct msm_jpeg_device *) context;
@@ -176,7 +286,13 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 
 	jpeg_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!jpeg_mem) {
-		JPEG_PR_ERR("%s: no mem resource?\n", __func__);
+		JPEG_PR_ERR("%s: jpeg no mem resource?\n", __func__);
+		return -ENODEV;
+	}
+
+	vbif_mem = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!vbif_mem) {
+		JPEG_PR_ERR("%s: vbif no mem resource?\n", __func__);
 		return -ENODEV;
 	}
 
@@ -186,8 +302,8 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 		return -ENODEV;
 	}
 	jpeg_irq = jpeg_irq_res->start;
-	JPEG_DBG("%s base address: 0x%x, jpeg irq number: %d\n", __func__,
-		jpeg_mem->start, jpeg_irq);
+	JPEG_DBG("%s base address: 0x%lx, jpeg irq number: %d\n", __func__,
+		(unsigned long)jpeg_mem->start, jpeg_irq);
 
 	pgmn_dev->jpeg_bus_client =
 		msm_bus_scale_register_client(&msm_jpeg_bus_client_pdata);
@@ -221,8 +337,14 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 		goto fail_fs;
 	}
 
+	if (msm_jpeg_get_clk_info(pgmn_dev, pgmn_dev->pdev) < 0) {
+		JPEG_PR_ERR("%s:%d]jpeg clock get failed\n",
+				__func__, __LINE__);
+		goto fail_fs;
+	}
+
 	rc = msm_cam_clk_enable(&pgmn_dev->pdev->dev, jpeg_8x_clk_info,
-	 pgmn_dev->jpeg_clk, ARRAY_SIZE(jpeg_8x_clk_info), 1);
+	 pgmn_dev->jpeg_clk, pgmn_dev->num_clk, 1);
 	if (rc < 0) {
 		JPEG_PR_ERR("%s: clk failed rc = %d\n", __func__, rc);
 		goto fail_clk;
@@ -233,29 +355,19 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 	JPEG_DBG_HIGH("%s:%d] jpeg HW version 0x%x", __func__, __LINE__,
 		pgmn_dev->hw_version);
 
-	pgmn_dev->jpeg_vbif = ioremap(VBIF_BASE_ADDRESS, VBIF_REGION_SIZE);
+	pgmn_dev->jpeg_vbif = ioremap(vbif_mem->start, resource_size(vbif_mem));
 	if (!pgmn_dev->jpeg_vbif) {
 		rc = -ENOMEM;
-		JPEG_PR_ERR("%s:%d] ioremap failed\n", __func__, __LINE__);
+		JPEG_PR_ERR("%s: ioremap failed\n", __func__);
 		goto fail_vbif;
 	}
-	JPEG_DBG("%s:%d] jpeg_vbif 0x%x", __func__, __LINE__,
-		(uint32_t)pgmn_dev->jpeg_vbif);
+	JPEG_DBG("%s:%d] jpeg_vbif 0x%lx", __func__, __LINE__,
+		(unsigned long)pgmn_dev->jpeg_vbif);
 
-#ifdef CONFIG_MSM_IOMMU
-	for (i = 0; i < pgmn_dev->iommu_cnt; i++) {
-		rc = iommu_attach_device(pgmn_dev->domain,
-				pgmn_dev->iommu_ctx_arr[i]);
-		if (rc < 0) {
-			rc = -ENODEV;
-			JPEG_PR_ERR("%s: Device attach failed\n", __func__);
-			goto fail_iommu;
-		}
-		JPEG_DBG("%s:%d] dom 0x%x ctx 0x%x", __func__, __LINE__,
-					(uint32_t)pgmn_dev->domain,
-					(uint32_t)pgmn_dev->iommu_ctx_arr[i]);
-	}
-#endif
+	rc = msm_jpeg_attach_iommu(pgmn_dev);
+	if (rc < 0)
+		goto fail_iommu;
+
 	set_vbif_params(pgmn_dev, pgmn_dev->jpeg_vbif);
 
 	rc = request_irq(jpeg_irq, handler, IRQF_TRIGGER_RISING, "jpeg",
@@ -277,31 +389,19 @@ int msm_jpeg_platform_init(struct platform_device *pdev,
 	return rc;
 
 fail_request_irq:
-#ifdef CONFIG_MSM_IOMMU
-	for (i = 0; i < pgmn_dev->iommu_cnt; i++) {
-		JPEG_PR_ERR("%s:%d] dom 0x%x ctx 0x%x", __func__, __LINE__,
-					(uint32_t)pgmn_dev->domain,
-					(uint32_t)pgmn_dev->iommu_ctx_arr[i]);
-		iommu_detach_device(pgmn_dev->domain,
-					pgmn_dev->iommu_ctx_arr[i]);
-	}
-#endif
+	msm_jpeg_detach_iommu(pgmn_dev);
 
 fail_iommu:
 	iounmap(pgmn_dev->jpeg_vbif);
 
+
 fail_vbif:
 	msm_cam_clk_enable(&pgmn_dev->pdev->dev, jpeg_8x_clk_info,
-	pgmn_dev->jpeg_clk, ARRAY_SIZE(jpeg_8x_clk_info), 0);
+	pgmn_dev->jpeg_clk, pgmn_dev->num_clk, 0);
 
 fail_clk:
-	rc = regulator_disable(pgmn_dev->jpeg_fs);
-	if (!rc)
-		regulator_put(pgmn_dev->jpeg_fs);
-	else
-		JPEG_PR_ERR("%s:%d] regulator disable failed %d",
-			__func__, __LINE__, rc);
-	pgmn_dev->jpeg_fs = NULL;
+	regulator_disable(pgmn_dev->jpeg_fs);
+	regulator_put(pgmn_dev->jpeg_fs);
 
 fail_fs:
 	iounmap(jpeg_base);
@@ -316,23 +416,17 @@ int msm_jpeg_platform_release(struct resource *mem, void *base, int irq,
 	void *context)
 {
 	int result = 0;
-	int i = 0;
+
 	struct msm_jpeg_device *pgmn_dev =
 		(struct msm_jpeg_device *) context;
 
 	free_irq(irq, context);
 
-#ifdef CONFIG_MSM_IOMMU
-	for (i = 0; i < pgmn_dev->iommu_cnt; i++) {
-		iommu_detach_device(pgmn_dev->domain,
-				pgmn_dev->iommu_ctx_arr[i]);
-		JPEG_DBG("%s:%d]", __func__, __LINE__);
-	}
-#endif
+	msm_jpeg_detach_iommu(pgmn_dev);
 
 	msm_bus_scale_unregister_client(pgmn_dev->jpeg_bus_client);
 	msm_cam_clk_enable(&pgmn_dev->pdev->dev, jpeg_8x_clk_info,
-	pgmn_dev->jpeg_clk, ARRAY_SIZE(jpeg_8x_clk_info), 0);
+	pgmn_dev->jpeg_clk, pgmn_dev->num_clk, 0);
 	JPEG_DBG("%s:%d] clock disbale done", __func__, __LINE__);
 
 	if (pgmn_dev->jpeg_fs) {

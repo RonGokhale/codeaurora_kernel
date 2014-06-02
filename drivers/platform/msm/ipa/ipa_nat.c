@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -64,10 +64,10 @@ static int ipa_nat_mmap(struct file *filp, struct vm_area_struct *vma)
 			result = -EINVAL;
 			goto bail;
 		}
-		IPADBG("map sz=0x%x\n", nat_ctx->size);
+		IPADBG("map sz=0x%zx\n", nat_ctx->size);
 		result =
 			dma_mmap_coherent(
-				 NULL, vma,
+				 ipa_ctx->pdev, vma,
 				 nat_ctx->vaddr, nat_ctx->dma_handle,
 				 nat_ctx->size);
 
@@ -79,8 +79,14 @@ static int ipa_nat_mmap(struct file *filp, struct vm_area_struct *vma)
 	} else {
 		IPADBG("Mapping shared(local) memory\n");
 		IPADBG("map sz=0x%lx\n", vsize);
+
+		if ((IPA_NAT_PHYS_MEM_SIZE == 0) ||
+				(vsize > IPA_NAT_PHYS_MEM_SIZE)) {
+			result = -EINVAL;
+			goto bail;
+		}
 		phys_addr = ipa_ctx->ipa_wrapper_base + IPA_REG_BASE_OFST +
-			IPA_SRAM_DIRECT_ACCESS_n_OFST(IPA_NAT_PHYS_MEM_OFFSET);
+			IPA_SRAM_DIRECT_ACCESS_N_OFST(IPA_NAT_PHYS_MEM_OFFSET);
 
 		if (remap_pfn_range(
 			 vma, vma->vm_start,
@@ -121,7 +127,7 @@ int allocate_nat_device(struct ipa_ioc_nat_alloc_mem *mem)
 	int gfp_flags = GFP_KERNEL | __GFP_ZERO;
 	int result;
 
-	IPADBG("passed memory size %d\n", mem->size);
+	IPADBG("passed memory size %zu\n", mem->size);
 
 	mutex_lock(&nat_ctx->lock);
 	if (mem->size <= 0 || !strlen(mem->dev_name)
@@ -135,8 +141,8 @@ int allocate_nat_device(struct ipa_ioc_nat_alloc_mem *mem)
 		IPADBG("Allocating system memory\n");
 		nat_ctx->is_sys_mem = true;
 		nat_ctx->vaddr =
-		   dma_alloc_coherent(NULL, mem->size, &nat_ctx->dma_handle,
-				       gfp_flags);
+		   dma_alloc_coherent(ipa_ctx->pdev, mem->size,
+				   &nat_ctx->dma_handle, gfp_flags);
 		if (nat_ctx->vaddr == NULL) {
 			IPAERR("memory alloc failed\n");
 			result = -ENOMEM;
@@ -166,7 +172,7 @@ int allocate_nat_device(struct ipa_ioc_nat_alloc_mem *mem)
 
 	nat_ctx->dev =
 	   device_create(nat_ctx->class, NULL, nat_ctx->dev_num, nat_ctx,
-			 mem->dev_name);
+			"%s", mem->dev_name);
 
 	if (IS_ERR(nat_ctx->dev)) {
 		IPAERR("device_create err:%ld\n", PTR_ERR(nat_ctx->dev));
@@ -198,7 +204,7 @@ vaddr_alloc_fail:
 	if (nat_ctx->vaddr) {
 		IPADBG("Releasing system memory\n");
 		dma_free_coherent(
-			 NULL, nat_ctx->size,
+			 ipa_ctx->pdev, nat_ctx->size,
 			 nat_ctx->vaddr, nat_ctx->dma_handle);
 		nat_ctx->vaddr = NULL;
 		nat_ctx->dma_handle = 0;
@@ -225,6 +231,7 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 	struct ipa_ip_v4_nat_init *cmd;
 	u16 size = sizeof(struct ipa_ip_v4_nat_init);
 	int result;
+	u32 offset = 0;
 
 	IPADBG("\n");
 	if (init->tbl_index < 0 || init->table_entries <= 0) {
@@ -245,6 +252,26 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 		cmd->index_table_addr_type = IPA_NAT_SYSTEM_MEMORY;
 		cmd->index_table_expansion_addr_type = IPA_NAT_SYSTEM_MEMORY;
 
+		offset = UINT_MAX - ipa_ctx->nat_mem.dma_handle;
+
+		if ((init->ipv4_rules_offset > offset) ||
+			(init->expn_rules_offset > offset) ||
+			(init->index_offset > offset) ||
+			(init->index_expn_offset > offset)) {
+			IPAERR("Failed due to integer overflow\n");
+			IPAERR("nat.mem.dma_handle: 0x%pa\n",
+				&ipa_ctx->nat_mem.dma_handle);
+			IPAERR("ipv4_rules_offset: 0x%x\n",
+				init->ipv4_rules_offset);
+			IPAERR("expn_rules_offset: 0x%x\n",
+				init->expn_rules_offset);
+			IPAERR("index_offset: 0x%x\n",
+				init->index_offset);
+			IPAERR("index_expn_offset: 0x%x\n",
+				init->index_expn_offset);
+			result = -EPERM;
+			goto free_cmd;
+		}
 		cmd->ipv4_rules_addr =
 			ipa_ctx->nat_mem.dma_handle + init->ipv4_rules_offset;
 		IPADBG("ipv4_rules_offset:0x%x\n", init->ipv4_rules_offset);
@@ -267,16 +294,17 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 		cmd->index_table_addr_type = IPA_NAT_SHARED_MEMORY;
 		cmd->index_table_expansion_addr_type = IPA_NAT_SHARED_MEMORY;
 
-		cmd->ipv4_rules_addr =
-			init->ipv4_rules_offset + IPA_RAM_NAT_OFST;
+		cmd->ipv4_rules_addr = init->ipv4_rules_offset +
+				IPA_RAM_NAT_OFST;
 
-		cmd->ipv4_expansion_rules_addr =
-			init->expn_rules_offset + IPA_RAM_NAT_OFST;
+		cmd->ipv4_expansion_rules_addr = init->expn_rules_offset +
+				IPA_RAM_NAT_OFST;
 
-		cmd->index_table_addr = init->index_offset + IPA_RAM_NAT_OFST;
+		cmd->index_table_addr = init->index_offset  +
+				IPA_RAM_NAT_OFST;
 
-		cmd->index_table_expansion_addr =
-			init->index_expn_offset + IPA_RAM_NAT_OFST;
+		cmd->index_table_expansion_addr = init->index_expn_offset +
+				IPA_RAM_NAT_OFST;
 	}
 	cmd->table_index = init->tbl_index;
 	IPADBG("Table index:0x%x\n", cmd->table_index);
@@ -290,7 +318,7 @@ int ipa_nat_init_cmd(struct ipa_ioc_v4_nat_init *init)
 	desc.type = IPA_IMM_CMD_DESC;
 	desc.callback = NULL;
 	desc.user1 = NULL;
-	desc.user2 = NULL;
+	desc.user2 = 0;
 	desc.pyld = (void *)cmd;
 	desc.len = size;
 	IPADBG("posting v4 init command\n");
@@ -359,7 +387,7 @@ int ipa_nat_dma_cmd(struct ipa_ioc_nat_dma_cmd *dma)
 		goto bail;
 	}
 	size = sizeof(struct ipa_desc) * dma->entries;
-	desc = kmalloc(size, GFP_KERNEL);
+	desc = kzalloc(size, GFP_KERNEL);
 	if (desc == NULL) {
 		IPAERR("Failed to alloc memory\n");
 		ret = -ENOMEM;
@@ -382,7 +410,7 @@ int ipa_nat_dma_cmd(struct ipa_ioc_nat_dma_cmd *dma)
 		desc[cnt].callback = NULL;
 		desc[cnt].user1 = NULL;
 
-		desc[cnt].user2 = NULL;
+		desc[cnt].user2 = 0;
 
 		desc[cnt].len = sizeof(struct ipa_nat_dma);
 		desc[cnt].pyld = (void *)&cmd[cnt];
@@ -413,7 +441,7 @@ void ipa_nat_free_mem_and_device(struct ipa_nat_mem *nat_ctx)
 	if (nat_ctx->is_sys_mem) {
 		IPADBG("freeing the dma memory\n");
 		dma_free_coherent(
-			 NULL, nat_ctx->size,
+			 ipa_ctx->pdev, nat_ctx->size,
 			 nat_ctx->vaddr, nat_ctx->dma_handle);
 		nat_ctx->size = 0;
 		nat_ctx->vaddr = NULL;
@@ -477,7 +505,7 @@ int ipa_nat_del_cmd(struct ipa_ioc_v4_nat_del *del)
 	desc.type = IPA_IMM_CMD_DESC;
 	desc.callback = NULL;
 	desc.user1 = NULL;
-	desc.user2 = NULL;
+	desc.user2 = 0;
 	desc.pyld = (void *)cmd;
 	desc.len = size;
 	if (ipa_send_cmd(1, &desc)) {

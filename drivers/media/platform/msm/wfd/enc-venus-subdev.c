@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 and
@@ -14,13 +14,14 @@
 #include <linux/bitmap.h>
 #include <linux/completion.h>
 #include <linux/ion.h>
+#include <linux/jiffies.h>
 #include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
-#include <mach/iommu_domains.h>
+#include <linux/msm_iommu_domains.h>
 #include <media/msm_vidc.h>
 #include <media/v4l2-subdev.h>
 #include "enc-subdev.h"
@@ -28,6 +29,7 @@
 
 #define BUF_TYPE_OUTPUT V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE
 #define BUF_TYPE_INPUT V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE
+#define TIMEOUT msecs_to_jiffies(100)
 
 static struct ion_client *venc_ion_client;
 static long venc_secure(struct v4l2_subdev *sd);
@@ -377,7 +379,8 @@ static long venc_open(struct v4l2_subdev *sd, void *arg)
 		goto vidc_wq_create_fail;
 	}
 
-	inst->vidc_context = msm_vidc_open(MSM_VIDC_CORE_0, MSM_VIDC_ENCODER);
+	inst->vidc_context = msm_vidc_open(MSM_VIDC_CORE_VENUS,
+				MSM_VIDC_ENCODER);
 	if (!inst->vidc_context) {
 		WFD_MSG_ERR("Failed to create vidc context\n");
 		rc = -ENXIO;
@@ -443,6 +446,8 @@ static long venc_close(struct v4l2_subdev *sd, void *arg)
 	if (rc)
 		WFD_MSG_WARN("Failed to close vidc context\n");
 
+	kfree(inst->free_output_indices.bitmap);
+	kfree(inst->free_input_indices.bitmap);
 	kfree(inst);
 	sd->dev_priv = inst = NULL;
 venc_close_fail:
@@ -729,6 +734,7 @@ static int venc_map_user_to_kernel(struct venc_inst *inst,
 	int rc = 0;
 	unsigned long size = 0, align_req = 0, flags = 0;
 	int domain = 0, partition = 0;
+	dma_addr_t paddr = 0;
 
 	if (!mregion) {
 		rc = -EINVAL;
@@ -778,7 +784,7 @@ static int venc_map_user_to_kernel(struct venc_inst *inst,
 
 	rc = ion_map_iommu(venc_ion_client, mregion->ion_handle,
 			domain, partition, align_req, 0,
-			(unsigned long *)&mregion->paddr, &size, 0, 0);
+			&paddr, &size, 0, 0);
 	if (rc) {
 		WFD_MSG_ERR("Failed to map into iommu\n");
 		goto venc_map_iommu_map_fail;
@@ -787,6 +793,7 @@ static int venc_map_user_to_kernel(struct venc_inst *inst,
 		goto venc_map_iommu_size_fail;
 	}
 
+	mregion->paddr = dma_addr_to_void_ptr(paddr);
 	return 0;
 venc_map_iommu_size_fail:
 	ion_unmap_iommu(venc_ion_client, mregion->ion_handle,
@@ -1026,10 +1033,18 @@ static long fill_outbuf(struct venc_inst *inst, struct mem_region *mregion)
 		index = next_free_index(&inst->free_output_indices);
 		mutex_unlock(&inst->lock);
 
-		if (index < 0)
-			wait_for_completion(&inst->dq_complete);
-		else
+		if (index < 0) {
+			rc = wait_for_completion_timeout(&inst->dq_complete,
+					TIMEOUT);
+			if (!rc) {
+				WFD_MSG_ERR(
+					"Timed out waiting for an output buffer\n");
+				rc = -ETIMEDOUT;
+				goto err_fill_buf;
+			}
+		} else {
 			break;
+		}
 	}
 
 	buffer = (struct v4l2_buffer) {
@@ -1049,6 +1064,7 @@ static long fill_outbuf(struct venc_inst *inst, struct mem_region *mregion)
 		mutex_unlock(&inst->lock);
 	}
 
+err_fill_buf:
 	return rc;
 }
 
@@ -1152,10 +1168,18 @@ static long venc_encode_frame(struct v4l2_subdev *sd, void *arg)
 		index = next_free_index(&inst->free_input_indices);
 		mutex_unlock(&inst->lock);
 
-		if (index < 0)
-			wait_for_completion(&inst->dq_complete);
-		else
+		if (index < 0) {
+			rc = wait_for_completion_timeout(&inst->dq_complete,
+					TIMEOUT);
+			if (!rc) {
+				WFD_MSG_ERR(
+					"Timed out waiting for an input buffer\n");
+				rc = -ETIMEDOUT;
+				goto err_encode_frame;
+			}
+		} else {
 			break;
+		}
 	}
 
 	buffer = (struct v4l2_buffer) {
@@ -1175,6 +1199,7 @@ static long venc_encode_frame(struct v4l2_subdev *sd, void *arg)
 		mark_index_busy(&inst->free_input_indices, index);
 		mutex_unlock(&inst->lock);
 	}
+err_encode_frame:
 	return rc;
 }
 
@@ -1321,7 +1346,7 @@ long venc_mmap(struct v4l2_subdev *sd, void *arg)
 	struct mem_region *mregion = NULL;
 	unsigned long size = 0, align_req = 0, flags = 0;
 	int domain = 0, partition = 0, rc = 0;
-	void *paddr = NULL;
+	dma_addr_t paddr = 0;
 	struct venc_inst *inst = NULL;
 
 	if (!sd) {
@@ -1367,10 +1392,10 @@ long venc_mmap(struct v4l2_subdev *sd, void *arg)
 
 	rc = ion_map_iommu(mmap->ion_client, mregion->ion_handle,
 			domain, partition, align_req, 0,
-			(unsigned long *)&paddr, &size, 0, 0);
+			&paddr, &size, 0, 0);
 	if (rc) {
 		WFD_MSG_ERR("Failed to get physical addr %d\n", rc);
-		paddr = NULL;
+		paddr = 0;
 		goto venc_map_bad_align;
 	} else if (size < mregion->size) {
 		WFD_MSG_ERR("Failed to map enough memory\n");
@@ -1378,7 +1403,7 @@ long venc_mmap(struct v4l2_subdev *sd, void *arg)
 		goto venc_map_iommu_size_fail;
 	}
 
-	mregion->paddr = paddr;
+	mregion->paddr = dma_addr_to_void_ptr(paddr);
 	return rc;
 
 venc_map_iommu_size_fail:

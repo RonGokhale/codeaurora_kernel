@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 and
@@ -30,13 +30,12 @@
 #include <sound/control.h>
 #include <sound/q6adm-v2.h>
 #include <asm/dma.h>
-#include <linux/memory_alloc.h>
 #include "msm-pcm-afe-v2.h"
 
 #define MIN_PLAYBACK_PERIOD_SIZE (128 * 2)
 #define MAX_PLAYBACK_PERIOD_SIZE (128 * 2 * 2 * 6)
-#define MIN_PLAYBACK_NUM_PERIODS (64)
-#define MAX_PLAYBACK_NUM_PERIODS (768)
+#define MIN_PLAYBACK_NUM_PERIODS (32)
+#define MAX_PLAYBACK_NUM_PERIODS (384)
 
 #define MIN_CAPTURE_PERIOD_SIZE (128 * 2 * 4)
 #define MAX_CAPTURE_PERIOD_SIZE (128 * 2 * 2 * 6 * 4)
@@ -382,7 +381,7 @@ static int msm_afe_open(struct snd_pcm_substream *substream)
 		pr_err("Failed to allocate memory for msm_audio\n");
 		return -ENOMEM;
 	} else
-		pr_debug("prtd %x\n", (unsigned int)prtd);
+		pr_debug("prtd %p\n", prtd);
 
 	mutex_init(&prtd->lock);
 	spin_lock_init(&prtd->dsp_lock);
@@ -677,7 +676,7 @@ static struct snd_soc_platform_driver msm_soc_platform = {
 	.probe		= msm_afe_afe_probe,
 };
 
-static __devinit int msm_afe_probe(struct platform_device *pdev)
+static int msm_afe_probe(struct platform_device *pdev)
 {
 	if (pdev->dev.of_node)
 		dev_set_name(&pdev->dev, "%s", "msm-pcm-afe");
@@ -706,7 +705,7 @@ static struct platform_driver msm_afe_driver = {
 		.of_match_table = msm_pcm_afe_dt_match,
 	},
 	.probe = msm_afe_probe,
-	.remove = __devexit_p(msm_afe_remove),
+	.remove = msm_afe_remove,
 };
 
 static int __init msm_soc_platform_init(void)

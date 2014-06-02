@@ -596,16 +596,18 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 {
 	struct acc_dev *dev = fp->private_data;
 	struct usb_request *req;
-	int r = count, xfer;
+	int r = count, xfer, len;
 	int ret = 0;
 
-	pr_debug("acc_read(%d)\n", count);
+	pr_debug("acc_read(%zd)\n", count);
 
 	if (dev->disconnected)
 		return -ENODEV;
 
 	if (count > BULK_BUFFER_SIZE)
 		count = BULK_BUFFER_SIZE;
+
+	len = ALIGN(count, dev->ep_out->maxpacket);
 
 	/* we will block until we're online */
 	pr_debug("acc_read: waiting for online\n");
@@ -618,7 +620,7 @@ static ssize_t acc_read(struct file *fp, char __user *buf,
 requeue_req:
 	/* queue a request */
 	req = dev->rx_req[0];
-	req->length = count;
+	req->length = len;
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_KERNEL);
 	if (ret < 0) {
@@ -661,7 +663,7 @@ static ssize_t acc_write(struct file *fp, const char __user *buf,
 	int r = count, xfer;
 	int ret;
 
-	pr_debug("acc_write(%d)\n", count);
+	pr_debug("acc_write(%zd)\n", count);
 
 	if (!dev->online || dev->disconnected)
 		return -ENODEV;
@@ -1185,7 +1187,7 @@ static int acc_bind_config(struct usb_configuration *c)
 	dev->cdev = c->cdev;
 	dev->function.name = "accessory";
 	dev->function.strings = acc_strings,
-	dev->function.descriptors = fs_acc_descs;
+	dev->function.fs_descriptors = fs_acc_descs;
 	dev->function.hs_descriptors = hs_acc_descs;
 	if (gadget_is_superspeed(c->cdev->gadget))
 		dev->function.ss_descriptors = ss_acc_descs;

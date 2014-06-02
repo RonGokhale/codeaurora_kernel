@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -106,6 +106,7 @@ struct msm_jpeg_device {
 	wait_queue_head_t reset_wait;
 	uint32_t res_size;
 	uint32_t jpeg_bus_client;
+	uint32_t num_clk;
 	enum msm_jpeg_state state;
 };
 
@@ -114,6 +115,11 @@ int __msm_jpeg_release(struct msm_jpeg_device *pgmn_dev);
 
 long __msm_jpeg_ioctl(struct msm_jpeg_device *pgmn_dev,
 	unsigned int cmd, unsigned long arg);
+
+#ifdef CONFIG_COMPAT
+long __msm_jpeg_compat_ioctl(struct msm_jpeg_device *pgmn_dev,
+	unsigned int cmd, unsigned long arg);
+#endif
 
 int __msm_jpeg_init(struct msm_jpeg_device *pgmn_dev);
 int __msm_jpeg_exit(struct msm_jpeg_device *pgmn_dev);

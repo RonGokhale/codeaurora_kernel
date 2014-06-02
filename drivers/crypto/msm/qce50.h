@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,7 +12,7 @@
 #ifndef _DRIVERS_CRYPTO_MSM_QCE50_H_
 #define _DRIVERS_CRYPTO_MSM_QCE50_H_
 
-#include <mach/sps.h>
+#include <linux/msm-sps.h>
 
 /* MAX Data xfer block size between BAM and CE */
 #define MAX_CE_BAM_BURST_SIZE   0x40
@@ -20,7 +20,7 @@
 
 #define GET_VIRT_ADDR(x)  \
 		((uint32_t)pce_dev->coh_vmem +			\
-		((uint32_t)x - pce_dev->coh_pmem))
+		((uint32_t)x - (uint32_t)pce_dev->coh_pmem))
 #define GET_PHYS_ADDR(x)  \
 		(pce_dev->coh_pmem + (x - (uint32_t)pce_dev->coh_vmem))
 
@@ -113,6 +113,10 @@ struct qce_cmdlistptr_ops {
 	struct qce_cmdlist_info aead_hmac_sha1_ecb_3des;
 	struct qce_cmdlist_info aead_aes_128_ccm;
 	struct qce_cmdlist_info aead_aes_256_ccm;
+	struct qce_cmdlist_info f8_kasumi;
+	struct qce_cmdlist_info f8_snow3g;
+	struct qce_cmdlist_info f9_kasumi;
+	struct qce_cmdlist_info f9_snow3g;
 	struct qce_cmdlist_info unlock_all_pipes;
 };
 
@@ -140,6 +144,8 @@ struct qce_ce_cfg_reg_setting {
 
 	uint32_t encr_cfg_3des_cbc;
 	uint32_t encr_cfg_3des_ecb;
+	uint32_t encr_cfg_kasumi;
+	uint32_t encr_cfg_snow3g;
 
 	uint32_t auth_cfg_cmac_128;
 	uint32_t auth_cfg_cmac_256;
@@ -154,7 +160,8 @@ struct qce_ce_cfg_reg_setting {
 	uint32_t auth_cfg_aes_ccm_256;
 	uint32_t auth_cfg_aead_sha1_hmac;
 	uint32_t auth_cfg_aead_sha256_hmac;
-
+	uint32_t auth_cfg_kasumi;
+	uint32_t auth_cfg_snow3g;
 };
 
 /* DM data structure with buffers, commandlists & commmand pointer lists */
@@ -169,6 +176,7 @@ struct ce_sps_data {
 	struct sps_event_notify		notify;
 	struct scatterlist		*src;
 	struct scatterlist		*dst;
+	uint32_t			ce_device;
 	unsigned int			pipe_pair_index;
 	unsigned int			src_pipe_index;
 	unsigned int			dest_pipe_index;

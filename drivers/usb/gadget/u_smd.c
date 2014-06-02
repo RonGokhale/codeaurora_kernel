@@ -1,7 +1,7 @@
 /*
  * u_smd.c - utilities for USB gadget serial over smd
  *
- * Copyright (c) 2011, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This code also borrows from drivers/usb/gadget/u_serial.c, which is
  * Copyright (C) 2000 - 2003 Al Borchers (alborchers@steinerpoint.com)
@@ -25,7 +25,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/termios.h>
-#include <mach/msm_smd.h>
+#include <soc/qcom/smd.h>
 #include <linux/debugfs.h>
 
 #include "u_serial.h"
@@ -327,6 +327,7 @@ static void gsmd_tx_pull(struct work_struct *w)
 		req = list_entry(pool->next, struct usb_request, list);
 		list_del(&req->list);
 		req->length = smd_read(pi->ch, req->buf, avail);
+		req->zero = 1;
 
 		spin_unlock_irq(&port->port_lock);
 		ret = usb_ep_queue(in, req, GFP_KERNEL);
@@ -680,8 +681,8 @@ int gsmd_connect(struct gserial *gser, u8 portno)
 
 	ret = usb_ep_enable(gser->in);
 	if (ret) {
-		pr_err("%s: usb_ep_enable failed eptype:IN ep:%p",
-				__func__, gser->in);
+		pr_err("%s: usb_ep_enable failed eptype:IN ep:%p, err:%d",
+				__func__, gser->in, ret);
 		port->port_usb = 0;
 		return ret;
 	}
@@ -689,8 +690,8 @@ int gsmd_connect(struct gserial *gser, u8 portno)
 
 	ret = usb_ep_enable(gser->out);
 	if (ret) {
-		pr_err("%s: usb_ep_enable failed eptype:OUT ep:%p",
-				__func__, gser->out);
+		pr_err("%s: usb_ep_enable failed eptype:OUT ep:%p, err: %d",
+				__func__, gser->out, ret);
 		port->port_usb = 0;
 		gser->in->driver_data = 0;
 		return ret;
@@ -745,6 +746,8 @@ void gsmd_disconnect(struct gserial *gser, u8 portno)
 				port->cbits_to_modem,
 				~port->cbits_to_modem);
 	}
+
+	gser->notify_modem = NULL;
 
 	if (port->pi->ch)
 		queue_work(gsmd_wq, &port->disconnect_work);
@@ -993,3 +996,20 @@ void gsmd_cleanup(struct usb_gadget *g, unsigned count)
 {
 	/* TBD */
 }
+
+int gsmd_write(u8 portno, char *buf, unsigned int size)
+{
+	int count, avail;
+	struct gsmd_port const *port = smd_ports[portno].port;
+
+	if (portno > SMD_N_PORTS)
+		return -EINVAL;
+
+	avail = smd_write_avail(port->pi->ch);
+	if (avail < size)
+		return -EAGAIN;
+
+	count = smd_write(port->pi->ch, buf, size);
+	return count;
+}
+

@@ -204,7 +204,8 @@ static int pas_cpufreq_cpu_init(struct cpufreq_policy *policy)
 
 	/* initialize frequency table */
 	for (i=0; pas_freqs[i].frequency!=CPUFREQ_TABLE_END; i++) {
-		pas_freqs[i].frequency = get_astate_freq(pas_freqs[i].index) * 100000;
+		pas_freqs[i].frequency =
+			get_astate_freq(pas_freqs[i].driver_data) * 100000;
 		pr_debug("%d: %d\n", i, pas_freqs[i].frequency);
 	}
 
@@ -236,6 +237,13 @@ out:
 
 static int pas_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 {
+	/*
+	 * We don't support CPU hotplug. Don't unmap after the system
+	 * has already made it to a running state.
+	 */
+	if (system_state != SYSTEM_BOOTING)
+		return 0;
+
 	if (sdcasr_mapbase)
 		iounmap(sdcasr_mapbase);
 	if (sdcpwr_mapbase)
@@ -266,22 +274,21 @@ static int pas_cpufreq_target(struct cpufreq_policy *policy,
 
 	freqs.old = policy->cur;
 	freqs.new = pas_freqs[pas_astate_new].frequency;
-	freqs.cpu = policy->cpu;
 
 	mutex_lock(&pas_switch_mutex);
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
 	pr_debug("setting frequency for cpu %d to %d kHz, 1/%d of max frequency\n",
 		 policy->cpu,
 		 pas_freqs[pas_astate_new].frequency,
-		 pas_freqs[pas_astate_new].index);
+		 pas_freqs[pas_astate_new].driver_data);
 
 	current_astate = pas_astate_new;
 
 	for_each_online_cpu(i)
 		set_astate(i, pas_astate_new);
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 	mutex_unlock(&pas_switch_mutex);
 
 	ppc_proc_freq = freqs.new * 1000ul;
@@ -290,7 +297,6 @@ static int pas_cpufreq_target(struct cpufreq_policy *policy,
 
 static struct cpufreq_driver pas_cpufreq_driver = {
 	.name		= "pas-cpufreq",
-	.owner		= THIS_MODULE,
 	.flags		= CPUFREQ_CONST_LOOPS,
 	.init		= pas_cpufreq_cpu_init,
 	.exit		= pas_cpufreq_cpu_exit,

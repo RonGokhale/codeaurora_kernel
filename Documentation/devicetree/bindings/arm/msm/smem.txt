@@ -1,17 +1,25 @@
-Qualcomm Shared Memory
+MSM Shared Memory
 
 [Root level node]
 Required properties:
 -compatible : should be "qcom,smem"
--reg : the location and size of smem, the irq register base memory, and
-	optionally any auxiliary smem areas
--reg-names : "smem" - string to identify the shared memory region
+-reg : the location and size of smem (optional)
+	the irq register base address (required)
+	the location and size of auxiliary smem areas (optional)
+	the smem target info either from IMEM or register (optional)
+-reg-names : "smem" - optional string to identify the shared memory region
 	     "irq-reg-base" - string to identify the irq register region
 	     "aux-mem1", "aux-mem2", "aux-mem3", ... - optional strings to
 			identify any auxiliary shared memory regions
+	     "smem_targ_info_imem" - optional string to identify
+				the smem target info from IMEM memory
+	     "smem_targ_info_reg" - optional string to identify
+				the smem target info from registers
+	     one of the optional register names smem_targ_info_imem,
+				smem_targ_info_reg, or smem is required.
 
 Optional properties:
--mpu-enabled : boolean value indicating that Memory Protection Unit based
+-qcom,mpu-enabled : boolean value indicating that Memory Protection Unit based
 	security is enabled on the "smem" shared memory region
 
 [Second level nodes]
@@ -24,10 +32,11 @@ Required properties:
 	interrupts
 -qcom,smd-irq-bitmask : the sending irq bitmask
 -interrupts : the receiving interrupt line
+-label : the name of the remote subsystem for this edge
 
 Optional properties:
--qcom,pil-string : the name to use when loading this edge
 -qcom,irq-no-suspend: configure the incoming irq line as active during suspend
+-qcom,not-loadable : indicates this processor cannot be loaded by PIL
 
 qcom,smsm
 Required properties:
@@ -53,8 +62,8 @@ Example:
 			qcom,smd-edge = <0>;
 			qcom,smd-irq-offset = <0x8>;
 			qcom,smd-irq-bitmask = <0x1000>;
-			qcom,pil-string = "modem";
 			interrupts = <0 25 1>;
+			label = "modem";
 		};
 
 		qcom,smsm-modem {
@@ -70,8 +79,8 @@ Example:
 			qcom,smd-edge = <1>;
 			qcom,smd-irq-offset = <0x8>;
 			qcom,smd-irq-bitmask = <0x100>;
-			qcom,pil-string = "adsp";
 			interrupts = <0 156 1>;
+			label = "adsp";
 		};
 
 		qcom,smsm-adsp {
@@ -87,8 +96,8 @@ Example:
 			qcom,smd-edge = <6>;
 			qcom,smd-irq-offset = <0x8>;
 			qcom,smd-irq-bitmask = <0x20000>;
-			qcom,pil-string = "wcnss";
 			interrupts = <0 142 1>;
+			label = "wcnss";
 		};
 
 		qcom,smsm-wcnss {
@@ -105,7 +114,9 @@ Example:
 			qcom,smd-irq-offset = <0x8>;
 			qcom,smd-irq-bitmask = <0x1>;
 			interrupts = <0 168 1>;
+			label = "rpm";
 			qcom,irq-no-syspend;
+			qcom,not-loadable;
 		};
 	};
 

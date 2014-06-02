@@ -222,13 +222,21 @@ static int of_batterydata_load_battery_data(struct device_node *node,
 	if (rc)
 		return rc;
 
+	rc = of_property_read_string(node, "qcom,battery-type",
+					&batt_data->battery_type);
+	if (rc) {
+		pr_err("Error reading qcom,battery-type property rc=%d\n", rc);
+		batt_data->battery_type = NULL;
+		return rc;
+	}
+
 	OF_PROP_READ(batt_data->fcc, "fcc-mah", node, rc, false);
 	OF_PROP_READ(batt_data->default_rbatt_mohm,
 			"default-rbatt-mohm", node, rc, false);
 	OF_PROP_READ(batt_data->rbatt_capacitive_mohm,
 			"rbatt-capacitive-mohm", node, rc, false);
 	OF_PROP_READ(batt_data->flat_ocv_threshold_uv,
-			"flat-ocv-threshold", node, rc, true);
+			"flat-ocv-threshold-uv", node, rc, true);
 	OF_PROP_READ(batt_data->max_voltage_uv,
 			"max-voltage-uv", node, rc, true);
 	OF_PROP_READ(batt_data->cutoff_uv, "v-cutoff-uv", node, rc, true);
@@ -244,9 +252,17 @@ static int64_t of_batterydata_convert_battery_id_kohm(int batt_id_uv,
 {
 	int64_t resistor_value_kohm, denom;
 
+	if (batt_id_uv == 0) {
+		/* vadc not correct or batt id line grounded, report 0 kohms */
+		return 0;
+	}
 	/* calculate the battery id resistance reported via ADC */
 	denom = div64_s64(vadc_vdd * 1000000LL, batt_id_uv) - 1000000LL;
 
+	if (denom == 0) {
+		/* batt id connector might be open, return 0 kohms */
+		return 0;
+	}
 	resistor_value_kohm = div64_s64(rpull_up * 1000000LL + denom/2, denom);
 
 	pr_debug("batt id voltage = %d, resistor value = %lld\n",
@@ -261,6 +277,7 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 {
 	struct device_node *node, *best_node;
 	struct batt_ids batt_ids;
+	const char *battery_type = NULL;
 	int delta, best_delta, batt_id_kohm, rpull_up_kohm,
 		vadc_vdd_uv, best_id_kohm, i, rc = 0;
 
@@ -299,6 +316,12 @@ int of_batterydata_read_data(struct device_node *batterydata_container_node,
 		pr_err("No battery data found\n");
 		return -ENODATA;
 	}
+	rc = of_property_read_string(best_node, "qcom,battery-type",
+							&battery_type);
+	if (!rc)
+		pr_info("%s loaded\n", battery_type);
+	else
+		pr_info("%s loaded\n", best_node->name);
 
 	return of_batterydata_load_battery_data(best_node,
 					best_id_kohm, batt_data);

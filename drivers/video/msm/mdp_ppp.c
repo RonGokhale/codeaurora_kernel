@@ -1,7 +1,7 @@
 /* drivers/video/msm/src/drv/mdp/mdp_ppp.c
  *
  * Copyright (C) 2007 Google Incorporated
- * Copyright (c) 2008-2009, 2012 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2008-2009, 2012-2014 The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -29,13 +29,9 @@
 #include <mach/hardware.h>
 #include <linux/io.h>
 
-#include <asm/system.h>
-#include <asm/mach-types.h>
 #include <linux/semaphore.h>
 #include <linux/msm_kgsl.h>
 
-#include "mdp.h"
-#include "msm_fb.h"
 
 #define MDP_IS_IMGTYPE_BAD(x) (((x) >= MDP_IMGTYPE_LIMIT) && \
 				(((x) < MDP_IMGTYPE2_START) || \
@@ -1250,9 +1246,7 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 {
 	int put_needed, fb_num, ret = 0;
 	struct file *file;
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
-#endif
 
 	if (req->flags & MDP_MEMORY_ID_TYPE_FB) {
 		file = fget_light(img->memory_id, &put_needed);
@@ -1274,25 +1268,23 @@ int get_img(struct mdp_img *img, struct mdp_blit_req *req,
 			fput_light(file, put_needed);
 		}
 	}
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
-		*srcp_ihdl = ion_import_dma_buf(mfd->iclient, img->memory_id);
-		if (IS_ERR_OR_NULL(*srcp_ihdl))
-			return PTR_ERR(*srcp_ihdl);
 
-		if (!ion_phys(mfd->iclient, *srcp_ihdl, start, (size_t *) len))
-			return ret;
-		 else
-			return -EINVAL;
-#endif
+	*srcp_ihdl = ion_import_dma_buf(mfd->iclient, img->memory_id);
+	if (IS_ERR_OR_NULL(*srcp_ihdl))
+		return PTR_ERR(*srcp_ihdl);
+
+	if (!ion_phys(mfd->iclient, *srcp_ihdl,
+	    (ion_phys_addr_t *)start, (size_t *) len))
+		return ret;
+	 else
+		return -EINVAL;
 
 }
 
 void put_img(struct file *p_src_file, struct ion_handle *p_ihdl)
 {
-#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
 	if (!IS_ERR_OR_NULL(p_ihdl))
 		ion_free(ppp_display_iclient, p_ihdl);
-#endif
 }
 
 
@@ -1385,7 +1377,7 @@ static int mdp_ppp_blit_addr(struct fb_info *info, struct mdp_blit_req *req,
 		iBuf.mdpImg.mdpOp |= MDPOP_DITHER;
 
 	if (req->flags & MDP_BLEND_FG_PREMULT) {
-#if defined(CONFIG_FB_MSM_MDP31) || defined(CONFIG_FB_MSM_MDP303)
+#if defined(CONFIG_FB_MSM_MDP31)
 		iBuf.mdpImg.mdpOp |= MDPOP_FG_PM_ALPHA;
 #else
 		put_img(p_src_file, *src_ihdl);

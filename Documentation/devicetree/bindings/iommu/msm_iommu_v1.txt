@@ -3,10 +3,14 @@
 Required properties:
 - compatible : one of:
 	- "qcom,msm-smmu-v1"
-- reg : offset and length of the register set for the device. Optional
-	offset and length for clock register for additional clock that
+	- "qcom,msm-smmu-v2"
+	- "qcom,msm-mmu-500"
+- reg : - offset and length of the register set for the device.
+	- Optional offset and length for clock register for additional clock that
 	needs to be turned on for access to this IOMMU.
-- reg-names: "iommu_base", "clk_base" (optional)
+	- Optional offset and length for enabling aggregated Context bank
+	interrupts
+- reg-names: "iommu_base", "clk_base" (optional), "smmu_local_base" (optional)
 - label: name of this IOMMU instance.
 
 Optional properties:
@@ -16,13 +20,20 @@ Optional properties:
 - qcom,vdd-supply: Regulator needed to access IOMMU
 - qcom,alt-vdd-supply : Alternative regulator needed to access IOMMU
   configuration registers.
-- interrupts : should contain the performance monitor overflow interrupt number.
+- interrupts : Interrupt numbers for permormance and global fault interrupts
+- interrupt-names: Refers to the interrupts number mentioned above.
+	"pmon" : the performance monitor overflow interrupt number
+	"global_cfg_NS_irq" : the global config non-secure interrupt number
+	"global_client_NS_irq" : the global client non-secure interrupt number
+	"global_cfg_S_irq" : the global config secure interrupt number
+	"global_client_S_irq" : the global client secure interrupt number
 - qcom,iommu-enable-halt : Enable halt of the IOMMU before programming certain	19
   registers
 - qcom,iommu-pmu-ngroups: Number of Performance Monitor Unit (PMU) groups.
 - qcom,iommu-pmu-ncounters: Number of PMU counters per group.
 - qcom,iommu-pmu-event-classes: List of event classes supported.
 - Bus scaling properties: See msm_bus.txt
+- qcom,cb-base-offset: context bank 0's base address from global base address
 
 - List of sub nodes, one for each of the translation context banks supported.
   Each sub node has the following required properties:
@@ -40,6 +51,8 @@ Optional properties:
 
 Optional properties:
 - qcom,needs-alt-core-clk : boolean to enable the secondary core clock for
+  access to the IOMMU configuration registers
+- qcom,needs-alt-iface-clk : boolean to enable the secondary iface clock for
   access to the IOMMU configuration registers
 - qcom,iommu-bfb-regs : An array of unsigned 32-bit integers corresponding to
   BFB register addresses that need to be configured for performance tuning

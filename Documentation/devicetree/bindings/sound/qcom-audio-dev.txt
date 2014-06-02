@@ -21,6 +21,12 @@ Required properties:
       - qcom,msm-pcm-low-latency : Flag indicating whether
         the device node is of type low latency.
 
+      - qcom,latency-level : Flag indicating whether the device node
+                            is of type regular low latency or ultra
+                            low latency.
+                            regular : regular low latency stream
+                            ultra : ultra low latency stream
+
 * msm-pcm-routing
 
 Required properties:
@@ -39,6 +45,12 @@ Required properties:
 
  - compatible : "qcom,msm-compr-dsp"
 
+* msm-compress-dsp
+
+Required properties:
+
+ - compatible : "qcom,msm-compress-dsp"
+
 * msm-voip-dsp
 
 Required properties:
@@ -50,6 +62,14 @@ Required properties:
 Required properties:
 
  - compatible : "qcom,msm-pcm-voice"
+ - qcom,destroy-cvd : Flag indicating whether to destroy cvd at
+                      the end of call for low memory targets
+
+* msm-voice-host-pcm
+
+Required properties:
+
+ - compatible : "qcom,msm-voice-host-pcm"
 
 * msm-stub-codec
 
@@ -80,11 +100,26 @@ Required properties:
 
 * msm-dai-stub
 
+[First Level Nodes]
+
 Required properties:
 
- - compatible : "qcom,msm-dai-stub"
- - qcom,msm-dai-stub : This enables stub CPU dai in Audio.
-   The stub dai is used when there is no real backend in Audio.
+ - compatible : "msm-dai-stub"
+
+[Second Level Nodes]
+
+Required properties:
+
+ - compatible : "qcom,msm-dai-stub-dev"
+ - qcom,msm-dai-stub-dev-id : Stub dai port ID value is from 0 to 3.
+   This enables stub CPU dai in Audio. The stub dai is used when
+   there is no real backend in Audio.
+
+* msm-dai-q6-spdif
+
+Optional properties:
+
+ - compatible : "msm-dai-q6-spdif"
 
 * msm-dai-q6-hdmi
 
@@ -101,6 +136,12 @@ Required properties:
 Required properties:
 
  - compatible : "qcom,msm-lsm-client"
+
+* msm-pcm-loopback
+
+Required properties:
+
+ - compatible : "qcom,msm-pcm-loopback"
 
 * msm-dai-q6
 
@@ -121,13 +162,14 @@ Required properties:
 
  - compatible : "qcom,msm-dai-q6-dev"
  - qcom,msm-dai-q6-dev-id : The slimbus multi channel port ID
-                            Value is from 16384 to 16393
+                            Value is from 16384 to 16397
                             BT SCO port ID value from 12288 to 12289
                             RT Proxy port ID values from 224 to 225 and 240 to
 			    241
                             FM Rx and TX port ID values from 12292 to 12293
                             incall record Rx and TX port ID values from 32771 to 32772
                             inCall Music Delivery port ID is 32773
+			    incall Music 2 Delivery port ID is 32770
 
 * msm-auxpcm
 
@@ -217,10 +259,23 @@ Required properties:
 
  - interrupt-names :                       Name of interrupt on the parent
                                            interrupt controller
+* audio_slimslave
+
+Required properties:
+
+ - compatible :                            "qcom,audio-slimslave"
+
+ - elemental-addr:                         slimbus slave enumeration address.
+
+* msm-cpe-lsm
+
+Required properties:
+
+ - compatible : "qcom,msm-cpe-lsm"
 
 Example:
 
-        qcom,msm-pcm {
+	qcom,msm-pcm {
 		compatible = "qcom,msm-pcm-dsp";
 		qcom,msm-pcm-dsp-id = <0>;
 	};
@@ -229,7 +284,7 @@ Example:
 		compatible = "qcom,msm-pcm-dsp";
 		qcom,msm-pcm-dsp-id = <1>;
 		qcom,msm-pcm-low-latency;
-        };
+	};
 
         qcom,msm-pcm-routing {
                 compatible = "qcom,msm-pcm-routing";
@@ -243,8 +298,21 @@ Example:
                 compatible = "qcom,msm-compr-dsp";
         };
 
+        qcom,msm-compress-dsp {
+                compatible = "qcom,msm-compress-dsp";
+        };
+
         qcom,msm-voip-dsp {
                 compatible = "qcom,msm-voip-dsp";
+        };
+
+	qcom,msm-pcm-voice {
+		compatible = "qcom,msm-pcm-voice";
+		qcom,destroy-cvd;
+	};
+
+        qcom,msm-voice-host-pcm {
+                compatible = "qcom,msm-voice-host-pcm";
         };
 
         qcom,msm-stub-codec {
@@ -261,6 +329,10 @@ Example:
 
 	qcom,msm-dai-stub {
 		compatible = "qcom,msm-dai-stub";
+	};
+
+	qcom,msm-dai-q6-spdif {
+		compatible = "qcom,msm-dai-q6-spdif";
 	};
 
 	qcom,msm-dai-q6-hdmi {
@@ -308,6 +380,16 @@ Example:
 		qcom,msm-dai-q6-sb-4-tx {
 			compatible = "qcom,msm-dai-q6-dev";
 			qcom,msm-dai-q6-dev-id = <16393>;
+		};
+
+		qcom,msm-dai-q6-sb-6-rx {
+			compatible = "qcom,msm-dai-q6-dev";
+			qcom,msm-dai-q6-dev-id = <16396>;
+		};
+
+		qcom,msm-dai-q6-sb-6-tx {
+			compatible = "qcom,msm-dai-q6-dev";
+			qcom,msm-dai-q6-dev-id = <16397>;
 		};
 
 		qcom,msm-dai-q6-bt-sco-rx {
@@ -364,6 +446,11 @@ Example:
 			compatible = "qcom,msm-dai-q6-dev";
 			qcom,msm-dai-q6-dev-id = <32773>;
 		};
+
+		qcom,msm-dai-q6-incall-music-2-rx {
+			compatible = "qcom,msm-dai-q6-dev";
+			qcom,msm-dai-q6-dev-id = <32770>;
+		};
 	};
 
 	qcom,msm-pri-auxpcm {
@@ -402,11 +489,84 @@ Example:
 		interrupt-names = "cdc-int";
 	};
 
+	audio_slimslave {
+		compatible = "qcom,audio-slimslave";
+		elemental-addr = [ff ff ff ff 17 02];
+	};
+
+* MSM8916 ASoC Machine driver
+
+Required properties:
+- compatible : "qcom,msm8x16-audio-codec"
+- qcom,model : The user-visible name of this sound card.
+- qcom,msm-snd-card-id : This id is used to recognize the sound card number
+- qcom,msm-codec-type : This property is used to recognize the codec type
+  internal or external.
+- qcom,msm-mbhc-hphl-swh: This property is used to distinguish headset HPHL
+switch type on target typically the switch type will be normally open or
+normally close, value for this property 0 for normally close and 1 for
+normally open.
+-  qcom,msm-mbhc-gnd-swh: This property is used to distinguish headset GND
+switch type on target typically the switch type will be normally open or
+normally close, value for this property 0 for normally close and 1 for
+normally open.
+- pinctrl-names : Pincntrl entries to configure the PDM gpio lines and
+		  cross connection switch gpio accordingly
+- pinctrl-0 : This explains the active state of the PDM gpio lines
+- pinctrl-1 : This explains the suspend state of the PDM gpio lines
+- pinctrl-2 : This explains the active state of the cross connection
+	      gpio lines
+- pinctrl-3 : This explains the suspend state of the cross connection
+              gpio lines
+
+Optional Properties:
+- qcom,us-euro-gpios : GPIO on which gnd/mic swap signal is coming.
+
+Example:
+
+	sound {
+		compatible = "qcom,msm8x16-audio-codec";
+		qcom,model = "msm8x16-snd-card";
+		qcom,msm-snd-card-id = <0>;
+		qcom,msm-codec-type = "internal";
+		qcom,msm-mbhc-hphl-swh = <0>;
+		qcom,msm-mbhc-gnd-swh = <0>;
+		qcom,cdc-us-euro-gpios = <&msmgpio 120 0>;
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"INT_LDO_H", "MCLK",
+			"MIC BIAS External", "Handset Mic",
+			"MIC BIAS Internal2", "Headset Mic",
+			"MIC BIAS External", "Secondary Mic",
+			"AMIC1", "MIC BIAS External",
+			"AMIC2", "MIC BIAS Internal2",
+			"AMIC3", "MIC BIAS External";
+		pinctrl-names = "cdc_pdm_lines_act",
+				"cdc_pdm_lines_sus",
+				"cross_conn_det_act",
+				"cross_conn_det_sus";
+		pinctrl-0 = <&cdc_pdm_lines_act>;
+		pinctrl-1 = <&cdc_pdm_lines_sus>;
+		pinctrl-2 = <&cross_conn_det_act>;
+		pinctrl-3 = <&cross_conn_det_sus>;
+	};
+
 * MSM8974 ASoC Machine driver
 
 Required properties:
 - compatible : "qcom,msm8974-audio-taiko"
 - qcom,model : The user-visible name of this sound card.
+- reg : Offset and length of the register region(s) for MI2S/PCM MUX
+- reg-names : Register region name(s) referenced in reg above
+	 Required register resource entries are:
+	 "lpaif_pri_mode_muxsel": Physical address of MUX to select between
+				  Primary PCM and Primary MI2S
+	 "lpaif_sec_mode_muxsel": Physical address of MUX to select between
+				  Secondary PCM and Secondary MI2S
+	 "lpaif_tert_mode_muxsel": Physical address of MUX to select between
+				   Primary PCM and Tertiary MI2S
+	 "lpaif_quat_mode_muxsel": Physical address of MUX to select between
+				   Secondary PCM and Quarternary MI2S
 - qcom,audio-routing : A list of the connections between audio components.
   Each entry is a pair of strings, the first being the connection's sink,
   the second being the connection's source.
@@ -438,6 +598,13 @@ Optional properties:
 			    codec.
 - qcom,mbhc-bias-internal: Flag to indicate if internal micbias should be used
 			   for headset detection.
+- qcom,dock-plug-det-irq: Interrupt line to detect Docking/Undocking of Liquid
+			  device
+- qcom,mbhc-audio-jack-type : String to indicate the jack type on the hardware.
+		Possible Values:
+		4-pole-jack : Jack on the hardware is 4-pole.
+		5-pole-jack : Jack on the hardware is 5-pole.
+		6-pole-jack : Jack on the hardware is 6-pole.
 
 * APQ8074 ASoC Machine driver
 
@@ -486,6 +653,8 @@ sound {
 	qcom,hdmi-audio-rx;
 	qcom,ext-ult-lo-amp-gpio = <&pm8941_gpios 6 0>;
 
+	qcom,ext-mclk-gpio  = <&msmgpio 47 0>;
+	qcom,dock-plug-det-irq = <&pm8841_mpps 2 0>;
 	qcom,prim-auxpcm-gpio-clk  = <&msmgpio 65 0>;
 	qcom,prim-auxpcm-gpio-sync = <&msmgpio 66 0>;
 	qcom,prim-auxpcm-gpio-din  = <&msmgpio 67 0>;
@@ -495,6 +664,7 @@ sound {
 	qcom,sec-auxpcm-gpio-sync = <&msmgpio 80 0>;
 	qcom,sec-auxpcm-gpio-din  = <&msmgpio 81 0>;
 	qcom,sec-auxpcm-gpio-dout = <&msmgpio 82 0>;
+	qcom,mbhc-audio-jack-type = "4-pole-jack";
 };
 
 * msm-dai-mi2s
@@ -621,11 +791,22 @@ Required properties:
 	Value of 0 indicates ADSP loader needs to use PIL and value of 2 means
 	ADSP image is already loaded by SBL.
 
+Optional properties:
+ - qcom,proc-img-to-load;
+	This property can be used to override default ADSP
+	loading by PIL. Based on string input, different proc is
+	loaded. Right now we are adding option "modem"
+	for 8916 purpose. Default image will be "adsp" which
+	will load LPASS Q6 for other targets as expected.
+	"adsp" option need not be explicitly mentioned in
+	DTSI file, as it is default option.
+
 Example:
 
 qcom,msm-adsp-loader {
 	compatible = "qcom,adsp-loader";
 	qcom,adsp-state = <2>;
+	qcom,proc-img-to-load = "modem";
 };
 
 * msm-audio-ion
@@ -684,3 +865,187 @@ sound {
 	qcom,cdc-lineout-spkr-gpios = <&pm8226_gpios 2 0>;
 	qcom,cdc-vdd-spkr-gpios = <&pm8226_gpios 3 0>;
 };
+
+
+* MDM9630 ASoC Machine driver
+
+Required properties:
+- compatible : "qcom,mdm9630-audio-taiko"
+- qcom,model : The user-visible name of this sound card.
+- qcom,audio-routing : A list of the connections between audio components.
+  Each entry is a pair of strings, the first being the connection's sink,
+  the second being the connection's source.
+- qcom,taiko-mclk-clk-freq : Master clock value given to codec. Some WCD9XXX
+  codec can run at different mclk values. Mclk value can be 9.6MHz or 12.288MHz.
+  This element represents the value for MCLK provided to codec.
+- qcom,prim-i2s-gpio-ws : Specifies gpio assigned for primary WS I2S pin.
+- qcom,prim-i2s-gpio-din : Specifies gpio assigned for primary DIN I2S pin.
+- qcom,prim-i2s-gpio-dout : Specifies gpio assigned for primary DOUT I2S pin.
+- qcom,prim-i2s-gpio-sclk : Specifies gpio assigned for primary SCLK I2S pin.
+- qcom,prim-i2s-gpio-mclk : Specifies gpio assigned for MCLK I2S pin.
+
+Example:
+
+	sound {
+                compatible = "qcom,mdm9630-audio-taiko";
+                qcom,model = "mdm9630-taiko-i2s-snd-card";
+
+                qcom,audio-routing =
+                        "RX_BIAS", "MCLK",
+                        "LDO_H", "MCLK",
+                        "Ext Spk Bottom Pos", "LINEOUT1",
+                        "Ext Spk Bottom Neg", "LINEOUT3",
+                        "Ext Spk Top Pos", "LINEOUT2",
+                        "Ext Spk Top Neg", "LINEOUT4",
+                        "AMIC1", "MIC BIAS1 External",
+                        "MIC BIAS1 External", "Handset Mic",
+                        "AMIC2", "MIC BIAS2 External",
+                        "MIC BIAS2 External", "Headset Mic",
+                        "AMIC3", "MIC BIAS3 Internal1",
+                        "MIC BIAS3 Internal1", "ANCRight Headset Mic",
+                        "AMIC4", "MIC BIAS1 Internal2",
+                        "MIC BIAS1 Internal2", "ANCLeft Headset Mic",
+                        "DMIC1", "MIC BIAS1 External",
+                        "MIC BIAS1 External", "Digital Mic1",
+                        "DMIC2", "MIC BIAS1 External",
+                        "MIC BIAS1 External", "Digital Mic2",
+                        "DMIC3", "MIC BIAS3 External",
+                        "MIC BIAS3 External", "Digital Mic3",
+                        "DMIC4", "MIC BIAS3 External",
+                        "MIC BIAS3 External", "Digital Mic4",
+                        "DMIC5", "MIC BIAS4 External",
+                        "MIC BIAS4 External", "Digital Mic5",
+                        "DMIC6", "MIC BIAS4 External",
+                        "MIC BIAS4 External", "Digital Mic6";
+                        qcom,taiko-mclk-clk-freq = <12288000>;
+                        qcom,prim-i2s-gpio-ws   =  <&msmgpio 12 0>;
+                        qcom,prim-i2s-gpio-din  =  <&msmgpio 13 0>;
+                        qcom,prim-i2s-gpio-dout =  <&msmgpio 14 0>;
+                        qcom,prim-i2s-gpio-sclk =  <&msmgpio 15 0>;
+                        qcom,prim-i2s-gpio-mclk =  <&msmgpio 71 0>;
+	};
+
+* APQ8084 ASoC Machine driver
+
+Required properties:
+- compatible : "qcom,apq8084-audio-taiko" or "qcom,apq8084-audio-tomtom"
+- qcom,model : The user-visible name of this sound card.
+- qcom,audio-routing : A list of the connections between audio components.
+  Each entry is a pair of strings, the first being the connection's sink,
+  the second being the connection's source.
+- qcom,taiko-mclk-clk-freq : Taiko mclk Freq in Hz. currently only 9600000Hz
+				is supported. This property is required when
+				compatible field is "qcom,apq8084-audio-taiko"
+- qcom,tomtom-mclk-clk-freq : TomTom mclk Freq in Hz. currently only 9600000Hz
+				is supported. This property is required when
+				compatible field is "qcom,apq8084-audio-tomtom"
+- qcom,prim-auxpcm-gpio-clk  : GPIO on which Primary AUXPCM clk signal is coming.
+- qcom,prim-auxpcm-gpio-sync : GPIO on which Primary AUXPCM SYNC signal is coming.
+- qcom,prim-auxpcm-gpio-din  : GPIO on which Primary AUXPCM DIN signal is coming.
+- qcom,prim-auxpcm-gpio-dout : GPIO on which Primary AUXPCM DOUT signal is coming.
+- qcom,prim-auxpcm-gpio-set : set of GPIO lines used for Primary AUXPCM port
+		 Possible Values:
+		 prim-gpio-prim : Primary AUXPCM shares GPIOs with Primary MI2S
+		 prim-gpio-tert : Primary AUXPCM shares GPIOs with Tertiary MI2S
+- qcom,sec-auxpcm-gpio-clk  : GPIO on which Secondary AUXPCM clk signal is coming.
+- qcom,sec-auxpcm-gpio-sync : GPIO on which Secondary AUXPCM SYNC signal is coming.
+- qcom,sec-auxpcm-gpio-din  : GPIO on which Secondary AUXPCM DIN signal is coming.
+- qcom,sec-auxpcm-gpio-dout : GPIO on which Secondary AUXPCM DOUT signal is coming.
+- qcom,ext-mclk-gpio  : audio uses this GPIO to request mclk in MTP and CDP
+Optional properties:
+- qcom,us-euro-gpios : GPIO on which gnd/mic swap signal is coming.
+- qcom,hdmi-audio-rx: specifies if HDMI audio support is enabled or not.
+- qcom,headset-jack-type-NO: Adjust GPIO level based on the headset jack type.
+- qcom,mbhc-bias-internal: Flag to indicate if internal micbias should be used
+			   for headset detection.
+- qcom,dock-plug-det-irq: Interrupt line to detect Docking/Undocking of Liquid
+			  device
+- qcom,mbhc-audio-jack-type : String to indicate the jack type on the hardware.
+		Possible Values:
+		4-pole-jack : Jack on the hardware is 4-pole.
+		5-pole-jack : Jack on the hardware is 5-pole.
+		6-pole-jack : Jack on the hardware is 6-pole.
+- pinctrl-states: the names of the pinctrl states that used by the driver to
+	configure the TLMM pins. The allowed states are subset of the following
+	list: pmx-pri-mi2s-active, pmx-pri-quad-mi2s-active, pmx-quad-mi2s-active,
+	 pmx-pri-quad-mi2s-sleep, pmx-quad-mi2s-sleep.
+- pinctrl-#: a list of pinctrl phandles for the different pinctrl states. Refer
+	to "Documentation/devicetree/bindings/pinctrl/pinctrl-bindings.txt" for the
+	pinctrl handles definitions. Each pinctrl-# corresponds to the respective
+	state name that appears under pinctrl-state list.
+
+Example:
+
+sound {
+	compatible = "qcom,apq8084-audio-taiko";
+		     "qcom,apq8084-audio-i2s-taiko"
+	qcom,model = "apq8084-taiko-mtp-snd-card";
+
+	qcom,audio-routing =
+		"RX_BIAS", "MCLK",
+		"LDO_H", "MCLK",
+		"HEADPHONE", "LDO_H",
+		"Ext Spk Bottom Pos", "LINEOUT1",
+		"Ext Spk Bottom Neg", "LINEOUT3",
+		"Ext Spk Top Pos", "LINEOUT2",
+		"Ext Spk Top Neg", "LINEOUT4",
+		"AMIC1", "MIC BIAS1 Internal1",
+		"MIC BIAS1 Internal1", "Handset Mic",
+		"AMIC2", "MIC BIAS2 External",
+		"MIC BIAS2 External", "Headset Mic",
+		"AMIC3", "MIC BIAS3 Internal1",
+		"MIC BIAS3 Internal1", "ANCRight Headset Mic",
+		"AMIC4", "MIC BIAS1 Internal2",
+		"MIC BIAS1 Internal2", "ANCLeft Headset Mic",
+		"DMIC1", "MIC BIAS1 External",
+		"MIC BIAS1 External", "Digital Mic1",
+		"DMIC2", "MIC BIAS1 External",
+		"MIC BIAS1 External", "Digital Mic2",
+		"DMIC3", "MIC BIAS3 External",
+		"MIC BIAS3 External", "Digital Mic3",
+		"DMIC4", "MIC BIAS3 External",
+		"MIC BIAS3 External", "Digital Mic4",
+		"DMIC5", "MIC BIAS4 External",
+		"MIC BIAS4 External", "Digital Mic5",
+		"DMIC6", "MIC BIAS4 External",
+		"MIC BIAS4 External", "Digital Mic6";
+
+	qcom,taiko-mclk-clk-freq = <9600000>;
+	qcom,us-euro-gpios = <&pm8941_gpios 20 0>;
+
+	qcom,hdmi-audio-rx;
+
+	qcom,ext-mclk-gpio  = <&msmgpio 47 0>;
+	qcom,dock-plug-det-irq = <&msmgpio 142 0>;
+	qcom,prim-auxpcm-gpio-clk  = <&msmgpio 65 0>;
+	qcom,prim-auxpcm-gpio-sync = <&msmgpio 66 0>;
+	qcom,prim-auxpcm-gpio-din  = <&msmgpio 67 0>;
+	qcom,prim-auxpcm-gpio-dout = <&msmgpio 68 0>;
+	qcom,prim-auxpcm-gpio-set = "prim-gpio-prim";
+	qcom,sec-auxpcm-gpio-clk  = <&msmgpio 79 0>;
+	qcom,sec-auxpcm-gpio-sync = <&msmgpio 80 0>;
+	qcom,sec-auxpcm-gpio-din  = <&msmgpio 81 0>;
+	qcom,sec-auxpcm-gpio-dout = <&msmgpio 82 0>;
+	qcom,mbhc-audio-jack-type = "4-pole-jack";
+	pinctrl-names = "pmx-pri-mi2s-active",
+			"pmx-pri-quad-mi2s-active",
+			"pmx-quad-mi2s-active",
+			"pmx-pri-quad-mi2s-sleep";
+	pinctrl-0 = <&pmx_pri_mi2s_active &pmx_quad_mi2s_sleep>;
+	pinctrl-1 = <&pmx_pri_mi2s_active &pmx_quad_mi2s_active>;
+	pinctrl-2 = <&pmx_pri_mi2s_sleep &pmx_quad_mi2s_active>;
+	pinctrl-3 = <&pmx_pri_mi2s_sleep &pmx_quad_mi2s_sleep>;
+};
+
+* MSM8994 ASoC Machine driver
+
+Required properties:
+- compatible : "qcom,msm8994-audio-tomtom"
+- qcom,model : The user-visible name of this sound card.
+
+Example:
+
+	sound {
+		compatible = "qcom,msm8994-asoc-snd";
+		qcom,model = "msm8994-tomtom-snd-card";
+	};

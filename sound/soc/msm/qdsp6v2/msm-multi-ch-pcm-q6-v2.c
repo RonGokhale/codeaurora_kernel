@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -557,8 +557,7 @@ static int msm_pcm_capture_copy(struct snd_pcm_substream *substream,
 		pr_debug("%s: pcm stopped in_count 0\n", __func__);
 		return 0;
 	}
-	pr_debug("Checking if valid buffer is available...%08x\n",
-						(unsigned int) data);
+	pr_debug("Checking if valid buffer is available...%p\n", data);
 	data = q6asm_is_cpu_buf_avail(OUT, prtd->audio_client, &size, &idx);
 	bufptr = data;
 	pr_debug("Size = %d\n", size);
@@ -752,7 +751,7 @@ static struct snd_soc_platform_driver msm_soc_platform = {
 	.pcm_new	= msm_asoc_pcm_new,
 };
 
-static __devinit int msm_pcm_probe(struct platform_device *pdev)
+static int msm_pcm_probe(struct platform_device *pdev)
 {
 	pr_info("%s: dev name %s\n", __func__, dev_name(&pdev->dev));
 	return snd_soc_register_platform(&pdev->dev,
@@ -771,7 +770,7 @@ static struct platform_driver msm_pcm_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = msm_pcm_probe,
-	.remove = __devexit_p(msm_pcm_remove),
+	.remove = msm_pcm_remove,
 };
 
 static int __init msm_soc_platform_init(void)

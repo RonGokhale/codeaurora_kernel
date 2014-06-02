@@ -25,8 +25,7 @@ static int msm_pcm_hostless_prepare(struct snd_pcm_substream *substream)
 		pr_err("%s: invalid params\n", __func__);
 		return -EINVAL;
 	}
-	if (pm_qos_request_active(&substream->latency_pm_qos_req))
-		pm_qos_remove_request(&substream->latency_pm_qos_req);
+	pm_qos_remove_request(&substream->latency_pm_qos_req);
 	return 0;
 }
 
@@ -38,7 +37,7 @@ static struct snd_soc_platform_driver msm_soc_hostless_platform = {
 	.ops		= &msm_pcm_hostless_ops,
 };
 
-static __devinit int msm_pcm_hostless_probe(struct platform_device *pdev)
+static int msm_pcm_hostless_probe(struct platform_device *pdev)
 {
 	if (pdev->dev.of_node)
 		dev_set_name(&pdev->dev, "%s", "msm-pcm-hostless");
@@ -66,7 +65,7 @@ static struct platform_driver msm_pcm_hostless_driver = {
 		.of_match_table = msm_pcm_hostless_dt_match,
 	},
 	.probe = msm_pcm_hostless_probe,
-	.remove = __devexit_p(msm_pcm_hostless_remove),
+	.remove = msm_pcm_hostless_remove,
 };
 
 static int __init msm_soc_platform_init(void)

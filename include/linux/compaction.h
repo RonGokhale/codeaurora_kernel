@@ -23,7 +23,7 @@ extern int fragmentation_index(struct zone *zone, unsigned int order);
 extern unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			int order, gfp_t gfp_mask, nodemask_t *mask,
 			bool sync, bool *contended);
-extern int compact_pgdat(pg_data_t *pgdat, int order);
+extern void compact_pgdat(pg_data_t *pgdat, int order);
 extern void reset_isolation_suitable(pg_data_t *pgdat);
 extern unsigned long compaction_suitable(struct zone *zone, int order);
 
@@ -59,7 +59,7 @@ static inline bool compaction_deferred(struct zone *zone, int order)
 	if (++zone->compact_considered > defer_limit)
 		zone->compact_considered = defer_limit;
 
-	return zone->compact_considered < (1UL << zone->compact_defer_shift);
+	return zone->compact_considered < defer_limit;
 }
 
 /* Returns true if restarting compaction after many failures */
@@ -80,9 +80,8 @@ static inline unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	return COMPACT_CONTINUE;
 }
 
-static inline int compact_pgdat(pg_data_t *pgdat, int order)
+static inline void compact_pgdat(pg_data_t *pgdat, int order)
 {
-	return COMPACT_CONTINUE;
 }
 
 static inline void reset_isolation_suitable(pg_data_t *pgdat)
@@ -100,7 +99,7 @@ static inline void defer_compaction(struct zone *zone, int order)
 
 static inline bool compaction_deferred(struct zone *zone, int order)
 {
-	return 1;
+	return true;
 }
 
 #endif /* CONFIG_COMPACTION */

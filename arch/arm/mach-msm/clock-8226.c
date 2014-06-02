@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,18 +20,18 @@
 #include <linux/clk.h>
 #include <linux/iopoll.h>
 #include <linux/regulator/consumer.h>
+#include <linux/regulator/rpm-smd-regulator.h>
+#include <linux/platform_device.h>
+#include <linux/module.h>
+#include <linux/clk/msm-clock-generic.h>
+#include <soc/qcom/clock-local2.h>
+#include <soc/qcom/clock-pll.h>
+#include <soc/qcom/clock-rpm.h>
+#include <soc/qcom/clock-voter.h>
 
-#include <mach/rpm-regulator-smd.h>
-#include <mach/socinfo.h>
-#include <mach/rpm-smd.h>
-#include <mach/clock-generic.h>
+#include <soc/qcom/rpm-smd.h>
 
-#include "clock-local2.h"
-#include "clock-pll.h"
-#include "clock-rpm.h"
-#include "clock-voter.h"
 #include "clock-mdss-8974.h"
-#include "clock.h"
 
 enum {
 	GCC_BASE,
@@ -694,6 +694,7 @@ static struct clk_freq_tbl ftbl_gcc_blsp1_uart1_6_apps_clk[] = {
 	F_GCC(  56000000,      gpll0,   1,    7,   75),
 	F_GCC(  58982400,      gpll0,   1, 1536, 15625),
 	F_GCC(  60000000,      gpll0,  10,    0,    0),
+	F_GCC(  63160000,      gpll0, 9.5,    0,    0),
 	F_END
 };
 
@@ -1278,6 +1279,7 @@ static struct local_vote_clk gcc_ce1_clk = {
 	.en_mask = BIT(5),
 	.base = &virt_bases[GCC_BASE],
 	.c = {
+		.parent = &ce1_clk_src.c,
 		.dbg_name = "gcc_ce1_clk",
 		.ops = &clk_ops_vote,
 		CLK_INIT(gcc_ce1_clk.c),
@@ -1553,6 +1555,8 @@ static struct branch_clk gcc_usb_hsic_system_clk = {
 	},
 };
 
+static DEFINE_CLK_MEASURE(wcnss_m_clk);
+
 #ifdef CONFIG_DEBUG_FS
 struct measure_mux_entry {
 	struct clk *c;
@@ -1608,6 +1612,7 @@ static struct measure_mux_entry measure_mux_GCC[] = {
 	{ &pnoc_clk.c, GCC_BASE, 0x010},
 	{ &snoc_clk.c, GCC_BASE, 0x000},
 	{ &cnoc_clk.c, GCC_BASE, 0x008},
+	{ &wcnss_m_clk, GCC_BASE, 0x0198},
 	/*
 	 * measure the gcc_bimc_kpss_axi_clk instead to account for the DDR
 	 * rate being gcc_bimc_clk/2.
@@ -1795,68 +1800,6 @@ static struct rcg_clk jpeg0_clk_src = {
 		CLK_INIT(jpeg0_clk_src.c),
 	},
 };
-
-struct clk_ops clk_ops_pixel_clock;
-
-static long round_rate_pixel(struct clk *clk, unsigned long rate)
-{
-	int frac_num[] = {3, 2, 4, 1};
-	int frac_den[] = {8, 9, 9, 1};
-	int delta = 100000;
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(frac_num); i++) {
-		unsigned long request = (rate * frac_den[i]) / frac_num[i];
-		unsigned long src_rate;
-
-		src_rate = clk_round_rate(clk->parent, request);
-		if ((src_rate < (request - delta)) ||
-			(src_rate > (request + delta)))
-			continue;
-
-		return (src_rate * frac_num[i]) / frac_den[i];
-	}
-
-	return -EINVAL;
-}
-
-
-static int set_rate_pixel(struct clk *clk, unsigned long rate)
-{
-	struct rcg_clk *rcg = to_rcg_clk(clk);
-	struct clk_freq_tbl *pixel_freq = rcg->current_freq;
-	int frac_num[] = {3, 2, 4, 1};
-	int frac_den[] = {8, 9, 9, 1};
-	int delta = 100000;
-	int i, rc;
-
-	for (i = 0; i < ARRAY_SIZE(frac_num); i++) {
-		unsigned long request = (rate * frac_den[i]) / frac_num[i];
-		unsigned long src_rate;
-
-		src_rate = clk_round_rate(clk->parent, request);
-		if ((src_rate < (request - delta)) ||
-			(src_rate > (request + delta)))
-			continue;
-
-		rc =  clk_set_rate(clk->parent, src_rate);
-		if (rc)
-			return rc;
-
-		pixel_freq->div_src_val &= ~BM(4, 0);
-		if (frac_den[i] == frac_num[i]) {
-			pixel_freq->m_val = 0;
-			pixel_freq->n_val = 0;
-		} else {
-			pixel_freq->m_val = frac_num[i];
-			pixel_freq->n_val = ~(frac_den[i] - frac_num[i]);
-			pixel_freq->d_val = ~frac_den[i];
-		}
-		set_rate_mnd(rcg, pixel_freq);
-		return 0;
-	}
-	return -EINVAL;
-}
 
 static struct clk_freq_tbl pixel_freq_tbl[] = {
 	{
@@ -2578,17 +2521,6 @@ static struct branch_clk mmss_misc_ahb_clk = {
 	},
 };
 
-static struct branch_clk mmss_mmssnoc_bto_ahb_clk = {
-	.cbcr_reg = MMSS_MMSSNOC_BTO_AHB_CBCR,
-	.has_sibling = 1,
-	.base = &virt_bases[MMSS_BASE],
-	.c = {
-		.dbg_name = "mmss_mmssnoc_bto_ahb_clk",
-		.ops = &clk_ops_branch,
-		CLK_INIT(mmss_mmssnoc_bto_ahb_clk.c),
-	},
-};
-
 static struct branch_clk mmss_mmssnoc_axi_clk = {
 	.cbcr_reg = MMSS_MMSSNOC_AXI_CBCR,
 	.has_sibling = 1,
@@ -2690,7 +2622,6 @@ static struct branch_clk venus0_vcodec0_clk = {
 
 #ifdef CONFIG_DEBUG_FS
 static struct measure_mux_entry measure_mux_MMSS[] = {
-	{ &mmss_mmssnoc_bto_ahb_clk.c,  MMSS_BASE, 0x0002 },
 	{ &mmss_misc_ahb_clk.c,  MMSS_BASE, 0x0003 },
 	{ &mmss_mmssnoc_axi_clk.c,  MMSS_BASE, 0x0004 },
 	{ &mmss_s0_axi_clk.c,  MMSS_BASE, 0x0005 },
@@ -2841,6 +2772,8 @@ static struct pll_freq_tbl apcs_pll_freq[] = {
 	F_APCS_PLL(1401600000, 73, 0x0, 0x1, 0x0, 0x0, 0x0),
 	F_APCS_PLL(1497600000, 78, 0x0, 0x1, 0x0, 0x0, 0x0),
 	F_APCS_PLL(1593600000, 83, 0x0, 0x1, 0x0, 0x0, 0x0),
+	F_APCS_PLL(1689600000, 88, 0x0, 0x1, 0x0, 0x0, 0x0),
+	F_APCS_PLL(1785600000, 93, 0x0, 0x1, 0x0, 0x0, 0x0),
 	PLL_F_END
 };
 
@@ -3118,6 +3051,7 @@ static struct measure_clk measure_clk = {
 	.c = {
 		.dbg_name = "measure_clk",
 		.ops = &clk_ops_measure,
+		.flags = CLKFLAG_MEASURE,
 		CLK_INIT(measure_clk.c),
 	},
 	.multiplier = 1,
@@ -3131,6 +3065,10 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("apc2_m_clk", apc2_m_clk, ""),
 	CLK_LOOKUP("apc3_m_clk", apc3_m_clk, ""),
 	CLK_LOOKUP("l2_m_clk", l2_m_clk, ""),
+
+	/* Measure clocks for WCNSS */
+	CLK_LOOKUP("measure",   measure_clk.c, "fb000000.qcom,wcnss-wlan"),
+	CLK_LOOKUP("wcnss_debug", wcnss_m_clk, "fb000000.qcom,wcnss-wlan"),
 
 	/* LPM Resources */
 	CLK_LOOKUP("xo",          cxo_lpm_clk.c, "fc4281d0.qcom,mpm"),
@@ -3147,8 +3085,11 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("bus_clk", gcc_mss_q6_bimc_axi_clk.c, "fc880000.qcom,mss"),
 	CLK_LOOKUP("iface_clk",   gcc_mss_cfg_ahb_clk.c, "fc880000.qcom,mss"),
 	CLK_LOOKUP("mem_clk",    gcc_boot_rom_ahb_clk.c, "fc880000.qcom,mss"),
+
 	/* NFC */
-	CLK_LOOKUP("ref_clk",            cxo_d1_a_pin.c, "2-000e"),
+	CLK_LOOKUP("ref_clk",            cxo_d1_pin.c, "2-000e"),
+	CLK_LOOKUP("bb_clk2",            cxo_d1.c, ""),
+
 	/* PIL-PRONTO */
 	CLK_LOOKUP("xo", cxo_pil_pronto_clk.c, "fb21b000.qcom,pronto"),
 
@@ -3163,6 +3104,8 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("xo",     xo_a_clk.c, "f9011050.qcom,acpuclk"),
 	CLK_LOOKUP("gpll0",  gpll0_ao.c, "f9011050.qcom,acpuclk"),
 	CLK_LOOKUP("a7sspll", a7sspll.c, "f9011050.qcom,acpuclk"),
+	CLK_LOOKUP("clk-4",  gpll0_ao.c, "f9011050.qcom,clock-a7"),
+	CLK_LOOKUP("clk-5", a7sspll.c, "f9011050.qcom,clock-a7"),
 	CLK_LOOKUP("kpss_ahb", kpss_ahb_clk_src.c, ""),
 
 	/* WCNSS CLOCKS */
@@ -3217,6 +3160,11 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc342000.cti"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc343000.cti"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fc344000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc348000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc34d000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc350000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc354000.cti"),
+	CLK_LOOKUP("core_clk", qdss_clk.c, "fc358000.cti"),
 	CLK_LOOKUP("core_clk", qdss_clk.c, "fd828018.hwevent"),
 
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc322000.tmc"),
@@ -3251,6 +3199,11 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc342000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc343000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc344000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc348000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc34d000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc350000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc354000.cti"),
+	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fc358000.cti"),
 	CLK_LOOKUP("core_a_clk", qdss_a_clk.c, "fd828018.hwevent"),
 
 	CLK_LOOKUP("core_mmss_clk", mmss_misc_ahb_clk.c, "fd828018.hwevent"),
@@ -3371,6 +3324,9 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("pixel_clk", mdss_pclk0_clk.c, "fd922800.qcom,mdss_dsi"),
 	CLK_LOOKUP("iface_clk", mdss_ahb_clk.c, "fd922800.qcom,mdss_dsi"),
 	CLK_LOOKUP("bus_clk", mdss_axi_clk.c, "fd922800.qcom,mdss_dsi"),
+	CLK_LOOKUP("mdp_core_clk", mdss_mdp_clk.c, "fd922800.qcom,mdss_dsi"),
+	CLK_LOOKUP("core_mmss_clk", mmss_misc_ahb_clk.c,
+		"fd922800.qcom,mdss_dsi"),
 
 	CLK_LOOKUP("core_clk", mdss_mdp_clk.c, "fd900000.qcom,mdss_mdp"),
 	CLK_LOOKUP("lut_clk", mdss_mdp_lut_clk.c, "fd900000.qcom,mdss_mdp"),
@@ -3393,17 +3349,21 @@ static struct clk_lookup msm_clocks_8226[] = {
 
 	/* MM sensor clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6f.qcom,camera"),
-	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "90.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk1_clk_src.c, "90.qcom,camera"),
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6d.qcom,camera"),
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6a.qcom,camera"),
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6c.qcom,camera"),
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "20.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6f.qcom,camera"),
-	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "90.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk1_clk.c, "90.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6d.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6a.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "6c.qcom,camera"),
 	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "20.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "0.qcom,camera"),
+	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "1.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "0.qcom,camera"),
+	CLK_LOOKUP("cam_clk", camss_mclk0_clk.c, "1.qcom,camera"),
 
 	/* eeprom clocks */
 	CLK_LOOKUP("cam_src_clk", mclk0_clk_src.c, "6c.qcom,eeprom"),
@@ -3553,7 +3513,6 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("cam_gp1_clk", camss_gp1_clk.c, ""),
 	CLK_LOOKUP("iface_clk", camss_micro_ahb_clk.c, ""),
 
-	CLK_LOOKUP("", mmss_mmssnoc_bto_ahb_clk.c, ""),
 	CLK_LOOKUP("", mmss_mmssnoc_axi_clk.c, ""),
 	CLK_LOOKUP("", mmss_s0_axi_clk.c, ""),
 
@@ -3586,25 +3545,7 @@ static struct clk_lookup msm_clocks_8226[] = {
 	CLK_LOOKUP("",		byte_clk_src_8226.c,               ""),
 };
 
-static struct clk_lookup msm_clocks_8226_rumi[] = {
-	CLK_DUMMY("core_clk", BLSP1_UART_CLK, "f991f000.serial", OFF),
-	CLK_DUMMY("iface_clk", BLSP1_UART_CLK, "f991f000.serial", OFF),
-	CLK_DUMMY("iface_clk", HSUSB_IFACE_CLK, "f9a55000.usb", OFF),
-	CLK_DUMMY("core_clk", HSUSB_CORE_CLK, "f9a55000.usb", OFF),
-	CLK_DUMMY("iface_clk", NULL, "msm_sdcc.1", OFF),
-	CLK_DUMMY("core_clk",  NULL, "msm_sdcc.1", OFF),
-	CLK_DUMMY("bus_clk",   NULL, "msm_sdcc.1", OFF),
-	CLK_DUMMY("iface_clk", NULL, "msm_sdcc.2", OFF),
-	CLK_DUMMY("core_clk",  NULL, "msm_sdcc.2", OFF),
-	CLK_DUMMY("bus_clk",   NULL, "msm_sdcc.2", OFF),
-};
-
-struct clock_init_data msm8226_rumi_clock_init_data __initdata = {
-	.table = msm_clocks_8226_rumi,
-	.size = ARRAY_SIZE(msm_clocks_8226_rumi),
-};
-
-static void __init reg_init(void)
+static void reg_init(void)
 {
 	u32 regval;
 
@@ -3619,7 +3560,7 @@ static void __init reg_init(void)
 	writel_relaxed(0x0, GCC_REG_BASE(APCS_CLOCK_SLEEP_ENA_VOTE));
 }
 
-static void __init msm8226_clock_post_init(void)
+static void msm8226_clock_post_init(void)
 {
 	/*
 	 * Hold an active set vote for CXO; this is because CXO is expected
@@ -3657,62 +3598,14 @@ static void __init msm8226_clock_post_init(void)
 	clk_prepare_enable(&kpss_ahb_clk_src.c);
 }
 
-#define GCC_CC_PHYS		0xFC400000
-#define GCC_CC_SIZE		SZ_16K
-
-#define MMSS_CC_PHYS		0xFD8C0000
-#define MMSS_CC_SIZE		SZ_256K
-
-#define LPASS_CC_PHYS		0xFE000000
-#define LPASS_CC_SIZE		SZ_256K
-
-#define APCS_KPSS_SH_PLL_PHYS	0xF9016000
-#define APCS_KPSS_SH_PLL_SIZE	SZ_64
-
-#define APCS_KPSS_GLB_PHYS	0xF9011000
-#define APCS_KPSS_GLB_SIZE	SZ_4K
-
-
-static void __init msm8226_clock_pre_init(void)
+static int msm8226_clock_pre_init(void)
 {
-	virt_bases[GCC_BASE] = ioremap(GCC_CC_PHYS, GCC_CC_SIZE);
-	if (!virt_bases[GCC_BASE])
-		panic("clock-8226: Unable to ioremap GCC memory!");
-
-	virt_bases[MMSS_BASE] = ioremap(MMSS_CC_PHYS, MMSS_CC_SIZE);
-	if (!virt_bases[MMSS_BASE])
-		panic("clock-8226: Unable to ioremap MMSS_CC memory!");
-
-	virt_bases[LPASS_BASE] = ioremap(LPASS_CC_PHYS, LPASS_CC_SIZE);
-	if (!virt_bases[LPASS_BASE])
-		panic("clock-8226: Unable to ioremap LPASS_CC memory!");
-
-	virt_bases[APCS_BASE] = ioremap(APCS_KPSS_GLB_PHYS,
-		APCS_KPSS_GLB_SIZE);
-	if (!virt_bases[APCS_BASE])
-		panic("clock-8226: Unable to ioremap APCS_GCC_CC memory!");
-
-	virt_bases[APCS_PLL_BASE] = ioremap(APCS_KPSS_SH_PLL_PHYS,
-		APCS_KPSS_SH_PLL_SIZE);
-	if (!virt_bases[APCS_PLL_BASE])
-		panic("clock-8226: Unable to ioremap APCS_GCC_CC memory!");
-
+	int rc;
 	clk_ops_local_pll.enable = sr_hpm_lp_pll_clk_enable;
 
-	vdd_dig.regulator[0] = regulator_get(NULL, "vdd_dig");
-	if (IS_ERR(vdd_dig.regulator[0]))
-		panic("clock-8226: Unable to get the vdd_dig regulator!");
-
-	vdd_sr2_pll.regulator[0] = regulator_get(NULL, "vdd_sr2_pll");
-	if (IS_ERR(vdd_sr2_pll.regulator[0]))
-		panic("clock-8226: Unable to get the sr2_pll regulator!");
-
-	vdd_sr2_pll.regulator[1] = regulator_get(NULL, "vdd_sr2_dig");
-	if (IS_ERR(vdd_sr2_pll.regulator[1]))
-		panic("clock-8226: Unable to get the vdd_sr2_dig regulator!");
-
-
-	enable_rpm_scaling();
+	rc = enable_rpm_scaling();
+	if (rc)
+		return rc;
 
 	/*
 	 * Hold an active set vote at a rate of 40MHz for the MMSS NOC AHB
@@ -3725,26 +3618,126 @@ static void __init msm8226_clock_pre_init(void)
 
 	reg_init();
 
-	/* v2 specific changes */
-	if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) == 2) {
-		cpp_clk_src.c.fmax = camss_vfe_cpp_fmax_v2;
-		vfe0_clk_src.c.fmax = camss_vfe_vfe0_fmax_v2;
-	}
-
-	clk_ops_pixel_clock = clk_ops_pixel;
-	clk_ops_pixel_clock.set_rate = set_rate_pixel;
-	clk_ops_pixel_clock.round_rate = round_rate_pixel;
-
 	/*
 	 * MDSS needs the ahb clock and needs to init before we register the
 	 * lookup table.
 	 */
 	mdss_clk_ctrl_pre_init(&mdss_ahb_clk.c);
+	return 0;
 }
 
-struct clock_init_data msm8226_clock_init_data __initdata = {
-	.table = msm_clocks_8226,
-	.size = ARRAY_SIZE(msm_clocks_8226),
-	.pre_init = msm8226_clock_pre_init,
-	.post_init = msm8226_clock_post_init,
+/* Please note that the order of reg-names is important */
+static int get_memory(struct platform_device *pdev)
+{
+	int i, count;
+	const char *str;
+	struct resource *res;
+	struct device *dev = &pdev->dev;
+
+	count = of_property_count_strings(dev->of_node, "reg-names");
+	if (count != N_BASES) {
+		dev_err(dev, "missing reg-names property, expected %d strings\n",
+				N_BASES);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < count; i++) {
+		of_property_read_string_index(dev->of_node, "reg-names", i,
+						&str);
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, str);
+		if (!res) {
+			dev_err(dev, "Unable to retrieve register base.\n");
+			return -ENOMEM;
+		}
+
+		virt_bases[i] = devm_ioremap(dev, res->start,
+							resource_size(res));
+		if (!virt_bases[i]) {
+			dev_err(dev, "Failed to map in CC registers.\n");
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
+}
+
+static int get_regulators(struct device *dev)
+{
+	struct regulator *r;
+	r = vdd_dig.regulator[0] = devm_regulator_get(dev, "vdd_dig");
+	if (IS_ERR(r)) {
+		if (PTR_ERR(r) != -EPROBE_DEFER)
+			dev_err(dev, "Unable to get the vdd_dig regulator!");
+		return PTR_ERR(r);
+	}
+
+	r = vdd_sr2_pll.regulator[0] = devm_regulator_get(dev, "vdd_sr2_pll");
+	if (IS_ERR(r)) {
+		if (PTR_ERR(r) != -EPROBE_DEFER)
+			dev_err(dev, "Unable to get the vdd_sr2_pll regulator!");
+		return PTR_ERR(r);
+	}
+
+	r = vdd_sr2_pll.regulator[1] = devm_regulator_get(dev, "vdd_sr2_dig");
+	if (IS_ERR(r)) {
+		if (PTR_ERR(r) != -EPROBE_DEFER)
+			dev_err(dev, "Unable to get the vdd_sr2_dig regulator!");
+		return PTR_ERR(r);
+	}
+	return 0;
+}
+
+static int gcc_probe(struct platform_device *pdev)
+{
+	int rc;
+	struct device *dev = &pdev->dev;
+
+	rc = get_regulators(dev);
+	if (rc)
+		return rc;
+
+	rc = get_memory(pdev);
+	if (rc)
+		return rc;
+
+	if (of_device_is_compatible(dev->of_node, "qcom,gcc-8226-v2")) {
+		cpp_clk_src.c.fmax = camss_vfe_cpp_fmax_v2;
+		vfe0_clk_src.c.fmax = camss_vfe_vfe0_fmax_v2;
+	}
+
+	rc = msm8226_clock_pre_init();
+	if (rc)
+		return rc;
+
+	rc =  msm_clock_register(msm_clocks_8226, ARRAY_SIZE(msm_clocks_8226));
+	if (rc)
+		return rc;
+
+	msm8226_clock_post_init();
+	return 0;
+}
+
+static struct of_device_id gcc_match_table[] = {
+	{ .compatible = "qcom,gcc-8226" },
+	{ .compatible = "qcom,gcc-8226-v2" },
+	{}
 };
+
+static struct platform_driver gcc_driver = {
+	.probe = gcc_probe,
+	.driver = {
+		.name = "qcom,gcc-8226",
+		.of_match_table = gcc_match_table,
+		.owner = THIS_MODULE,
+	},
+};
+
+static bool initialized;
+int __init msm_gcc_8226_init(void)
+{
+	if (initialized)
+		return true;
+	initialized  = true;
+	return platform_driver_register(&gcc_driver);
+}
+arch_initcall(msm_gcc_8226_init);

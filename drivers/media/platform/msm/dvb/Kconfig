@@ -9,3 +9,4 @@ config DVB_MPQ
 
 source "drivers/media/platform/msm/dvb/demux/Kconfig"
 source "drivers/media/platform/msm/dvb/video/Kconfig"
+

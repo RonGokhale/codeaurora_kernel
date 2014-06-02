@@ -790,7 +790,7 @@ static void bq28400_external_power_changed(struct power_supply *psy)
 	power_supply_changed(&bq28400_dev->batt_psy);
 }
 
-static int __devinit bq28400_register_psy(struct bq28400_device *bq28400_dev)
+static int bq28400_register_psy(struct bq28400_device *bq28400_dev)
 {
 	int ret;
 
@@ -838,7 +838,7 @@ static void bq28400_periodic_user_space_update_worker(struct work_struct *work)
 						     (delay_msec)));
 }
 
-static int __devinit bq28400_probe(struct i2c_client *client,
+static int bq28400_probe(struct i2c_client *client,
 				   const struct i2c_device_id *id)
 {
 	int ret = 0;
@@ -922,7 +922,7 @@ err_dev_node:
 	return ret;
 }
 
-static int __devexit bq28400_remove(struct i2c_client *client)
+static int bq28400_remove(struct i2c_client *client)
 {
 	struct bq28400_device *bq28400_dev = i2c_get_clientdata(client);
 
@@ -955,7 +955,7 @@ static struct i2c_driver bq28400_driver = {
 		.of_match_table = of_match_ptr(bq28400_match),
 	},
 	.probe		= bq28400_probe,
-	.remove		= __devexit_p(bq28400_remove),
+	.remove		= bq28400_remove,
 	.id_table	= bq28400_id,
 };
 

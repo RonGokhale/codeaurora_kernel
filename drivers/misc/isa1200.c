@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2009 Samsung Electronics
  *  Kyungmin Park <kyungmin.park@samsung.com>
- *  Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -54,7 +54,7 @@ struct isa1200_chip {
 	struct clk *pwm_clk;
 };
 
-static int isa1200_read_reg(struct i2c_client *client, int reg)
+static int isa1200_read_reg(struct i2c_client *client, u8 reg)
 {
 	int ret;
 
@@ -65,7 +65,7 @@ static int isa1200_read_reg(struct i2c_client *client, int reg)
 	return ret;
 }
 
-static int isa1200_write_reg(struct i2c_client *client, int reg, u8 value)
+static int isa1200_write_reg(struct i2c_client *client, u8 reg, u8 value)
 {
 	int ret;
 
@@ -318,7 +318,7 @@ static int isa1200_setup(struct i2c_client *client)
 
 	value |= (haptic->pdata->mode_ctrl << 3) |
 		(haptic->pdata->overdrive_high << 5) |
-		(haptic->pdata->overdrive_en << 5) |
+		(haptic->pdata->overdrive_en << 6) |
 		(haptic->pdata->chip_en << 7);
 
 	rc = isa1200_write_reg(client, ISA1200_HCTRL0, value);
@@ -579,7 +579,7 @@ static int isa1200_parse_dt(struct device *dev,
 #endif
 
 
-static int __devinit isa1200_probe(struct i2c_client *client,
+static int isa1200_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct isa1200_chip *haptic;
@@ -764,7 +764,7 @@ mem_alloc_fail:
 	return ret;
 }
 
-static int __devexit isa1200_remove(struct i2c_client *client)
+static int isa1200_remove(struct i2c_client *client)
 {
 	struct isa1200_chip *haptic = i2c_get_clientdata(client);
 
@@ -887,7 +887,7 @@ static struct i2c_driver isa1200_driver = {
 		.of_match_table = isa1200_match_table,
 	},
 	.probe		= isa1200_probe,
-	.remove		= __devexit_p(isa1200_remove),
+	.remove		= isa1200_remove,
 	.suspend	= isa1200_suspend,
 	.resume		= isa1200_resume,
 	.id_table	= isa1200_id,

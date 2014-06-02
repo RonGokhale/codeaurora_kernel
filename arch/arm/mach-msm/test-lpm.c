@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -22,10 +22,7 @@
 #include <linux/ctype.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
-#include <mach/socinfo.h>
-#if defined(CONFIG_MSM_RPM)
-#include "rpm_resources.h"
-#endif
+
 #if defined(CONFIG_MSM_RPM_SMD)
 #include "lpm_resources.h"
 #endif
@@ -121,9 +118,6 @@ static void lpm_populate_name(struct lpm_level_stat *stat,
 	case MSM_PM_SLEEP_MODE_WAIT_FOR_INTERRUPT:
 		strlcat(nm, "WFI ", BUF_SIZE);
 		break;
-	case MSM_PM_SLEEP_MODE_RAMP_DOWN_AND_WAIT_FOR_INTERRUPT:
-		strlcat(nm, "WFI voltage Rampdown ", BUF_SIZE);
-		break;
 	case MSM_PM_SLEEP_MODE_RETENTION:
 		strlcat(nm, "Retention ", BUF_SIZE);
 		break;
@@ -133,9 +127,8 @@ static void lpm_populate_name(struct lpm_level_stat *stat,
 	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE:
 		strlcat(nm, "Idle Power collapse ", BUF_SIZE);
 		break;
-	case MSM_PM_SLEEP_MODE_POWER_COLLAPSE_SUSPEND:
-		strlcat(nm, "Suspend Power collapse ", BUF_SIZE);
-		break;
+	case MSM_PM_MODE_POWER_COLLASE_SUSPEND:
+		strlcat(nm, "Suspend Power collapse", BUF_SIZE);
 	default:
 		strlcat(nm, "Invalid Mode ", BUF_SIZE);
 		break;
@@ -603,7 +596,7 @@ static const struct file_operations fops_comm = {
 	.write = lpm_test_comm_write,
 };
 
-static int __devinit lpm_test_init(int test_lpm_level_count,
+static int lpm_test_init(int test_lpm_level_count,
 		struct msm_rpmrs_level *test_levels)
 {
 	int filevalue;
@@ -645,7 +638,7 @@ init_err:
 	return ret;
 }
 
-static int  __devexit lpm_test_exit(struct platform_device *pdev)
+static int  lpm_test_exit(struct platform_device *pdev)
 {
 	unsigned int m_cpu = 0;
 
@@ -657,7 +650,7 @@ static int  __devexit lpm_test_exit(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devinit lpm_test_probe(struct platform_device *pdev)
+static int lpm_test_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct lpm_test_platform_data *pdata;

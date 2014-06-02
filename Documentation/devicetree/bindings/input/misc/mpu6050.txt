@@ -1,0 +1,29 @@
+InvenSense MPU6050 6 Axis gyroscope+accelerometer combo driver
+
+Required properties:
+
+ - compatible		: Should be "invn,mpu6050".
+ - reg				: i2c slave address of the device.
+ - interrupt-parent	: Parent of interrupt.
+ - interrupts		: Gyrometer sample interrupt to indicate new data ready.
+ - vdd-supply		: Analog power supply needed to power device.
+ - vlogic-supply	: Digital IO power supply needed for IO and I2C.
+
+Optional properties:
+
+ - invn,use-interrupt	: use device interrupt to trigger data acquisition
+			instead of polling data.
+ - invn,gpio-int	: GPIO used for interrupt.
+ - invn,gpio-en		: GPIO used for power enabling.
+
+Example:
+	i2c@f9925000 {
+		mpu6050@68 {
+			reg = <0x68>;
+			compatible = "invn,mpu6050";
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <84 0x2>;
+			vlogic-supply = <&pm8916_l17>;
+			vdd-supply = <&pm8916_l6>;
+		};
+	};

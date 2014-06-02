@@ -21,6 +21,7 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <linux/perf_event.h>
@@ -79,27 +80,27 @@ static unsigned long abtcounter;
 static pid_t         previous_pid;
 
 #ifdef CONFIG_PROC_FS
-static int proc_read_status(char *page, char **start, off_t off, int count,
-			    int *eof, void *data)
+static int proc_status_show(struct seq_file *m, void *v)
 {
-	char *p = page;
-	int len;
-
-	p += sprintf(p, "Emulated SWP:\t\t%lu\n", swpcounter);
-	p += sprintf(p, "Emulated SWPB:\t\t%lu\n", swpbcounter);
-	p += sprintf(p, "Aborted SWP{B}:\t\t%lu\n", abtcounter);
+	seq_printf(m, "Emulated SWP:\t\t%lu\n", swpcounter);
+	seq_printf(m, "Emulated SWPB:\t\t%lu\n", swpbcounter);
+	seq_printf(m, "Aborted SWP{B}:\t\t%lu\n", abtcounter);
 	if (previous_pid != 0)
-		p += sprintf(p, "Last process:\t\t%d\n", previous_pid);
-
-	len = (p - page) - off;
-	if (len < 0)
-		len = 0;
-
-	*eof = (len <= count) ? 1 : 0;
-	*start = page + off;
-
-	return len;
+		seq_printf(m, "Last process:\t\t%d\n", previous_pid);
+	return 0;
 }
+
+static int proc_status_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, proc_status_show, PDE_DATA(inode));
+}
+
+static const struct file_operations proc_status_fops = {
+	.open		= proc_status_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 #endif
 
 /*
@@ -109,10 +110,12 @@ static void set_segfault(struct pt_regs *regs, unsigned long addr)
 {
 	siginfo_t info;
 
+	down_read(&current->mm->mmap_sem);
 	if (find_vma(current->mm, addr) == NULL)
 		info.si_code = SEGV_MAPERR;
 	else
 		info.si_code = SEGV_ACCERR;
+	up_read(&current->mm->mmap_sem);
 
 	info.si_signo = SIGSEGV;
 	info.si_errno = 0;
@@ -174,57 +177,6 @@ static int emulate_swpX(unsigned int address, unsigned int *data,
 	return res;
 }
 
-static int check_condition(struct pt_regs *regs, unsigned int insn)
-{
-	unsigned int base_cond, neg, cond = 0;
-	unsigned int cpsr_z, cpsr_c, cpsr_n, cpsr_v;
-
-	cpsr_n = (regs->ARM_cpsr & PSR_N_BIT) ? 1 : 0;
-	cpsr_z = (regs->ARM_cpsr & PSR_Z_BIT) ? 1 : 0;
-	cpsr_c = (regs->ARM_cpsr & PSR_C_BIT) ? 1 : 0;
-	cpsr_v = (regs->ARM_cpsr & PSR_V_BIT) ? 1 : 0;
-
-	/* Upper 3 bits indicate condition, lower bit incicates negation */
-	base_cond = insn >> 29;
-	neg = insn & BIT(28) ? 1 : 0;
-
-	switch (base_cond) {
-	case 0x0:	/* equal */
-		cond = cpsr_z;
-		break;
-
-	case 0x1:	/* carry set */
-		cond = cpsr_c;
-		break;
-
-	case 0x2:	/* minus / negative */
-		cond = cpsr_n;
-		break;
-
-	case 0x3:	/* overflow */
-		cond = cpsr_v;
-		break;
-
-	case 0x4:	/* unsigned higher */
-		cond = (cpsr_c == 1) && (cpsr_z == 0);
-		break;
-
-	case 0x5:	/* signed greater / equal */
-		cond = (cpsr_n == cpsr_v);
-		break;
-
-	case 0x6:	/* signed greater */
-		cond = (cpsr_z == 0) && (cpsr_n == cpsr_v);
-		break;
-
-	case 0x7:	/* always */
-		cond = 1;
-		break;
-	};
-
-	return cond && !neg;
-}
-
 /*
  * swp_handler logs the id of calling process, dissects the instruction, sanity
  * checks the memory location, calls emulate_swpX for the actual operation and
@@ -256,12 +208,6 @@ static int swp_handler(struct pt_regs *regs, unsigned int instr)
 		pr_debug("\"%s\" (%ld) uses deprecated SWP{B} instruction\n",
 			 current->comm, (unsigned long)current->pid);
 		previous_pid = current->pid;
-	}
-
-	/* Ignore the instruction if it fails its condition code check */
-	if (!check_condition(regs, instr)) {
-		regs->ARM_pc += 4;
-		return 0;
 	}
 
 	address = regs->uregs[EXTRACT_REG_NUM(instr, RN_OFFSET)];
@@ -321,14 +267,8 @@ static struct undef_hook swp_hook = {
 static int __init swp_emulation_init(void)
 {
 #ifdef CONFIG_PROC_FS
-	struct proc_dir_entry *res;
-
-	res = create_proc_entry("cpu/swp_emulation", S_IRUGO, NULL);
-
-	if (!res)
+	if (!proc_create("cpu/swp_emulation", S_IRUGO, NULL, &proc_status_fops))
 		return -ENOMEM;
-
-	res->read_proc = proc_read_status;
 #endif /* CONFIG_PROC_FS */
 
 	printk(KERN_NOTICE "Registering SWP/SWPB emulation handler\n");

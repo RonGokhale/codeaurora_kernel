@@ -5,7 +5,7 @@
  *  power management protocol extension to H4 to support AR300x Bluetooth Chip.
  *
  *  Copyright (c) 2009-2010 Atheros Communications Inc.
- *  Copyright (c) 2012-2013 The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
  *
  *  Acknowledgements:
  *  This file is based on hci_h4.c, which was written
@@ -46,7 +46,7 @@
 
 #include "hci_uart.h"
 #ifdef CONFIG_SERIAL_MSM_HS
-#include <mach/msm_serial_hs.h>
+#include <linux/platform_data/msm_serial_hs.h>
 #endif
 
 static int enableuartsleep = 1;
@@ -636,7 +636,7 @@ static int bluesleep_populate_pinfo(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devinit bluesleep_probe(struct platform_device *pdev)
+static int bluesleep_probe(struct platform_device *pdev)
 {
 	int ret;
 

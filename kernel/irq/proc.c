@@ -76,7 +76,7 @@ static int irq_affinity_list_proc_show(struct seq_file *m, void *v)
 static ssize_t write_irq_affinity(int type, struct file *file,
 		const char __user *buffer, size_t count, loff_t *pos)
 {
-	unsigned int irq = (int)(long)PDE(file->f_path.dentry->d_inode)->data;
+	unsigned int irq = (int)(long)PDE_DATA(file_inode(file));
 	cpumask_var_t new_value;
 	int err;
 
@@ -131,17 +131,17 @@ static ssize_t irq_affinity_list_proc_write(struct file *file,
 
 static int irq_affinity_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, irq_affinity_proc_show, PDE(inode)->data);
+	return single_open(file, irq_affinity_proc_show, PDE_DATA(inode));
 }
 
 static int irq_affinity_list_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, irq_affinity_list_proc_show, PDE(inode)->data);
+	return single_open(file, irq_affinity_list_proc_show, PDE_DATA(inode));
 }
 
 static int irq_affinity_hint_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, irq_affinity_hint_proc_show, PDE(inode)->data);
+	return single_open(file, irq_affinity_hint_proc_show, PDE_DATA(inode));
 }
 
 static const struct file_operations irq_affinity_proc_fops = {
@@ -212,7 +212,7 @@ out:
 
 static int default_affinity_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, default_affinity_show, PDE(inode)->data);
+	return single_open(file, default_affinity_show, PDE_DATA(inode));
 }
 
 static const struct file_operations default_affinity_proc_fops = {
@@ -233,7 +233,7 @@ static int irq_node_proc_show(struct seq_file *m, void *v)
 
 static int irq_node_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, irq_node_proc_show, PDE(inode)->data);
+	return single_open(file, irq_node_proc_show, PDE_DATA(inode));
 }
 
 static const struct file_operations irq_node_proc_fops = {
@@ -256,7 +256,7 @@ static int irq_spurious_proc_show(struct seq_file *m, void *v)
 
 static int irq_spurious_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, irq_spurious_proc_show, PDE(inode)->data);
+	return single_open(file, irq_spurious_proc_show, PDE_DATA(inode));
 }
 
 static const struct file_operations irq_spurious_proc_fops = {
@@ -266,6 +266,45 @@ static const struct file_operations irq_spurious_proc_fops = {
 	.release	= single_release,
 };
 
+static int irq_wake_depth_proc_show(struct seq_file *m, void *v)
+{
+	struct irq_desc *desc = irq_to_desc((long) m->private);
+
+	seq_printf(m, "wake_depth %u\n", desc->wake_depth);
+	return 0;
+}
+
+static int irq_wake_depth_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, irq_wake_depth_proc_show, PDE_DATA(inode));
+}
+
+static const struct file_operations irq_wake_depth_proc_fops = {
+	.open		= irq_wake_depth_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int irq_disable_depth_proc_show(struct seq_file *m, void *v)
+{
+	struct irq_desc *desc = irq_to_desc((long) m->private);
+
+	seq_printf(m, "disable_depth %u\n", desc->depth);
+	return 0;
+}
+
+static int irq_disable_depth_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, irq_disable_depth_proc_show, PDE_DATA(inode));
+}
+
+static const struct file_operations irq_disable_depth_proc_fops = {
+	.open		= irq_disable_depth_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 #define MAX_NAMELEN 128
 
 static int name_unique(unsigned int irq, struct irqaction *new_action)
@@ -341,6 +380,10 @@ void register_irq_proc(unsigned int irq, struct irq_desc *desc)
 
 	proc_create_data("spurious", 0444, desc->dir,
 			 &irq_spurious_proc_fops, (void *)(long)irq);
+	proc_create_data("disable_depth", 0444, desc->dir,
+			 &irq_disable_depth_proc_fops, (void *)(long)irq);
+	proc_create_data("wake_depth", 0444, desc->dir,
+			 &irq_wake_depth_proc_fops, (void *)(long)irq);
 }
 
 void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
@@ -366,11 +409,7 @@ void unregister_irq_proc(unsigned int irq, struct irq_desc *desc)
 
 void unregister_handler_proc(unsigned int irq, struct irqaction *action)
 {
-	if (action->dir) {
-		struct irq_desc *desc = irq_to_desc(irq);
-
-		remove_proc_entry(action->dir->name, desc->dir);
-	}
+	proc_remove(action->dir);
 }
 
 static void register_default_affinity_proc(void)

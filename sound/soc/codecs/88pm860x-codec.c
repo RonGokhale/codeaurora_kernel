@@ -351,6 +351,9 @@ static int snd_soc_put_volsw_2r_st(struct snd_kcontrol *kcontrol,
 	val = ucontrol->value.integer.value[0];
 	val2 = ucontrol->value.integer.value[1];
 
+	if (val >= ARRAY_SIZE(st_table) || val2 >= ARRAY_SIZE(st_table))
+		return -EINVAL;
+
 	err = snd_soc_update_bits(codec, reg, 0x3f, st_table[val].m);
 	if (err < 0)
 		return err;
@@ -1423,7 +1426,7 @@ static struct snd_soc_codec_driver soc_codec_dev_pm860x = {
 	.num_dapm_routes = ARRAY_SIZE(pm860x_dapm_routes),
 };
 
-static int __devinit pm860x_codec_probe(struct platform_device *pdev)
+static int pm860x_codec_probe(struct platform_device *pdev)
 {
 	struct pm860x_chip *chip = dev_get_drvdata(pdev->dev.parent);
 	struct pm860x_priv *pm860x;
@@ -1463,7 +1466,7 @@ out:
 	return -EINVAL;
 }
 
-static int __devexit pm860x_codec_remove(struct platform_device *pdev)
+static int pm860x_codec_remove(struct platform_device *pdev)
 {
 	snd_soc_unregister_codec(&pdev->dev);
 	platform_set_drvdata(pdev, NULL);
@@ -1476,7 +1479,7 @@ static struct platform_driver pm860x_codec_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe	= pm860x_codec_probe,
-	.remove	= __devexit_p(pm860x_codec_remove),
+	.remove	= pm860x_codec_remove,
 };
 
 module_platform_driver(pm860x_codec_driver);

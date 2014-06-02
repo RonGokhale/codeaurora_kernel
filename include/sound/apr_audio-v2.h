@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 and
@@ -14,7 +14,7 @@
 #ifndef _APR_AUDIO_V2_H_
 #define _APR_AUDIO_V2_H_
 
-#include <mach/qdsp6v2/apr.h>
+#include <linux/qdsp6v2/apr.h>
 
 #define ADSP_ADM_VERSION    0x00070000
 
@@ -290,8 +290,9 @@ struct adm_param_data_v5 {
 	 */
 } __packed;
 
-/* Defined specifically for in-band use, includes params */
-struct adm_cmd_set_pp_params_inband_v5 {
+/* set customized mixing on matrix mixer */
+#define ADM_CMD_SET_PSPD_MTMX_STRTR_PARAMS_V5                        0x00010344
+struct adm_cmd_set_pspd_mtmx_strtr_params_v5 {
 	struct apr_hdr hdr;
 	/* LSW of parameter data payload address.*/
 	u32		payload_addr_lsw;
@@ -305,10 +306,30 @@ struct adm_cmd_set_pp_params_inband_v5 {
 	/* message or in shared memory. This is used for parsing the */
 	/* parameter payload. */
 	u32		payload_size;
-	/* Parameters passed for in band payload */
-	struct adm_param_data_v5	params;
+	u16		direction;
+	u16		sessionid;
+	u16		deviceid;
+	u16		reserved;
 } __packed;
 
+/* Defined specifically for in-band use, includes params */
+struct adm_cmd_set_pp_params_inband_v5 {
+	struct apr_hdr hdr;
+	/* LSW of parameter data payload address.*/
+	u32             payload_addr_lsw;
+	/* MSW of parameter data payload address.*/
+	u32             payload_addr_msw;
+	/* Memory map handle returned by ADM_CMD_SHARED_MEM_MAP_REGIONS */
+	/* command. If mem_map_handle is zero implies the message is in */
+	/* the payload */
+	u32             mem_map_handle;
+	/* Size in bytes of the variable payload accompanying this */
+	/* message or in shared memory. This is used for parsing the */
+	/* parameter payload. */
+	u32             payload_size;
+	/* Parameters passed for in band payload */
+	struct adm_param_data_v5        params;
+} __packed;
 
 /* Returns the status and COPP ID to an #ADM_CMD_DEVICE_OPEN_V5 command.
  */
@@ -579,6 +600,15 @@ struct adm_cmd_matrix_mute_v5 {
 	/* Clients must set this field to zero.*/
 } __packed;
 
+#define ASM_PARAM_ID_AAC_STEREO_MIX_COEFF_SELECTION_FLAG_V2 (0x00010DD8)
+
+struct asm_aac_stereo_mix_coeff_selection_param_v2 {
+	struct apr_hdr          hdr;
+	u32                     param_id;
+	u32                     param_size;
+	u32                     aac_stereo_mix_coeff_flag;
+} __packed;
+
 /* Allows a client to connect the desired stream to
  * the desired AFE port through the stream router
  *
@@ -757,6 +787,8 @@ struct adm_cmd_connect_afe_port_v5 {
 #define AFE_PORT_ID_SECONDARY_PCM_RX        0x100C
 #define AFE_PORT_ID_SECONDARY_PCM_TX        0x100D
 #define AFE_PORT_ID_MULTICHAN_HDMI_RX       0x100E
+#define AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA	0x1010
+#define AFE_PORT_ID_SPDIF_RX                0x5000
 #define  AFE_PORT_ID_RT_PROXY_PORT_001_RX   0x2000
 #define  AFE_PORT_ID_RT_PROXY_PORT_001_TX   0x2001
 #define AFE_PORT_ID_INTERNAL_BT_SCO_RX      0x3000
@@ -1379,6 +1411,123 @@ struct afe_param_id_i2s_cfg {
 /*
  * This param id is used to configure PCM interface
  */
+
+#define AFE_API_VERSION_SPDIF_CONFIG 0x1
+#define AFE_API_VERSION_SPDIF_CH_STATUS_CONFIG 0x1
+#define AFE_API_VERSION_SPDIF_CLK_CONFIG 0x1
+#define AFE_CH_STATUS_A 1
+#define AFE_CH_STATUS_B 2
+
+#define AFE_PARAM_ID_SPDIF_CONFIG 0x00010244
+#define AFE_PARAM_ID_CH_STATUS_CONFIG 0x00010245
+#define AFE_PARAM_ID_SPDIF_CLK_CONFIG 0x00010246
+
+#define AFE_PORT_CLK_ROOT_LPAPLL 0x3
+#define AFE_PORT_CLK_ROOT_LPAQ6PLL   0x4
+
+struct afe_param_id_spdif_cfg {
+/* Minor version used for tracking the version of the SPDIF
+ * configuration interface.
+ * Supported values: #AFE_API_VERSION_SPDIF_CONFIG
+ */
+	u32	spdif_cfg_minor_version;
+
+/* Sampling rate of the port.
+ * Supported values:
+ * - #AFE_PORT_SAMPLE_RATE_22_05K
+ * - #AFE_PORT_SAMPLE_RATE_32K
+ * - #AFE_PORT_SAMPLE_RATE_44_1K
+ * - #AFE_PORT_SAMPLE_RATE_48K
+ * - #AFE_PORT_SAMPLE_RATE_96K
+ * - #AFE_PORT_SAMPLE_RATE_176_4K
+ * - #AFE_PORT_SAMPLE_RATE_192K
+ */
+	u32	sample_rate;
+
+/* data format
+ * Supported values:
+ * - #AFE_LINEAR_PCM_DATA
+ * - #AFE_NON_LINEAR_DATA
+ */
+	u16	data_format;
+/* Number of channels supported by the port
+ * - PCM - 1, Compressed Case - 2
+ */
+	u16	num_channels;
+/* Bit width of the sample.
+ * Supported values: 16, 24
+ */
+	u16	bit_width;
+/* This field must be set to zero. */
+	u16	reserved;
+} __packed;
+
+struct afe_param_id_spdif_ch_status_cfg {
+	u32 ch_status_cfg_minor_version;
+/* Minor version used for tracking the version of channel
+ * status configuration. Current supported version is 1
+ */
+
+	u32 status_type;
+/* Indicate if the channel status is for channel A or B
+ * Supported values:
+ * - #AFE_CH_STATUS_A
+ * - #AFE_CH_STATUS_B
+ */
+
+	u8 status_bits[24];
+/* Channel status - 192 bits for channel
+ * Byte ordering as defined by IEC60958-3
+ */
+
+	u8 status_mask[24];
+/* Channel status with mask bits 1 will be applied.
+ * Byte ordering as defined by IEC60958-3
+ */
+} __packed;
+
+struct afe_param_id_spdif_clk_cfg {
+	u32 clk_cfg_minor_version;
+/* Minor version used for tracking the version of SPDIF
+ * interface clock configuration. Current supported version
+ * is 1
+ */
+
+	u32 clk_value;
+/* Specifies the clock frequency in Hz to set
+ * Supported values:
+ * 0 - Disable the clock
+ * 2 (byphase) * 32 (60958 subframe size) * sampling rate * 2
+ * (channels A and B)
+ */
+
+	u32 clk_root;
+/* Specifies SPDIF root clk source
+ * Supported Values:
+ * - #AFE_PORT_CLK_ROOT_LPAPLL
+ * - #AFE_PORT_CLK_ROOT_LPAQ6PLL
+ */
+} __packed;
+
+struct afe_spdif_clk_config_command {
+	struct apr_hdr                    hdr;
+	struct afe_port_cmd_set_param_v2  param;
+	struct afe_port_param_data_v2     pdata;
+	struct afe_param_id_spdif_clk_cfg clk_cfg;
+} __packed;
+
+struct afe_spdif_chstatus_config_command {
+	struct apr_hdr                    hdr;
+	struct afe_port_cmd_set_param_v2  param;
+	struct afe_port_param_data_v2     pdata;
+	struct afe_param_id_spdif_ch_status_cfg ch_status;
+} __packed;
+
+struct afe_spdif_port_config {
+	struct afe_param_id_spdif_cfg            cfg;
+	struct afe_param_id_spdif_ch_status_cfg  ch_status;
+} __packed;
+
 #define AFE_PARAM_ID_PCM_CONFIG        0x0001020E
 #define AFE_API_VERSION_PCM_CONFIG	0x1
 /* Enumeration for the auxiliary PCM synchronization signal
@@ -1985,6 +2134,7 @@ union afe_port_config {
 	struct afe_param_id_internal_bt_fm_cfg    int_bt_fm;
 	struct afe_param_id_pseudo_port_cfg       pseudo_port;
 	struct afe_param_id_device_hw_delay_cfg   hw_delay;
+	struct afe_param_id_spdif_cfg             spdif;
 } __packed;
 
 struct afe_audioif_config_command_no_payload {
@@ -2249,12 +2399,14 @@ struct afe_port_cmdrsp_get_param_v2 {
 */
 #define ADSP_MEMORY_MAP_PHYSICAL_MEMORY 0
 
+#define NULL_POPP_TOPOLOGY				0x00010C68
 #define NULL_COPP_TOPOLOGY				0x00010312
-#define DEFAULT_COPP_TOPOLOGY				0x00010be3
-#define DEFAULT_POPP_TOPOLOGY				0x00010be4
+#define DEFAULT_COPP_TOPOLOGY				0x00010BE3
+#define DEFAULT_POPP_TOPOLOGY				0x00010BE4
 #define VPM_TX_SM_ECNS_COPP_TOPOLOGY			0x00010F71
 #define VPM_TX_DM_FLUENCE_COPP_TOPOLOGY			0x00010F72
 #define VPM_TX_QMIC_FLUENCE_COPP_TOPOLOGY		0x00010F75
+#define VPM_TX_DM_RFECNS_COPP_TOPOLOGY			0x00010F86
 
 /* Memory map regions command payload used by the
  * #ASM_CMD_SHARED_MEM_MAP_REGIONS ,#ADM_CMD_SHARED_MEM_MAP_REGIONS
@@ -2487,10 +2639,6 @@ struct asm_softvolume_params {
 #define PCM_FORMAT_MAX_NUM_CHANNEL  8
 
 #define ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V2 0x00010DA5
-
-#define ASM_STREAM_POSTPROC_TOPO_ID_DEFAULT 0x00010BE4
-
-#define ASM_STREAM_POSTPROC_TOPO_ID_NONE 0x00010C68
 
 #define ASM_MEDIA_FMT_EVRCB_FS 0x00010BEF
 
@@ -3169,6 +3317,7 @@ struct asm_amrwbplus_fmt_blk_v2 {
 #define ASM_MEDIA_FMT_AC3_DEC                   0x00010BF6
 #define ASM_MEDIA_FMT_EAC3_DEC                   0x00010C3C
 #define ASM_MEDIA_FMT_DTS                    0x00010D88
+#define ASM_MEDIA_FMT_MP2                    0x00010DE9
 
 /* Media format ID for adaptive transform acoustic coding. This
  * ID is used by the #ASM_STREAM_CMD_OPEN_WRITE_COMPRESSED command
@@ -3676,6 +3825,7 @@ struct asm_session_cmd_run_v2 {
 } __packed;
 
 #define ASM_SESSION_CMD_PAUSE 0x00010BD3
+#define ASM_SESSION_CMD_SUSPEND 0x00010DEC
 #define ASM_SESSION_CMD_GET_SESSIONTIME_V3 0x00010D9D
 #define ASM_SESSION_CMD_REGISTER_FOR_RX_UNDERFLOW_EVENTS 0x00010BD5
 
@@ -4696,6 +4846,25 @@ struct asm_stream_cmd_open_write_compressed {
  * IEC 61937 packetization is not performed by the aDSP.
  */
 
+} __packed;
+
+
+/*
+    Indicates the number of samples per channel to be removed from the
+    beginning of the stream.
+*/
+#define ASM_DATA_CMD_REMOVE_INITIAL_SILENCE 0x00010D67
+/*
+    Indicates the number of samples per channel to be removed from
+    the end of the stream.
+*/
+#define ASM_DATA_CMD_REMOVE_TRAILING_SILENCE 0x00010D68
+struct asm_data_cmd_remove_silence {
+	struct apr_hdr hdr;
+	u32	num_samples_to_remove;
+	/**< Number of samples per channel to be removed.
+
+	   @values 0 to (2@sscr{32}-1) */
 } __packed;
 
 #define ASM_STREAM_CMD_OPEN_READ_COMPRESSED                        0x00010D95
@@ -6259,6 +6428,206 @@ struct asm_eq_params {
 #define VOICE_CMD_GET_PARAM				0x0001133E
 #define VOICE_EVT_GET_PARAM_ACK				0x00011008
 
+
+/** ID of the Bass Boost module.
+    This module supports the following parameter IDs:
+    - #AUDPROC_PARAM_ID_BASS_BOOST_ENABLE
+    - #AUDPROC_PARAM_ID_BASS_BOOST_MODE
+    - #AUDPROC_PARAM_ID_BASS_BOOST_STRENGTH
+*/
+#define AUDPROC_MODULE_ID_BASS_BOOST                             0x000108A1
+/** ID of the Bass Boost enable parameter used by
+    AUDPROC_MODULE_ID_BASS_BOOST.
+*/
+#define AUDPROC_PARAM_ID_BASS_BOOST_ENABLE                       0x000108A2
+/** ID of the Bass Boost mode parameter used by
+    AUDPROC_MODULE_ID_BASS_BOOST.
+*/
+#define AUDPROC_PARAM_ID_BASS_BOOST_MODE                         0x000108A3
+/** ID of the Bass Boost strength parameter used by
+    AUDPROC_MODULE_ID_BASS_BOOST.
+*/
+#define AUDPROC_PARAM_ID_BASS_BOOST_STRENGTH                     0x000108A4
+
+/** ID of the Virtualizer module. This module supports the
+    following parameter IDs:
+    - #AUDPROC_PARAM_ID_VIRTUALIZER_ENABLE
+    - #AUDPROC_PARAM_ID_VIRTUALIZER_STRENGTH
+    - #AUDPROC_PARAM_ID_VIRTUALIZER_OUT_TYPE
+    - #AUDPROC_PARAM_ID_VIRTUALIZER_GAIN_ADJUST
+*/
+#define AUDPROC_MODULE_ID_VIRTUALIZER                            0x000108A5
+/** ID of the Virtualizer enable parameter used by
+    AUDPROC_MODULE_ID_VIRTUALIZER.
+*/
+#define AUDPROC_PARAM_ID_VIRTUALIZER_ENABLE                      0x000108A6
+/** ID of the Virtualizer strength parameter used by
+    AUDPROC_MODULE_ID_VIRTUALIZER.
+*/
+#define AUDPROC_PARAM_ID_VIRTUALIZER_STRENGTH                    0x000108A7
+/** ID of the Virtualizer out type parameter used by
+    AUDPROC_MODULE_ID_VIRTUALIZER.
+*/
+#define AUDPROC_PARAM_ID_VIRTUALIZER_OUT_TYPE                    0x000108A8
+/** ID of the Virtualizer out type parameter used by
+    AUDPROC_MODULE_ID_VIRTUALIZER.
+*/
+#define AUDPROC_PARAM_ID_VIRTUALIZER_GAIN_ADJUST                 0x000108A9
+
+/** ID of the Reverb module. This module supports the following
+    parameter IDs:
+    - #AUDPROC_PARAM_ID_REVERB_ENABLE
+    - #AUDPROC_PARAM_ID_REVERB_MODE
+    - #AUDPROC_PARAM_ID_REVERB_PRESET
+    - #AUDPROC_PARAM_ID_REVERB_WET_MIX
+    - #AUDPROC_PARAM_ID_REVERB_GAIN_ADJUST
+    - #AUDPROC_PARAM_ID_REVERB_ROOM_LEVEL
+    - #AUDPROC_PARAM_ID_REVERB_ROOM_HF_LEVEL
+    - #AUDPROC_PARAM_ID_REVERB_DECAY_TIME
+    - #AUDPROC_PARAM_ID_REVERB_DECAY_HF_RATIO
+    - #AUDPROC_PARAM_ID_REVERB_REFLECTIONS_LEVEL
+    - #AUDPROC_PARAM_ID_REVERB_REFLECTIONS_DELAY
+    - #AUDPROC_PARAM_ID_REVERB_LEVEL
+    - #AUDPROC_PARAM_ID_REVERB_DELAY
+    - #AUDPROC_PARAM_ID_REVERB_DIFFUSION
+    - #AUDPROC_PARAM_ID_REVERB_DENSITY
+*/
+#define AUDPROC_MODULE_ID_REVERB                          0x000108AA
+/** ID of the Reverb enable parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_ENABLE                    0x000108AB
+/** ID of the Reverb mode parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_MODE                      0x000108AC
+/** ID of the Reverb preset parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_PRESET                    0x000108AD
+/** ID of the Reverb wet mix parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_WET_MIX                   0x000108AE
+/** ID of the Reverb gain adjust parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_GAIN_ADJUST               0x000108AF
+/** ID of the Reverb room level parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_ROOM_LEVEL                0x000108B0
+/** ID of the Reverb room hf level parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_ROOM_HF_LEVEL             0x000108B1
+/** ID of the Reverb decay time parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_DECAY_TIME                0x000108B2
+/** ID of the Reverb decay hf ratio parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_DECAY_HF_RATIO            0x000108B3
+/** ID of the Reverb reflections level parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_REFLECTIONS_LEVEL         0x000108B4
+/** ID of the Reverb reflections delay parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_REFLECTIONS_DELAY         0x000108B5
+/** ID of the Reverb level parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_LEVEL                      0x000108B6
+/** ID of the Reverb delay parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_DELAY                      0x000108B7
+/** ID of the Reverb diffusion parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_DIFFUSION                  0x000108B8
+/** ID of the Reverb density parameter used by
+    AUDPROC_MODULE_ID_REVERB.
+*/
+#define AUDPROC_PARAM_ID_REVERB_DENSITY                    0x000108B9
+
+/** ID of the Popless Equalizer module. This module supports the
+    following parameter IDs:
+    - #AUDPROC_PARAM_ID_EQ_ENABLE
+    - #AUDPROC_PARAM_ID_EQ_CONFIG
+    - #AUDPROC_PARAM_ID_EQ_NUM_BANDS
+    - #AUDPROC_PARAM_ID_EQ_BAND_LEVELS
+    - #AUDPROC_PARAM_ID_EQ_BAND_LEVEL_RANGE
+    - #AUDPROC_PARAM_ID_EQ_BAND_FREQS
+    - #AUDPROC_PARAM_ID_EQ_SINGLE_BAND_FREQ_RANGE
+    - #AUDPROC_PARAM_ID_EQ_SINGLE_BAND_FREQ
+    - #AUDPROC_PARAM_ID_EQ_BAND_INDEX
+    - #AUDPROC_PARAM_ID_EQ_PRESET_ID
+    - #AUDPROC_PARAM_ID_EQ_NUM_PRESETS
+    - #AUDPROC_PARAM_ID_EQ_GET_PRESET_NAME
+*/
+#define AUDPROC_MODULE_ID_POPLESS_EQUALIZER                    0x000108BA
+/** ID of the Popless Equalizer enable parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER.
+*/
+#define AUDPROC_PARAM_ID_EQ_ENABLE                             0x000108BB
+/** ID of the Popless Equalizer config parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER.
+*/
+#define AUDPROC_PARAM_ID_EQ_CONFIG                             0x000108BC
+/** ID of the Popless Equalizer number of bands parameter used
+    by AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is
+    used for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_NUM_BANDS                          0x000108BD
+/** ID of the Popless Equalizer band levels parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is
+    used for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_BAND_LEVELS                        0x000108BE
+/** ID of the Popless Equalizer band level range parameter used
+    by AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is
+    used for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_BAND_LEVEL_RANGE                   0x000108BF
+/** ID of the Popless Equalizer band frequencies parameter used
+    by AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is
+    used for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_BAND_FREQS                         0x000108C0
+/** ID of the Popless Equalizer single band frequency range
+    parameter used by AUDPROC_MODULE_ID_POPLESS_EQUALIZER.
+    This param ID is used for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_SINGLE_BAND_FREQ_RANGE             0x000108C1
+/** ID of the Popless Equalizer single band frequency parameter
+    used by AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID
+    is used for set param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_SINGLE_BAND_FREQ                   0x000108C2
+/** ID of the Popless Equalizer band index parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER.
+*/
+#define AUDPROC_PARAM_ID_EQ_BAND_INDEX                         0x000108C3
+/** ID of the Popless Equalizer preset id parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is used
+    for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_PRESET_ID                          0x000108C4
+/** ID of the Popless Equalizer number of presets parameter used
+    by AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is used
+    for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_NUM_PRESETS                        0x000108C5
+/** ID of the Popless Equalizer preset name parameter used by
+    AUDPROC_MODULE_ID_POPLESS_EQUALIZER. This param ID is used
+    for get param only.
+*/
+#define AUDPROC_PARAM_ID_EQ_PRESET_NAME                        0x000108C6
+
 /* Set Q6 topologies */
 #define ASM_CMD_ADD_TOPOLOGIES				0x00010DBE
 #define ADM_CMD_ADD_TOPOLOGIES				0x00010335
@@ -6485,6 +6854,7 @@ struct srs_trumedia_params {
 #define LSM_SESSION_CMD_STOP				(0x00012A87)
 
 #define LSM_SESSION_EVENT_DETECTION_STATUS		(0x00012B00)
+#define LSM_SESSION_EVENT_DETECTION_STATUS_V2		(0x00012B01)
 
 #define LSM_MODULE_ID_VOICE_WAKEUP			(0x00012C00)
 #define LSM_PARAM_ID_ENDPOINT_DETECT_THRESHOLD		(0x00012C01)
@@ -6494,7 +6864,7 @@ struct srs_trumedia_params {
 #define LSM_PARAM_ID_KEYWORD_DETECT_SENSITIVITY		(0x00012C05)
 #define LSM_PARAM_ID_USER_DETECT_SENSITIVITY		(0x00012C06)
 #define LSM_PARAM_ID_FEATURE_COMPENSATION_DATA		(0x00012C07)
-
+#define LSM_PARAM_ID_MIN_CONFIDENCE_LEVELS		(0x00012C07)
 
 /* HW MAD specific */
 #define AFE_MODULE_HW_MAD				(0x00010230)
@@ -6654,6 +7024,7 @@ struct afe_param_id_clip_bank_sel {
 #define Q6AFE_LPASS_IBIT_CLK_1_P024_MHZ		 0xFA000
 #define Q6AFE_LPASS_IBIT_CLK_768_KHZ		 0xBB800
 #define Q6AFE_LPASS_IBIT_CLK_512_KHZ		 0x7D000
+#define Q6AFE_LPASS_IBIT_CLK_256_KHZ		 0x3E800
 #define Q6AFE_LPASS_IBIT_CLK_DISABLE		     0x0
 
 /* Supported LPASS CLK sources */
@@ -6941,6 +7312,17 @@ struct afe_port_cmd_set_aanc_acdb_table {
 #define RMS_PARAM_FIRST_SAMPLE 0x10009012
 #define RMS_PAYLOAD_LEN 4
 
+/* Customized mixing in matix mixer */
+#define MTMX_MODULE_ID_DEFAULT_CHMIXER  0x00010341
+#define DEFAULT_CHMIXER_PARAM_ID_COEFF  0x00010342
+#define CUSTOM_STEREO_PAYLOAD_SIZE	9
+#define CUSTOM_STEREO_CMD_PARAM_SIZE	24
+#define CUSTOM_STEREO_NUM_OUT_CH	0x0002
+#define CUSTOM_STEREO_NUM_IN_CH		0x0002
+#define CUSTOM_STEREO_INDEX_PARAM	0x0002
+#define Q14_GAIN_ZERO_POINT_FIVE	0x2000
+#define Q14_GAIN_UNITY			0x4000
+
 struct afe_svc_cmd_set_clip_bank_selection {
 	struct apr_hdr hdr;
 	struct afe_svc_cmd_set_param param;
@@ -6952,5 +7334,48 @@ struct afe_svc_cmd_set_clip_bank_selection {
 #define US_POINT_EPOS_FORMAT_V2 0x0001272D
 #define US_RAW_FORMAT_V2        0x0001272C
 #define US_PROX_FORMAT_V2       0x0001272E
+#define US_RAW_SYNC_FORMAT      0x0001272F
+#define US_GES_SYNC_FORMAT      0x00012730
+
+#define AFE_MODULE_GROUP_DEVICE	0x00010254
+#define AFE_PARAM_ID_GROUP_DEVICE_CFG	0x00010255
+#define AFE_PARAM_ID_GROUP_DEVICE_ENABLE 0x00010256
+#define AFE_GROUP_DEVICE_ID_SECONDARY_MI2S_RX	0x1102
+
+/*  Payload of the #AFE_PARAM_ID_GROUP_DEVICE_CFG
+ * parameter, which configures max of 8 AFE ports
+ * into a group.
+ * The fixed size of this structure is sixteen bytes.
+ */
+struct afe_group_device_group_cfg {
+	u32 minor_version;
+	u16 group_id;
+	u16 num_channels;
+	u16 port_id[8];
+} __packed;
+
+
+/*  Payload of the #AFE_PARAM_ID_GROUP_DEVICE_ENABLE
+ * parameter, which enables or
+ * disables any module.
+ * The fixed size of this structure is four bytes.
+ */
+
+struct afe_group_device_enable {
+	u16 group_id;
+	/* valid value is AFE_GROUP_DEVICE_ID_SECONDARY_MI2S_RX */
+	u16 enable;
+/* Enables (1) or disables (0) the module. */
+} __packed;
+
+struct afe_port_group_create {
+	struct apr_hdr hdr;
+	struct afe_svc_cmd_set_param param;
+	struct afe_port_param_data_v2 pdata;
+	union {
+		struct afe_group_device_group_cfg group_cfg;
+		struct afe_group_device_enable group_enable;
+	} __packed data;
+} __packed;
 
 #endif /*_APR_AUDIO_V2_H_ */

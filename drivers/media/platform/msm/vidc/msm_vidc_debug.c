@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -20,8 +20,8 @@ int msm_vidc_debug_out = VIDC_OUT_PRINTK;
 int msm_fw_debug = 0x18;
 int msm_fw_debug_mode = 0x1;
 int msm_fw_low_power_mode = 0x1;
-int msm_vp8_low_tier = 0x1;
 int msm_vidc_hw_rsp_timeout = 1000;
+u32 msm_fw_coverage = 0x0;
 
 struct debug_buffer {
 	char ptr[MAX_DBG_BUF_SIZE];
@@ -86,18 +86,6 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 	write_str(&dbg_buf, "irq: %u\n",
 		call_hfi_op(hdev, get_fw_info, hdev->hfi_device_data,
 					FW_IRQ));
-	write_str(&dbg_buf, "clock count: %d\n",
-		call_hfi_op(hdev, get_info, hdev->hfi_device_data,
-					DEV_CLOCK_COUNT));
-	write_str(&dbg_buf, "clock enabled: %u\n",
-		call_hfi_op(hdev, get_info, hdev->hfi_device_data,
-					DEV_CLOCK_ENABLED));
-	write_str(&dbg_buf, "power count: %d\n",
-		call_hfi_op(hdev, get_info, hdev->hfi_device_data,
-					DEV_PWR_COUNT));
-	write_str(&dbg_buf, "power enabled: %u\n",
-		call_hfi_op(hdev, get_info, hdev->hfi_device_data,
-					DEV_PWR_ENABLED));
 	for (i = SYS_MSG_START; i < SYS_MSG_END; i++) {
 		write_str(&dbg_buf, "completions[%d]: %s\n", i,
 			completion_done(&core->completions[SYS_MSG_INDEX(i)]) ?
@@ -139,6 +127,58 @@ static const struct file_operations ssr_fops = {
 	.write = trigger_ssr_write,
 };
 
+struct dentry *msm_vidc_debugfs_init_drv(void)
+{
+	struct dentry *dir = debugfs_create_dir("msm_vidc", NULL);
+	if (IS_ERR_OR_NULL(dir)) {
+		dir = NULL;
+		goto failed_create_dir;
+	}
+
+	if (!debugfs_create_u32("debug_level", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_debug)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("fw_level", S_IRUGO | S_IWUSR,
+			dir, &msm_fw_debug)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("fw_debug_mode", S_IRUGO | S_IWUSR,
+			dir, &msm_fw_debug_mode)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("fw_coverage", S_IRUGO | S_IWUSR,
+			dir, &msm_fw_coverage)) {
+		dprintk(VIDC_WARN, "debugfs_create_file fw_coverage: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("fw_low_power_mode", S_IRUGO | S_IWUSR,
+			dir, &msm_fw_low_power_mode)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("debug_output", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_debug_out)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	if (!debugfs_create_u32("hw_rsp_timeout", S_IRUGO | S_IWUSR,
+			dir, &msm_vidc_hw_rsp_timeout)) {
+		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
+		goto failed_create_dir;
+	}
+	return dir;
+
+failed_create_dir:
+	if (dir)
+		debugfs_remove_recursive(vidc_driver->debugfs_root);
+
+	return NULL;
+}
+
 struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core,
 		struct dentry *parent)
 {
@@ -159,43 +199,8 @@ struct dentry *msm_vidc_debugfs_init_core(struct msm_vidc_core *core,
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
 		goto failed_create_dir;
 	}
-	if (!debugfs_create_u32("debug_level", S_IRUGO | S_IWUSR,
-			parent,	&msm_vidc_debug)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("fw_level", S_IRUGO | S_IWUSR,
-			parent, &msm_fw_debug)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
 	if (!debugfs_create_file("trigger_ssr", S_IWUSR,
 			dir, core, &ssr_fops)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("fw_debug_mode", S_IRUGO | S_IWUSR,
-			parent, &msm_fw_debug_mode)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("fw_low_power_mode", S_IRUGO | S_IWUSR,
-			parent, &msm_fw_low_power_mode)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("vp8_low_tier", S_IRUGO | S_IWUSR,
-			parent, &msm_vp8_low_tier)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("debug_output", S_IRUGO | S_IWUSR,
-			parent, &msm_vidc_debug_out)) {
-		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
-		goto failed_create_dir;
-	}
-	if (!debugfs_create_u32("hw_rsp_timeout", S_IRUGO | S_IWUSR,
-			parent, &msm_vidc_hw_rsp_timeout)) {
 		dprintk(VIDC_ERR, "debugfs_create_file: fail\n");
 		goto failed_create_dir;
 	}
@@ -228,7 +233,7 @@ static int publish_unreleased_reference(struct msm_vidc_inst *inst)
 			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE &&
 			!temp->inactive && atomic_read(&temp->ref_count)) {
 				write_str(&dbg_buf,
-				"\tpending buffer: 0x%x fd[0] = %d ref_count = %d held by: %s\n",
+				"\tpending buffer: 0x%lx fd[0] = %d ref_count = %d held by: %s\n",
 				temp->device_addr[0],
 				temp->fd[0],
 				atomic_read(&temp->ref_count),
@@ -255,10 +260,11 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 		inst->session_type == MSM_VIDC_ENCODER ? "Encoder" : "Decoder");
 	write_str(&dbg_buf, "===============================\n");
 	write_str(&dbg_buf, "core: 0x%p\n", inst->core);
-	write_str(&dbg_buf, "height: %d\n", inst->prop.height);
-	write_str(&dbg_buf, "width: %d\n", inst->prop.width);
+	write_str(&dbg_buf, "height: %d\n", inst->prop.height[CAPTURE_PORT]);
+	write_str(&dbg_buf, "width: %d\n", inst->prop.width[CAPTURE_PORT]);
 	write_str(&dbg_buf, "fps: %d\n", inst->prop.fps);
 	write_str(&dbg_buf, "state: %d\n", inst->state);
+	write_str(&dbg_buf, "secure: %d\n", !!(inst->flags & VIDC_SECURE));
 	write_str(&dbg_buf, "-----------Formats-------------\n");
 	for (i = 0; i < MAX_PORT_NUM; i++) {
 		write_str(&dbg_buf, "capability: %s\n", i == OUTPUT_PORT ?

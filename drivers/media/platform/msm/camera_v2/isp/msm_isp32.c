@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,7 +12,7 @@
 
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
 
 #include "msm_isp32.h"
 #include "msm_isp_util.h"
@@ -33,14 +33,19 @@
 #define VFE32_PING_PONG_BASE(wm, ping_pong) \
 	(VFE32_WM_BASE(wm) + 0x4 * (1 + (~(ping_pong >> wm) & 0x1)))
 
+static uint8_t stats_pingpong_offset_map[] = {
+	7, 8, 9, 10, 11, 12, 13};
+
 #define VFE32_NUM_STATS_TYPE 7
-#define VFE32_STATS_PING_PONG_OFFSET 7
 #define VFE32_STATS_BASE(idx) (0xF4 + 0xC * idx)
 #define VFE32_STATS_PING_PONG_BASE(idx, ping_pong) \
 	(VFE32_STATS_BASE(idx) + 0x4 * \
-	(~(ping_pong >> (idx + VFE32_STATS_PING_PONG_OFFSET)) & 0x1))
+	(~(ping_pong >> (stats_pingpong_offset_map[idx])) & 0x1))
 
 #define VFE32_CLK_IDX 0
+#define MSM_ISP32_TOTAL_WM_UB 792
+/*792 double word*/
+
 static struct msm_cam_clk_info msm_vfe32_1_clk_info[] = {
 	/*vfe32 clock info for B-family: 8610 */
 	{"vfe_clk_src", 266670000},
@@ -367,7 +372,7 @@ static long msm_vfe32_reset_hardware(struct vfe_device *vfe_dev)
 {
 	init_completion(&vfe_dev->reset_complete);
 	msm_camera_io_w_mb(0x3FF, vfe_dev->vfe_base + 0x4);
-	return wait_for_completion_interruptible_timeout(
+	return wait_for_completion_timeout(
 	   &vfe_dev->reset_complete, msecs_to_jiffies(50));
 }
 
@@ -495,12 +500,17 @@ static void msm_vfe32_clear_framedrop(struct vfe_device *vfe_dev,
 	}
 }
 
-static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
+static int32_t msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 	enum msm_vfe_axi_stream_src stream_src, uint32_t io_format)
 {
 	int bpp, bpp_reg = 0, pack_fmt = 0, pack_reg = 0;
 	uint32_t io_format_reg;
 	bpp = msm_isp_get_bit_per_pixel(io_format);
+	if (bpp < 0) {
+		pr_err("%s:%d invalid io_format %d bpp %d", __func__, __LINE__,
+			io_format, bpp);
+		return -EINVAL;
+	}
 
 	switch (bpp) {
 	case 8:
@@ -512,6 +522,9 @@ static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 	case 12:
 		bpp_reg = 1 << 1;
 		break;
+	default:
+		pr_err("%s:%d invalid bpp %d", __func__, __LINE__, bpp);
+		return -EINVAL;
 	}
 
 	if (stream_src == IDEAL_RAW) {
@@ -537,7 +550,7 @@ static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 			break;
 		default:
 			pr_err("%s: invalid pack fmt!\n", __func__);
-			return;
+			return -EINVAL;
 		}
 	}
 
@@ -558,9 +571,10 @@ static void msm_vfe32_cfg_io_format(struct vfe_device *vfe_dev,
 	case RDI_INTF_2:
 	default:
 		pr_err("%s: Invalid stream source\n", __func__);
-		return;
+		return -EINVAL;
 	}
 	msm_camera_io_w(io_format_reg, vfe_dev->vfe_base + 0x6F8);
+	return 0;
 }
 
 static void msm_vfe32_cfg_camif(struct vfe_device *vfe_dev,
@@ -620,8 +634,13 @@ static void msm_vfe32_update_camif_state(
 		msm_camera_io_w_mb(0x0, vfe_dev->vfe_base + 0x1E0);
 		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
 	} else if (update_state == DISABLE_CAMIF_IMMEDIATELY) {
-		msm_camera_io_w_mb(0x2, vfe_dev->vfe_base + 0x1E0);
+		vfe_dev->ignore_error = 1;
+		msm_camera_io_w_mb(0x6, vfe_dev->vfe_base + 0x1E0);
+		vfe_dev->hw_info->vfe_ops.axi_ops.halt(vfe_dev);
+		vfe_dev->hw_info->vfe_ops.core_ops.reset_hw(vfe_dev);
+		vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
+		vfe_dev->ignore_error = 0;
 	}
 }
 
@@ -769,7 +788,44 @@ static void msm_vfe32_axi_clear_wm_xbar_reg(
 	msm_camera_io_w(xbar_reg_cfg, vfe_dev->vfe_base + VFE32_XBAR_BASE(wm));
 }
 
-static void msm_vfe32_cfg_axi_ub(struct vfe_device *vfe_dev)
+static void msm_vfe32_cfg_axi_ub_equal_default(struct vfe_device *vfe_dev)
+{
+	int i;
+	uint32_t ub_offset = 0;
+	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
+	uint32_t total_image_size = 0;
+	uint32_t num_used_wms = 0;
+	uint32_t prop_size = 0;
+	uint32_t wm_ub_size;
+	uint64_t delta;
+	for (i = 0; i < axi_data->hw_info->num_wm; i++) {
+		if (axi_data->free_wm[i] > 0) {
+			num_used_wms++;
+			total_image_size += axi_data->wm_image_size[i];
+		}
+	}
+	prop_size = MSM_ISP32_TOTAL_WM_UB -
+		axi_data->hw_info->min_wm_ub * num_used_wms;
+	for (i = 0; i < axi_data->hw_info->num_wm; i++) {
+		if (axi_data->free_wm[i]) {
+			delta =
+				(uint64_t)(axi_data->wm_image_size[i] *
+					prop_size);
+			do_div(delta, total_image_size);
+			wm_ub_size = axi_data->hw_info->min_wm_ub +
+				(uint32_t)delta;
+			msm_camera_io_w(ub_offset << 16 |
+				(wm_ub_size - 1), vfe_dev->vfe_base +
+					VFE32_WM_BASE(i) + 0xC);
+			ub_offset += wm_ub_size;
+		} else {
+			msm_camera_io_w(0,
+				vfe_dev->vfe_base + VFE32_WM_BASE(i) + 0xC);
+		}
+	}
+}
+
+static void msm_vfe32_cfg_axi_ub_equal_slicing(struct vfe_device *vfe_dev)
 {
 	int i;
 	uint32_t ub_offset = 0;
@@ -791,10 +847,21 @@ static void msm_vfe32_cfg_axi_ub(struct vfe_device *vfe_dev)
 	}
 }
 
-static void msm_vfe32_update_ping_pong_addr(struct vfe_device *vfe_dev,
-		uint8_t wm_idx, uint32_t pingpong_status, unsigned long paddr)
+static void msm_vfe32_cfg_axi_ub(struct vfe_device *vfe_dev)
 {
-	msm_camera_io_w(paddr, vfe_dev->vfe_base +
+	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
+	axi_data->wm_ub_cfg_policy = MSM_WM_UB_CFG_DEFAULT;
+	if (axi_data->wm_ub_cfg_policy == MSM_WM_UB_EQUAL_SLICING)
+		msm_vfe32_cfg_axi_ub_equal_slicing(vfe_dev);
+	else
+		msm_vfe32_cfg_axi_ub_equal_default(vfe_dev);
+}
+
+static void msm_vfe32_update_ping_pong_addr(struct vfe_device *vfe_dev,
+		uint8_t wm_idx, uint32_t pingpong_status, dma_addr_t paddr)
+{
+	uint32_t paddr32 = (paddr & 0xFFFFFFFF);
+	msm_camera_io_w(paddr32, vfe_dev->vfe_base +
 		VFE32_PING_PONG_BASE(wm_idx, pingpong_status));
 }
 
@@ -858,6 +925,12 @@ static int msm_vfe32_get_stats_idx(enum msm_isp_stats_type stats_type)
 		pr_err("%s: Invalid stats type\n", __func__);
 		return -EINVAL;
 	}
+}
+
+static int msm_vfe32_stats_check_streams(
+	struct msm_vfe_stats_stream *stream_info)
+{
+	return 0;
 }
 
 static void msm_vfe32_stats_cfg_comp_mask(struct vfe_device *vfe_dev,
@@ -961,10 +1034,11 @@ static void msm_vfe32_stats_enable_module(struct vfe_device *vfe_dev,
 
 static void msm_vfe32_stats_update_ping_pong_addr(struct vfe_device *vfe_dev,
 	struct msm_vfe_stats_stream *stream_info, uint32_t pingpong_status,
-	unsigned long paddr)
+	dma_addr_t paddr)
 {
+	uint32_t paddr32 = (paddr & 0xFFFFFFFF);
 	int stats_idx = STATS_IDX(stream_info->stream_handle);
-	msm_camera_io_w(paddr, vfe_dev->vfe_base +
+	msm_camera_io_w(paddr32, vfe_dev->vfe_base +
 		VFE32_STATS_PING_PONG_BASE(stats_idx, pingpong_status));
 }
 
@@ -1051,6 +1125,7 @@ struct msm_vfe_axi_hardware_info msm_vfe32_axi_hw_info = {
 	.num_comp_mask = 3,
 	.num_rdi = 3,
 	.num_rdi_master = 3,
+	.min_wm_ub = 64,
 };
 
 static struct msm_vfe_stats_hardware_info msm_vfe32_stats_hw_info = {
@@ -1060,7 +1135,7 @@ static struct msm_vfe_stats_hardware_info msm_vfe32_stats_hw_info = {
 		1 << MSM_ISP_STATS_AWB | 1 << MSM_ISP_STATS_IHIST |
 		1 << MSM_ISP_STATS_RS | 1 << MSM_ISP_STATS_CS |
 		1 << MSM_ISP_STATS_SKIN | 1 << MSM_ISP_STATS_BHIST,
-	.stats_ping_pong_offset = VFE32_STATS_PING_PONG_OFFSET,
+	.stats_ping_pong_offset = stats_pingpong_offset_map,
 	.num_stats_type = VFE32_NUM_STATS_TYPE,
 	.num_stats_comp_mask = 0,
 };
@@ -1130,6 +1205,7 @@ struct msm_vfe_hardware_info vfe32_hw_info = {
 		},
 		.stats_ops = {
 			.get_stats_idx = msm_vfe32_get_stats_idx,
+			.check_streams = msm_vfe32_stats_check_streams,
 			.cfg_comp_mask = msm_vfe32_stats_cfg_comp_mask,
 			.cfg_wm_irq_mask = msm_vfe32_stats_cfg_wm_irq_mask,
 			.clear_wm_irq_mask = msm_vfe32_stats_clear_wm_irq_mask,

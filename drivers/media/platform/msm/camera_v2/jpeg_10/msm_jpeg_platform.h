@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,11 +16,12 @@
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 #include <linux/ion.h>
-#include <linux/iommu.h>
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
 #include "msm_jpeg_sync.h"
 #define JPEG_CLK_RATE 266670000
 
+int msm_jpeg_platform_set_clk_rate(struct msm_jpeg_device *pgmn_dev,
+		long clk_rate);
 void msm_jpeg_platform_p2v(struct msm_jpeg_device *pgmn_dev, struct file *file,
 	struct ion_handle **ionhandle, int domain_num);
 uint32_t msm_jpeg_platform_v2p(struct msm_jpeg_device *pgmn_dev, int fd,

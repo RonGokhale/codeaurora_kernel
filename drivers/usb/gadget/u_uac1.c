@@ -1,7 +1,7 @@
 /*
  * u_audio.c -- ALSA audio utilities for Gadget stack
  *
- * Copyright (c) 2012, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  * Copyright (C) 2008 Bryan Wu <cooloney@kernel.org>
  * Copyright (C) 2008 Analog Devices, Inc
  *
@@ -528,7 +528,7 @@ try_again:
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	pr_debug("frames = %d, count = %d", (int)frames, count);
+	pr_debug("frames = %d, count = %zd", (int)frames, count);
 
 	result = snd_pcm_lib_read(substream, buf, frames);
 	if (result != frames) {
@@ -597,9 +597,11 @@ static int gaudio_open_snd_dev(struct gaudio *card)
 	snd = &card->playback;
 	snd->filp = filp_open(fn_play, O_WRONLY, 0);
 	if (IS_ERR(snd->filp)) {
+		int ret = PTR_ERR(snd->filp);
+
 		pr_err("No such PCM playback device: %s\n", fn_play);
 		snd->filp = NULL;
-		return -EINVAL;
+		return ret;
 	}
 	pr_debug("Initialized PCM playback device: %s\n", fn_play);
 
@@ -645,17 +647,17 @@ static int gaudio_close_snd_dev(struct gaudio *gau)
 	/* Close control device */
 	snd = &gau->control;
 	if (snd->filp)
-		filp_close(snd->filp, current->files);
+		filp_close(snd->filp, NULL);
 
 	/* Close PCM playback device and setup substream */
 	snd = &gau->playback;
 	if (snd->filp)
-		filp_close(snd->filp, current->files);
+		filp_close(snd->filp, NULL);
 
 	/* Close PCM capture device and setup substream */
 	snd = &gau->capture;
 	if (snd->filp)
-		filp_close(snd->filp, current->files);
+		filp_close(snd->filp, NULL);
 
 	return 0;
 }

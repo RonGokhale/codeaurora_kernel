@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,6 +19,7 @@
 
 #define HFI_EVENT_SESSION_SEQUENCE_CHANGED (HFI_OX_BASE + 0x3)
 #define HFI_EVENT_SESSION_PROPERTY_CHANGED (HFI_OX_BASE + 0x4)
+#define HFI_EVENT_SESSION_LTRUSE_FAILED (HFI_OX_BASE + 0x5)
 #define HFI_EVENT_RELEASE_BUFFER_REFERENCE (HFI_OX_BASE + 0x6)
 
 #define HFI_EVENT_DATA_SEQUENCE_CHANGED_SUFFICIENT_BUFFER_RESOURCES	\
@@ -26,7 +27,7 @@
 #define HFI_EVENT_DATA_SEQUENCE_CHANGED_INSUFFICIENT_BUFFER_RESOURCES	\
 	(HFI_OX_BASE + 0x2)
 
-#define HFI_BUFFERFLAG_EOS				0x00000001
+#define HFI_BUFFERFLAG_EOS			0x00000001
 #define HFI_BUFFERFLAG_STARTTIME		0x00000002
 #define HFI_BUFFERFLAG_DECODEONLY		0x00000004
 #define HFI_BUFFERFLAG_DATACORRUPT		0x00000008
@@ -34,13 +35,16 @@
 #define HFI_BUFFERFLAG_SYNCFRAME		0x00000020
 #define HFI_BUFFERFLAG_EXTRADATA		0x00000040
 #define HFI_BUFFERFLAG_CODECCONFIG		0x00000080
-#define HFI_BUFFERFLAG_TIMESTAMPINVALID	0x00000100
+#define HFI_BUFFERFLAG_TIMESTAMPINVALID		0x00000100
 #define HFI_BUFFERFLAG_READONLY			0x00000200
-#define HFI_BUFFERFLAG_ENDOFSUBFRAME	0x00000400
+#define HFI_BUFFERFLAG_ENDOFSUBFRAME		0x00000400
 #define HFI_BUFFERFLAG_EOSEQ			0x00200000
-#define HFI_BUFFERFLAG_DISCONTINUITY	0x80000000
-#define HFI_BUFFERFLAG_TEI				0x40000000
+#define HFI_BUFFER_FLAG_MBAFF			0x08000000
+#define HFI_BUFFERFLAG_VPE_YUV_601_709_CSC_CLAMP \
+						0x10000000
 #define HFI_BUFFERFLAG_DROP_FRAME               0x20000000
+#define HFI_BUFFERFLAG_TEI			0x40000000
+#define HFI_BUFFERFLAG_DISCONTINUITY		0x80000000
 
 
 #define HFI_ERR_SESSION_EMPTY_BUFFER_DONE_OUTPUT_PENDING	\
@@ -78,12 +82,14 @@
 #define HFI_EXTRADATA_FRAME_RATE			0x00000007
 #define HFI_EXTRADATA_PANSCAN_WINDOW		0x00000008
 #define HFI_EXTRADATA_RECOVERY_POINT_SEI	0x00000009
-#define HFI_EXTRADATA_CLOSED_CAPTION_UD		0x0000000A
-#define HFI_EXTRADATA_AFD_UD			0x0000000B
 #define HFI_EXTRADATA_MPEG2_SEQDISP		0x0000000D
+#define HFI_EXTRADATA_STREAM_USERDATA		0x0000000E
+#define HFI_EXTRADATA_FRAME_QP			0x0000000F
+#define HFI_EXTRADATA_FRAME_BITS_INFO		0x00000010
 #define HFI_EXTRADATA_MULTISLICE_INFO		0x7F100000
 #define HFI_EXTRADATA_NUM_CONCEALED_MB		0x7F100001
 #define HFI_EXTRADATA_INDEX					0x7F100002
+#define HFI_EXTRADATA_METADATA_LTR			0x7F100004
 #define HFI_EXTRADATA_METADATA_FILLER		0x7FE00002
 
 #define HFI_INDEX_EXTRADATA_INPUT_CROP		0x0700000E
@@ -186,10 +192,6 @@ struct hfi_extradata_header {
 
 #define HFI_PROPERTY_PARAM_VDEC_FRAME_ASSEMBLY		\
 	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x00E)
-#define HFI_PROPERTY_PARAM_VDEC_CLOSED_CAPTION_EXTRADATA	\
-	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x00F)
-#define HFI_PROPERTY_PARAM_VDEC_AFD_EXTRADATA		\
-	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x010)
 #define HFI_PROPERTY_PARAM_VDEC_VC1_FRAMEDISP_EXTRADATA		\
 	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x011)
 #define HFI_PROPERTY_PARAM_VDEC_VC1_SEQDISP_EXTRADATA		\
@@ -202,6 +204,14 @@ struct hfi_extradata_header {
 	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x015)
 #define HFI_PROPERTY_PARAM_VDEC_MPEG2_SEQDISP_EXTRADATA \
 	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x016)
+#define HFI_PROPERTY_PARAM_VDEC_STREAM_USERDATA_EXTRADATA \
+	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x017)
+#define HFI_PROPERTY_PARAM_VDEC_FRAME_QP_EXTRADATA \
+	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x018)
+#define HFI_PROPERTY_PARAM_VDEC_FRAME_BITS_INFO_EXTRADATA \
+	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x019)
+#define HFI_PROPERTY_PARAM_VDEC_SCS_THRESHOLD \
+	(HFI_PROPERTY_PARAM_VDEC_OX_START + 0x01A)
 
 #define HFI_PROPERTY_CONFIG_VDEC_OX_START				\
 	(HFI_DOMAIN_BASE_VDEC + HFI_ARCH_OX_OFFSET + 0x0000)
@@ -218,6 +228,10 @@ struct hfi_extradata_header {
 	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x001)
 #define  HFI_PROPERTY_PARAM_VENC_H264_IDR_S3D_FRAME_PACKING_NAL \
 	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x002)
+#define  HFI_PROPERTY_PARAM_VENC_LTR_INFO			\
+	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x003)
+#define  HFI_PROPERTY_PARAM_VENC_MBI_DUMPING				\
+	(HFI_PROPERTY_PARAM_VENC_OX_START + 0x005)
 
 #define HFI_PROPERTY_CONFIG_VENC_OX_START				\
 	(HFI_DOMAIN_BASE_VENC + HFI_ARCH_OX_OFFSET + 0x6000)
@@ -374,6 +388,7 @@ struct hfi_uncompressed_plane_actual_constraints_info {
 #define VIDC_IFACEQ_MIN_PKT_SIZE                        8
 #define VIDC_IFACEQ_VAR_SMALL_PKT_SIZE          100
 #define VIDC_IFACEQ_VAR_LARGE_PKT_SIZE          512
+#define VIDC_IFACEQ_VAR_HUGE_PKT_SIZE          (1024*12)
 
 
 struct hfi_cmd_sys_session_abort_packet {
@@ -419,8 +434,8 @@ struct hfi_cmd_session_empty_buffer_compressed_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 input_tag;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[1];
 };
 
@@ -438,8 +453,8 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane0_packet {
 	u32 filled_len;
 	u32 offset;
 	u32 input_tag;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[1];
 };
 
@@ -448,7 +463,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane1_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 offset;
-	u8 *packet_buffer2;
+	u32 packet_buffer2;
 	u32 rgData[1];
 };
 
@@ -457,7 +472,7 @@ struct hfi_cmd_session_empty_buffer_uncompressed_plane2_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 offset;
-	u8 *packet_buffer3;
+	u32 packet_buffer3;
 	u32 rgData[1];
 };
 
@@ -470,8 +485,8 @@ struct hfi_cmd_session_fill_buffer_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 output_tag;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[1];
 };
 
@@ -525,7 +540,7 @@ struct hfi_cmd_session_parse_sequence_header_packet {
 	u32 packet_type;
 	u32 session_id;
 	u32 header_len;
-	u8 *packet_buffer;
+	u32 packet_buffer;
 };
 
 struct hfi_msg_sys_session_abort_done_packet {
@@ -604,8 +619,8 @@ struct hfi_msg_session_empty_buffer_done_packet {
 	u32 offset;
 	u32 filled_len;
 	u32 input_tag;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[0];
 };
 
@@ -626,8 +641,8 @@ struct hfi_msg_session_fill_buffer_done_compressed_packet {
 	u32 input_tag;
 	u32 output_tag;
 	u32 picture_type;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[0];
 };
 
@@ -655,8 +670,8 @@ struct hfi_msg_session_fbd_uncompressed_plane0_packet {
 	u32 input_tag2;
 	u32 output_tag;
 	u32 picture_type;
-	u8 *packet_buffer;
-	u8 *extra_data_buffer;
+	u32 packet_buffer;
+	u32 extra_data_buffer;
 	u32 rgData[0];
 };
 
@@ -665,7 +680,7 @@ struct hfi_msg_session_fill_buffer_done_uncompressed_plane1_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 offset;
-	u8 *packet_buffer2;
+	u32 packet_buffer2;
 	u32 rgData[0];
 };
 
@@ -674,7 +689,7 @@ struct hfi_msg_session_fill_buffer_done_uncompressed_plane2_packet {
 	u32 alloc_len;
 	u32 filled_len;
 	u32 offset;
-	u8 *packet_buffer3;
+	u32 packet_buffer3;
 	u32 rgData[0];
 };
 
@@ -829,7 +844,7 @@ struct hfi_extradata_recovery_point_sei_payload {
 
 struct hal_session {
 	struct list_head list;
-	u32 session_id;
+	void *session_id;
 	u32 is_decoder;
 	void *device;
 };
@@ -846,5 +861,8 @@ struct msm_vidc_fw {
 u32 hfi_process_msg_packet(msm_vidc_callback callback,
 		u32 device_id, struct vidc_hal_msg_pkt_hdr *msg_hdr,
 		struct list_head *sessions, struct mutex *session_lock);
+
+struct hal_session *hfi_process_get_session(
+		struct list_head *sessions, u32 session_id);
 #endif
 

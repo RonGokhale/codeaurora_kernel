@@ -60,6 +60,19 @@ Required properties:
 					byte 5, 6: 16 bits length in network byte order
 					byte 7 and beyond: number byte of payload
 
+Note, if a short DCS packet(i.e packet with Byte 0:dcs data type as 05) mentioned in
+qcom,mdss-dsi-on-command/qcom,mdss-dsi-off-command stream fails to transmit,
+then 3 options can be tried.
+	1. Send the packet as a long packet instead
+				Byte 0: dcs data type = 05 (DCS short Packet)
+				Byte 0: dcs data type = 29 (DCS long Packet)
+	2. Send the packet in one burst by prepending with the next packet in packet stream
+				Byte 1 = 01 (indicates this is an individual packet)
+				Byte 1 = 00 (indicates this will be appended to the next
+					     individual packet in the packet stream)
+	3. Prepend a NULL packet to the short packet and send both in one burst instead of
+	   combining multiple short packets and sending them in one burst.
+
 Optional properties:
 - qcom,mdss-dsi-panel-name:		A string used as a descriptive name of the panel
 - qcom,cont-splash-enabled:		Boolean used to enable continuous splash mode.
@@ -126,6 +139,9 @@ Optional properties:
 						implemented during suspend/resume.
 					"dfps_immediate_clk_mode" = FPS change request is
 						implemented immediately using DSI clocks.
+					"dfps_immediate_porch_mode" = FPS change request is
+						implemented immediately by changing panel porch
+						values.
 - qcom,mdss-dsi-bl-pmic-control-type:	A string that specifies the implementation of backlight
 					control for this panel.
 					"bl_ctrl_pwm" = Backlight controlled by PWM gpio.
@@ -142,6 +158,8 @@ Optional properties:
 					0 = default value.
 - qcom,mdss-dsi-bl-max-level:		Specifies the max backlight level supported by the panel.
 					255 = default value.
+- qcom,mdss-brightness-max-level:	Specifies the max brightness level supported.
+					255 = default value.
 - qcom,mdss-dsi-interleave-mode:	Specifies interleave mode.
 					0 = default value.
 - qcom,mdss-dsi-panel-type:		Specifies the panel operating mode.
@@ -154,15 +172,9 @@ Optional properties:
 					1 = TE through TE gpio pin. (default)
 - qcom,mdss-dsi-te-dcs-command:		Inserts the dcs command.
 					1 = default value.
-- qcom,mdss-dsi-te-v-sync-rd-ptr-irq-line:	Configures the scan line number that the dsi
-					pixel transfer will start on. Rasing this number
-					will result in delaying the start of the pixel
-					transfer.
+- qcom,mdss-dsi-wr-mem-start:		DCS command for write_memory_start.
 					0x2c = default value.
-- qcom,mdss-dsi-te-v-sync-continue-lines:	Represents the difference in number of lines
-					between estimated read pointer and write pointer
-					to allow the updating of all the lines except
-					the first line of the frame.
+- qcom,mdss-dsi-wr-mem-continue:	DCS command for write_memory_continue.
 					0x3c = default value.
 - qcom,mdss-dsi-h-sync-pulse:		Specifies the pulse mode option for the panel.
 					0 = Don't send hsa/he following vs/ve packet(default)
@@ -173,39 +185,40 @@ Optional properties:
 					horizontal back porch (HBP) blanking period.
 - qcom,mdss-dsi-hsa-power-mode:		Boolean to determine DSI lane state during
 					horizontal sync active (HSA) mode.
+- qcom,mdss-dsi-last-line-interleave	Boolean to determine if last line
+					interleave flag needs to be enabled.
 - qcom,mdss-dsi-bllp-eof-power-mode:	Boolean to determine DSI lane state during
 					blanking low power period (BLLP) EOF mode.
 - qcom,mdss-dsi-bllp-power-mode:	Boolean to determine DSI lane state during
 					blanking low power period (BLLP) mode.
 - qcom,mdss-dsi-traffic-mode:		Specifies the panel traffic mode.
-					0 = non burst with sync pulses (default mode).
-					1 = non burst with sync start event.
-					2 = burst mode.
+					"non_burst_sync_pulse" = non burst with sync pulses (default).
+					"non_burst_sync_event" = non burst with sync start event.
+					"burst_mode" = burst mode.
 - qcom,mdss-dsi-pixel-packing:		Specifies if pixel packing is used (in case of RGB666).
-					0 = Tight packing (default value).
-					1 = Loose packing.
+					"tight" = Tight packing (default value).
+					"loose" = Loose packing.
 - qcom,mdss-dsi-virtual-channel-id:	Specifies the virtual channel identefier.
 					0 = default value.
 - qcom,mdss-dsi-color-order:		Specifies the R, G and B channel ordering.
-					0 = DSI_RGB_SWAP_RGB (default value)
-					1 = DSI_RGB_SWAP_RBG
-					2 = DSI_RGB_SWAP_BGR
-					3 = DSI_RGB_SWAP_BRG
-					4 = DSI_RGB_SWAP_GRB
-					5 = DSI_RGB_SWAP_GBR
+					"rgb_swap_rgb" = DSI_RGB_SWAP_RGB (default value)
+					"rgb_swap_rbg" = DSI_RGB_SWAP_RBG
+					"rgb_swap_brg" = DSI_RGB_SWAP_BRG
+					"rgb_swap_grb" = DSI_RGB_SWAP_GRB
+					"rgb_swap_gbr" = DSI_RGB_SWAP_GBR
 - qcom,mdss-dsi-lane-0-state:		Boolean that specifies whether data lane 0 is enabled.
 - qcom,mdss-dsi-lane-1-state:		Boolean that specifies whether data lane 1 is enabled.
 - qcom,mdss-dsi-lane-2-state:		Boolean that specifies whether data lane 2 is enabled.
 - qcom,mdss-dsi-lane-3-state:		Boolean that specifies whether data lane 3 is enabled.
 - qcom,mdss-dsi-lane-map:		Specifies the data lane swap configuration.
-					0 = <0 1 2 3> (default value)
-					1 = <3 0 1 2>
-					2 = <2 3 0 1>
-					3 = <1 2 3 0>
-					4 = <0 3 2 1>
-					5 = <1 0 3 2>
-					6 = <2 1 0 3>
-					7 = <3 2 1 0>
+					"lane_map_0123" = <0 1 2 3> (default value)
+					"lane_map_3012" = <3 0 1 2>
+					"lane_map_2301" = <2 3 0 1>
+					"lane_map_1230" = <1 2 3 0>
+					"lane_map_0321" = <0 3 2 1>
+					"lane_map_1032" = <1 0 3 2>
+					"lane_map_2103" = <2 1 0 3>
+					"lane_map_3210" = <3 2 1 0>
 - qcom,mdss-dsi-t-clk-post:		Specifies the byte clock cycles after mode switch.
 					0x03 = default value.
 - qcom,mdss-dsi-t-clk-pre:		Specifies the byte clock cycles before mode switch.
@@ -214,16 +227,16 @@ Optional properties:
 					0 = stream 0 (default)
 					1 = stream 1
 - qcom,mdss-dsi-mdp-trigger:		Specifies the trigger mechanism to be used for MDP path.
-					0 = no trigger
-					2 = Tear check signal line used for trigger
-					4 = Triggered by software (default)
-					6 = Software trigger and TE
+					"none" = no trigger
+					"trigger_te" = Tear check signal line used for trigger
+					"trigger_sw" = Triggered by software (default)
+					"trigger_sw_te" = Software trigger and TE
 - qcom,mdss-dsi-dma-trigger:		Specifies the trigger mechanism to be used for DMA path.
-					0 = no trigger
-					2 = Tear check signal line used for trigger
-					4 = Triggered by software (default)
-					5 = Software trigger and start/end of frame trigger.
-					6 = Software trigger and TE
+					"none" = no trigger
+					"trigger_te" = Tear check signal line used for trigger
+					"trigger_sw" = Triggered by software (default)
+					"trigger_sw_seof" = Software trigger and start/end of frame trigger.
+					"trigger_sw_te" = Software trigger and TE
 - qcom,mdss-dsi-panel-framerate:	Specifies the frame rate for the panel.
 					60 = 60 frames per second (default)
 - qcom,mdss-dsi-panel-clockrate:	Specifies the panel clock speed in Hz.
@@ -242,15 +255,57 @@ Optional properties:
 					in dsi controller.
 					"high" = Set GPIO to HIGH
 					"low" = Set GPIO to LOW
-- qcom,partial-update-enabled:		Boolean used to enable partial
-					panel update for command mode panels.
+- qcom,mdss-tear-check-disable:		Boolean to disable mdp tear check. Tear check is enabled by default to avoid
+					tearing. Other tear-check properties are ignored if this property is present.
+					The below tear check configuration properties can be individually tuned if
+					tear check is enabled.
+- qcom,mdss-tear-check-sync-cfg-height: Specifies the vertical total number of lines.
+					The default value is 0xfff0.
+- qcom,mdss-tear-check-sync-init-val:	Specifies the init value at which the read pointer gets loaded
+					at vsync edge. The reader pointer refers to the line number of
+					panel buffer that is currently being updated.
+					The default value is panel height.
+- qcom,mdss-tear-check-sync-threshold-start:
+					Allows the first ROI line write to an panel when read pointer is
+					between the range of ROI start line and ROI start line plus this
+					setting.
+					The default value is 4.
+- qcom,mdss-tear-check-sync-threshold-continue:
+					The minimum number of lines the write pointer needs to be
+					above the read pointer so that it is safe to write to the panel.
+					(This check is not done for the first ROI line write of an update)
+					The default value is 4.
+- qcom,mdss-tear-check-start-pos:	Specify the y position from which the start_threshold value is
+					added and write is kicked off if the read pointer falls within that
+					region.
+					The default value is panel height.
+- qcom,mdss-tear-check-rd-ptr-trigger-intr:
+					Specify the read pointer value at which an interrupt has to be
+					generated.
+					The default value is panel height + 1.
+- qcom,mdss-tear-check-frame-rate:	Specify the value to be a real frame rate(fps) x 100 factor to tune the
+					timing of TE simulation with more precision.
+					The default value is 6000 with 60 fps.
 - qcom,mdss-dsi-reset-sequence:		An array that lists the
 					sequence of reset gpio values and sleeps
 					Each command will have the format defined
 					as below:
 					--> Reset GPIO value
 					--> Sleep value (in ms)
-
+- qcom,partial-update-enabled:		Boolean used to enable partial
+					panel update for command mode panels.
+- qcom,mdss-dsi-lp11-init:		Boolean used to enable the DSI clocks and data lanes (low power 11)
+					before issuing hardware reset line.
+- qcom,mdss-dsi-init-delay-us:		Delay in microseconds(us) before performing any DSI activity in lp11
+					mode. This master delay (t_init_delay as per DSI spec) should be sum
+					of DSI internal delay to reach fuctional after power up and minimum
+					delay required by panel to reach functional.
+- qcom,mdss-dsi-rx-eot-ignore:		Boolean used to enable ignoring end of transmission packets.
+- qcom,mdss-dsi-tx-eot-append:		Boolean used to enable appending end of transmission packets.
+- qcom,ulps-enabled:			Boolean to enable support for Ultra Low Power State (ULPS) mode.
+- qcom,panel-roi-alignment:		Specifies the panel ROI alignment restrictions on its
+					left, top, width, height alignments and minimum width and
+					height values
 
 Note, if a given optional qcom,* binding is not present, then the driver will configure
 the default values specified.
@@ -301,8 +356,8 @@ Example:
 		qcom,mdss-dsi-te-check-enable;
 		qcom,mdss-dsi-te-using-te-pin;
 		qcom,mdss-dsi-te-dcs-command = <1>;
-		qcom,mdss-dsi-te-v-sync-continue-lines = <0x3c>;
-		qcom,mdss-dsi-te-v-sync-rd-ptr-irq-line = <0x2c>;
+		qcom,mdss-dsi-wr-mem-continue = <0x3c>;
+		qcom,mdss-dsi-wr-mem-start = <0x2c>;
 		qcom,mdss-dsi-te-pin-select = <1>;
 		qcom,mdss-dsi-h-sync-pulse = <1>;
 		qcom,mdss-dsi-hfp-power-mode;
@@ -310,6 +365,7 @@ Example:
 		qcom,mdss-dsi-hsa-power-mode;
 		qcom,mdss-dsi-bllp-eof-power-mode;
 		qcom,mdss-dsi-bllp-power-mode;
+		qcom,mdss-dsi-last-line-interleave;
 		qcom,mdss-dsi-traffic-mode = <0>;
 		qcom,mdss-dsi-virtual-channel-id = <0>;
 		qcom,mdss-dsi-color-order = <0>;
@@ -341,7 +397,20 @@ Example:
 		qcom,mdss-pan-physical-width-dimension = <60>;
 		qcom,mdss-pan-physical-height-dimension = <140>;
 		qcom,mdss-dsi-panel-mode-gpio-state = "low";
-		qcom,partial-update-enabled;
+		qcom,mdss-tear-check-sync-cfg-height = <0xfff0>;
+		qcom,mdss-tear-check-sync-init-val = <1280>;
+		qcom,mdss-tear-check-sync-threshold-start = <4>;
+		qcom,mdss-tear-check-sync-threshold-continue = <4>;
+		qcom,mdss-tear-check-start-pos = <1280>;
+		qcom,mdss-tear-check-rd-ptr-trigger-intr = <1281>;
+		qcom,mdss-tear-check-frame-rate = <6000>;
 		qcom,mdss-dsi-reset-sequence = <1 2>, <0 10>, <1 10>;
+		qcom,partial-update-enabled;
+		qcom,mdss-dsi-lp11-init;
+		qcom,mdss-dsi-init-delay-us = <100>;
+		mdss-dsi-rx-eot-ignore;
+		mdss-dsi-tx-eot-append;
+		qcom,ulps-enabled;
+		qcom,panel-roi-alignment = <4 4 2 2 20 20>;
 	};
 };

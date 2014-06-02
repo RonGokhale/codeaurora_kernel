@@ -1,7 +1,7 @@
 /*
  *  Copyright (C) 2002 ARM Ltd.
  *  All Rights Reserved
- *  Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+ *  Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,31 +16,26 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/regulator/krait-regulator.h>
+#include <soc/qcom/spm.h>
+#include <soc/qcom/pm.h>
+#include <soc/qcom/scm-boot.h>
 
-#include <asm/hardware/gic.h>
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
 #include <asm/mach-types.h>
 #include <asm/smp_plat.h>
 
-#include <mach/socinfo.h>
+#include <soc/qcom/socinfo.h>
 #include <mach/hardware.h>
 #include <mach/msm_iomap.h>
 
-#include "pm.h"
 #include "platsmp.h"
-#include "scm-boot.h"
-#include "spm.h"
 
 #define VDD_SC1_ARRAY_CLAMP_GFS_CTL 0x15A0
 #define SCSS_CPU1CORE_RESET 0xD80
 #define SCSS_DBG_STATUS_CORE_PWRDUP 0xE64
-
-/*
- * control for which core is the next to come out of the secondary
- * boot "holding pen".
- */
-volatile int pen_release = -1;
+#define MSM8960_SAW2_BASE_ADDR 0x02089000
+#define APCS_ALIAS0_BASE_ADDR 0xF9088000
 
 /*
  * Write pen_release in a way that is guaranteed to be visible to all
@@ -57,16 +52,9 @@ void __cpuinit write_pen_release(int val)
 
 static DEFINE_SPINLOCK(boot_lock);
 
-void __cpuinit platform_secondary_init(unsigned int cpu)
+void __cpuinit msm_secondary_init(unsigned int cpu)
 {
 	WARN_ON(msm_platform_secondary_init(cpu));
-
-	/*
-	 * if any interrupts are already enabled for the primary
-	 * core (e.g. timer irq), then they will not have been enabled
-	 * for us: do so
-	 */
-	gic_secondary_init(0);
 
 	/*
 	 * let the primary processor know we're out of the
@@ -118,7 +106,7 @@ static int __cpuinit msm8960_release_secondary(unsigned long base,
 	if (!base_ptr)
 		return -ENODEV;
 
-	msm_spm_turn_on_cpu_rail(cpu);
+	msm_spm_turn_on_cpu_rail(MSM8960_SAW2_BASE_ADDR, cpu);
 
 	writel_relaxed(0x109, base_ptr+0x04);
 	writel_relaxed(0x101, base_ptr+0x04);
@@ -233,7 +221,7 @@ static int __cpuinit release_from_pen(unsigned int cpu)
 	 * the boot monitor to read the system wide flags register,
 	 * and branch to the address found there.
 	 */
-	gic_raise_softirq(cpumask_of(cpu), 1);
+	arch_send_wakeup_ipi_mask(cpumask_of(cpu));
 
 	timeout = jiffies + (1 * HZ);
 	while (time_before(jiffies, timeout)) {
@@ -284,9 +272,46 @@ int __cpuinit msm8974_boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 	if (per_cpu(cold_boot_done, cpu) == false) {
 		if (of_board_is_sim())
-			release_secondary_sim(0xf9088000, cpu);
+			release_secondary_sim(APCS_ALIAS0_BASE_ADDR, cpu);
 		else if (!of_board_is_rumi())
-			msm8974_release_secondary(0xf9088000, cpu);
+			msm8974_release_secondary(APCS_ALIAS0_BASE_ADDR, cpu);
+
+		per_cpu(cold_boot_done, cpu) = true;
+	}
+	return release_from_pen(cpu);
+}
+
+static int __cpuinit msm8916_boot_secondary(unsigned int cpu,
+						struct task_struct *idle)
+{
+	pr_debug("Starting secondary CPU %d\n", cpu);
+
+	if (per_cpu(cold_boot_done, cpu) == false) {
+		if (of_board_is_sim())
+			release_secondary_sim(0xb088000, cpu);
+		else if (!of_board_is_rumi())
+			arm_release_secondary(0xb088000, cpu);
+
+		per_cpu(cold_boot_done, cpu) = true;
+	}
+	return release_from_pen(cpu);
+}
+
+static int __cpuinit msm8936_boot_secondary(unsigned int cpu,
+						struct task_struct *idle)
+{
+	pr_debug("Starting secondary CPU %d\n", cpu);
+
+	if (per_cpu(cold_boot_done, cpu) == false) {
+		u32 mpidr = cpu_logical_map(cpu);
+		u32 apcs_base = MPIDR_AFFINITY_LEVEL(mpidr, 1) ?
+				0xb088000 : 0xb188000;
+		if (of_board_is_sim())
+			release_secondary_sim(apcs_base,
+				MPIDR_AFFINITY_LEVEL(mpidr, 0));
+		else if (!of_board_is_rumi())
+			arm_release_secondary(apcs_base,
+				MPIDR_AFFINITY_LEVEL(mpidr, 0));
 
 		per_cpu(cold_boot_done, cpu) = true;
 	}
@@ -299,9 +324,9 @@ int __cpuinit arm_boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 	if (per_cpu(cold_boot_done, cpu) == false) {
 		if (of_board_is_sim())
-			release_secondary_sim(0xf9088000, cpu);
+			release_secondary_sim(APCS_ALIAS0_BASE_ADDR, cpu);
 		else if (!of_board_is_rumi())
-			arm_release_secondary(0xf9088000, cpu);
+			arm_release_secondary(APCS_ALIAS0_BASE_ADDR, cpu);
 
 		per_cpu(cold_boot_done, cpu) = true;
 	}
@@ -324,8 +349,6 @@ static void __init msm_smp_init_cpus(void)
 
 	for (i = 0; i < ncores; i++)
 		set_cpu_possible(i, true);
-
-	set_smp_cross_call(gic_raise_softirq);
 }
 
 static void __init arm_smp_init_cpus(void)
@@ -342,8 +365,6 @@ static void __init arm_smp_init_cpus(void)
 
 	for (i = 0; i < ncores; i++)
 		set_cpu_possible(i, true);
-
-	set_smp_cross_call(gic_raise_softirq);
 }
 
 static int cold_boot_flags[] __initdata = {
@@ -375,39 +396,65 @@ static void __init msm_platform_smp_prepare_cpus(unsigned int max_cpus)
 struct smp_operations arm_smp_ops __initdata = {
 	.smp_init_cpus = arm_smp_init_cpus,
 	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
-	.smp_secondary_init = platform_secondary_init,
+	.smp_secondary_init = msm_secondary_init,
 	.smp_boot_secondary = arm_boot_secondary,
-	.cpu_kill = platform_cpu_kill,
-	.cpu_die = platform_cpu_die,
-	.cpu_disable = platform_cpu_disable
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
+};
+
+struct smp_operations msm8916_smp_ops __initdata = {
+	.smp_init_cpus = arm_smp_init_cpus,
+	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
+	.smp_secondary_init = msm_secondary_init,
+	.smp_boot_secondary = msm8916_boot_secondary,
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
+};
+
+struct smp_operations msm8936_smp_ops __initdata = {
+	.smp_init_cpus = arm_smp_init_cpus,
+	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
+	.smp_secondary_init = msm_secondary_init,
+	.smp_boot_secondary = msm8936_boot_secondary,
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
 };
 
 struct smp_operations msm8974_smp_ops __initdata = {
 	.smp_init_cpus = msm_smp_init_cpus,
 	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
-	.smp_secondary_init = platform_secondary_init,
+	.smp_secondary_init = msm_secondary_init,
 	.smp_boot_secondary = msm8974_boot_secondary,
-	.cpu_kill = platform_cpu_kill,
-	.cpu_die = platform_cpu_die,
-	.cpu_disable = platform_cpu_disable
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
 };
 
 struct smp_operations msm8960_smp_ops __initdata = {
 	.smp_init_cpus = msm_smp_init_cpus,
 	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
-	.smp_secondary_init = platform_secondary_init,
+	.smp_secondary_init = msm_secondary_init,
 	.smp_boot_secondary = msm8960_boot_secondary,
-	.cpu_kill = platform_cpu_kill,
-	.cpu_die = platform_cpu_die,
-	.cpu_disable = platform_cpu_disable
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
 };
 
 struct smp_operations scorpion_smp_ops __initdata = {
 	.smp_init_cpus = msm_smp_init_cpus,
 	.smp_prepare_cpus = msm_platform_smp_prepare_cpus,
-	.smp_secondary_init = platform_secondary_init,
+	.smp_secondary_init = msm_secondary_init,
 	.smp_boot_secondary = scorpion_boot_secondary,
-	.cpu_kill = platform_cpu_kill,
-	.cpu_die = platform_cpu_die,
-	.cpu_disable = platform_cpu_disable
+#ifdef CONFIG_HOTPLUG
+	.cpu_die = msm_cpu_die,
+	.cpu_kill = msm_cpu_kill,
+#endif
 };

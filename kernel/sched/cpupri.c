@@ -28,6 +28,8 @@
  */
 
 #include <linux/gfp.h>
+#include <linux/sched.h>
+#include <linux/sched/rt.h>
 #include "cpupri.h"
 
 /* Convert between a 140 based task->prio, and our 102 based cpupri */
@@ -65,8 +67,8 @@ static int convert_prio(int prio)
 int cpupri_find(struct cpupri *cp, struct task_struct *p,
 		struct cpumask *lowest_mask)
 {
-	int                  idx      = 0;
-	int                  task_pri = convert_prio(p->prio);
+	int idx = 0;
+	int task_pri = convert_prio(p->prio);
 
 	if (task_pri >= MAX_RT_PRIO)
 		return 0;
@@ -137,9 +139,9 @@ int cpupri_find(struct cpupri *cp, struct task_struct *p,
  */
 void cpupri_set(struct cpupri *cp, int cpu, int newpri)
 {
-	int                 *currpri = &cp->cpu_to_pri[cpu];
-	int                  oldpri  = *currpri;
-	int                  do_mb = 0;
+	int *currpri = &cp->cpu_to_pri[cpu];
+	int oldpri = *currpri;
+	int do_mb = 0;
 
 	newpri = convert_prio(newpri);
 

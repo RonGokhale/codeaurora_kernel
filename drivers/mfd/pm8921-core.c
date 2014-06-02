@@ -19,7 +19,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/err.h>
-#include <linux/msm_ssbi.h>
+#include <linux/ssbi.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/pm8xxx/pm8921.h>
 #include <linux/mfd/pm8xxx/core.h>
@@ -71,7 +71,7 @@ static int pm8921_readb(const struct device *dev, u16 addr, u8 *val)
 	const struct pm8xxx_drvdata *pm8921_drvdata = dev_get_drvdata(dev);
 	const struct pm8921 *pmic = pm8921_drvdata->pm_chip_data;
 
-	return msm_ssbi_read(pmic->dev->parent, addr, val, 1);
+	return ssbi_read(pmic->dev->parent, addr, val, 1);
 }
 
 static int pm8921_writeb(const struct device *dev, u16 addr, u8 val)
@@ -79,7 +79,7 @@ static int pm8921_writeb(const struct device *dev, u16 addr, u8 val)
 	const struct pm8xxx_drvdata *pm8921_drvdata = dev_get_drvdata(dev);
 	const struct pm8921 *pmic = pm8921_drvdata->pm_chip_data;
 
-	return msm_ssbi_write(pmic->dev->parent, addr, &val, 1);
+	return ssbi_write(pmic->dev->parent, addr, &val, 1);
 }
 
 static int pm8921_read_buf(const struct device *dev, u16 addr, u8 *buf,
@@ -88,7 +88,7 @@ static int pm8921_read_buf(const struct device *dev, u16 addr, u8 *buf,
 	const struct pm8xxx_drvdata *pm8921_drvdata = dev_get_drvdata(dev);
 	const struct pm8921 *pmic = pm8921_drvdata->pm_chip_data;
 
-	return msm_ssbi_read(pmic->dev->parent, addr, buf, cnt);
+	return ssbi_read(pmic->dev->parent, addr, buf, cnt);
 }
 
 static int pm8921_write_buf(const struct device *dev, u16 addr, u8 *buf,
@@ -97,7 +97,7 @@ static int pm8921_write_buf(const struct device *dev, u16 addr, u8 *buf,
 	const struct pm8xxx_drvdata *pm8921_drvdata = dev_get_drvdata(dev);
 	const struct pm8921 *pmic = pm8921_drvdata->pm_chip_data;
 
-	return msm_ssbi_write(pmic->dev->parent, addr, buf, cnt);
+	return ssbi_write(pmic->dev->parent, addr, buf, cnt);
 }
 
 static int pm8921_read_irq_stat(const struct device *dev, int irq)
@@ -162,20 +162,20 @@ static struct resource gpio_cell_resources[] = {
 	},
 };
 
-static struct mfd_cell gpio_cell __devinitdata = {
+static struct mfd_cell gpio_cell = {
 	.name		= PM8XXX_GPIO_DEV_NAME,
 	.id		= -1,
 	.resources	= gpio_cell_resources,
 	.num_resources	= ARRAY_SIZE(gpio_cell_resources),
 };
 
-static const struct resource adc_cell_resources[] __devinitconst = {
+static const struct resource adc_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_ADC_EOC_USR_IRQ),
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_ADC_BATT_TEMP_WARM_IRQ),
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_ADC_BATT_TEMP_COLD_IRQ),
 };
 
-static struct mfd_cell adc_cell __devinitdata = {
+static struct mfd_cell adc_cell = {
 	.name		= PM8XXX_ADC_DEV_NAME,
 	.id		= -1,
 	.resources	= adc_cell_resources,
@@ -191,14 +191,14 @@ static struct resource mpp_cell_resources[] = {
 	},
 };
 
-static struct mfd_cell mpp_cell __devinitdata = {
+static struct mfd_cell mpp_cell = {
 	.name		= PM8XXX_MPP_DEV_NAME,
 	.id		= 0,
 	.resources	= mpp_cell_resources,
 	.num_resources	= ARRAY_SIZE(mpp_cell_resources),
 };
 
-static const struct resource rtc_cell_resources[] __devinitconst = {
+static const struct resource rtc_cell_resources[] = {
 	[0] = SINGLE_IRQ_RESOURCE(NULL, PM8921_RTC_ALARM_IRQ),
 	[1] = {
 		.name   = "pmic_rtc_base",
@@ -208,19 +208,19 @@ static const struct resource rtc_cell_resources[] __devinitconst = {
 	},
 };
 
-static struct mfd_cell rtc_cell __devinitdata = {
+static struct mfd_cell rtc_cell = {
 	.name           = PM8XXX_RTC_DEV_NAME,
 	.id             = -1,
 	.resources      = rtc_cell_resources,
 	.num_resources  = ARRAY_SIZE(rtc_cell_resources),
 };
 
-static const struct resource resources_pwrkey[] __devinitconst = {
+static const struct resource resources_pwrkey[] = {
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_PWRKEY_REL_IRQ),
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_PWRKEY_PRESS_IRQ),
 };
 
-static struct mfd_cell pwrkey_cell __devinitdata = {
+static struct mfd_cell pwrkey_cell = {
 	.name		= PM8XXX_PWRKEY_DEV_NAME,
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(resources_pwrkey),
@@ -232,26 +232,26 @@ static const struct resource resources_keypad[] = {
 	SINGLE_IRQ_RESOURCE(NULL, PM8921_KEYSTUCK_IRQ),
 };
 
-static struct mfd_cell keypad_cell __devinitdata = {
+static struct mfd_cell keypad_cell = {
 	.name		= PM8XXX_KEYPAD_DEV_NAME,
 	.id		= -1,
 	.num_resources	= ARRAY_SIZE(resources_keypad),
 	.resources	= resources_keypad,
 };
 
-static struct mfd_cell debugfs_cell __devinitdata = {
+static struct mfd_cell debugfs_cell = {
 	.name		= "pm8xxx-debug",
 	.id		= 0,
 	.platform_data	= "pm8921-dbg",
 	.pdata_size	= sizeof("pm8921-dbg"),
 };
 
-static struct mfd_cell pwm_cell __devinitdata = {
+static struct mfd_cell pwm_cell = {
 	.name           = PM8XXX_PWM_DEV_NAME,
 	.id             = -1,
 };
 
-static const struct resource charger_cell_resources[] __devinitconst = {
+static const struct resource charger_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE("USBIN_VALID_IRQ", PM8921_USBIN_VALID_IRQ),
 	SINGLE_IRQ_RESOURCE("USBIN_OV_IRQ", PM8921_USBIN_OV_IRQ),
 	SINGLE_IRQ_RESOURCE("BATT_INSERTED_IRQ", PM8921_BATT_INSERTED_IRQ),
@@ -285,7 +285,7 @@ static const struct resource charger_cell_resources[] __devinitconst = {
 	SINGLE_IRQ_RESOURCE("DCIN_UV_IRQ", PM8921_DCIN_UV_IRQ),
 };
 
-static const struct resource bms_cell_resources[] __devinitconst = {
+static const struct resource bms_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE("PM8921_BMS_SBI_WRITE_OK", PM8921_BMS_SBI_WRITE_OK),
 	SINGLE_IRQ_RESOURCE("PM8921_BMS_CC_THR", PM8921_BMS_CC_THR),
 	SINGLE_IRQ_RESOURCE("PM8921_BMS_VSENSE_THR", PM8921_BMS_VSENSE_THR),
@@ -295,31 +295,31 @@ static const struct resource bms_cell_resources[] __devinitconst = {
 	SINGLE_IRQ_RESOURCE("PM8921_BMS_VSENSE_AVG", PM8921_BMS_VSENSE_AVG),
 };
 
-static struct mfd_cell charger_cell __devinitdata = {
+static struct mfd_cell charger_cell = {
 	.name		= PM8921_CHARGER_DEV_NAME,
 	.id		= -1,
 	.resources	= charger_cell_resources,
 	.num_resources	= ARRAY_SIZE(charger_cell_resources),
 };
 
-static struct mfd_cell bms_cell __devinitdata = {
+static struct mfd_cell bms_cell = {
 	.name		= PM8921_BMS_DEV_NAME,
 	.id		= -1,
 	.resources	= bms_cell_resources,
 	.num_resources	= ARRAY_SIZE(bms_cell_resources),
 };
 
-static struct mfd_cell misc_cell __devinitdata = {
+static struct mfd_cell misc_cell = {
 	.name           = PM8XXX_MISC_DEV_NAME,
 	.id             = -1,
 };
 
-static struct mfd_cell leds_cell __devinitdata = {
+static struct mfd_cell leds_cell = {
 	.name		= PM8XXX_LEDS_DEV_NAME,
 	.id		= -1,
 };
 
-static const struct resource thermal_alarm_cell_resources[] __devinitconst = {
+static const struct resource thermal_alarm_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE("pm8921_tempstat_irq", PM8921_TEMPSTAT_IRQ),
 	SINGLE_IRQ_RESOURCE("pm8921_overtemp_irq", PM8921_OVERTEMP_IRQ),
 };
@@ -334,7 +334,7 @@ static struct pm8xxx_tm_core_data thermal_alarm_cdata = {
 	.irq_name_over_temp =		"pm8921_overtemp_irq",
 };
 
-static struct mfd_cell thermal_alarm_cell __devinitdata = {
+static struct mfd_cell thermal_alarm_cell = {
 	.name		= PM8XXX_TM_DEV_NAME,
 	.id		= -1,
 	.resources	= thermal_alarm_cell_resources,
@@ -343,7 +343,7 @@ static struct mfd_cell thermal_alarm_cell __devinitdata = {
 	.pdata_size	= sizeof(struct pm8xxx_tm_core_data),
 };
 
-static const struct resource batt_alarm_cell_resources[] __devinitconst = {
+static const struct resource batt_alarm_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE("pm8921_batt_alarm_irq", PM8921_BATT_ALARM_IRQ),
 };
 
@@ -355,7 +355,7 @@ static struct pm8xxx_batt_alarm_core_data batt_alarm_cdata = {
 	.reg_addr_pwm_ctrl	= REG_BATT_ALARM_PWM_CTRL,
 };
 
-static struct mfd_cell batt_alarm_cell __devinitdata = {
+static struct mfd_cell batt_alarm_cell = {
 	.name		= PM8XXX_BATT_ALARM_DEV_NAME,
 	.id		= -1,
 	.resources	= batt_alarm_cell_resources,
@@ -364,18 +364,18 @@ static struct mfd_cell batt_alarm_cell __devinitdata = {
 	.pdata_size	= sizeof(struct pm8xxx_batt_alarm_core_data),
 };
 
-static const struct resource ccadc_cell_resources[] __devinitconst = {
+static const struct resource ccadc_cell_resources[] = {
 	SINGLE_IRQ_RESOURCE("PM8921_BMS_CCADC_EOC", PM8921_BMS_CCADC_EOC),
 };
 
-static struct mfd_cell ccadc_cell __devinitdata = {
+static struct mfd_cell ccadc_cell = {
 	.name		= PM8XXX_CCADC_DEV_NAME,
 	.id		= -1,
 	.resources	= ccadc_cell_resources,
 	.num_resources	= ARRAY_SIZE(ccadc_cell_resources),
 };
 
-static struct mfd_cell vibrator_cell __devinitdata = {
+static struct mfd_cell vibrator_cell = {
 	.name           = PM8XXX_VIBRATOR_DEV_NAME,
 	.id             = -1,
 };
@@ -458,7 +458,7 @@ static struct pm8xxx_vreg pm8917_regulator_data[] = {
 
 #define MAX_NAME_COMPARISON_LEN 32
 
-static int __devinit match_regulator(enum pm8xxx_version version,
+static int match_regulator(enum pm8xxx_version version,
 	struct pm8xxx_regulator_core_platform_data *core_data, const char *name)
 {
 	int found = 0;
@@ -507,8 +507,7 @@ static int __devinit match_regulator(enum pm8xxx_version version,
 	return found;
 }
 
-static int __devinit
-pm8921_add_regulators(const struct pm8921_platform_data *pdata,
+static int pm8921_add_regulators(const struct pm8921_platform_data *pdata,
 		      struct pm8921 *pmic, int irq_base)
 {
 	int ret = 0;
@@ -579,8 +578,7 @@ bail:
 	return ret;
 }
 
-static int __devinit
-pm8921_add_subdevices(const struct pm8921_platform_data *pdata,
+static int pm8921_add_subdevices(const struct pm8921_platform_data *pdata,
 		      struct pm8921 *pmic)
 {
 	int ret = 0, irq_base = 0;
@@ -848,7 +846,7 @@ static const char * const pm8917_rev_names[] = {
 	[PM8XXX_REVISION_8917_1p0]	= "1.0",
 };
 
-static int __devinit pm8921_probe(struct platform_device *pdev)
+static int pm8921_probe(struct platform_device *pdev)
 {
 	const struct pm8921_platform_data *pdata = pdev->dev.platform_data;
 	const char *revision_name = "unknown";
@@ -870,7 +868,7 @@ static int __devinit pm8921_probe(struct platform_device *pdev)
 	}
 
 	/* Read PMIC chip revision */
-	rc = msm_ssbi_read(pdev->dev.parent, REG_HWREV, &val, sizeof(val));
+	rc = ssbi_read(pdev->dev.parent, REG_HWREV, &val, sizeof(val));
 	if (rc) {
 		pr_err("Failed to read hw rev reg %d:rc=%d\n", REG_HWREV, rc);
 		goto err_read_rev;
@@ -879,7 +877,7 @@ static int __devinit pm8921_probe(struct platform_device *pdev)
 	pmic->rev_registers = val;
 
 	/* Read PMIC chip revision 2 */
-	rc = msm_ssbi_read(pdev->dev.parent, REG_HWREV_2, &val, sizeof(val));
+	rc = ssbi_read(pdev->dev.parent, REG_HWREV_2, &val, sizeof(val));
 	if (rc) {
 		pr_err("Failed to read hw rev 2 reg %d:rc=%d\n",
 			REG_HWREV_2, rc);
@@ -944,7 +942,7 @@ err_read_rev:
 	return rc;
 }
 
-static int __devexit pm8921_remove(struct platform_device *pdev)
+static int pm8921_remove(struct platform_device *pdev)
 {
 	struct pm8xxx_drvdata *drvdata;
 	struct pm8921 *pmic = NULL;
@@ -976,7 +974,7 @@ static int __devexit pm8921_remove(struct platform_device *pdev)
 
 static struct platform_driver pm8921_driver = {
 	.probe		= pm8921_probe,
-	.remove		= __devexit_p(pm8921_remove),
+	.remove		= pm8921_remove,
 	.driver		= {
 		.name	= "pm8921-core",
 		.owner	= THIS_MODULE,

@@ -1087,7 +1087,7 @@ static void smb137c_external_power_changed(struct power_supply *psy)
 	power_supply_changed(&chip->psy);
 }
 
-static int __devinit smb137c_set_register_defaults(struct smb137c_chip *chip)
+static int smb137c_set_register_defaults(struct smb137c_chip *chip)
 {
 	int rc;
 	u8 val, mask;
@@ -1139,7 +1139,7 @@ static int __devinit smb137c_set_register_defaults(struct smb137c_chip *chip)
 	return rc;
 }
 
-static int __devinit smb137c_apply_dt_configs(struct smb137c_chip *chip)
+static int smb137c_apply_dt_configs(struct smb137c_chip *chip)
 {
 	struct device *dev = &chip->client->dev;
 	struct device_node *node = chip->client->dev.of_node;
@@ -1290,7 +1290,7 @@ static int __devinit smb137c_apply_dt_configs(struct smb137c_chip *chip)
 	return rc;
 }
 
-static int __devinit smb137c_probe(struct i2c_client *client,
+static int smb137c_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
 {
 	struct smb137c_chip *chip;
@@ -1374,7 +1374,7 @@ static int __devinit smb137c_probe(struct i2c_client *client,
 	return rc;
 }
 
-static int __devexit smb137c_remove(struct i2c_client *client)
+static int smb137c_remove(struct i2c_client *client)
 {
 	return 0;
 }
@@ -1397,7 +1397,7 @@ static struct i2c_driver smb137c_driver = {
 		.of_match_table	= smb137c_match,
 	},
 	.probe		= smb137c_probe,
-	.remove		= __devexit_p(smb137c_remove),
+	.remove		= smb137c_remove,
 	.id_table	= smb137c_id,
 };
 

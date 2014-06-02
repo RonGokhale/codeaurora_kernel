@@ -13,13 +13,21 @@ MTD flash partition layout for NAND devices -
 Each partition is represented as a sub-node of the qcom,mtd-partitions device.
 Each node's name represents the name of the corresponding partition.
 
-Required properties:
-- reg : The partition offset and size
-- label : The label / name for this partition.
+This is now completely optional as the partition information is avaialble from
+bootloader.
 
 Optional properties:
+- reg : The partition offset and size
+- label : The label / name for this partition.
 - read-only: This parameter, if present, indicates that this partition
   should only be mounted read-only.
+- Refer to "Documentation/devicetree/bindings/arm/msm/msm_bus.txt" for
+below optional properties:
+	- qcom,msm-bus,name
+	- qcom,msm-bus,num-cases
+	- qcom,msm-bus,active-only
+	- qcom,msm-bus,num-paths
+	- qcom,msm-bus,vectors-KBps
 
 Examples:
 
@@ -31,6 +39,11 @@ Examples:
 			    "bam_phys";
 		interrupts = <0 279 0>;
 		interrupt-names = "bam_irq";
+
+		qcom,msm-bus,name = "qpic_nand";
+		qcom,msm-bus,num-cases = <1>;
+		qcom,msm-bus,num-paths = <1>;
+		qcom,msm-bus,vectors-KBps = <91 512 0 0>,
 	};
 
        qcom,mtd-partitions {

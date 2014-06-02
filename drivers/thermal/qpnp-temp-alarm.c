@@ -464,7 +464,7 @@ static int qpnp_tm_init_reg(struct qpnp_tm_chip *chip)
 	return rc;
 }
 
-static int __devinit qpnp_tm_probe(struct spmi_device *spmi)
+static int qpnp_tm_probe(struct spmi_device *spmi)
 {
 	struct device_node *node;
 	struct resource *res;
@@ -609,8 +609,8 @@ static int __devinit qpnp_tm_probe(struct spmi_device *spmi)
 		goto err_cancel_work;
 	}
 
-	chip->tz_dev = thermal_zone_device_register(tm_name, TRIP_NUM, chip,
-			tz_ops, 0, 0, 0, 0);
+	chip->tz_dev = thermal_zone_device_register(tm_name, TRIP_NUM, 0, chip,
+			tz_ops, NULL, 0, 0);
 	if (chip->tz_dev == NULL) {
 		dev_err(&spmi->dev, "%s: thermal_zone_device_register() failed.\n",
 			__func__);
@@ -639,7 +639,7 @@ free_chip:
 	return rc;
 }
 
-static int __devexit qpnp_tm_remove(struct spmi_device *spmi)
+static int qpnp_tm_remove(struct spmi_device *spmi)
 {
 	struct qpnp_tm_chip *chip = dev_get_drvdata(&spmi->dev);
 
@@ -704,7 +704,7 @@ static struct spmi_driver qpnp_tm_driver = {
 		.pm		= QPNP_TM_PM_OPS,
 	},
 	.probe	  = qpnp_tm_probe,
-	.remove	  = __devexit_p(qpnp_tm_remove),
+	.remove	  = qpnp_tm_remove,
 	.id_table = qpnp_tm_id,
 };
 

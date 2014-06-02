@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,11 +13,23 @@
 #ifndef __KGSL_IOMMU_H
 #define __KGSL_IOMMU_H
 
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
+
+/* Pagetable virtual base */
+#define KGSL_PAGETABLE_BASE     0x10000000
+#define KGSL_PER_PROCESS_PT_BASE	0xC0000000
+#define KGSL_PER_PROCESS_PT_SIZE	(KGSL_IOMMU_GLOBAL_MEM_BASE -	\
+					 KGSL_PER_PROCESS_PT_BASE - SZ_1M)
 
 #define KGSL_IOMMU_CTX_OFFSET_V0	0
 #define KGSL_IOMMU_CTX_OFFSET_V1	0x8000
+#define KGSL_IOMMU_CTX_OFFSET_V2	0x9000
 #define KGSL_IOMMU_CTX_SHIFT		12
+
+/* IOMMU V2 AHB base is fixed */
+#define KGSL_IOMMU_V2_AHB_BASE		0xA000
+/* IOMMU_V2 AHB base points to ContextBank1 */
+#define KGSL_IOMMU_CTX_AHB_OFFSET_V2   0
 
 /* TLBLKCR fields */
 #define KGSL_IOMMU_TLBLKCR_LKE_MASK		0x00000001
@@ -47,7 +59,7 @@
 #define KGSL_IOMMU_V1_FSYNR0_WNR_SHIFT		4
 
 /* TTBR0 register fields */
-#ifdef CONFIG_ARM_LPAE
+#ifdef CONFIG_IOMMU_LPAE
 #define KGSL_IOMMU_CTX_TTBR0_ADDR_MASK_LPAE	0x000000FFFFFFFFE0ULL
 #define KGSL_IOMMU_CTX_TTBR0_ADDR_MASK KGSL_IOMMU_CTX_TTBR0_ADDR_MASK_LPAE
 #else
@@ -58,8 +70,8 @@
 #define KGSL_IOMMU_CTX_TLBSTATUS_SACTIVE BIT(0)
 
 /* IMPLDEF_MICRO_MMU_CTRL register fields */
-#define KGSL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_HALT BIT(2)
-#define KGSL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_IDLE BIT(3)
+#define KGSL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_HALT  0x00000004
+#define KGSL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_IDLE  0x00000008
 
 /* SCTLR fields */
 #define KGSL_IOMMU_SCTLR_HUPCF_SHIFT		8
@@ -96,16 +108,48 @@ struct kgsl_iommu_register_list {
 /* Max number of iommu contexts per IOMMU unit */
 #define KGSL_IOMMU_MAX_DEVS_PER_UNIT 2
 
+enum kgsl_iommu_context_id {
+	KGSL_IOMMU_CONTEXT_USER = 0,
+	KGSL_IOMMU_CONTEXT_PRIV = 1,
+};
+
+/**
+ * struct kgsl_iommu_ctx - Struct holding context name and id
+ * @iommu_ctx_name:     Context name
+ * @ctx_id:             Iommu context ID - user or priv
+ */
+struct kgsl_iommu_ctx {
+	const char *iommu_ctx_name;
+	enum kgsl_iommu_context_id ctx_id;
+};
+
+/**
+ * struct kgsl_device_iommu_data - Struct holding iommu context data obtained
+ * from dtsi file
+ * @iommu_ctxs:         Pointer to array of struct holding context name and id
+ * @iommu_ctx_count:    Number of contexts defined in the dtsi file
+ * @iommu_halt_enable:  Indicates if smmu halt h/w feature is supported
+ * @physstart:          Start of iommu registers physical address
+ * @physend:            End of iommu registers physical address
+ */
+struct kgsl_device_iommu_data {
+	const struct kgsl_iommu_ctx *iommu_ctxs;
+	int iommu_ctx_count;
+	int iommu_halt_enable;
+	unsigned int physstart;
+	unsigned int physend;
+};
+
 /* Macros to read/write IOMMU registers */
-#define KGSL_IOMMU_SET_CTX_REG_LL(iommu, iommu_unit, ctx, REG, val)	\
-		writell_relaxed(val,					\
+#define KGSL_IOMMU_SET_CTX_REG_Q(iommu, iommu_unit, ctx, REG, val)	\
+		writeq_relaxed(val,					\
 		iommu_unit->reg_map.hostptr +				\
 		iommu->iommu_reg_list[KGSL_IOMMU_CTX_##REG].reg_offset +\
 		(ctx << KGSL_IOMMU_CTX_SHIFT) +				\
 		iommu->ctx_offset)
 
-#define KGSL_IOMMU_GET_CTX_REG_LL(iommu, iommu_unit, ctx, REG)		\
-		readl_relaxed(						\
+#define KGSL_IOMMU_GET_CTX_REG_Q(iommu, iommu_unit, ctx, REG)		\
+		readq_relaxed(						\
 		iommu_unit->reg_map.hostptr +				\
 		iommu->iommu_reg_list[KGSL_IOMMU_CTX_##REG].reg_offset +\
 		(ctx << KGSL_IOMMU_CTX_SHIFT) +				\
@@ -125,6 +169,18 @@ struct kgsl_iommu_register_list {
 		(ctx << KGSL_IOMMU_CTX_SHIFT) +				\
 		iommu->ctx_offset)
 
+#ifdef CONFIG_IOMMU_LPAE
+#define KGSL_IOMMU_GET_CTX_REG_TTBR0(iommu, iommu_unit, ctx)		\
+		KGSL_IOMMU_GET_CTX_REG_Q(iommu, iommu_unit, ctx, TTBR0)
+#define KGSL_IOMMU_SET_CTX_REG_TTBR0(iommu, iommu_unit, ctx, val)	\
+		KGSL_IOMMU_SET_CTX_REG_Q(iommu, iommu_unit, ctx, TTBR0, val)
+#else
+#define KGSL_IOMMU_GET_CTX_REG_TTBR0(iommu, iommu_unit, ctx)		\
+		KGSL_IOMMU_GET_CTX_REG(iommu, iommu_unit, ctx, TTBR0)
+#define KGSL_IOMMU_SET_CTX_REG_TTBR0(iommu, iommu_unit, ctx, val)	\
+		KGSL_IOMMU_SET_CTX_REG(iommu, iommu_unit, ctx, TTBR0, val)
+#endif
+
 /* Gets the lsb value of pagetable */
 #define KGSL_IOMMMU_PT_LSB(iommu, pt_val)				\
 	(pt_val & ~(KGSL_IOMMU_CTX_TTBR0_ADDR_MASK))
@@ -143,15 +199,17 @@ struct kgsl_iommu_register_list {
  * are on, else the clocks are off
  * fault: Flag when set indicates that this iommu device has caused a page
  * fault
+ * @clk_enable_count: The ref count of clock enable calls
  */
 struct kgsl_iommu_device {
 	struct device *dev;
 	bool attached;
-	phys_addr_t default_ttbr0;
+	uint64_t default_ttbr0;
 	enum kgsl_iommu_context_id ctx_id;
 	bool clk_enabled;
 	struct kgsl_device *kgsldev;
 	int fault;
+	atomic_t clk_enable_count;
 };
 
 /*
@@ -182,13 +240,11 @@ struct kgsl_iommu_unit {
  * iommu contexts owned by graphics cores
  * @unit_count: Number of IOMMU units that are available for this
  * instance of the IOMMU driver
- * @iommu_last_cmd_ts: The timestamp of last command submitted that
- * aceeses iommu registers
- * @clk_event_queued: Indicates whether an event to disable clocks
- * is already queued or not
  * @device: Pointer to kgsl device
  * @ctx_offset: The context offset to be added to base address when
- * accessing IOMMU registers
+ * accessing IOMMU registers from the CPU
+ * @ctx_ahb_offset: The context offset to be added to base address when
+ * accessing IOMMU registers from the GPU
  * @iommu_reg_list: List of IOMMU registers { offset, map, shift } array
  * @sync_lock_vars: Pointer to the IOMMU spinlock for serializing access to the
  * IOMMU registers
@@ -197,19 +253,20 @@ struct kgsl_iommu_unit {
  * @sync_lock_offset - The page offset within a page at which the sync
  * variables are located
  * @sync_lock_initialized: True if the sync_lock feature is enabled
+ * @gtcu_iface_clk: The gTCU AHB Clock connected to SMMU
  */
 struct kgsl_iommu {
 	struct kgsl_iommu_unit iommu_units[KGSL_IOMMU_MAX_UNITS];
 	unsigned int unit_count;
-	unsigned int iommu_last_cmd_ts;
-	bool clk_event_queued;
 	struct kgsl_device *device;
 	unsigned int ctx_offset;
+	unsigned int ctx_ahb_offset;
 	struct kgsl_iommu_register_list *iommu_reg_list;
 	struct remote_iommu_petersons_spinlock *sync_lock_vars;
 	struct kgsl_memdesc sync_lock_desc;
 	unsigned int sync_lock_offset;
 	bool sync_lock_initialized;
+	struct clk *gtcu_iface_clk;
 };
 
 /*
@@ -221,5 +278,56 @@ struct kgsl_iommu_pt {
 	struct iommu_domain *domain;
 	struct kgsl_iommu *iommu;
 };
+
+/*
+ * struct kgsl_iommu_disable_clk_param - Parameter struct for disble clk event
+ * @mmu: The mmu pointer
+ * @rb_level: the rb level in which the timestamp of the event belongs to
+ * @ctx_id: The IOMMU context whose clock is to be turned off
+ * @ts: Timestamp on which clock is to be disabled
+ */
+struct kgsl_iommu_disable_clk_param {
+	struct kgsl_mmu *mmu;
+	int rb_level;
+	int ctx_id;
+	unsigned int ts;
+};
+
+/*
+ * kgsl_msm_supports_iommu_v2 - Checks whether IOMMU version is V2 or not
+ *
+ * Checks whether IOMMU version is V2 or not by parsing nodes.
+ * Return: 1 if IOMMU v2 is found else 0
+ */
+#ifdef CONFIG_OF
+static inline int _kgsl_msm_checks_iommu_v2(void)
+{
+	struct device_node *node;
+	node = of_find_compatible_node(NULL, NULL, "qcom,msm-smmu-v2");
+	if (node) {
+		of_node_put(node);
+		return 1;
+	}
+	return 0;
+}
+#endif
+
+#if !defined(CONFIG_MSM_IOMMU_V0) && defined(CONFIG_OF)
+static int soc_supports_v2 = -1;
+static inline int kgsl_msm_supports_iommu_v2(void)
+{
+	if (soc_supports_v2 != -1)
+		return soc_supports_v2;
+
+	soc_supports_v2 = _kgsl_msm_checks_iommu_v2();
+
+	return soc_supports_v2;
+}
+#else
+static inline int kgsl_msm_supports_iommu_v2(void)
+{
+	return 0;
+}
+#endif
 
 #endif

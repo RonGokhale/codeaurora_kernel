@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2009-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2014, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -24,20 +24,19 @@
 #include <linux/io.h>
 #include <linux/percpu.h>
 #include <linux/mm.h>
+#include <linux/sched_clock.h>
 
 #include <asm/localtimer.h>
 #include <asm/mach/time.h>
-#include <asm/hardware/gic.h>
-#include <asm/sched_clock.h>
 #include <asm/smp_plat.h>
 #include <asm/user_accessible_timer.h>
 #include <mach/msm_iomap.h>
 #include <mach/irqs.h>
-#include <mach/socinfo.h>
+#include <soc/qcom/socinfo.h>
 
+#include <soc/qcom/smem.h>
 #if defined(CONFIG_MSM_SMD)
-#include <mach/msm_smem.h>
-#include <mach/msm_smsm.h>
+#include <soc/qcom/smsm.h>
 #endif
 #include "timer.h"
 
@@ -460,7 +459,7 @@ static uint32_t msm_timer_do_sync_to_sclk(
 		update(data, t1, sclk_hz);
 	return t1;
 }
-#elif defined(CONFIG_MSM_N_WAY_SMSM)
+#else
 
 /* Time Master State Bits */
 #define MASTER_BITS_PER_CPU        1
@@ -482,7 +481,8 @@ static uint32_t msm_timer_do_sync_to_sclk(
 	uint32_t smem_clock_val;
 	uint32_t state;
 
-	smem_clock = smem_alloc(SMEM_SMEM_SLOW_CLOCK_VALUE, sizeof(uint32_t));
+	smem_clock = smem_find(SMEM_SMEM_SLOW_CLOCK_VALUE,
+				sizeof(uint32_t), 0, SMEM_ANY_HOST_FLAG);
 	if (smem_clock == NULL) {
 		printk(KERN_ERR "no smem clock\n");
 		return 0;
@@ -545,75 +545,7 @@ static uint32_t msm_timer_do_sync_to_sclk(
 		SLAVE_TIME_INIT);
 	return smem_clock_val;
 }
-#else /* CONFIG_MSM_N_WAY_SMSM */
-static uint32_t msm_timer_do_sync_to_sclk(
-	void (*time_start)(struct msm_timer_sync_data_t *data),
-	bool (*time_expired)(struct msm_timer_sync_data_t *data),
-	void (*update)(struct msm_timer_sync_data_t *, uint32_t, uint32_t),
-	struct msm_timer_sync_data_t *data)
-{
-	uint32_t *smem_clock;
-	uint32_t smem_clock_val;
-	uint32_t last_state;
-	uint32_t state;
-
-	smem_clock = smem_alloc(SMEM_SMEM_SLOW_CLOCK_VALUE,
-				sizeof(uint32_t));
-
-	if (smem_clock == NULL) {
-		printk(KERN_ERR "no smem clock\n");
-		return 0;
-	}
-
-	last_state = state = smsm_get_state(SMSM_MODEM_STATE);
-	smem_clock_val = *smem_clock;
-	if (smem_clock_val) {
-		printk(KERN_INFO "get_smem_clock: invalid start state %x "
-			"clock %u\n", state, smem_clock_val);
-		smsm_change_state(SMSM_APPS_STATE,
-				  SMSM_TIMEWAIT, SMSM_TIMEINIT);
-
-		time_start(data);
-		while (*smem_clock != 0 && !time_expired(data))
-			;
-
-		smem_clock_val = *smem_clock;
-		if (smem_clock_val) {
-			printk(KERN_EMERG "get_smem_clock: timeout still "
-				"invalid state %x clock %u\n",
-				state, smem_clock_val);
-			msm_timer_sync_timeout();
-		}
-	}
-
-	time_start(data);
-	smsm_change_state(SMSM_APPS_STATE, SMSM_TIMEINIT, SMSM_TIMEWAIT);
-	do {
-		smem_clock_val = *smem_clock;
-		state = smsm_get_state(SMSM_MODEM_STATE);
-		if (state != last_state) {
-			last_state = state;
-			if (msm_timer_debug_mask & MSM_TIMER_DEBUG_SYNC)
-				printk(KERN_INFO
-					"get_smem_clock: state %x clock %u\n",
-					state, smem_clock_val);
-		}
-	} while (smem_clock_val == 0 && !time_expired(data));
-
-	if (smem_clock_val) {
-		if (update != NULL)
-			update(data, smem_clock_val, sclk_hz);
-	} else {
-		printk(KERN_EMERG
-			"get_smem_clock: timeout state %x clock %u\n",
-			state, smem_clock_val);
-		msm_timer_sync_timeout();
-	}
-
-	smsm_change_state(SMSM_APPS_STATE, SMSM_TIMEWAIT, SMSM_TIMEINIT);
-	return smem_clock_val;
-}
-#endif /* CONFIG_MSM_N_WAY_SMSM */
+#endif /* CONFIG_MSM_DIRECT_SCLK_ACCESS */
 
 /*
  * Callback function that initializes the timeout value.
@@ -913,7 +845,7 @@ int64_t msm_timer_get_sclk_time(int64_t *period)
 
 int __init msm_timer_init_time_sync(void (*timeout)(void))
 {
-#if defined(CONFIG_MSM_N_WAY_SMSM) && !defined(CONFIG_MSM_DIRECT_SCLK_ACCESS)
+#if !defined(CONFIG_MSM_DIRECT_SCLK_ACCESS)
 	int ret = smsm_change_intr_mask(SMSM_TIME_MASTER_DEM, 0xFFFFFFFF, 0);
 
 	if (ret) {
@@ -986,15 +918,9 @@ int __cpuinit local_timer_setup(struct clock_event_device *evt)
 	evt->rating = clock->clockevent.rating;
 	evt->set_mode = msm_timer_set_mode;
 	evt->set_next_event = msm_timer_set_next_event;
-	evt->shift = clock->clockevent.shift;
-	evt->mult = div_sc(clock->freq, NSEC_PER_SEC, evt->shift);
-	evt->max_delta_ns =
-		clockevent_delta2ns(0xf0000000 >> clock->shift, evt);
-	evt->min_delta_ns = clockevent_delta2ns(4, evt);
 
 	*__this_cpu_ptr(clock->percpu_evt) = evt;
-
-	clockevents_register_device(evt);
+	clockevents_config_and_register(evt, gpt_hz, 4, 0xf0000000);
 	enable_percpu_irq(evt->irq, IRQ_TYPE_EDGE_RISING);
 
 	return 0;
@@ -1025,7 +951,7 @@ static void fixup_msm8625_timer(void)
 static inline void fixup_msm8625_timer(void) { };
 #endif
 
-static void __init msm_timer_init(void)
+void __init msm_timer_init(void)
 {
 	int i;
 	int res;
@@ -1198,7 +1124,3 @@ static void __init msm_timer_init(void)
 	local_timer_register(&msm_lt_ops);
 #endif
 }
-
-struct sys_timer msm_timer = {
-	.init = msm_timer_init
-};

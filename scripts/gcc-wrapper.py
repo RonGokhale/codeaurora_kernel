@@ -40,7 +40,14 @@ import subprocess
 # force LANG to be set to en_US.UTF-8 to get consistent warnings.
 
 allowed_warnings = set([
-    "return_address.c:62",
+    "return_address.c:63",
+    "kprobes.c:1493",
+    "rcutree.c:1614",
+    "af_unix.c:893",
+    "nl80211.c:58",
+    "jhash.h:137",
+    "cmpxchg.h:162",
+    "ping.c:87",
  ])
 
 # Capture the name of the object file, can find it.

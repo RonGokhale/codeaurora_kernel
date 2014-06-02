@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -125,8 +125,13 @@ struct mdss_panel_recovery {
  * @MDSS_EVENT_PANEL_CLK_CTRL:	panel clock control
 				 - 0 clock disable
 				 - 1 clock enable
- * @MDSS_EVENT_ENABLE_PARTIAL_UPDATE: Event to update ROI of the panel.
  * @MDSS_EVENT_DSI_CMDLIST_KOFF: acquire dsi_mdp_busy lock before kickoff.
+ * @MDSS_EVENT_ENABLE_PARTIAL_UPDATE: Event to update ROI of the panel.
+ * @MDSS_EVENT_DSI_ULPS_CTRL:	Event to configure Ultra Lower Power Saving
+ *				mode for the DSI data and clock lanes. The
+ *				event arguments can have one of these values:
+ *				- 0: Disable ULPS mode
+ *				- 1: Enable ULPS mode
  */
 enum mdss_intf_events {
 	MDSS_EVENT_RESET = 1,
@@ -145,6 +150,7 @@ enum mdss_intf_events {
 	MDSS_EVENT_PANEL_CLK_CTRL,
 	MDSS_EVENT_DSI_CMDLIST_KOFF,
 	MDSS_EVENT_ENABLE_PARTIAL_UPDATE,
+	MDSS_EVENT_DSI_ULPS_CTRL,
 };
 
 struct lcd_panel_info {
@@ -173,6 +179,7 @@ struct mdss_dsi_phy_ctrl {
 	char bistctrl[6];
 	uint32_t pll[21];
 	char lanecfg[45];
+	bool reg_ldo_mode;
 };
 
 struct mipi_panel_info {
@@ -202,6 +209,7 @@ struct mipi_panel_info {
 	char hbp_power_stop;
 	char hsa_power_stop;
 	char eof_bllp_power_stop;
+	char last_line_interleave_en;
 	char bllp_power_stop;
 	char traffic_mode;
 	char frame_rate;
@@ -222,11 +230,19 @@ struct mipi_panel_info {
 
 	char vsync_enable;
 	char hw_vsync_mode;
+
+	char lp11_init;
+	u32  init_delay;
+};
+
+struct edp_panel_info {
+	char frame_rate;	/* fps */
 };
 
 enum dynamic_fps_update {
 	DFPS_SUSPEND_RESUME_MODE,
 	DFPS_IMMEDIATE_CLK_UPDATE_MODE,
+	DFPS_IMMEDIATE_PORCH_UPDATE_MODE,
 };
 
 enum lvds_mode {
@@ -260,6 +276,17 @@ struct fbc_panel_info {
 	u32 lossy_mode_idx;
 };
 
+struct mdss_mdp_pp_tear_check {
+	u32 tear_check_en;
+	u32 sync_cfg_height;
+	u32 vsync_init_val;
+	u32 sync_threshold_start;
+	u32 sync_threshold_continue;
+	u32 start_pos;
+	u32 rd_ptr_irq;
+	u32 refx100;
+};
+
 struct mdss_panel_info {
 	u32 xres;
 	u32 yres;
@@ -269,6 +296,7 @@ struct mdss_panel_info {
 	u32 type;
 	u32 wait_cycle;
 	u32 pdest;
+	u32 brightness_max;
 	u32 bl_max;
 	u32 bl_min;
 	u32 fb_num;
@@ -289,20 +317,32 @@ struct mdss_panel_info {
 	int pwm_pmic_gpio;
 	int pwm_lpg_chan;
 	int pwm_period;
-	u32 mode_gpio_state;
 	bool dynamic_fps;
+	bool ulps_feature_enabled;
 	char dfps_update;
 	int new_fps;
+	u32 mode_gpio_state;
+	u32 xstart_pix_align;
+	u32 width_pix_align;
+	u32 ystart_pix_align;
+	u32 height_pix_align;
+	u32 min_width;
+	u32 min_height;
 
 	u32 cont_splash_enabled;
 	u32 partial_update_enabled;
 	struct ion_handle *splash_ihdl;
 	u32 panel_power_on;
 
+	uint32_t panel_dead;
+
+	struct mdss_mdp_pp_tear_check te;
+
 	struct lcd_panel_info lcdc;
 	struct fbc_panel_info fbc;
 	struct mipi_panel_info mipi;
 	struct lvds_panel_info lvds;
+	struct edp_panel_info edp;
 };
 
 struct mdss_panel_data {
@@ -343,6 +383,9 @@ static inline u32 mdss_panel_get_framerate(struct mdss_panel_info *panel_info)
 	case MIPI_CMD_PANEL:
 		frame_rate = panel_info->mipi.frame_rate;
 		break;
+	case EDP_PANEL:
+		frame_rate = panel_info->edp.frame_rate;
+		break;
 	case WRITEBACK_PANEL:
 		frame_rate = DEFAULT_FRAME_RATE;
 		break;
@@ -382,15 +425,25 @@ static inline int mdss_panel_get_vtotal(struct mdss_panel_info *pinfo)
 /*
  * mdss_panel_get_htotal() - return panel horizontal width
  * @pinfo:	Pointer to panel info containing all panel information
+ * @consider_fbc: true to factor fbc settings, false to ignore.
  *
  * Returns the total width of the panel including any blanking regions
- * which are not visible to user but used for calculations.
+ * which are not visible to user but used for calculations. For certain
+ * usescases where the fbc parameters need to be ignored like bandwidth
+ * calculation, the appropriate flag can be passed.
  */
-static inline int mdss_panel_get_htotal(struct mdss_panel_info *pinfo)
+static inline int mdss_panel_get_htotal(struct mdss_panel_info *pinfo, bool
+		consider_fbc)
 {
-	return pinfo->xres + pinfo->lcdc.h_back_porch +
-			pinfo->lcdc.h_front_porch +
-			pinfo->lcdc.h_pulse_width;
+	int adj_xres = pinfo->xres;
+
+	if (consider_fbc && pinfo->fbc.enabled)
+		adj_xres = mult_frac(pinfo->xres,
+				pinfo->fbc.target_bpp, pinfo->bpp);
+
+	return adj_xres + pinfo->lcdc.h_back_porch +
+		pinfo->lcdc.h_front_porch +
+		pinfo->lcdc.h_pulse_width;
 }
 
 int mdss_register_panel(struct platform_device *pdev,

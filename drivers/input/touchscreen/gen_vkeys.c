@@ -56,7 +56,7 @@ static struct attribute_group vkey_grp = {
 	.attrs = vkey_attr,
 };
 
-static int __devinit vkey_parse_dt(struct device *dev,
+static int vkey_parse_dt(struct device *dev,
 			struct vkeys_platform_data *pdata)
 {
 	struct device_node *np = dev->of_node;
@@ -119,7 +119,7 @@ static int __devinit vkey_parse_dt(struct device *dev,
 	return 0;
 }
 
-static int __devinit vkeys_probe(struct platform_device *pdev)
+static int vkeys_probe(struct platform_device *pdev)
 {
 	struct vkeys_platform_data *pdata;
 	int width, height, center_x, center_y;
@@ -203,7 +203,7 @@ destroy_kobj:
 	return ret;
 }
 
-static int __devexit vkeys_remove(struct platform_device *pdev)
+static int vkeys_remove(struct platform_device *pdev)
 {
 	sysfs_remove_group(vkey_obj, &vkey_grp);
 	kobject_put(vkey_obj);
@@ -218,7 +218,7 @@ static struct of_device_id vkey_match_table[] = {
 
 static struct platform_driver vkeys_driver = {
 	.probe = vkeys_probe,
-	.remove = __devexit_p(vkeys_remove),
+	.remove = vkeys_remove,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "gen_vkeys",

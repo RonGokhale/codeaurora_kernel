@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -83,8 +83,6 @@ enum mem_buffer_allocation_mode {
 };
 
 /* module parameters for load time configuration */
-static int clock_inv;
-static int tsif_mode = 2;
 static int allocation_mode = MPQ_DMX_TSPP_INTERNAL_ALLOC;
 static int tspp_out_buffer_size = TSPP_BUFFER_SIZE;
 static int tspp_notification_size =
@@ -92,8 +90,6 @@ static int tspp_notification_size =
 static int tspp_channel_timeout = TSPP_CHANNEL_TIMEOUT;
 static int tspp_out_ion_heap = ION_QSECOM_HEAP_ID;
 
-module_param(tsif_mode, int, S_IRUGO | S_IWUSR);
-module_param(clock_inv, int, S_IRUGO | S_IWUSR);
 module_param(allocation_mode, int, S_IRUGO | S_IWUSR);
 module_param(tspp_out_buffer_size, int, S_IRUGO);
 module_param(tspp_notification_size, int, S_IRUGO | S_IWUSR);
@@ -931,6 +927,7 @@ static int mpq_tspp_dmx_add_channel(struct dvb_demux_feed *feed)
 	struct tspp_select_source tspp_source;
 	struct tspp_filter tspp_filter;
 	int tsif;
+	int tsif_mode = mpq_dmx_get_param_tsif_mode();
 	int ret = 0;
 	int slot;
 	int channel_id;
@@ -940,7 +937,7 @@ static int mpq_tspp_dmx_add_channel(struct dvb_demux_feed *feed)
 	int remove_accept_all_filter = 0;
 	int remove_null_blocking_filters = 0;
 
-	tspp_source.clk_inverse = clock_inv;
+	tspp_source.clk_inverse = mpq_dmx_get_param_clock_inv();
 	tspp_source.data_inverse = 0;
 	tspp_source.sync_inverse = 0;
 	tspp_source.enable_inverse = 0;
@@ -1626,7 +1623,9 @@ static int mpq_tspp_dmx_get_caps(struct dmx_demux *demux,
 	}
 
 	caps->caps = DMX_CAP_PULL_MODE | DMX_CAP_VIDEO_DECODER_DATA |
-		DMX_CAP_TS_INSERTION | DMX_CAP_VIDEO_INDEXING;
+		DMX_CAP_TS_INSERTION | DMX_CAP_VIDEO_INDEXING |
+		DMX_CAP_AUTO_BUFFER_FLUSH;
+	caps->recording_max_video_pids_indexed = 0;
 	caps->num_decoders = MPQ_ADAPTER_MAX_NUM_OF_INTERFACES;
 	caps->num_demux_devices = CONFIG_DVB_MPQ_NUM_DMX_DEVICES;
 	caps->num_pid_filters = TSPP_MAX_PID_FILTER_NUM;
@@ -1646,45 +1645,52 @@ static int mpq_tspp_dmx_get_caps(struct dmx_demux *demux,
 	/* Buffer requirements */
 	caps->section.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->section.max_buffer_num = 1;
 	caps->section.max_size = 0xFFFFFFFF;
 	caps->section.size_alignment = 0;
 	caps->pes.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->pes.max_buffer_num = 1;
 	caps->pes.max_size = 0xFFFFFFFF;
 	caps->pes.size_alignment = 0;
 	caps->recording_188_tsp.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->recording_188_tsp.max_buffer_num = 1;
 	caps->recording_188_tsp.max_size = 0xFFFFFFFF;
 	caps->recording_188_tsp.size_alignment = 0;
 	caps->recording_192_tsp.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->recording_192_tsp.max_buffer_num = 1;
 	caps->recording_192_tsp.max_size = 0xFFFFFFFF;
 	caps->recording_192_tsp.size_alignment = 0;
 	caps->playback_188_tsp.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->playback_188_tsp.max_buffer_num = 1;
 	caps->playback_188_tsp.max_size = 0xFFFFFFFF;
-	caps->playback_188_tsp.size_alignment = 0;
+	caps->playback_188_tsp.size_alignment = 188;
 	caps->playback_192_tsp.flags =
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
-		DMX_BUFFER_INTERNAL_SUPPORT;
+		DMX_BUFFER_INTERNAL_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->playback_192_tsp.max_buffer_num = 1;
 	caps->playback_192_tsp.max_size = 0xFFFFFFFF;
-	caps->playback_192_tsp.size_alignment = 0;
+	caps->playback_192_tsp.size_alignment = 192;
 	caps->decoder.flags =
 		DMX_BUFFER_SECURED_IF_DECRYPTED	|
 		DMX_BUFFER_EXTERNAL_SUPPORT	|
 		DMX_BUFFER_INTERNAL_SUPPORT	|
-		DMX_BUFFER_LINEAR_GROUP_SUPPORT;
+		DMX_BUFFER_LINEAR_GROUP_SUPPORT |
+		DMX_BUFFER_CACHED;
 	caps->decoder.max_buffer_num = DMX_MAX_DECODER_BUFFER_NUM;
 	caps->decoder.max_size = 0xFFFFFFFF;
 	caps->decoder.size_alignment = SZ_4K;
@@ -1746,6 +1752,8 @@ static int mpq_tspp_dmx_init(
 		DMX_CRC_CHECKING			|
 		DMX_TS_DESCRAMBLING;
 
+	mpq_demux->decoder_alloc_flags = ION_FLAG_CACHED;
+
 	/* Set dvb-demux "virtual" function pointers */
 	mpq_demux->demux.priv = (void *)mpq_demux;
 	mpq_demux->demux.filternum = TSPP_MAX_SECTION_FILTER_NUM;
@@ -1762,6 +1770,7 @@ static int mpq_tspp_dmx_init(
 	mpq_demux->demux.set_cipher_op = mpq_dmx_set_cipher_ops;
 	mpq_demux->demux.oob_command = mpq_dmx_oob_command;
 	mpq_demux->demux.convert_ts = mpq_dmx_convert_tts;
+	mpq_demux->demux.flush_decoder_buffer = NULL;
 
 	/* Initialize dvb_demux object */
 	result = dvb_dmx_init(&mpq_demux->demux);

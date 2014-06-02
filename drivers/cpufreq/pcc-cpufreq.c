@@ -111,8 +111,7 @@ static struct pcc_cpu __percpu *pcc_cpu_info;
 
 static int pcc_cpufreq_verify(struct cpufreq_policy *policy)
 {
-	cpufreq_verify_within_limits(policy, policy->cpuinfo.min_freq,
-				     policy->cpuinfo.max_freq);
+	cpufreq_verify_within_cpu_limits(policy);
 	return 0;
 }
 
@@ -215,8 +214,7 @@ static int pcc_cpufreq_target(struct cpufreq_policy *policy,
 		(pcch_virt_addr + pcc_cpu_data->input_offset));
 
 	freqs.new = target_freq;
-	freqs.cpu = cpu;
-	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
 	input_buffer = 0x1 | (((target_freq * 100)
 			       / (ioread32(&pcch_hdr->nominal) * 1000)) << 8);
@@ -237,7 +235,7 @@ static int pcc_cpufreq_target(struct cpufreq_policy *policy,
 	}
 	iowrite16(0, &pcch_hdr->status);
 
-	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
+	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
 	pr_debug("target: was SUCCESSFUL for cpu %d\n", cpu);
 	spin_unlock(&pcc_lock);
 
@@ -454,6 +452,7 @@ static int __init pcc_cpufreq_probe(void)
 					mem_resource->address_length);
 	if (pcch_virt_addr == NULL) {
 		pr_debug("probe: could not map shared mem region\n");
+		ret = -ENOMEM;
 		goto out_free;
 	}
 	pcch_hdr = pcch_virt_addr;
@@ -585,7 +584,6 @@ static struct cpufreq_driver pcc_cpufreq_driver = {
 	.init = pcc_cpufreq_cpu_init,
 	.exit = pcc_cpufreq_cpu_exit,
 	.name = "pcc-cpufreq",
-	.owner = THIS_MODULE,
 };
 
 static int __init pcc_cpufreq_init(void)

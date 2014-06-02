@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -16,8 +16,8 @@
 #include <linux/device.h>
 #include <linux/spinlock.h>
 
-#include <mach/usb_gadget_xport.h>
 
+#include "usb_gadget_xport.h"
 #include "u_rmnet.h"
 #include "gadget_chips.h"
 
@@ -213,7 +213,7 @@ static int gps_gport_setup(void)
 	int res;
 
 	res = gsmd_ctrl_setup(GPS_CTRL_CLIENT, 1, &base);
-	gps_port.port->port_num += base;
+	gps_port.port->port_num = base;
 	return res;
 }
 
@@ -238,7 +238,7 @@ static void gps_unbind(struct usb_configuration *c, struct usb_function *f)
 		usb_free_descriptors(f->ss_descriptors);
 	if (gadget_is_dualspeed(c->cdev->gadget))
 		usb_free_descriptors(f->hs_descriptors);
-	usb_free_descriptors(f->descriptors);
+	usb_free_descriptors(f->fs_descriptors);
 
 	gps_free_req(dev->notify, dev->notify_req);
 
@@ -650,9 +650,9 @@ static int gps_bind(struct usb_configuration *c, struct usb_function *f)
 	dev->notify_req->context = dev;
 
 	ret = -ENOMEM;
-	f->descriptors = usb_copy_descriptors(gps_fs_function);
+	f->fs_descriptors = usb_copy_descriptors(gps_fs_function);
 
-	if (!f->descriptors)
+	if (!f->fs_descriptors)
 		goto fail;
 
 	if (gadget_is_dualspeed(cdev->gadget)) {
@@ -688,8 +688,8 @@ fail:
 		usb_free_descriptors(f->ss_descriptors);
 	if (f->hs_descriptors)
 		usb_free_descriptors(f->hs_descriptors);
-	if (f->descriptors)
-		usb_free_descriptors(f->descriptors);
+	if (f->fs_descriptors)
+		usb_free_descriptors(f->fs_descriptors);
 	if (dev->notify_req)
 		gps_free_req(dev->notify, dev->notify_req);
 ep_notify_alloc_fail:

@@ -1,7 +1,7 @@
 /*
  *  Linux MegaRAID driver for SAS based RAID controllers
  *
- *  Copyright (c) 2009-2011  LSI Corporation.
+ *  Copyright (c) 2003-2012  LSI Corporation.
  *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
@@ -18,7 +18,7 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  *  FILE: megaraid_sas_base.c
- *  Version : v00.00.06.14-rc1
+ *  Version : v06.506.00.00-rc1
  *
  *  Authors: LSI Corporation
  *           Sreenivas Bagalkote
@@ -70,6 +70,20 @@ MODULE_PARM_DESC(max_sectors,
 static int msix_disable;
 module_param(msix_disable, int, S_IRUGO);
 MODULE_PARM_DESC(msix_disable, "Disable MSI-X interrupt handling. Default: 0");
+
+static unsigned int msix_vectors;
+module_param(msix_vectors, int, S_IRUGO);
+MODULE_PARM_DESC(msix_vectors, "MSI-X max vector count. Default: Set by FW");
+
+static int throttlequeuedepth = MEGASAS_THROTTLE_QUEUE_DEPTH;
+module_param(throttlequeuedepth, int, S_IRUGO);
+MODULE_PARM_DESC(throttlequeuedepth,
+	"Adapter queue depth when throttled due to I/O timeout. Default: 16");
+
+int resetwaittime = MEGASAS_RESET_WAIT_TIME;
+module_param(resetwaittime, int, S_IRUGO);
+MODULE_PARM_DESC(resetwaittime, "Wait time in seconds after I/O timeout "
+		 "before resetting adapter. Default: 180");
 
 MODULE_LICENSE("GPL");
 MODULE_VERSION(MEGASAS_VERSION);
@@ -1595,8 +1609,9 @@ megasas_check_and_restore_queue_depth(struct megasas_instance *instance)
 {
 	unsigned long flags;
 	if (instance->flag & MEGASAS_FW_BUSY
-		&& time_after(jiffies, instance->last_time + 5 * HZ)
-		&& atomic_read(&instance->fw_outstanding) < 17) {
+	    && time_after(jiffies, instance->last_time + 5 * HZ)
+	    && atomic_read(&instance->fw_outstanding) <
+	    instance->throttlequeuedepth + 1) {
 
 		spin_lock_irqsave(instance->host->host_lock, flags);
 		instance->flag &= ~MEGASAS_FW_BUSY;
@@ -1772,7 +1787,7 @@ static int megasas_wait_for_outstanding(struct megasas_instance *instance)
 		return SUCCESS;
 	}
 
-	for (i = 0; i < wait_time; i++) {
+	for (i = 0; i < resetwaittime; i++) {
 
 		int outstanding = atomic_read(&instance->fw_outstanding);
 
@@ -1914,7 +1929,7 @@ blk_eh_timer_return megasas_reset_timer(struct scsi_cmnd *scmd)
 		/* FW is busy, throttle IO */
 		spin_lock_irqsave(instance->host->host_lock, flags);
 
-		instance->host->can_queue = 16;
+		instance->host->can_queue = instance->throttlequeuedepth;
 		instance->last_time = jiffies;
 		instance->flag |= MEGASAS_FW_BUSY;
 
@@ -2045,9 +2060,9 @@ megasas_service_aen(struct megasas_instance *instance, struct megasas_cmd *cmd)
 		} else {
 			ev->instance = instance;
 			instance->ev = ev;
-			INIT_WORK(&ev->hotplug_work, megasas_aen_polling);
-			schedule_delayed_work(
-				(struct delayed_work *)&ev->hotplug_work, 0);
+			INIT_DELAYED_WORK(&ev->hotplug_work,
+					  megasas_aen_polling);
+			schedule_delayed_work(&ev->hotplug_work, 0);
 		}
 	}
 }
@@ -2084,6 +2099,7 @@ static struct scsi_host_template megasas_template = {
 	.bios_param = megasas_bios_param,
 	.use_clustering = ENABLE_CLUSTERING,
 	.change_queue_depth = megasas_change_queue_depth,
+	.no_write_same = 1,
 };
 
 /**
@@ -3493,11 +3509,21 @@ static int megasas_init_fw(struct megasas_instance *instance)
 		break;
 	}
 
-	/*
-	 * We expect the FW state to be READY
-	 */
-	if (megasas_transition_to_ready(instance, 0))
-		goto fail_ready_state;
+	if (megasas_transition_to_ready(instance, 0)) {
+		atomic_set(&instance->fw_reset_no_pci_access, 1);
+		instance->instancet->adp_reset
+			(instance, instance->reg_set);
+		atomic_set(&instance->fw_reset_no_pci_access, 0);
+		dev_info(&instance->pdev->dev,
+			"megasas: FW restarted successfully from %s!\n",
+			__func__);
+
+		/*waitting for about 30 second before retry*/
+		ssleep(30);
+
+		if (megasas_transition_to_ready(instance, 0))
+			goto fail_ready_state;
+	}
 
 	/* Check if MSI-X is supported while in ready state */
 	msix_enable = (instance->instancet->read_fw_status_reg(reg_set) &
@@ -3509,6 +3535,10 @@ static int megasas_init_fw(struct megasas_instance *instance)
 			instance->msix_vectors = (readl(&instance->reg_set->
 							outbound_scratch_pad_2
 							  ) & 0x1F) + 1;
+			if (msix_vectors)
+				instance->msix_vectors =
+					min(msix_vectors,
+					    instance->msix_vectors);
 		} else
 			instance->msix_vectors = 1;
 		/* Don't bother allocating more MSI-X vectors than cpus */
@@ -3576,6 +3606,24 @@ static int megasas_init_fw(struct megasas_instance *instance)
 		instance->max_sectors_per_req = tmp_sectors;
 
 	kfree(ctrl_info);
+
+	/* Check for valid throttlequeuedepth module parameter */
+	if (instance->pdev->device == PCI_DEVICE_ID_LSI_SAS0073SKINNY ||
+	    instance->pdev->device == PCI_DEVICE_ID_LSI_SAS0071SKINNY) {
+		if (throttlequeuedepth > (instance->max_fw_cmds -
+					  MEGASAS_SKINNY_INT_CMDS))
+			instance->throttlequeuedepth =
+				MEGASAS_THROTTLE_QUEUE_DEPTH;
+		else
+			instance->throttlequeuedepth = throttlequeuedepth;
+	} else {
+		if (throttlequeuedepth > (instance->max_fw_cmds -
+					  MEGASAS_INT_CMDS))
+			instance->throttlequeuedepth =
+				MEGASAS_THROTTLE_QUEUE_DEPTH;
+		else
+			instance->throttlequeuedepth = throttlequeuedepth;
+	}
 
         /*
 	* Setup tasklet for cmd completion
@@ -3935,8 +3983,8 @@ fail_set_dma_mask:
  * @pdev:		PCI device structure
  * @id:			PCI ids of supported hotplugged adapter
  */
-static int __devinit
-megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
+static int megasas_probe_one(struct pci_dev *pdev,
+			     const struct pci_device_id *id)
 {
 	int rval, pos, i, j;
 	struct Scsi_Host *host;
@@ -3947,12 +3995,12 @@ megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (reset_devices) {
 		pos = pci_find_capability(pdev, PCI_CAP_ID_MSIX);
 		if (pos) {
-			pci_read_config_word(pdev, msi_control_reg(pos),
+			pci_read_config_word(pdev, pos + PCI_MSIX_FLAGS,
 					     &control);
 			if (control & PCI_MSIX_FLAGS_ENABLE) {
 				dev_info(&pdev->dev, "resetting MSI-X\n");
 				pci_write_config_word(pdev,
-						      msi_control_reg(pos),
+						      pos + PCI_MSIX_FLAGS,
 						      control &
 						      ~PCI_MSIX_FLAGS_ENABLE);
 			}
@@ -4066,7 +4114,6 @@ megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	spin_lock_init(&instance->cmd_pool_lock);
 	spin_lock_init(&instance->hba_lock);
 	spin_lock_init(&instance->completion_lock);
-	spin_lock_init(&poll_aen_lock);
 
 	mutex_init(&instance->aen_mutex);
 	mutex_init(&instance->reset_mutex);
@@ -4316,8 +4363,7 @@ megasas_suspend(struct pci_dev *pdev, pm_message_t state)
 	/* cancel the delayed work if this work still in queue */
 	if (instance->ev != NULL) {
 		struct megasas_aen_event *ev = instance->ev;
-		cancel_delayed_work_sync(
-			(struct delayed_work *)&ev->hotplug_work);
+		cancel_delayed_work_sync(&ev->hotplug_work);
 		instance->ev = NULL;
 	}
 
@@ -4490,7 +4536,7 @@ fail_ready_state:
  * megasas_detach_one -	PCI hot"un"plug entry point
  * @pdev:		PCI device structure
  */
-static void __devexit megasas_detach_one(struct pci_dev *pdev)
+static void megasas_detach_one(struct pci_dev *pdev)
 {
 	int i;
 	struct Scsi_Host *host;
@@ -4509,8 +4555,7 @@ static void __devexit megasas_detach_one(struct pci_dev *pdev)
 	/* cancel the delayed work if this work still in queue*/
 	if (instance->ev != NULL) {
 		struct megasas_aen_event *ev = instance->ev;
-		cancel_delayed_work_sync(
-			(struct delayed_work *)&ev->hotplug_work);
+		cancel_delayed_work_sync(&ev->hotplug_work);
 		instance->ev = NULL;
 	}
 
@@ -4818,10 +4863,12 @@ megasas_mgmt_fw_ioctl(struct megasas_instance *instance,
 				    sense, sense_handle);
 	}
 
-	for (i = 0; i < ioc->sge_count && kbuff_arr[i]; i++) {
-		dma_free_coherent(&instance->pdev->dev,
-				    kern_sge32[i].length,
-				    kbuff_arr[i], kern_sge32[i].phys_addr);
+	for (i = 0; i < ioc->sge_count; i++) {
+		if (kbuff_arr[i])
+			dma_free_coherent(&instance->pdev->dev,
+					  kern_sge32[i].length,
+					  kbuff_arr[i],
+					  kern_sge32[i].phys_addr);
 	}
 
 	megasas_return_cmd(instance, cmd);
@@ -4897,11 +4944,12 @@ static int megasas_mgmt_ioctl_fw(struct file *file, unsigned long arg)
 		printk(KERN_ERR "megaraid_sas: timed out while"
 			"waiting for HBA to recover\n");
 		error = -ENODEV;
-		goto out_kfree_ioc;
+		goto out_up;
 	}
 	spin_unlock_irqrestore(&instance->hba_lock, flags);
 
 	error = megasas_mgmt_fw_ioctl(instance, user_ioc, ioc);
+      out_up:
 	up(&instance->ioctl_sem);
 
       out_kfree_ioc:
@@ -5085,7 +5133,7 @@ static struct pci_driver megasas_pci_driver = {
 	.name = "megaraid_sas",
 	.id_table = megasas_pci_table,
 	.probe = megasas_probe_one,
-	.remove = __devexit_p(megasas_detach_one),
+	.remove = megasas_detach_one,
 	.suspend = megasas_suspend,
 	.resume = megasas_resume,
 	.shutdown = megasas_shutdown,
@@ -5154,7 +5202,7 @@ static void
 megasas_aen_polling(struct work_struct *work)
 {
 	struct megasas_aen_event *ev =
-		container_of(work, struct megasas_aen_event, hotplug_work);
+		container_of(work, struct megasas_aen_event, hotplug_work.work);
 	struct megasas_instance *instance = ev->instance;
 	union megasas_evt_class_locale class_locale;
 	struct  Scsi_Host *host;
@@ -5205,7 +5253,6 @@ megasas_aen_polling(struct work_struct *work)
 
 		case MR_EVT_PD_REMOVED:
 			if (megasas_get_pd_list(instance) == 0) {
-			megasas_get_pd_list(instance);
 			for (i = 0; i < MEGASAS_MAX_PD_CHANNELS; i++) {
 				for (j = 0;
 				j < MEGASAS_MAX_DEV_PER_CHANNEL;
@@ -5391,6 +5438,8 @@ static int __init megasas_init(void)
 	 */
 	printk(KERN_INFO "megasas: %s %s\n", MEGASAS_VERSION,
 	       MEGASAS_EXT_VERSION);
+
+	spin_lock_init(&poll_aen_lock);
 
 	support_poll_for_event = 2;
 	support_device_change = 1;

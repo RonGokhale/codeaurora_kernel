@@ -56,6 +56,16 @@ config MSM_CSI30_HEADER
           This config macro is required for targets based on
           8064 platforms.
 
+config MSM_CSI31_HEADER
+        bool "Qualcomm MSM CSI 3.1 Header"
+        depends on MSMB_CAMERA
+        ---help---
+          Enable support for CSI drivers to include 3.0
+          header. This header has register macros and its
+          values and bit mask for register configuration bits
+          This config macro is required for targets based on
+          APQ8084 platform.
+
 config MSM_CSIPHY
         bool "Qualcomm MSM Camera Serial Interface Physical receiver support"
         depends on MSMB_CAMERA
@@ -101,41 +111,23 @@ config MSM_ISPIF_V1
           of any CID of MSM_CSI22_HEADER can be routed to of pixel
           or raw data interface in VFE.
 
-config S5K3L1YX
-	bool "Sensor S5K3L1YX (BAYER 12M)"
-	depends on MSMB_CAMERA
-	---help---
-		Samsung 12 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 1984 * 1508 at 30 fps,
-		snapshot config = 4000 * 3000 at 20 fps,
-		hfr video at 60, 90 and 120 fps.
-
-config IMX135
-	bool "Sensor IMX135 (BAYER 12M)"
-	depends on MSMB_CAMERA
-	---help---
-		Sony 12 MP Bayer Sensor with auto focus, uses
-		4 mipi lanes, preview config = 2104 x 1560 at 49 fps,
-		snapshot config = 4208 x 3120 at 24 fps,
-		Video HDR support.
-
 config IMX134
 	bool "Sensor IMX134 (BAYER 8M)"
 	depends on MSMB_CAMERA
 	---help---
 		Sony 8 MP Bayer Sensor with auto focus, uses
 		4 mipi lanes full resolution @30fps and
-		HFR @60fps and @120fps
+		HFR @60fps and @120fps,
 		Video HDR support.
 
-config OV2720
-	bool "Sensor OV2720 (BAYER 2M)"
+config IMX132
+	bool "Sensor IMX132 (BAYER 2M)"
 	depends on MSMB_CAMERA
 	---help---
-		OmniVision 2 MP Bayer Sensor, supports 2 mipi lanes,
-		preview and snapshot config at 1932 * 1092 at 30 fps,
-		hfr video at 60, 90 and 120 fps. This sensor driver does
-		not support auto focus.
+		Sony 2 MP Bayer Sensor with auto focus, uses
+		2 mipi lanes, preview config = 1920 x 1080 at 30 fps,
+		snapshot config = 1920 x 1080 at 30 fps,
+		Video HDR support.
 
 config OV9724
 	bool "Sensor OV9724 (BAYER 2M)"
@@ -169,6 +161,14 @@ config MT9M114
 	depends on MSMB_CAMERA
 	---help---
 		MT9M114 is Aptina YUV sensor. It supports 1.26 MP preview
+		and snapshot. The preview and snapshot resolution shall be
+		1280 * 270. It does not support auto focus. It supports
+		few special effects like saturation.
+config OV5645
+	bool "Sensor OV5645 (YUV 5.0MP)"
+	depends on MSMB_CAMERA
+	---help---
+		OV5645 is Omnivision YUV sensor. It supports 5.0 MP preview
 		and snapshot. The preview and snapshot resolution shall be
 		1280 * 270. It does not support auto focus. It supports
 		few special effects like saturation.
@@ -237,7 +237,7 @@ config MSM_V4L2_VIDEO_OVERLAY_DEVICE
 
 config MSMB_JPEG
 	tristate "Qualcomm MSM Jpeg Encoder Engine support"
-	depends on MSMB_CAMERA && (ARCH_MSM8974 || ARCH_MSM8226)
+        depends on MSMB_CAMERA && (ARCH_MSM8974 || ARCH_MSM8226 || ARCH_APQ8084 || ARCH_MSM8916 || ARCH_MSM)
 	---help---
 	  Enable support for Jpeg Encoder/Decoder
 	  Engine for 8974.

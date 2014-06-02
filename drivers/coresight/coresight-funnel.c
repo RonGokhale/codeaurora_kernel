@@ -165,7 +165,7 @@ static const struct attribute_group *funnel_attr_grps[] = {
 	NULL,
 };
 
-static int __devinit funnel_probe(struct platform_device *pdev)
+static int funnel_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device *dev = &pdev->dev;
@@ -224,7 +224,7 @@ static int __devinit funnel_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit funnel_remove(struct platform_device *pdev)
+static int funnel_remove(struct platform_device *pdev)
 {
 	struct funnel_drvdata *drvdata = platform_get_drvdata(pdev);
 
@@ -239,7 +239,7 @@ static struct of_device_id funnel_match[] = {
 
 static struct platform_driver funnel_driver = {
 	.probe          = funnel_probe,
-	.remove         = __devexit_p(funnel_remove),
+	.remove         = funnel_remove,
 	.driver         = {
 		.name   = "coresight-funnel",
 		.owner	= THIS_MODULE,

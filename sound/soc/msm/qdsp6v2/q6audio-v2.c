@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -37,6 +37,7 @@ int q6audio_get_port_index(u16 port_id)
 	case MI2S_RX: return IDX_MI2S_RX;
 	case MI2S_TX: return IDX_MI2S_TX;
 	case HDMI_RX: return IDX_HDMI_RX;
+	case AFE_PORT_ID_SPDIF_RX: return IDX_SPDIF_RX;
 	case RSVD_2: return IDX_RSVD_2;
 	case RSVD_3: return IDX_RSVD_3;
 	case DIGI_MIC_TX: return IDX_DIGI_MIC_TX;
@@ -50,8 +51,12 @@ int q6audio_get_port_index(u16 port_id)
 	case SLIMBUS_1_TX: return IDX_SLIMBUS_1_TX;
 	case SLIMBUS_2_RX: return IDX_SLIMBUS_2_RX;
 	case SLIMBUS_2_TX: return IDX_SLIMBUS_2_TX;
+	case SLIMBUS_3_RX: return IDX_SLIMBUS_3_RX;
+	case SLIMBUS_3_TX: return IDX_SLIMBUS_3_TX;
 	case SLIMBUS_4_TX: return IDX_SLIMBUS_4_TX;
 	case SLIMBUS_5_TX: return IDX_SLIMBUS_5_TX;
+	case SLIMBUS_6_RX: return IDX_SLIMBUS_6_RX;
+	case SLIMBUS_6_TX: return IDX_SLIMBUS_6_TX;
 	case INT_BT_SCO_RX: return IDX_INT_BT_SCO_RX;
 	case INT_BT_SCO_TX: return IDX_INT_BT_SCO_TX;
 	case INT_BT_A2DP_RX: return IDX_INT_BT_A2DP_RX;
@@ -75,7 +80,10 @@ int q6audio_get_port_index(u16 port_id)
 		return IDX_AFE_PORT_ID_TERTIARY_MI2S_RX;
 	case AFE_PORT_ID_TERTIARY_MI2S_TX:
 		return IDX_AFE_PORT_ID_TERTIARY_MI2S_TX;
-
+	case AUDIO_PORT_ID_I2S_RX:
+		return IDX_AUDIO_PORT_ID_I2S_RX;
+	case AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA:
+		return IDX_AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA;
 	default: return -EINVAL;
 	}
 }
@@ -98,6 +106,7 @@ int q6audio_get_port_id(u16 port_id)
 	case MI2S_RX: return AFE_PORT_ID_PRIMARY_MI2S_RX;
 	case MI2S_TX: return AFE_PORT_ID_PRIMARY_MI2S_TX;
 	case HDMI_RX: return AFE_PORT_ID_MULTICHAN_HDMI_RX;
+	case AFE_PORT_ID_SPDIF_RX: return AFE_PORT_ID_SPDIF_RX;
 	case RSVD_2: return IDX_RSVD_2;
 	case RSVD_3: return IDX_RSVD_3;
 	case DIGI_MIC_TX: return AFE_PORT_ID_DIGITAL_MIC_TX;
@@ -111,8 +120,12 @@ int q6audio_get_port_id(u16 port_id)
 	case SLIMBUS_1_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_1_TX;
 	case SLIMBUS_2_RX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_2_RX;
 	case SLIMBUS_2_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_2_TX;
+	case SLIMBUS_3_RX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_3_RX;
+	case SLIMBUS_3_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_3_TX;
 	case SLIMBUS_4_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_4_TX;
 	case SLIMBUS_5_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_5_TX;
+	case SLIMBUS_6_RX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_RX;
+	case SLIMBUS_6_TX: return AFE_PORT_ID_SLIMBUS_MULTI_CHAN_6_TX;
 	case INT_BT_SCO_RX: return AFE_PORT_ID_INTERNAL_BT_SCO_RX;
 	case INT_BT_SCO_TX: return AFE_PORT_ID_INTERNAL_BT_SCO_TX;
 	case INT_BT_A2DP_RX: return AFE_PORT_ID_INTERNAL_BT_A2DP_RX;
@@ -136,6 +149,10 @@ int q6audio_get_port_id(u16 port_id)
 			     return AFE_PORT_ID_TERTIARY_MI2S_RX;
 	case AFE_PORT_ID_TERTIARY_MI2S_TX:
 			     return AFE_PORT_ID_TERTIARY_MI2S_TX;
+	case AUDIO_PORT_ID_I2S_RX:
+			return AUDIO_PORT_ID_I2S_RX;
+	case AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA:
+			     return AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA;
 	default:
 		pr_warn("%s: Invalid port_id %d\n", __func__, port_id);
 		return -EINVAL;
@@ -185,6 +202,8 @@ int q6audio_is_digital_pcm_interface(u16 port_id)
 	case AFE_PORT_ID_PRIMARY_MI2S_TX:
 	case AFE_PORT_ID_SECONDARY_MI2S_RX:
 	case AFE_PORT_ID_SECONDARY_MI2S_TX:
+	case AUDIO_PORT_ID_I2S_RX:
+	case AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA:
 		break;
 	default:
 		ret = -EINVAL;
@@ -222,8 +241,12 @@ int q6audio_validate_port(u16 port_id)
 	case SLIMBUS_1_TX:
 	case SLIMBUS_2_RX:
 	case SLIMBUS_2_TX:
+	case SLIMBUS_3_RX:
+	case SLIMBUS_3_TX:
 	case SLIMBUS_4_TX:
 	case SLIMBUS_5_TX:
+	case SLIMBUS_6_RX:
+	case SLIMBUS_6_TX:
 	case INT_BT_SCO_RX:
 	case INT_BT_SCO_TX:
 	case INT_BT_A2DP_RX:
@@ -237,6 +260,10 @@ int q6audio_validate_port(u16 port_id)
 	case AFE_PORT_ID_QUATERNARY_MI2S_TX:
 	case AFE_PORT_ID_SECONDARY_MI2S_RX:
 	case AFE_PORT_ID_SECONDARY_MI2S_TX:
+	case AFE_PORT_ID_SPDIF_RX:
+	case AFE_PORT_ID_TERTIARY_MI2S_RX:
+	case AFE_PORT_ID_TERTIARY_MI2S_TX:
+	case AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA:
 	{
 		ret = 0;
 		break;

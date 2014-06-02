@@ -1,4 +1,4 @@
-/* Copyright (c) 2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -11,9 +11,9 @@
  */
 
 #include <linux/module.h>
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
 #include <linux/ratelimit.h>
-
+#include <asm/div64.h>
 #include "msm_isp40.h"
 #include "msm_isp_util.h"
 #include "msm_isp_axi_util.h"
@@ -35,11 +35,14 @@
 #define VFE40_8974V3_VERSION 0x1001001B
 #define VFE40_8x26_VERSION 0x20000013
 #define VFE40_8x26V2_VERSION 0x20010014
+#define VFE40_8916_VERSION 0x10030000
 
-#define VFE40_BURST_LEN 3
-#define VFE40_STATS_BURST_LEN 2
+#define VFE40_BURST_LEN 1
+#define VFE40_BURST_LEN_8916_VERSION 2
+#define VFE40_STATS_BURST_LEN 1
+#define VFE40_STATS_BURST_LEN_8916_VERSION 2
 #define VFE40_UB_SIZE 1536
-#define VFE40_EQUAL_SLICE_UB 228
+#define VFE40_EQUAL_SLICE_UB 190
 #define VFE40_WM_BASE(idx) (0x6C + 0x24 * idx)
 #define VFE40_RDI_BASE(idx) (0x2E8 + 0x4 * idx)
 #define VFE40_XBAR_BASE(idx) (0x58 + 0x4 * (idx / 2))
@@ -47,12 +50,14 @@
 #define VFE40_PING_PONG_BASE(wm, ping_pong) \
 	(VFE40_WM_BASE(wm) + 0x4 * (1 + (~(ping_pong >> wm) & 0x1)))
 
+static uint8_t stats_pingpong_offset_map[] = {
+	8, 9, 10, 11, 12, 13, 14, 15};
+
 #define VFE40_NUM_STATS_TYPE 8
-#define VFE40_STATS_PING_PONG_OFFSET 8
 #define VFE40_STATS_BASE(idx) (0x168 + 0x18 * idx)
 #define VFE40_STATS_PING_PONG_BASE(idx, ping_pong) \
 	(VFE40_STATS_BASE(idx) + 0x4 * \
-	(~(ping_pong >> (idx + VFE40_STATS_PING_PONG_OFFSET)) & 0x1))
+	(~(ping_pong >> (stats_pingpong_offset_map[idx])) & 0x1))
 
 #define VFE40_VBIF_CLKON                    0x4
 #define VFE40_VBIF_IN_RD_LIM_CONF0          0xB0
@@ -82,14 +87,7 @@
 #define VFE40_BUS_BDG_QOS_CFG_7     0x000002E0
 
 #define VFE40_CLK_IDX 1
-static struct msm_cam_clk_info msm_vfe40_clk_info[] = {
-	{"camss_top_ahb_clk", -1},
-	{"vfe_clk_src", 266670000},
-	{"camss_vfe_vfe_clk", -1},
-	{"camss_csi_vfe_clk", -1},
-	{"iface_clk", -1},
-	{"bus_clk", -1},
-};
+static struct msm_cam_clk_info msm_vfe40_clk_info[VFE_CLK_INFO_MAX];
 
 static void msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev)
 {
@@ -116,6 +114,15 @@ static void msm_vfe40_init_qos_parms(struct vfe_device *vfe_dev)
 		msm_camera_io_w(0xAAA9AAA9, vfebase + VFE40_BUS_BDG_QOS_CFG_5);
 		msm_camera_io_w(0xAAA9AAA9, vfebase + VFE40_BUS_BDG_QOS_CFG_6);
 		msm_camera_io_w(0x0001AAA9, vfebase + VFE40_BUS_BDG_QOS_CFG_7);
+	} else if (vfe_dev->vfe_hw_version == VFE40_8916_VERSION) {
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_0);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_1);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_2);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_3);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_4);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_5);
+		msm_camera_io_w(0xAAA5AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_6);
+		msm_camera_io_w(0x0001AAA5, vfebase + VFE40_BUS_BDG_QOS_CFG_7);
 	} else {
 		BUG();
 		pr_err("%s: QOS is NOT configured for HW Version %x\n",
@@ -243,11 +250,14 @@ static void msm_vfe40_init_vbif_parms(struct vfe_device *vfe_dev)
 	case VFE40_8x26V2_VERSION:
 		msm_vfe40_init_vbif_parms_8x26(vfe_dev);
 		break;
+	case VFE40_8916_VERSION:
+		/*Reset hardware values are correct vbif values.
+		So no need to set*/
+		break;
 	default:
 		BUG();
 		pr_err("%s: VBIF is NOT configured for HW Version %x\n",
 			__func__, vfe_dev->vfe_hw_version);
-		break;
 	}
 
 }
@@ -269,8 +279,15 @@ static int msm_vfe40_init_hardware(struct vfe_device *vfe_dev)
 		}
 	}
 
+	rc = msm_isp_get_clk_info(vfe_dev, vfe_dev->pdev,
+		 &msm_vfe40_clk_info[0]);
+	if (rc < 0) {
+		pr_err("msm_isp_get_clk_info() failed\n");
+		goto fs_failed;
+	}
+
 	rc = msm_cam_clk_enable(&vfe_dev->pdev->dev, msm_vfe40_clk_info,
-		vfe_dev->vfe_clk, ARRAY_SIZE(msm_vfe40_clk_info), 1);
+		vfe_dev->vfe_clk, vfe_dev->num_clk, 1);
 	if (rc < 0)
 		goto clk_enable_failed;
 
@@ -290,14 +307,6 @@ static int msm_vfe40_init_hardware(struct vfe_device *vfe_dev)
 		goto vbif_remap_failed;
 	}
 
-	vfe_dev->tcsr_base = ioremap(vfe_dev->tcsr_mem->start,
-		resource_size(vfe_dev->tcsr_mem));
-	if (!vfe_dev->tcsr_base) {
-		rc = -ENOMEM;
-		pr_err("%s: tcsr ioremap failed\n", __func__);
-		goto tcsr_remap_failed;
-	}
-
 	rc = request_irq(vfe_dev->vfe_irq->start, msm_isp_process_irq,
 		IRQF_TRIGGER_RISING, "vfe", vfe_dev);
 	if (rc < 0) {
@@ -306,8 +315,6 @@ static int msm_vfe40_init_hardware(struct vfe_device *vfe_dev)
 	}
 	return rc;
 irq_req_failed:
-	iounmap(vfe_dev->tcsr_base);
-tcsr_remap_failed:
 	iounmap(vfe_dev->vfe_vbif_base);
 vbif_remap_failed:
 	iounmap(vfe_dev->vfe_base);
@@ -326,11 +333,10 @@ static void msm_vfe40_release_hardware(struct vfe_device *vfe_dev)
 {
 	free_irq(vfe_dev->vfe_irq->start, vfe_dev);
 	tasklet_kill(&vfe_dev->vfe_tasklet);
-	iounmap(vfe_dev->tcsr_base);
 	iounmap(vfe_dev->vfe_vbif_base);
 	iounmap(vfe_dev->vfe_base);
 	msm_cam_clk_enable(&vfe_dev->pdev->dev, msm_vfe40_clk_info,
-		vfe_dev->vfe_clk, ARRAY_SIZE(msm_vfe40_clk_info), 0);
+		vfe_dev->vfe_clk, vfe_dev->num_clk, 0);
 	regulator_disable(vfe_dev->fs_vfe);
 	msm_isp_deinit_bandwidth_mgr(ISP_VFE0 + vfe_dev->pdev->id);
 }
@@ -368,15 +374,16 @@ static void msm_vfe40_process_camif_irq(struct vfe_device *vfe_dev,
 	uint32_t irq_status0, uint32_t irq_status1,
 	struct msm_isp_timestamp *ts)
 {
+	int cnt;
+
 	if (!(irq_status0 & 0xF))
 		return;
 
 	if (irq_status0 & (1 << 0)) {
 		ISP_DBG("%s: SOF IRQ\n", __func__);
-		if (vfe_dev->axi_data.src_info[VFE_PIX_0].raw_stream_count > 0
-			&& vfe_dev->axi_data.src_info[VFE_PIX_0].
-			pix_stream_count == 0) {
-			msm_isp_sof_notify(vfe_dev, VFE_PIX_0, ts);
+		cnt = vfe_dev->axi_data.src_info[VFE_PIX_0].raw_stream_count;
+		if (cnt > 0) {
+			msm_isp_sof_notify(vfe_dev, VFE_RAW_0, ts);
 			if (vfe_dev->axi_data.stream_update)
 				msm_isp_axi_stream_update(vfe_dev);
 			msm_isp_update_framedrop_reg(vfe_dev);
@@ -459,54 +466,62 @@ static void msm_vfe40_process_error_status(struct vfe_device *vfe_dev)
 {
 	uint32_t error_status1 = vfe_dev->error_info.error_mask1;
 	if (error_status1 & (1 << 0))
-		pr_err("%s: camif error status: 0x%x\n",
+		pr_err_ratelimited("%s: camif error status: 0x%x\n",
 			__func__, vfe_dev->error_info.camif_status);
 	if (error_status1 & (1 << 1))
-		pr_err("%s: stats bhist overwrite\n", __func__);
+		pr_err_ratelimited("%s: stats bhist overwrite\n", __func__);
 	if (error_status1 & (1 << 2))
-		pr_err("%s: stats cs overwrite\n", __func__);
+		pr_err_ratelimited("%s: stats cs overwrite\n", __func__);
 	if (error_status1 & (1 << 3))
-		pr_err("%s: stats ihist overwrite\n", __func__);
+		pr_err_ratelimited("%s: stats ihist overwrite\n", __func__);
 	if (error_status1 & (1 << 4))
-		pr_err("%s: realign buf y overflow\n", __func__);
+		pr_err_ratelimited("%s: realign buf y overflow\n", __func__);
 	if (error_status1 & (1 << 5))
-		pr_err("%s: realign buf cb overflow\n", __func__);
+		pr_err_ratelimited("%s: realign buf cb overflow\n", __func__);
 	if (error_status1 & (1 << 6))
-		pr_err("%s: realign buf cr overflow\n", __func__);
+		pr_err_ratelimited("%s: realign buf cr overflow\n", __func__);
 	if (error_status1 & (1 << 7)) {
-		pr_err("%s: violation\n", __func__);
+		pr_err_ratelimited("%s: violation\n", __func__);
 		msm_vfe40_process_violation_status(vfe_dev);
 	}
 	if (error_status1 & (1 << 9))
-		pr_err("%s: image master 0 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 0 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 10))
-		pr_err("%s: image master 1 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 1 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 11))
-		pr_err("%s: image master 2 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 2 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 12))
-		pr_err("%s: image master 3 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 3 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 13))
-		pr_err("%s: image master 4 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 4 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 14))
-		pr_err("%s: image master 5 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 5 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 15))
-		pr_err("%s: image master 6 bus overflow\n", __func__);
+		pr_err_ratelimited("%s: image master 6 bus overflow\n",
+			__func__);
 	if (error_status1 & (1 << 16))
-		pr_err("%s: status be bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status be bus overflow\n", __func__);
 	if (error_status1 & (1 << 17))
-		pr_err("%s: status bg bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status bg bus overflow\n", __func__);
 	if (error_status1 & (1 << 18))
-		pr_err("%s: status bf bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status bf bus overflow\n", __func__);
 	if (error_status1 & (1 << 19))
-		pr_err("%s: status awb bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status awb bus overflow\n", __func__);
 	if (error_status1 & (1 << 20))
-		pr_err("%s: status rs bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status rs bus overflow\n", __func__);
 	if (error_status1 & (1 << 21))
-		pr_err("%s: status cs bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status cs bus overflow\n", __func__);
 	if (error_status1 & (1 << 22))
-		pr_err("%s: status ihist bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status ihist bus overflow\n", __func__);
 	if (error_status1 & (1 << 23))
-		pr_err("%s: status skin bhist bus overflow\n", __func__);
+		pr_err_ratelimited("%s: status skin bhist bus overflow\n",
+			__func__);
 }
 
 static void msm_vfe40_read_irq_status(struct vfe_device *vfe_dev,
@@ -575,7 +590,7 @@ static long msm_vfe40_reset_hardware(struct vfe_device *vfe_dev)
 {
 	init_completion(&vfe_dev->reset_complete);
 	msm_camera_io_w_mb(0x1FF, vfe_dev->vfe_base + 0xC);
-	return wait_for_completion_interruptible_timeout(
+	return wait_for_completion_timeout(
 		&vfe_dev->reset_complete, msecs_to_jiffies(50));
 }
 
@@ -724,13 +739,18 @@ static void msm_vfe40_clear_framedrop(struct vfe_device *vfe_dev,
 			VFE40_WM_BASE(stream_info->wm[i]) + 0x1C);
 }
 
-static void msm_vfe40_cfg_io_format(struct vfe_device *vfe_dev,
+static int32_t msm_vfe40_cfg_io_format(struct vfe_device *vfe_dev,
 	enum msm_vfe_axi_stream_src stream_src, uint32_t io_format)
 {
 	int bpp, bpp_reg = 0, pack_reg = 0;
 	enum msm_isp_pack_fmt pack_fmt = 0;
 	uint32_t io_format_reg; /*io format register bit*/
 	bpp = msm_isp_get_bit_per_pixel(io_format);
+	if (bpp < 0) {
+		pr_err("%s:%d invalid io_format %d bpp %d", __func__, __LINE__,
+			io_format, bpp);
+		return -EINVAL;
+	}
 
 	switch (bpp) {
 	case 8:
@@ -742,6 +762,9 @@ static void msm_vfe40_cfg_io_format(struct vfe_device *vfe_dev,
 	case 12:
 		bpp_reg = 1 << 1;
 		break;
+	default:
+		pr_err("%s:%d invalid bpp %d", __func__, __LINE__, bpp);
+		return -EINVAL;
 	}
 
 	if (stream_src == IDEAL_RAW) {
@@ -768,7 +791,7 @@ static void msm_vfe40_cfg_io_format(struct vfe_device *vfe_dev,
 			break;
 		default:
 			pr_err("%s: invalid pack fmt!\n", __func__);
-			return;
+			return -EINVAL;
 		}
 	}
 
@@ -789,9 +812,10 @@ static void msm_vfe40_cfg_io_format(struct vfe_device *vfe_dev,
 	case RDI_INTF_2:
 	default:
 		pr_err("%s: Invalid stream source\n", __func__);
-		return;
+		return -EINVAL;
 	}
 	msm_camera_io_w(io_format_reg, vfe_dev->vfe_base + 0x54);
+	return 0;
 }
 
 static void msm_vfe40_cfg_camif(struct vfe_device *vfe_dev,
@@ -866,8 +890,13 @@ static void msm_vfe40_update_camif_state(struct vfe_device *vfe_dev,
 		msm_camera_io_w_mb(0x0, vfe_dev->vfe_base + 0x2F4);
 		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
 	} else if (update_state == DISABLE_CAMIF_IMMEDIATELY) {
-		msm_camera_io_w_mb(0x2, vfe_dev->vfe_base + 0x2F4);
+		vfe_dev->ignore_error = 1;
+		msm_camera_io_w_mb(0x6, vfe_dev->vfe_base + 0x2F4);
+		vfe_dev->hw_info->vfe_ops.axi_ops.halt(vfe_dev);
+		vfe_dev->hw_info->vfe_ops.core_ops.reset_hw(vfe_dev);
+		vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
+		vfe_dev->ignore_error = 0;
 	}
 }
 
@@ -898,7 +927,13 @@ static void msm_vfe40_axi_cfg_wm_reg(
 	uint8_t plane_idx)
 {
 	uint32_t val;
+	uint32_t burst_len;
 	uint32_t wm_base = VFE40_WM_BASE(stream_info->wm[plane_idx]);
+
+	if (vfe_dev->vfe_hw_version == VFE40_8916_VERSION)
+		burst_len = VFE40_BURST_LEN_8916_VERSION;
+	else
+		burst_len = VFE40_BURST_LEN;
 
 	if (!stream_info->frame_based) {
 		msm_camera_io_w(0x0, vfe_dev->vfe_base + wm_base);
@@ -919,7 +954,7 @@ static void msm_vfe40_axi_cfg_wm_reg(
 				plane_idx].output_stride) << 16 |
 			(stream_info->plane_cfg[
 				plane_idx].output_height - 1) << 4 |
-			VFE40_BURST_LEN;
+			burst_len;
 		msm_camera_io_w(val, vfe_dev->vfe_base + wm_base + 0x18);
 	} else {
 		msm_camera_io_w(0x2, vfe_dev->vfe_base + wm_base);
@@ -929,7 +964,7 @@ static void msm_vfe40_axi_cfg_wm_reg(
 				plane_idx].output_width) << 16 |
 			(stream_info->plane_cfg[
 				plane_idx].output_height - 1) << 4 |
-			VFE40_BURST_LEN;
+			burst_len;
 		msm_camera_io_w(val, vfe_dev->vfe_base + wm_base + 0x18);
 	}
 
@@ -1031,7 +1066,7 @@ static void msm_vfe40_axi_clear_wm_xbar_reg(
 		vfe_dev->vfe_base + VFE40_XBAR_BASE(wm));
 }
 
-#define MSM_ISP40_TOTAL_WM_UB 819
+#define MSM_ISP40_TOTAL_WM_UB 1140
 
 static void msm_vfe40_cfg_axi_ub_equal_default(
 	struct vfe_device *vfe_dev)
@@ -1044,7 +1079,6 @@ static void msm_vfe40_cfg_axi_ub_equal_default(
 	uint8_t num_used_wms = 0;
 	uint32_t prop_size = 0;
 	uint32_t wm_ub_size;
-	uint32_t delta;
 
 	for (i = 0; i < axi_data->hw_info->num_wm; i++) {
 		if (axi_data->free_wm[i] > 0) {
@@ -1056,9 +1090,11 @@ static void msm_vfe40_cfg_axi_ub_equal_default(
 		axi_data->hw_info->min_wm_ub * num_used_wms;
 	for (i = 0; i < axi_data->hw_info->num_wm; i++) {
 		if (axi_data->free_wm[i]) {
-			delta =
-				(axi_data->wm_image_size[i] *
-					prop_size)/total_image_size;
+			uint64_t delta = 0;
+			uint64_t temp = (uint64_t)axi_data->wm_image_size[i] *
+					(uint64_t)prop_size;
+			do_div(temp, total_image_size);
+			delta = temp;
 			wm_ub_size = axi_data->hw_info->min_wm_ub + delta;
 			msm_camera_io_w(ub_offset << 16 | (wm_ub_size - 1),
 				vfe_dev->vfe_base + VFE40_WM_BASE(i) + 0x10);
@@ -1085,7 +1121,7 @@ static void msm_vfe40_cfg_axi_ub_equal_slicing(
 static void msm_vfe40_cfg_axi_ub(struct vfe_device *vfe_dev)
 {
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
-	axi_data->wm_ub_cfg_policy = MSM_WM_UB_EQUAL_SLICING;
+	axi_data->wm_ub_cfg_policy = MSM_WM_UB_CFG_DEFAULT;
 	if (axi_data->wm_ub_cfg_policy == MSM_WM_UB_EQUAL_SLICING)
 		msm_vfe40_cfg_axi_ub_equal_slicing(vfe_dev);
 	else
@@ -1094,9 +1130,10 @@ static void msm_vfe40_cfg_axi_ub(struct vfe_device *vfe_dev)
 
 static void msm_vfe40_update_ping_pong_addr(
 	struct vfe_device *vfe_dev,
-	uint8_t wm_idx, uint32_t pingpong_status, unsigned long paddr)
+	uint8_t wm_idx, uint32_t pingpong_status, dma_addr_t paddr)
 {
-	msm_camera_io_w(paddr, vfe_dev->vfe_base +
+	uint32_t paddr32 = (paddr & 0xFFFFFFFF);
+	msm_camera_io_w(paddr32, vfe_dev->vfe_base +
 		VFE40_PING_PONG_BASE(wm_idx, pingpong_status));
 }
 
@@ -1155,16 +1192,64 @@ static int msm_vfe40_get_stats_idx(enum msm_isp_stats_type stats_type)
 	}
 }
 
+static int msm_vfe40_stats_check_streams(
+	struct msm_vfe_stats_stream *stream_info)
+{
+	return 0;
+}
+
 static void msm_vfe40_stats_cfg_comp_mask(struct vfe_device *vfe_dev,
 	uint32_t stats_mask, uint8_t enable)
 {
-	uint32_t comp_mask;
-	comp_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x44) >> 16;
-	if (enable)
-		comp_mask |= stats_mask;
-	else
-		comp_mask &= ~stats_mask;
-	msm_camera_io_w(comp_mask << 16, vfe_dev->vfe_base + 0x44);
+	uint32_t reg_mask, comp_stats_mask;
+	uint32_t i = 0;
+	atomic_t *stats_comp;
+	struct msm_vfe_stats_shared_data *stats_data = &vfe_dev->stats_data;
+
+	stats_mask = stats_mask & 0xFF;
+
+	if (vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask >
+			MAX_NUM_STATS_COMP_MASK) {
+		pr_err("%s: num of comp masks %d exceed max %d\n",
+			__func__,
+			vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask,
+			MAX_NUM_STATS_COMP_MASK);
+		return;
+	}
+
+	for (i = 0;
+		i < vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask; i++) {
+
+		reg_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x44);
+		comp_stats_mask = reg_mask & (STATS_COMP_BIT_MASK << (i*8));
+		stats_comp = &stats_data->stats_comp_mask[i];
+
+		if (enable) {
+			if (comp_stats_mask)
+				continue;
+
+			reg_mask |= (stats_mask << (16 + i*8));
+			atomic_add(stats_mask, stats_comp);
+		} else {
+			/*
+			 * Check if comp mask in reg is valid
+			 * and contains this stat
+			 */
+			if (!comp_stats_mask ||
+				!((comp_stats_mask >> (16 + i*8)) &
+					stats_mask))
+				continue;
+
+			atomic_sub(stats_mask, stats_comp);
+			reg_mask &= ~(stats_mask << (16 + i*8));
+		}
+		ISP_DBG("%s: comp_mask: %x atomic stats[0]: %x %x\n",
+			__func__, reg_mask,
+			atomic_read(&stats_data->stats_comp_mask[0]),
+			atomic_read(&stats_data->stats_comp_mask[1]));
+		msm_camera_io_w(reg_mask, vfe_dev->vfe_base + 0x44);
+		return;
+	}
 }
 
 static void msm_vfe40_stats_cfg_wm_irq_mask(
@@ -1225,6 +1310,7 @@ static void msm_vfe40_stats_cfg_ub(struct vfe_device *vfe_dev)
 {
 	int i;
 	uint32_t ub_offset = VFE40_UB_SIZE;
+	uint32_t stats_burst_len;
 	uint32_t ub_size[VFE40_NUM_STATS_TYPE] = {
 		64, /*MSM_ISP_STATS_BE*/
 		128, /*MSM_ISP_STATS_BG*/
@@ -1236,9 +1322,14 @@ static void msm_vfe40_stats_cfg_ub(struct vfe_device *vfe_dev)
 		16, /*MSM_ISP_STATS_BHIST*/
 	};
 
+	if (vfe_dev->vfe_hw_version == VFE40_8916_VERSION)
+		stats_burst_len = VFE40_STATS_BURST_LEN_8916_VERSION;
+	else
+		stats_burst_len = VFE40_STATS_BURST_LEN;
+
 	for (i = 0; i < VFE40_NUM_STATS_TYPE; i++) {
 		ub_offset -= ub_size[i];
-		msm_camera_io_w(VFE40_STATS_BURST_LEN << 30 |
+		msm_camera_io_w(stats_burst_len << 30 |
 			ub_offset << 16 | (ub_size[i] - 1),
 			vfe_dev->vfe_base + VFE40_STATS_BASE(i) + 0xC);
 	}
@@ -1284,10 +1375,11 @@ static void msm_vfe40_stats_enable_module(struct vfe_device *vfe_dev,
 
 static void msm_vfe40_stats_update_ping_pong_addr(
 	struct vfe_device *vfe_dev, struct msm_vfe_stats_stream *stream_info,
-	uint32_t pingpong_status, unsigned long paddr)
+	uint32_t pingpong_status, dma_addr_t paddr)
 {
+	uint32_t paddr32 = (paddr & 0xFFFFFFFF);
 	int stats_idx = STATS_IDX(stream_info->stream_handle);
-	msm_camera_io_w(paddr, vfe_dev->vfe_base +
+	msm_camera_io_w(paddr32, vfe_dev->vfe_base +
 		VFE40_STATS_PING_PONG_BASE(stats_idx, pingpong_status));
 }
 
@@ -1329,14 +1421,6 @@ static int msm_vfe40_get_platform_data(struct vfe_device *vfe_dev)
 		goto vfe_no_resource;
 	}
 
-	vfe_dev->tcsr_mem = platform_get_resource_byname(vfe_dev->pdev,
-		IORESOURCE_MEM, "tcsr");
-	if (!vfe_dev->tcsr_mem) {
-		pr_err("%s: no mem resource?\n", __func__);
-		rc = -ENODEV;
-		goto vfe_no_resource;
-	}
-
 	vfe_dev->vfe_irq = platform_get_resource_byname(vfe_dev->pdev,
 		IORESOURCE_IRQ, "vfe");
 	if (!vfe_dev->vfe_irq) {
@@ -1354,9 +1438,8 @@ static int msm_vfe40_get_platform_data(struct vfe_device *vfe_dev)
 		goto vfe_no_resource;
 	}
 
-	vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe0");
-	vfe_dev->iommu_ctx[1] = msm_iommu_get_ctx("vfe1");
-	if (!vfe_dev->iommu_ctx[0] || !vfe_dev->iommu_ctx[1]) {
+	vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe");
+	if (!vfe_dev->iommu_ctx[0]) {
 		pr_err("%s: cannot get iommu_ctx\n", __func__);
 		rc = -ENODEV;
 		goto vfe_no_resource;
@@ -1374,8 +1457,8 @@ static void msm_vfe40_get_error_mask(
 }
 
 static struct msm_vfe_axi_hardware_info msm_vfe40_axi_hw_info = {
-	.num_wm = 5,
-	.num_comp_mask = 2,
+	.num_wm = 7,
+	.num_comp_mask = 3,
 	.num_rdi = 3,
 	.num_rdi_master = 3,
 	.min_wm_ub = 64,
@@ -1387,7 +1470,7 @@ static struct msm_vfe_stats_hardware_info msm_vfe40_stats_hw_info = {
 		1 << MSM_ISP_STATS_BG | 1 << MSM_ISP_STATS_BHIST |
 		1 << MSM_ISP_STATS_AWB | 1 << MSM_ISP_STATS_IHIST |
 		1 << MSM_ISP_STATS_RS | 1 << MSM_ISP_STATS_CS,
-	.stats_ping_pong_offset = VFE40_STATS_PING_PONG_OFFSET,
+	.stats_ping_pong_offset = stats_pingpong_offset_map,
 	.num_stats_type = VFE40_NUM_STATS_TYPE,
 	.num_stats_comp_mask = 2,
 };
@@ -1408,7 +1491,7 @@ static struct v4l2_subdev_internal_ops msm_vfe40_internal_ops = {
 };
 
 struct msm_vfe_hardware_info vfe40_hw_info = {
-	.num_iommu_ctx = 2,
+	.num_iommu_ctx = 1,
 	.vfe_clk_idx = VFE40_CLK_IDX,
 	.vfe_ops = {
 		.irq_ops = {
@@ -1458,6 +1541,7 @@ struct msm_vfe_hardware_info vfe40_hw_info = {
 		},
 		.stats_ops = {
 			.get_stats_idx = msm_vfe40_get_stats_idx,
+			.check_streams = msm_vfe40_stats_check_streams,
 			.cfg_comp_mask = msm_vfe40_stats_cfg_comp_mask,
 			.cfg_wm_irq_mask = msm_vfe40_stats_cfg_wm_irq_mask,
 			.clear_wm_irq_mask = msm_vfe40_stats_clear_wm_irq_mask,

@@ -14,22 +14,31 @@ cell-id:		A 32 bit integer unique per bus per chipset. The IDs
 label:			Bus name
 qcom,fabclk-dual:	Dual set (active/sleep) bus clock name
 qcom,fabclk-active:	Active set bus clock name
-
+qcom,nfab:		An integer property which specifies the total number
+			of buses on the chipset.
 
 The following properties are optional as a bus might not support
 these features:
 
 qcom,ntieredslaves:	Number of tiered slaves on the bus.
-qcom,qos-freq:		QoS frequency (In Hz)
+qcom,qos-freq:		QoS frequency (In KHz)
 qcom,hw-sel:		A string which decides whether QoS data
 			should be sent to RPM, set using BIMC or NoCs.
 			It can be set to "RPM", "NoC" or "BIMC".
+qcom,qos-baseoffset:	Base address offset of QoS registers from the bus device
+			base address.
+qcom,qos-delta:	 	Address delta between QoS registers of different masters.
 qcom,rpm-en:		A boolean flag indicating whether RPM transactions are
 			supported for nodes of the bus.
 qcom,ahb:		A boolean flag indicating whether the bus is ahb type.
 qcom,virt:		A boolean property indicating this is a virtual bus.
 reg:			Register space of the bus device. Not required in case
 			the bus is virtual.
+qom,nr-lim-thresh	The threshold below which to apply throttling of non
+			real time masters.
+qcom,eff-fact		The DDR effeciency factor to be assumed. This only
+			comes into play for buses that connect to the DDR.
+
 
 The following properties are optional as collecting data via coresight might
 not be supported for every bus. The documentation for coresight properties
@@ -80,6 +89,8 @@ qcom,mas-hw-id:		A unique hardware ID agreed upon by processors across
 qcom,slv-hw-id:		A unique hardware ID agreed upon by processors across
 			the system. This ID is assigned to every slave. It can
 			be used to send slave specific data from
+qcom,slaveclk-dual:	Dual set (active/sleep) slave clock name
+qcom,slaveclk-active:	Active set slave clock name
 			Apps/Modem/LPASS to RPM.
 qcom,gateway:		Flag indicating whether a particular node is a gateway.
 qcom,slavep:		Hardware slave port number(s).
@@ -98,10 +109,10 @@ qcom,mode-thresh:	Threshold mode for a BIMC/NoC master. Beyond a certain
 			(Can be Fixed/Limiter/Bypass/Regulator)
 qcom,bimc,bw:		Bandwidth limit for a BIMC master using dual modes.
 			This bandwidth is used to calculate Grant count and
-			other parameters used in Limiter and Regular mode
-			for static BKE configuration. It is defined in KBps.
+			other parameters used in Limiter and Regular mode.
+			for static BKE configuration. It is defined in KBytes/s.
 qcom,bimc,gp:		Grant Period for configuring a master in limiter
-			mode. This is an integer value in micro-seconds.
+			mode. This is an integer value in nano-seconds.
 qcom,bimc,thmp:		Medium threshold percentage for BIMC masters.
 			This percentage is used to calculate medium threshold
 			value for BIMC Masters in Limiter mode for static
@@ -109,12 +120,21 @@ qcom,bimc,thmp:		Medium threshold percentage for BIMC masters.
 			1 and 100.
 qcom,thresh:		Beyond this threshold frequency, the mode usage is
 			switched from mode specified by property qcom,mode
-			to the one specified by qcom,mode-thresh. In case the
-			requested IB value falls below this threshold, the mode
-			is switched back to qcom,mode. Frequency is specified in
-			KBps.
-
-
+			to the one specified by qcom,mode-thresh. These thresholds
+			can be setup in increasing order of thresholds, so the
+			requested IB is evaluated at each threshold level before
+			making the decision to switch QoS modes and applying the
+			corresponding qcom,bimc,bw limitig bw as needed.
+			This is specified in KBytes/s.
+qcom,rt-mas:		Indicates if a master node is a realtime master with
+			hard deadlines.
+qcom,nr-lim:		Indicates that this is non-real time master which can
+			be throttled in case of concurrent scenarios.
+qcom,floor-bw:		Represents the floor bandwidth below which this master
+			cannot be throttled. This floor bandwidth is specified in
+			KBytes/s.
+qcom,ff:		The fudge factor used by clients when voting for
+			bandwidth from the node.
 
 
 
@@ -132,6 +152,7 @@ Example:
 		qcom,qos-freq = <4800>;
 		qcom,hw-sel = "NoC";
 		qcom,rpm-en;
+		qcom,nfab = <6>;
 
 		mas-gfx3d {
 			cell-id = <26>;

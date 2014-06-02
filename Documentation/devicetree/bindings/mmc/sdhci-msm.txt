@@ -55,6 +55,9 @@ Optional Properties:
 				   no default value that the driver assumes if this property
 				   is not specified. So if this property is not specified,
 				   then SDHC driver will not vote for PM QOS.
+        - qcom,dat1-mpm-int:    specifies MPM interrupt number (e.g. sdhc_2 node below)
+				corresponding to DAT1 line of SDHC (used only if slot has dedicated
+				DAT1 MSM pin (not GPIO))
 
 In the following, <supply> can be vdd (flash core voltage) or vdd-io (I/O voltage).
 	- qcom,<supply>-always-on - specifies whether supply should be kept "on" always.
@@ -88,6 +91,11 @@ In the following, <supply> can be vdd (flash core voltage) or vdd-io (I/O voltag
 	- qcom,msm-bus,num-paths
 	- qcom,msm-bus,vectors-KBps
 
+	- Refer to "Documentation/devicetree/bindings/pinctrl/pinctrl-bindings.txt"
+	  for following optional properties:
+		- pinctrl-names
+		- pinctrl-0, pinctrl-1,.. pinctrl-n
+
 Example:
 
 	aliases {
@@ -111,6 +119,11 @@ Example:
 		qcom,vdd-io-lpm-sup;
 		qcom,vdd-io-voltage-level = <1800000 2950000>;
 		qcom,vdd-io-current-level = <6 22000>;
+
+		pinctrl-names = "active", "sleep";
+		pinctrl-0 = <&sdc1_clk_on &sdc1_cmd_on &sdc1_data_on>;
+		pinctrl-1 = <&sdc1_clk_off &sdc1_cmd_on &sdc1_data_on>;
+
 
                 qcom,bus-width = <4>;
 		qcom,nonremovable;
@@ -145,6 +158,11 @@ Example:
 		vdd-supply = <&pm8941_l21>;
 		vdd-io-supply = <&pm8941_l13>;
 
+		pinctrl-names = "active", "sleep";
+		pinctrl-0 = <&sdc2_clk_on &sdc2_cmd_on &sdc2_data_on>;
+		pinctrl-1 = <&sdc2_clk_off &sdc2_cmd_on &sdc2_data_on>;
+
+
                 qcom,bus-width = <4>;
 		qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;
 
@@ -165,4 +183,5 @@ Example:
 				<81 512 106496 212992>, /* 208 MB/s */
 				<81 512 2147483647 4294967295>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 13631488 27262976 54525952 109051904 218103808 4294967295>;
+		qcom,dat1-mpm-int = <44>;
 	};
