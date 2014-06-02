@@ -138,7 +138,7 @@ void start_kernel_secondary(void)
 	if (machine_desc->init_smp)
 		machine_desc->init_smp(smp_processor_id());
 
-	arc_local_timer_setup(cpu);
+	arc_local_timer_setup();
 
 	local_irq_enable();
 	preempt_disable();
@@ -337,8 +337,12 @@ irqreturn_t do_IPI(int irq, void *dev_id)
  * API called by platform code to hookup arch-common ISR to their IPI IRQ
  */
 static DEFINE_PER_CPU(int, ipi_dev);
+
 int smp_ipi_irq_setup(int cpu, int irq)
 {
-	int *dev_id = &per_cpu(ipi_dev, smp_processor_id());
-	return request_percpu_irq(irq, do_IPI, "IPI Interrupt", dev_id);
+	int *dev = per_cpu_ptr(&ipi_dev, cpu);
+
+	arc_request_percpu_irq(irq, cpu, do_IPI, "IPI Interrupt", dev);
+
+	return 0;
 }
