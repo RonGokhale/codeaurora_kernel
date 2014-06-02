@@ -2664,6 +2664,7 @@ static int snd_pcm_common_ioctl1(struct file *file,
 	case SNDRV_COMPRESS_TSTAMP:
 	case SNDRV_COMPRESS_DRAIN:
 	case SNDRV_COMPRESS_METADATA_MODE:
+	case SNDRV_COMPRESS_SET_DTS_EAGLE_PARAM:
 		return snd_compressed_ioctl(substream, cmd, arg);
 	default:
 		if (((cmd >> 8) & 0xff) == 'U')

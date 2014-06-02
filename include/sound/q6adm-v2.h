@@ -35,6 +35,12 @@ struct route_payload {
 int srs_trumedia_open(int port_id, int copp_idx, int srs_tech_id,
 		      void *srs_params);
 
+int adm_dts_eagle_set(int port_id, int copp_idx, int param_id,
+		      void *data, int size);
+
+int adm_dts_eagle_get(int port_id, int copp_idx, int param_id,
+		      void *data, int size);
+
 int adm_get_params(int port_id, int copp_idx, uint32_t module_id,
 		   uint32_t param_id, uint32_t params_length, char *params);
 
@@ -52,7 +58,7 @@ int adm_unmap_rtac_block(uint32_t *mem_map_handle);
 int adm_close(int port, int topology, int perf_mode);
 
 int adm_matrix_map(int path, struct route_payload payload_map,
-		   int perf_mode);
+		   int perf_mode, int topology);
 
 int adm_connect_afe_port(int mode, int session_id, int port_id);
 

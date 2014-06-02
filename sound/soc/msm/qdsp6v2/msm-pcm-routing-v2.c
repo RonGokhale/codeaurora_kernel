@@ -29,8 +29,10 @@
 #include <sound/q6afe-v2.h>
 #include <sound/tlv.h>
 #include <sound/asound.h>
+#include <sound/asound.h>
 #include <sound/pcm_params.h>
 #include <linux/slab.h>
+#include <sound/hwdep.h>
 
 #include "msm-pcm-routing-v2.h"
 #include "msm-qti-pp-config.h"
@@ -39,6 +41,8 @@
 #include "q6voice.h"
 #include "q6core.h"
 #include "audio_cal_utils.h"
+
+#include "msm-dts-eagle.h"
 
 static int get_cal_path(int path_type);
 
@@ -96,6 +100,11 @@ static void msm_pcm_routing_cfg_pp(int port_id, int copp_idx, int topology,
 				       is_custom_stereo_on) < 0)
 			pr_err("%s: err init dolby dap\n", __func__);
 		break;
+	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0:
+	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1:
+		pr_debug("%s: DTS_EAGLE_COPP_TOPOLOGY_ID\n", __func__);
+		msm_dts_eagle_init_post(port_id, copp_idx, topology);
+		break;
 	default:
 		/* custom topology specific feature param handlers */
 		break;
@@ -112,6 +121,11 @@ static void msm_pcm_routing_deinit_pp(int port_id, int topology)
 	case DOLBY_ADM_COPP_TOPOLOGY_ID:
 		pr_debug("%s: DOLBY_ADM_COPP_TOPOLOGY_ID\n", __func__);
 		msm_dolby_dap_deinit(port_id);
+		break;
+	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0:
+	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1:
+		pr_debug("%s: DTS_EAGLE_COPP_TOPOLOGY_ID\n", __func__);
+		msm_dts_eagle_deinit_post(port_id, topology);
 		break;
 	default:
 		/* custom topology specific feature deinit handlers */
@@ -143,52 +157,64 @@ static void msm_pcm_routng_cfg_matrix_map_pp(struct route_payload payload,
 }
 
 #define SLIMBUS_EXTPROC_RX AFE_PORT_INVALID
-static struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
-	{ PRIMARY_I2S_RX, 0, 0, 0, 0, 0, 0},
-	{ PRIMARY_I2S_TX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_0_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_0_TX, 0, 0, 0, 0, 0, 0},
-	{ HDMI_RX, 0, 0, 0, 0, 0, 0},
-	{ INT_BT_SCO_RX, 0, 0, 0, 0, 0, 0},
-	{ INT_BT_SCO_TX, 0, 0, 0, 0, 0, 0},
-	{ INT_FM_RX, 0, 0, 0, 0, 0, 0},
-	{ INT_FM_TX, 0, 0, 0, 0, 0, 0},
-	{ RT_PROXY_PORT_001_RX, 0, 0, 0, 0, 0, 0},
-	{ RT_PROXY_PORT_001_TX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_PRIMARY_PCM_RX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_PRIMARY_PCM_TX, 0, 0, 0, 0, 0, 0},
-	{ VOICE_PLAYBACK_TX, 0, 0, 0, 0, 0, 0},
-	{ VOICE2_PLAYBACK_TX, 0, 0, 0, 0, 0, 0},
-	{ VOICE_RECORD_RX, 0, 0, 0, 0, 0, 0},
-	{ VOICE_RECORD_TX, 0, 0, 0, 0, 0, 0},
-	{ MI2S_RX, 0, 0, 0, 0, 0, 0},
-	{ MI2S_TX, 0, 0, 0, 0, 0, 0},
-	{ SECONDARY_I2S_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_1_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_1_TX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_4_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_4_TX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_3_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_3_TX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_5_TX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_QUATERNARY_MI2S_RX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_QUATERNARY_MI2S_TX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SECONDARY_MI2S_RX,  0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SECONDARY_MI2S_TX,  0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_PRIMARY_MI2S_RX,    0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_PRIMARY_MI2S_TX,    0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_TERTIARY_MI2S_RX,   0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_TERTIARY_MI2S_TX,   0, 0, 0, 0, 0, 0},
-	{ AUDIO_PORT_ID_I2S_RX,           0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SECONDARY_PCM_RX,	  0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SECONDARY_PCM_TX,   0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_6_RX, 0, 0, 0, 0, 0, 0},
-	{ SLIMBUS_6_TX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SPDIF_RX, 0, 0, 0, 0, 0, 0},
-	{ AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA, 0, 0, 0, 0, 0},
+struct msm_pcm_routing_bdai_data msm_bedais[MSM_BACKEND_DAI_MAX] = {
+	{ PRIMARY_I2S_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_PRI_I2S_RX},
+	{ PRIMARY_I2S_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_PRI_I2S_TX},
+	{ SLIMBUS_0_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_0_RX},
+	{ SLIMBUS_0_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_0_TX},
+	{ HDMI_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_HDMI},
+	{ INT_BT_SCO_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_BT_SCO_RX},
+	{ INT_BT_SCO_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_BT_SCO_TX},
+	{ INT_FM_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_FM_RX},
+	{ INT_FM_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_INT_FM_TX},
+	{ RT_PROXY_PORT_001_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_AFE_PCM_RX},
+	{ RT_PROXY_PORT_001_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_AFE_PCM_TX},
+	{ AFE_PORT_ID_PRIMARY_PCM_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_AUXPCM_RX},
+	{ AFE_PORT_ID_PRIMARY_PCM_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_AUXPCM_TX},
+	{ VOICE_PLAYBACK_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_VOICE_PLAYBACK_TX},
+	{ VOICE2_PLAYBACK_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_VOICE2_PLAYBACK_TX},
+	{ VOICE_RECORD_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_INCALL_RECORD_RX},
+	{ VOICE_RECORD_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_INCALL_RECORD_TX},
+	{ MI2S_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_MI2S_RX},
+	{ MI2S_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_MI2S_TX},
+	{ SECONDARY_I2S_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SEC_I2S_RX},
+	{ SLIMBUS_1_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_1_RX},
+	{ SLIMBUS_1_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_1_TX},
+	{ SLIMBUS_4_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_4_RX},
+	{ SLIMBUS_4_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_4_TX},
+	{ SLIMBUS_3_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_3_RX},
+	{ SLIMBUS_3_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_3_TX},
+	{ SLIMBUS_5_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_5_TX},
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_RX},
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_TX},
+	{ SLIMBUS_EXTPROC_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_STUB_1_TX},
+	{ AFE_PORT_ID_QUATERNARY_MI2S_RX, 0, 0, 0, 0, 0, 0,
+	  LPASS_BE_TERT_MI2S_RX},
+	{ AFE_PORT_ID_QUATERNARY_MI2S_TX, 0, 0, 0, 0, 0, 0,
+	  LPASS_BE_TERT_MI2S_TX},
+	{ AFE_PORT_ID_SECONDARY_MI2S_RX,  0, 0, 0, 0, 0, 0,
+	  LPASS_BE_SEC_MI2S_RX},
+	{ AFE_PORT_ID_SECONDARY_MI2S_TX,  0, 0, 0, 0, 0, 0,
+	  LPASS_BE_SEC_MI2S_TX},
+	{ AFE_PORT_ID_PRIMARY_MI2S_RX,    0, 0, 0, 0, 0, 0,
+	  LPASS_BE_PRI_MI2S_RX},
+	{ AFE_PORT_ID_PRIMARY_MI2S_TX,    0, 0, 0, 0, 0, 0,
+	  LPASS_BE_PRI_MI2S_TX},
+	{ AFE_PORT_ID_TERTIARY_MI2S_RX,   0, 0, 0, 0, 0, 0,
+	  LPASS_BE_TERT_MI2S_RX},
+	{ AFE_PORT_ID_TERTIARY_MI2S_TX,   0, 0, 0, 0, 0, 0,
+	  LPASS_BE_TERT_MI2S_TX},
+	{ AUDIO_PORT_ID_I2S_RX,           0, 0, 0, 0, 0, 0,
+	  LPASS_BE_AUDIO_I2S_RX},
+	{ AFE_PORT_ID_SECONDARY_PCM_RX,	  0, 0, 0, 0, 0, 0,
+	  LPASS_BE_SEC_AUXPCM_RX},
+	{ AFE_PORT_ID_SECONDARY_PCM_TX,   0, 0, 0, 0, 0, 0,
+	  LPASS_BE_SEC_AUXPCM_TX},
+	{ SLIMBUS_6_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_6_RX},
+	{ SLIMBUS_6_TX, 0, 0, 0, 0, 0, 0, LPASS_BE_SLIMBUS_6_TX},
+	{ AFE_PORT_ID_SPDIF_RX, 0, 0, 0, 0, 0, 0, LPASS_BE_SPDIF_RX},
+	{ AFE_PORT_ID_SECONDARY_MI2S_RX_VIBRA, 0, 0, 0, 0, 0, 0,
+	  LPASS_BE_SEC_MI2S_RX_VIBRA},
 };
 
 
@@ -397,7 +423,8 @@ static uint8_t is_be_dai_extproc(int be_dai)
 }
 
 static void msm_pcm_routing_build_matrix(int fedai_id, int sess_type,
-					 int path_type, int perf_mode)
+					 int path_type, int perf_mode,
+					 int topology)
 {
 	int i, port_type, j, num_copps = 0;
 	struct route_payload payload;
@@ -427,7 +454,7 @@ static void msm_pcm_routing_build_matrix(int fedai_id, int sess_type,
 		payload.session_id = fe_dai_map[fedai_id][sess_type].strm_id;
 		payload.app_type = fe_dai_app_type_cfg[fedai_id].app_type;
 		payload.acdb_dev_id = fe_dai_app_type_cfg[fedai_id].acdb_dev_id;
-		adm_matrix_map(path_type, payload, perf_mode);
+		adm_matrix_map(path_type, payload, perf_mode, topology);
 		msm_pcm_routng_cfg_matrix_map_pp(payload, path_type, perf_mode);
 	}
 }
@@ -569,7 +596,7 @@ int msm_pcm_routing_reg_phy_stream(int fedai_id, int perf_mode,
 		payload.session_id = fe_dai_map[fedai_id][session_type].strm_id;
 		payload.app_type = fe_dai_app_type_cfg[fedai_id].app_type;
 		payload.acdb_dev_id = fe_dai_app_type_cfg[fedai_id].acdb_dev_id;
-		adm_matrix_map(path_type, payload, perf_mode);
+		adm_matrix_map(path_type, payload, perf_mode, topology);
 		msm_pcm_routng_cfg_matrix_map_pp(payload, path_type, perf_mode);
 	}
 	mutex_unlock(&routing_lock);
@@ -750,7 +777,7 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 
 			msm_pcm_routing_build_matrix(val, session_type,
 						     path_type,
-						     fdai->perf_mode);
+						     fdai->perf_mode, topology);
 			if (fdai->perf_mode == LEGACY_PCM_MODE)
 				msm_pcm_routing_cfg_pp(msm_bedais[reg].port_id,
 						       copp_idx, topology,
@@ -785,7 +812,7 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 						topology);
 			msm_pcm_routing_build_matrix(val, session_type,
 						     path_type,
-						     fdai->perf_mode);
+						     fdai->perf_mode, topology);
 		}
 	}
 	if ((msm_bedais[reg].port_id == VOICE_RECORD_RX)
@@ -4873,7 +4900,7 @@ static int msm_pcm_routing_prepare(struct snd_pcm_substream *substream)
 				&session_copp_map[i][session_type][be_id]);
 
 			msm_pcm_routing_build_matrix(i, session_type, path_type,
-						     fdai->perf_mode);
+						     fdai->perf_mode, topology);
 			if (fdai->perf_mode == LEGACY_PCM_MODE)
 				msm_pcm_routing_cfg_pp(bedai->port_id, copp_idx,
 						       topology, channels);
@@ -4947,11 +4974,80 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	return 0;
 }
 
+static int msm_pcm_routing_hwdep_open(struct snd_hwdep *hw, struct file *file)
+{
+	pr_debug("%s\n", __func__);
+	/* Dolby / DTS features init() */
+	return 0;
+}
+
+static int msm_pcm_routing_hwdep_release(struct snd_hwdep *hw,
+					 struct file *file)
+{
+	pr_debug("%s\n", __func__);
+	/* Dolby / DTS feature deinit() */
+	return 0;
+}
+
+static int msm_pcm_routing_hwdep_ioctl(struct snd_hwdep *hw, struct file *file,
+					unsigned int cmd, unsigned long arg)
+{
+	int ret = 0;
+	pr_debug("%s\n", __func__);
+
+	switch (cmd) {
+	default:
+		ret = msm_dts_eagle_ioctl(cmd, arg);
+		if (ret == -EPERM) {
+			pr_err("%s called with invalid control 0x%X\n",
+				__func__, cmd);
+			ret = -EINVAL;
+		}
+	}
+	return ret;
+}
+
+int msm_routing_pcm_new(struct snd_soc_pcm_runtime *runtime)
+{
+	struct snd_hwdep *hwdep;
+	struct snd_soc_dai_link *dai_link = runtime->dai_link;
+	int rc;
+
+	pr_debug("%s be_id %d\n", __func__, dai_link->be_id);
+	rc = snd_hwdep_new(runtime->card->snd_card,
+			   msm_bedais[dai_link->be_id].name,
+			   dai_link->be_id, &hwdep);
+	if (IS_ERR_VALUE(rc) || hwdep == NULL) {
+		pr_err("%s: hwdep intf failed to create %s\n", __func__,
+			msm_bedais[dai_link->be_id].name);
+		return rc;
+	}
+	hwdep->iface = SNDRV_HWDEP_IFACE_AUDIO_BE;
+	hwdep->private_data = &msm_bedais[dai_link->be_id];
+	hwdep->ops.open = msm_pcm_routing_hwdep_open;
+	hwdep->ops.ioctl = msm_pcm_routing_hwdep_ioctl;
+	hwdep->ops.release = msm_pcm_routing_hwdep_release;
+
+	return msm_dts_eagle_pcm_new(runtime);
+}
+
+void msm_pcm_routing_hwdep_free(struct snd_pcm *pcm)
+{
+	msm_dts_eagle_pcm_free(pcm);
+}
+
+void msm_routing_pcm_free(struct snd_pcm *pcm)
+{
+	msm_pcm_routing_hwdep_free(pcm);
+}
+
 static struct snd_soc_platform_driver msm_soc_routing_platform = {
 	.ops		= &msm_routing_pcm_ops,
 	.probe		= msm_routing_probe,
 	.read		= msm_routing_read,
 	.write		= msm_routing_write,
+	.pcm_new	= msm_routing_pcm_new,
+	.pcm_free	= msm_routing_pcm_free,
 };
 
 static int msm_routing_pcm_probe(struct platform_device *pdev)

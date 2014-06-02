@@ -133,7 +133,7 @@
 #define EQ_BAND_BOOST	5
 #define EQ_BAND_CUT	6
 
-
+#define DTS_EAGLE_MODULE		0x00005000
 
 #define COMMAND_PAYLOAD_LEN	3
 #define COMMAND_PAYLOAD_SZ	(COMMAND_PAYLOAD_LEN * sizeof(uint32_t))
