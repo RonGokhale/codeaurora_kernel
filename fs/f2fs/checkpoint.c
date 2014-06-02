@@ -33,12 +33,12 @@ struct page *grab_meta_page(struct f2fs_sb_info *sbi, pgoff_t index)
 	struct address_space *mapping = META_MAPPING(sbi);
 	struct page *page = NULL;
 repeat:
-	page = grab_cache_page_write_begin(mapping, index, AOP_FLAG_NOFS);
+	page = grab_cache_page(mapping, index);
 	if (!page) {
 		cond_resched();
 		goto repeat;
 	}
-
+	f2fs_wait_on_page_writeback(page, META);
 	SetPageUptodate(page);
 	return page;
 }
@@ -73,7 +73,7 @@ out:
 	return page;
 }
 
-inline int get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
+static inline int get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
 {
 	switch (type) {
 	case META_NAT:
@@ -157,6 +157,8 @@ static int f2fs_write_meta_page(struct page *page,
 	struct inode *inode = page->mapping->host;
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 
+	trace_f2fs_writepage(page, META);
+
 	if (unlikely(sbi->por_doing))
 		goto redirty_out;
 	if (wbc->for_reclaim)
@@ -174,10 +176,7 @@ no_write:
 	return 0;
 
 redirty_out:
-	dec_page_count(sbi, F2FS_DIRTY_META);
-	wbc->pages_skipped++;
-	account_page_redirty(page);
-	set_page_dirty(page);
+	redirty_page_for_writepage(wbc, page);
 	return AOP_WRITEPAGE_ACTIVATE;
 }
 
@@ -186,6 +185,8 @@ static int f2fs_write_meta_pages(struct address_space *mapping,
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(mapping->host->i_sb);
 	long diff, written;
+
+	trace_f2fs_writepages(mapping->host, wbc, META);
 
 	/* collect a number of dirty meta pages and write together */
 	if (wbc->for_kupdate ||
@@ -555,14 +556,13 @@ fail_no_cp:
 static int __add_dirty_inode(struct inode *inode, struct dir_inode_entry *new)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
-	struct list_head *head = &sbi->dir_inode_list;
-	struct dir_inode_entry *entry;
 
-	list_for_each_entry(entry, head, list)
-		if (unlikely(entry->inode == inode))
-			return -EEXIST;
+	if (is_inode_flag_set(F2FS_I(inode), FI_DIRTY_DIR))
+		return -EEXIST;
 
-	list_add_tail(&new->list, head);
+	set_inode_flag(F2FS_I(inode), FI_DIRTY_DIR);
+	F2FS_I(inode)->dirty_dir = new;
+	list_add_tail(&new->list, &sbi->dir_inode_list);
 	stat_inc_dirty_dir(sbi);
 	return 0;
 }
@@ -611,56 +611,31 @@ void add_dirty_dir_inode(struct inode *inode)
 void remove_dirty_dir_inode(struct inode *inode)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
-	struct list_head *head;
 	struct dir_inode_entry *entry;
 
 	if (!S_ISDIR(inode->i_mode))
 		return;
 
 	spin_lock(&sbi->dir_inode_lock);
-	if (get_dirty_dents(inode)) {
+	if (get_dirty_dents(inode) ||
+			!is_inode_flag_set(F2FS_I(inode), FI_DIRTY_DIR)) {
 		spin_unlock(&sbi->dir_inode_lock);
 		return;
 	}
 
-	head = &sbi->dir_inode_list;
-	list_for_each_entry(entry, head, list) {
-		if (entry->inode == inode) {
-			list_del(&entry->list);
-			stat_dec_dirty_dir(sbi);
-			spin_unlock(&sbi->dir_inode_lock);
-			kmem_cache_free(inode_entry_slab, entry);
-			goto done;
-		}
-	}
+	entry = F2FS_I(inode)->dirty_dir;
+	list_del(&entry->list);
+	F2FS_I(inode)->dirty_dir = NULL;
+	clear_inode_flag(F2FS_I(inode), FI_DIRTY_DIR);
+	stat_dec_dirty_dir(sbi);
 	spin_unlock(&sbi->dir_inode_lock);
+	kmem_cache_free(inode_entry_slab, entry);
 
-done:
 	/* Only from the recovery routine */
 	if (is_inode_flag_set(F2FS_I(inode), FI_DELAY_IPUT)) {
 		clear_inode_flag(F2FS_I(inode), FI_DELAY_IPUT);
 		iput(inode);
 	}
-}
-
-struct inode *check_dirty_dir_inode(struct f2fs_sb_info *sbi, nid_t ino)
-{
-
-	struct list_head *head;
-	struct inode *inode = NULL;
-	struct dir_inode_entry *entry;
-
-	spin_lock(&sbi->dir_inode_lock);
-
-	head = &sbi->dir_inode_list;
-	list_for_each_entry(entry, head, list) {
-		if (entry->inode->i_ino == ino) {
-			inode = entry->inode;
-			break;
-		}
-	}
-	spin_unlock(&sbi->dir_inode_lock);
-	return inode;
 }
 
 void sync_dirty_dir_inodes(struct f2fs_sb_info *sbi)
@@ -761,6 +736,12 @@ static void do_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	__u32 crc32 = 0;
 	void *kaddr;
 	int i;
+
+	/*
+	 * This avoids to conduct wrong roll-forward operations and uses
+	 * metapages, so should be called prior to sync_meta_pages below.
+	 */
+	discard_next_dnode(sbi);
 
 	/* Flush all the NAT/SIT pages */
 	while (get_pages(sbi, F2FS_DIRTY_META))
