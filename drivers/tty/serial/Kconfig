@@ -76,6 +76,8 @@ config SERIAL_AMBA_PL011_CONSOLE
 config SERIAL_EARLYCON_ARM_SEMIHOST
 	bool "Early console using ARM semihosting"
 	depends on ARM64 || ARM
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
 	select SERIAL_EARLYCON
 	help
 	  Support for early debug console using ARM semihosting. This enables
@@ -115,6 +117,7 @@ config SERIAL_ATMEL
 	bool "AT91 / AT32 on-chip serial port support"
 	depends on ARCH_AT91 || AVR32
 	select SERIAL_CORE
+	select SERIAL_MCTRL_GPIO
 	help
 	  This enables the driver for the on-chip UARTs of the Atmel
 	  AT91 and AT32 processors.
@@ -1351,7 +1354,7 @@ config SERIAL_IFX6X60
 
 config SERIAL_PCH_UART
 	tristate "Intel EG20T PCH/LAPIS Semicon IOH(ML7213/ML7223/ML7831) UART"
-	depends on PCI
+	depends on PCI && (X86_32 || COMPILE_TEST)
 	select SERIAL_CORE
 	help
 	  This driver is for PCH(Platform controller Hub) UART of Intel EG20T
@@ -1508,6 +1511,7 @@ config SERIAL_RP2_NR_UARTS
 
 config SERIAL_FSL_LPUART
 	tristate "Freescale lpuart serial port support"
+	depends on HAS_DMA
 	select SERIAL_CORE
 	help
 	  Support for the on-chip lpuart on some Freescale SOCs.
@@ -1539,6 +1543,7 @@ config SERIAL_ST_ASC_CONSOLE
 
 config SERIAL_MEN_Z135
 	tristate "MEN 16z135 Support"
+	select SERIAL_CORE
 	depends on MCB
 	help
 	  Say yes here to enable support for the MEN 16z135 High Speed UART IP-Core
@@ -1548,5 +1553,8 @@ config SERIAL_MEN_Z135
 	  men_z135_uart.ko
 
 endmenu
+
+config SERIAL_MCTRL_GPIO
+	tristate
 
 endif # TTY
