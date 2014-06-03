@@ -102,4 +102,5 @@ static inline void free_page(unsigned long addr)
 	(void) (&_min1 == &_min2);		\
 	_min1 < _min2 ? _min1 : _min2; })
 
+#define kmemleak_ignore(x) do {} while (0)
 #endif /* KERNEL_H */
