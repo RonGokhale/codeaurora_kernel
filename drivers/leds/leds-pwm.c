@@ -103,7 +103,6 @@ static int led_pwm_add(struct device *dev, struct led_pwm_priv *priv,
 	int ret;
 
 	led_data->active_low = led->active_low;
-	led_data->period = led->pwm_period_ns;
 	led_data->cdev.name = led->name;
 	led_data->cdev.default_trigger = led->default_trigger;
 	led_data->cdev.brightness_set = led_pwm_set;
@@ -122,8 +121,9 @@ static int led_pwm_add(struct device *dev, struct led_pwm_priv *priv,
 		return ret;
 	}
 
-	if (child)
-		led_data->period = pwm_get_period(led_data->pwm);
+	led_data->period = pwm_get_period(led_data->pwm);
+	if (!led_data->period && (led->pwm_period_ns > 0))
+		led_data->period = led->pwm_period_ns;
 
 	led_data->can_sleep = pwm_can_sleep(led_data->pwm);
 	if (led_data->can_sleep)
