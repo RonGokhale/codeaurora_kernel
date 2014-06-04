@@ -2252,12 +2252,19 @@ static int get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	else if (p->port_type == FW_PORT_TYPE_FIBER_XFI ||
 		 p->port_type == FW_PORT_TYPE_FIBER_XAUI)
 		cmd->port = PORT_FIBRE;
-	else if (p->port_type == FW_PORT_TYPE_SFP) {
-		if (p->mod_type == FW_PORT_MOD_TYPE_TWINAX_PASSIVE ||
-		    p->mod_type == FW_PORT_MOD_TYPE_TWINAX_ACTIVE)
+	else if (p->port_type == FW_PORT_TYPE_SFP ||
+		 p->port_type == FW_PORT_TYPE_QSFP_10G ||
+		 p->port_type == FW_PORT_TYPE_QSFP) {
+		if (p->mod_type == FW_PORT_MOD_TYPE_LR ||
+		    p->mod_type == FW_PORT_MOD_TYPE_SR ||
+		    p->mod_type == FW_PORT_MOD_TYPE_ER ||
+		    p->mod_type == FW_PORT_MOD_TYPE_LRM)
+			cmd->port = PORT_FIBRE;
+		else if (p->mod_type == FW_PORT_MOD_TYPE_TWINAX_PASSIVE ||
+			 p->mod_type == FW_PORT_MOD_TYPE_TWINAX_ACTIVE)
 			cmd->port = PORT_DA;
 		else
-			cmd->port = PORT_FIBRE;
+			cmd->port = PORT_OTHER;
 	} else
 		cmd->port = PORT_OTHER;
 
@@ -2732,7 +2739,7 @@ static u32 get_rss_table_size(struct net_device *dev)
 	return pi->rss_size;
 }
 
-static int get_rss_table(struct net_device *dev, u32 *p)
+static int get_rss_table(struct net_device *dev, u32 *p, u8 *key)
 {
 	const struct port_info *pi = netdev_priv(dev);
 	unsigned int n = pi->rss_size;
@@ -2742,7 +2749,7 @@ static int get_rss_table(struct net_device *dev, u32 *p)
 	return 0;
 }
 
-static int set_rss_table(struct net_device *dev, const u32 *p)
+static int set_rss_table(struct net_device *dev, const u32 *p, const u8 *key)
 {
 	unsigned int i;
 	struct port_info *pi = netdev_priv(dev);
@@ -2844,8 +2851,8 @@ static const struct ethtool_ops cxgb_ethtool_ops = {
 	.set_wol           = set_wol,
 	.get_rxnfc         = get_rxnfc,
 	.get_rxfh_indir_size = get_rss_table_size,
-	.get_rxfh_indir    = get_rss_table,
-	.set_rxfh_indir    = set_rss_table,
+	.get_rxfh	   = get_rss_table,
+	.set_rxfh	   = set_rss_table,
 	.flash_device      = set_flash,
 };
 
@@ -4061,7 +4068,7 @@ static int update_root_dev_clip(struct net_device *dev)
 
 	/* Parse all bond and vlan devices layered on top of the physical dev */
 	for (i = 0; i < VLAN_N_VID; i++) {
-		root_dev = __vlan_find_dev_deep(dev, htons(ETH_P_8021Q), i);
+		root_dev = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021Q), i);
 		if (!root_dev)
 			continue;
 
@@ -6076,7 +6083,7 @@ static int init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		netdev->priv_flags |= IFF_UNICAST_FLT;
 
 		netdev->netdev_ops = &cxgb4_netdev_ops;
-		SET_ETHTOOL_OPS(netdev, &cxgb_ethtool_ops);
+		netdev->ethtool_ops = &cxgb_ethtool_ops;
 	}
 
 	pci_set_drvdata(pdev, adapter);
