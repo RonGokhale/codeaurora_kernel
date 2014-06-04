@@ -314,6 +314,7 @@ config ARCH_MULTIPLATFORM
 	select CLKSRC_OF
 	select COMMON_CLK
 	select GENERIC_CLOCKEVENTS
+	select MIGHT_HAVE_PCI
 	select MULTI_IRQ_HANDLER
 	select SPARSE_IRQ
 	select USE_OF
@@ -376,7 +377,6 @@ config ARCH_AT91
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select IRQ_DOMAIN
-	select NEED_MACH_GPIO_H
 	select NEED_MACH_IO_H if PCCARD
 	select PINCTRL
 	select PINCTRL_AT91 if USE_OF
@@ -755,7 +755,7 @@ config ARCH_S3C64XX
 	select ATAGS
 	select CLKDEV_LOOKUP
 	select CLKSRC_SAMSUNG_PWM
-	select COMMON_CLK
+	select COMMON_CLK_SAMSUNG
 	select CPU_V6K
 	select GENERIC_CLOCKEVENTS
 	select GPIO_SAMSUNG
@@ -828,25 +828,6 @@ config ARCH_S5PV210
 	select SAMSUNG_ATAGS
 	help
 	  Samsung S5PV210/S5PC110 series based systems
-
-config ARCH_EXYNOS
-	bool "Samsung EXYNOS"
-	select ARCH_HAS_CPUFREQ
-	select ARCH_HAS_HOLES_MEMORYMODEL
-	select ARCH_REQUIRE_GPIOLIB
-	select ARCH_SPARSEMEM_ENABLE
-	select ARM_GIC
-	select COMMON_CLK
-	select CPU_V7
-	select GENERIC_CLOCKEVENTS
-	select HAVE_S3C2410_I2C if I2C
-	select HAVE_S3C2410_WATCHDOG if WATCHDOG
-	select HAVE_S3C_RTC if RTC_CLASS
-	select NEED_MACH_MEMORY_H
-	select SPARSE_IRQ
-	select USE_OF
-	help
-	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 
 config ARCH_DAVINCI
 	bool "TI DaVinci"
@@ -950,6 +931,8 @@ config ARCH_VIRT
 source "arch/arm/mach-mvebu/Kconfig"
 
 source "arch/arm/mach-at91/Kconfig"
+
+source "arch/arm/mach-axxia/Kconfig"
 
 source "arch/arm/mach-bcm/Kconfig"
 
@@ -1646,9 +1629,9 @@ config ARCH_NR_GPIO
 	int
 	default 1024 if ARCH_SHMOBILE || ARCH_TEGRA
 	default 512 if ARCH_EXYNOS || ARCH_KEYSTONE || SOC_OMAP5 || SOC_DRA7XX || ARCH_S3C24XX || ARCH_S3C64XX
+	default 416 if ARCH_SUNXI
 	default 392 if ARCH_U8500
 	default 352 if ARCH_VT8500
-	default 288 if ARCH_SUNXI
 	default 264 if MACH_H4700
 	default 0
 	help

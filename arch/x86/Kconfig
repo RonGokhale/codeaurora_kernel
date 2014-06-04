@@ -261,6 +261,9 @@ config ARCH_HWEIGHT_CFLAGS
 config ARCH_SUPPORTS_UPROBES
 	def_bool y
 
+config FIX_EARLYCON_MEM
+	def_bool y
+
 source "init/Kconfig"
 source "kernel/Kconfig.freezer"
 
@@ -415,7 +418,6 @@ config X86_UV
 
 config X86_GOLDFISH
        bool "Goldfish (Virtual Platform)"
-       depends on X86_32
        depends on X86_EXTENDED_PLATFORM
        ---help---
 	 Enable support for the Goldfish virtual platform used primarily
@@ -2375,12 +2377,9 @@ config X86_DMA_REMAP
 	depends on STA2X11
 
 config IOSF_MBI
-	bool
+	tristate
+	default m
 	depends on PCI
-	---help---
-	  To be selected by modules requiring access to the Intel OnChip System
-	  Fabric (IOSF) Sideband MailBox Interface (MBI). For MBI platforms
-	  enumerable by PCI.
 
 source "net/Kconfig"
 

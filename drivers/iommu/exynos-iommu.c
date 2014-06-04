@@ -542,12 +542,7 @@ static int exynos_sysmmu_probe(struct platform_device *pdev)
 		goto err_alloc;
 	}
 
-	ret = dev_set_drvdata(dev, data);
-	if (ret) {
-		dev_dbg(dev, "Unabled to initialize driver data\n");
-		goto err_init;
-	}
-
+	dev_set_drvdata(dev, data);
 	data->nsfrs = pdev->num_resources / 2;
 	data->sfrbases = kmalloc(sizeof(*data->sfrbases) * data->nsfrs,
 								GFP_KERNEL);
@@ -1011,13 +1006,13 @@ static phys_addr_t exynos_iommu_iova_to_phys(struct iommu_domain *domain,
 }
 
 static struct iommu_ops exynos_iommu_ops = {
-	.domain_init = &exynos_iommu_domain_init,
-	.domain_destroy = &exynos_iommu_domain_destroy,
-	.attach_dev = &exynos_iommu_attach_device,
-	.detach_dev = &exynos_iommu_detach_device,
-	.map = &exynos_iommu_map,
-	.unmap = &exynos_iommu_unmap,
-	.iova_to_phys = &exynos_iommu_iova_to_phys,
+	.domain_init = exynos_iommu_domain_init,
+	.domain_destroy = exynos_iommu_domain_destroy,
+	.attach_dev = exynos_iommu_attach_device,
+	.detach_dev = exynos_iommu_detach_device,
+	.map = exynos_iommu_map,
+	.unmap = exynos_iommu_unmap,
+	.iova_to_phys = exynos_iommu_iova_to_phys,
 	.pgsize_bitmap = SECT_SIZE | LPAGE_SIZE | SPAGE_SIZE,
 };
 
