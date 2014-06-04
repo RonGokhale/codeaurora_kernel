@@ -274,8 +274,10 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 			.count = PAGE_SIZE,
 			.iov_offset = 0,
 			.nr_segs = 1,
-			.bvec = &bv
 		};
+
+		/* Do this by hand because old gcc messes up the initializer */
+		from.bvec = &bv;
 
 		init_sync_kiocb(&kiocb, swap_file);
 		kiocb.ki_pos = page_file_offset(page);
