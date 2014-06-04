@@ -11,6 +11,8 @@ next/soc2
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
 	keystone/soc3
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc-2
+	patch
+		ARM: orion5x: fix mvebu_mbus_dt_init call
 
 next/defconfig
 
