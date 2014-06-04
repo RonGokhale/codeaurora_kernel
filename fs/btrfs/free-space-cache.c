@@ -277,8 +277,7 @@ static int io_ctl_init(struct io_ctl *io_ctl, struct inode *inode,
 		       struct btrfs_root *root)
 {
 	memset(io_ctl, 0, sizeof(struct io_ctl));
-	io_ctl->num_pages = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >>
-		PAGE_CACHE_SHIFT;
+	io_ctl->num_pages = DIV_ROUND_UP(i_size_read(inode), PAGE_CACHE_SIZE);
 	io_ctl->pages = kzalloc(sizeof(struct page *) * io_ctl->num_pages,
 				GFP_NOFS);
 	if (!io_ctl->pages)
