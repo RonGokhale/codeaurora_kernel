@@ -400,6 +400,7 @@ struct drm_encoder_funcs {
  * @dev: parent DRM device
  * @head: list management
  * @base: base KMS object
+ * @name: encoder name
  * @encoder_type: one of the %DRM_MODE_ENCODER_<foo> types in drm_mode.h
  * @possible_crtcs: bitmask of potential CRTC bindings
  * @possible_clones: bitmask of potential sibling encoders for cloning
@@ -416,6 +417,7 @@ struct drm_encoder {
 	struct list_head head;
 
 	struct drm_mode_object base;
+	char *name;
 	int encoder_type;
 	uint32_t possible_crtcs;
 	uint32_t possible_clones;
@@ -444,6 +446,7 @@ struct drm_encoder {
  * @attr: sysfs attributes
  * @head: list management
  * @base: base KMS object
+ * @name: connector name
  * @connector_type: one of the %DRM_MODE_CONNECTOR_<foo> types from drm_mode.h
  * @connector_type_id: index into connector type enum
  * @interlace_allowed: can this connector handle interlaced modes?
@@ -482,6 +485,7 @@ struct drm_connector {
 
 	struct drm_mode_object base;
 
+	char *name;
 	int connector_type;
 	int connector_type_id;
 	bool interlace_allowed;
@@ -915,6 +919,7 @@ extern const char *drm_get_tv_subconnector_name(int val);
 extern const char *drm_get_tv_select_name(int val);
 extern void drm_fb_release(struct drm_file *file_priv);
 extern int drm_mode_group_init_legacy_group(struct drm_device *dev, struct drm_mode_group *group);
+extern void drm_mode_group_destroy(struct drm_mode_group *group);
 extern bool drm_probe_ddc(struct i2c_adapter *adapter);
 extern struct edid *drm_get_edid(struct drm_connector *connector,
 				 struct i2c_adapter *adapter);
@@ -1020,6 +1025,7 @@ extern int drm_mode_gamma_get_ioctl(struct drm_device *dev,
 extern int drm_mode_gamma_set_ioctl(struct drm_device *dev,
 				    void *data, struct drm_file *file_priv);
 extern u8 drm_match_cea_mode(const struct drm_display_mode *to_match);
+extern enum hdmi_picture_aspect drm_get_cea_aspect_ratio(const u8 video_code);
 extern bool drm_detect_hdmi_monitor(struct edid *edid);
 extern bool drm_detect_monitor_audio(struct edid *edid);
 extern bool drm_rgb_quant_range_selectable(struct edid *edid);
