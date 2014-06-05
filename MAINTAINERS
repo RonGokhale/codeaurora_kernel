@@ -2902,7 +2902,7 @@ M:	Randy Dunlap <rdunlap@infradead.org>
 L:	linux-doc@vger.kernel.org
 T:	quilt http://www.infradead.org/~rdunlap/Doc/patches/
 S:	Maintained
-F:	Documentation/
+F:	Documentation/ (but not: ABI, devicetree, translations)
 
 DOUBLETALK DRIVER
 M:	"James R. Van Zandt" <jrv@vanzandt.mv.com>
