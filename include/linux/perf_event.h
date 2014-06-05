@@ -167,15 +167,26 @@ struct perf_event;
 #define PERF_EVENT_TXN 0x1
 
 /**
+ * pmu::capabilities flags
+ */
+#define PERF_PMU_CAP_NO_INTERRUPT		0x01
+
+/**
  * struct pmu - generic performance monitoring unit
  */
 struct pmu {
 	struct list_head		entry;
 
+	struct module			*module;
 	struct device			*dev;
 	const struct attribute_group	**attr_groups;
 	const char			*name;
 	int				type;
+
+	/*
+	 * various common per-pmu feature flags
+	 */
+	int				capabilities;
 
 	int * __percpu			pmu_disable_count;
 	struct perf_cpu_context * __percpu pmu_cpu_context;
