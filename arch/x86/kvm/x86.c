@@ -2460,6 +2460,9 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata)
 		/* CPU multiplier */
 		data |= (((uint64_t)4ULL) << 40);
 		break;
+	case MSR_IA32_PERF_CAPABILITIES:
+		data = 0;
+		break;
 	case MSR_EFER:
 		data = vcpu->arch.efer;
 		break;
@@ -5648,7 +5651,8 @@ int kvm_emulate_halt(struct kvm_vcpu *vcpu)
 {
 	++vcpu->stat.halt_exits;
 	if (irqchip_in_kernel(vcpu->kvm)) {
-		vcpu->arch.mp_state = KVM_MP_STATE_HALTED;
+		if (kvm_get_rflags(vcpu) & X86_EFLAGS_IF)
+			vcpu->arch.mp_state = KVM_MP_STATE_HALTED;
 		return 1;
 	} else {
 		vcpu->run->exit_reason = KVM_EXIT_HLT;
