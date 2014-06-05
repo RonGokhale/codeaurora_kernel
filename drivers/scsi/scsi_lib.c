@@ -200,13 +200,13 @@ int scsi_execute(struct scsi_device *sdev, const unsigned char *cmd,
 					buffer, bufflen, __GFP_WAIT))
 		goto out;
 
+	blk_rq_set_block_pc(req);
 	req->cmd_len = COMMAND_SIZE(cmd[0]);
 	memcpy(req->cmd, cmd, req->cmd_len);
 	req->sense = sense;
 	req->sense_len = 0;
 	req->retries = retries;
 	req->timeout = timeout;
-	req->cmd_type = REQ_TYPE_BLOCK_PC;
 	req->cmd_flags |= flags | REQ_QUIET | REQ_PREEMPT;
 
 	/*

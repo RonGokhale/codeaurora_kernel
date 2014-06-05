@@ -128,7 +128,7 @@ static struct request *get_alua_req(struct scsi_device *sdev,
 		return NULL;
 	}
 
-	rq->cmd_type = REQ_TYPE_BLOCK_PC;
+	blk_rq_set_block_pc(rq);
 	rq->cmd_flags |= REQ_FAILFAST_DEV | REQ_FAILFAST_TRANSPORT |
 			 REQ_FAILFAST_DRIVER;
 	rq->retries = ALUA_FAILOVER_RETRIES;

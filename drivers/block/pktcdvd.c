@@ -712,11 +712,11 @@ static int pkt_generic_packet(struct pktcdvd_device *pd, struct packet_command *
 			goto out;
 	}
 
+	blk_rq_set_block_pc(rq);
 	rq->cmd_len = COMMAND_SIZE(cgc->cmd[0]);
 	memcpy(rq->cmd, cgc->cmd, CDROM_PACKET_SIZE);
 
 	rq->timeout = 60*HZ;
-	rq->cmd_type = REQ_TYPE_BLOCK_PC;
 	if (cgc->quiet)
 		rq->cmd_flags |= REQ_QUIET;
 

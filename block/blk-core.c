@@ -1235,6 +1235,23 @@ struct request *blk_make_request(struct request_queue *q, struct bio *bio,
 EXPORT_SYMBOL(blk_make_request);
 
 /**
+ * blk_rq_set_block_pc - initialize a requeest to type BLOCK_PC
+ * @rq:		request to be initialized
+ *
+ */
+void blk_rq_set_block_pc(struct request *rq)
+{
+	rq->cmd_type = REQ_TYPE_BLOCK_PC;
+	rq->__data_len = 0;
+	rq->__sector = (sector_t) -1;
+	rq->bio = rq->biotail = NULL;
+	memset(rq->__cmd, 0, sizeof(rq->__cmd));
+	rq->cmd = rq->__cmd;
+	rq->cmd_len = BLK_MAX_CDB;
+}
+EXPORT_SYMBOL(blk_rq_set_block_pc);
+
+/**
  * blk_requeue_request - put a request back on queue
  * @q:		request queue where request should be inserted
  * @rq:		request to be inserted
