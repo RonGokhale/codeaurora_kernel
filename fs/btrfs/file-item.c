@@ -281,10 +281,10 @@ static int __btrfs_lookup_bio_sums(struct btrfs_root *root,
 found:
 		csum += count * csum_size;
 		nblocks -= count;
+		bio_index += count;
 		while (count--) {
 			disk_bytenr += bvec->bv_len;
 			offset += bvec->bv_len;
-			bio_index++;
 			bvec++;
 		}
 	}
@@ -750,7 +750,7 @@ again:
 		int slot = path->slots[0] + 1;
 		/* we didn't find a csum item, insert one */
 		nritems = btrfs_header_nritems(path->nodes[0]);
-		if (path->slots[0] >= nritems - 1) {
+		if (!nritems || (path->slots[0] >= nritems - 1)) {
 			ret = btrfs_next_leaf(root, path);
 			if (ret == 1)
 				found_next = 1;

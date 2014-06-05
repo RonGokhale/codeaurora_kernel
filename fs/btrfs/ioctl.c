@@ -58,6 +58,7 @@
 #include "dev-replace.h"
 #include "props.h"
 #include "sysfs.h"
+#include "qgroup.h"
 
 #ifdef CONFIG_64BIT
 /* If we have a 32-bit userspace and 64-bit kernel, then the UAPI
@@ -638,7 +639,7 @@ static int create_snapshot(struct btrfs_root *root, struct inode *dir,
 	struct btrfs_trans_handle *trans;
 	int ret;
 
-	if (!root->ref_cows)
+	if (!test_bit(BTRFS_ROOT_REF_COWS, &root->state))
 		return -EINVAL;
 
 	atomic_inc(&root->will_be_snapshoted);
@@ -710,6 +711,35 @@ static int create_snapshot(struct btrfs_root *root, struct inode *dir,
 	ret = btrfs_orphan_cleanup(pending_snapshot->snap);
 	if (ret)
 		goto fail;
+
+	/*
+	 * If orphan cleanup did remove any orphans, it means the tree was
+	 * modified and therefore the commit root is not the same as the
+	 * current root anymore. This is a problem, because send uses the
+	 * commit root and therefore can see inode items that don't exist
+	 * in the current root anymore, and for example make calls to
+	 * btrfs_iget, which will do tree lookups based on the current root
+	 * and not on the commit root. Those lookups will fail, returning a
+	 * -ESTALE error, and making send fail with that error. So make sure
+	 * a send does not see any orphans we have just removed, and that it
+	 * will see the same inodes regardless of whether a transaction
+	 * commit happened before it started (meaning that the commit root
+	 * will be the same as the current root) or not.
+	 */
+	if (readonly && pending_snapshot->snap->node !=
+	    pending_snapshot->snap->commit_root) {
+		trans = btrfs_join_transaction(pending_snapshot->snap);
+		if (IS_ERR(trans) && PTR_ERR(trans) != -ENOENT) {
+			ret = PTR_ERR(trans);
+			goto fail;
+		}
+		if (!IS_ERR(trans)) {
+			ret = btrfs_commit_transaction(trans,
+						       pending_snapshot->snap);
+			if (ret)
+				goto fail;
+		}
+	}
 
 	inode = btrfs_lookup_dentry(dentry->d_parent->d_inode, dentry);
 	if (IS_ERR(inode)) {
@@ -1502,11 +1532,12 @@ static noinline int btrfs_ioctl_resize(struct file *file,
 	sizestr = vol_args->name;
 	devstr = strchr(sizestr, ':');
 	if (devstr) {
-		char *end;
 		sizestr = devstr + 1;
 		*devstr = '\0';
 		devstr = vol_args->name;
-		devid = simple_strtoull(devstr, &end, 10);
+		ret = kstrtoull(devstr, 10, &devid);
+		if (ret)
+			goto out_free;
 		if (!devid) {
 			ret = -EINVAL;
 			goto out_free;
@@ -1562,7 +1593,7 @@ static noinline int btrfs_ioctl_resize(struct file *file,
 		new_size = old_size - new_size;
 	} else if (mod > 0) {
 		if (new_size > ULLONG_MAX - old_size) {
-			ret = -EINVAL;
+			ret = -ERANGE;
 			goto out_free;
 		}
 		new_size = old_size + new_size;
@@ -2219,6 +2250,7 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 	struct btrfs_ioctl_vol_args *vol_args;
 	struct btrfs_trans_handle *trans;
 	struct btrfs_block_rsv block_rsv;
+	u64 root_flags;
 	u64 qgroup_reserved;
 	int namelen;
 	int ret;
@@ -2239,6 +2271,7 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 	err = mnt_want_write_file(file);
 	if (err)
 		goto out;
+
 
 	err = mutex_lock_killable_nested(&dir->i_mutex, I_MUTEX_PARENT);
 	if (err == -EINTR)
@@ -2301,6 +2334,27 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 	}
 
 	mutex_lock(&inode->i_mutex);
+
+	/*
+	 * Don't allow to delete a subvolume with send in progress. This is
+	 * inside the i_mutex so the error handling that has to drop the bit
+	 * again is not run concurrently.
+	 */
+	spin_lock(&dest->root_item_lock);
+	root_flags = btrfs_root_flags(&dest->root_item);
+	if (dest->send_in_progress == 0) {
+		btrfs_set_root_flags(&dest->root_item,
+				root_flags | BTRFS_ROOT_SUBVOL_DEAD);
+		spin_unlock(&dest->root_item_lock);
+	} else {
+		spin_unlock(&dest->root_item_lock);
+		btrfs_warn(root->fs_info,
+			"Attempt to delete subvolume %llu during send",
+			dest->root_key.objectid);
+		err = -EPERM;
+		goto out_dput;
+	}
+
 	err = d_invalidate(dentry);
 	if (err)
 		goto out_unlock;
@@ -2346,7 +2400,7 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 	dest->root_item.drop_level = 0;
 	btrfs_set_root_refs(&dest->root_item, 0);
 
-	if (!xchg(&dest->orphan_item_inserted, 1)) {
+	if (!test_and_set_bit(BTRFS_ROOT_ORPHAN_ITEM_INSERTED, &dest->state)) {
 		ret = btrfs_insert_orphan_item(trans,
 					root->fs_info->tree_root,
 					dest->root_key.objectid);
@@ -2389,11 +2443,19 @@ out_release:
 out_up_write:
 	up_write(&root->fs_info->subvol_sem);
 out_unlock:
+	if (err) {
+		spin_lock(&dest->root_item_lock);
+		root_flags = btrfs_root_flags(&dest->root_item);
+		btrfs_set_root_flags(&dest->root_item,
+				root_flags & ~BTRFS_ROOT_SUBVOL_DEAD);
+		spin_unlock(&dest->root_item_lock);
+	}
 	mutex_unlock(&inode->i_mutex);
 	if (!err) {
 		shrink_dcache_sb(root->fs_info->sb);
 		btrfs_invalidate_inodes(dest);
 		d_delete(dentry);
+		ASSERT(dest->send_in_progress == 0);
 
 		/* the last ref */
 		if (dest->cache_inode) {
@@ -2557,9 +2619,6 @@ static long btrfs_ioctl_fs_info(struct btrfs_root *root, void __user *arg)
 	struct btrfs_fs_devices *fs_devices = root->fs_info->fs_devices;
 	int ret = 0;
 
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
 	fi_args = kzalloc(sizeof(*fi_args), GFP_KERNEL);
 	if (!fi_args)
 		return -ENOMEM;
@@ -2573,6 +2632,10 @@ static long btrfs_ioctl_fs_info(struct btrfs_root *root, void __user *arg)
 			fi_args->max_id = device->devid;
 	}
 	mutex_unlock(&fs_devices->device_list_mutex);
+
+	fi_args->nodesize = root->fs_info->super_copy->nodesize;
+	fi_args->sectorsize = root->fs_info->super_copy->sectorsize;
+	fi_args->clone_alignment = root->fs_info->super_copy->sectorsize;
 
 	if (copy_to_user(arg, fi_args, sizeof(*fi_args)))
 		ret = -EFAULT;
@@ -2588,9 +2651,6 @@ static long btrfs_ioctl_dev_info(struct btrfs_root *root, void __user *arg)
 	struct btrfs_fs_devices *fs_devices = root->fs_info->fs_devices;
 	int ret = 0;
 	char *s_uuid = NULL;
-
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
 
 	di_args = memdup_user(arg, sizeof(*di_args));
 	if (IS_ERR(di_args))
@@ -2669,10 +2729,15 @@ static inline void lock_extent_range(struct inode *inode, u64 off, u64 len)
 		lock_extent(&BTRFS_I(inode)->io_tree, off, off + len - 1);
 		ordered = btrfs_lookup_first_ordered_extent(inode,
 							    off + len - 1);
-		if (!ordered &&
+		if ((!ordered ||
+		     ordered->file_offset + ordered->len <= off ||
+		     ordered->file_offset >= off + len) &&
 		    !test_range_bit(&BTRFS_I(inode)->io_tree, off,
-				    off + len - 1, EXTENT_DELALLOC, 0, NULL))
+				    off + len - 1, EXTENT_DELALLOC, 0, NULL)) {
+			if (ordered)
+				btrfs_put_ordered_extent(ordered);
 			break;
+		}
 		unlock_extent(&BTRFS_I(inode)->io_tree, off, off + len - 1);
 		if (ordered)
 			btrfs_put_ordered_extent(ordered);
@@ -2912,6 +2977,41 @@ out:
 	return ret;
 }
 
+/* Helper to check and see if this root currently has a ref on the given disk
+ * bytenr.  If it does then we need to update the quota for this root.  This
+ * doesn't do anything if quotas aren't enabled.
+ */
+static int check_ref(struct btrfs_trans_handle *trans, struct btrfs_root *root,
+		     u64 disko)
+{
+	struct seq_list tree_mod_seq_elem = {};
+	struct ulist *roots;
+	struct ulist_iterator uiter;
+	struct ulist_node *root_node = NULL;
+	int ret;
+
+	if (!root->fs_info->quota_enabled)
+		return 1;
+
+	btrfs_get_tree_mod_seq(root->fs_info, &tree_mod_seq_elem);
+	ret = btrfs_find_all_roots(trans, root->fs_info, disko,
+				   tree_mod_seq_elem.seq, &roots);
+	if (ret < 0)
+		goto out;
+	ret = 0;
+	ULIST_ITER_INIT(&uiter);
+	while ((root_node = ulist_next(roots, &uiter))) {
+		if (root_node->val == root->objectid) {
+			ret = 1;
+			break;
+		}
+	}
+	ulist_free(roots);
+out:
+	btrfs_put_tree_mod_seq(root->fs_info, &tree_mod_seq_elem);
+	return ret;
+}
+
 /**
  * btrfs_clone() - clone a range from inode file to another
  *
@@ -2935,7 +3035,9 @@ static int btrfs_clone(struct inode *src, struct inode *inode,
 	u32 nritems;
 	int slot;
 	int ret;
+	int no_quota;
 	u64 len = olen_aligned;
+	u64 last_disko = 0;
 
 	ret = -ENOMEM;
 	buf = vmalloc(btrfs_level_size(root, 0));
@@ -2952,7 +3054,7 @@ static int btrfs_clone(struct inode *src, struct inode *inode,
 	/* clone data */
 	key.objectid = btrfs_ino(src);
 	key.type = BTRFS_EXTENT_DATA_KEY;
-	key.offset = 0;
+	key.offset = off;
 
 	while (1) {
 		/*
@@ -2964,9 +3066,21 @@ static int btrfs_clone(struct inode *src, struct inode *inode,
 				0, 0);
 		if (ret < 0)
 			goto out;
+		/*
+		 * First search, if no extent item that starts at offset off was
+		 * found but the previous item is an extent item, it's possible
+		 * it might overlap our target range, therefore process it.
+		 */
+		if (key.offset == off && ret > 0 && path->slots[0] > 0) {
+			btrfs_item_key_to_cpu(path->nodes[0], &key,
+					      path->slots[0] - 1);
+			if (key.type == BTRFS_EXTENT_DATA_KEY)
+				path->slots[0]--;
+		}
 
 		nritems = btrfs_header_nritems(path->nodes[0]);
 process_slot:
+		no_quota = 1;
 		if (path->slots[0] >= nritems) {
 			ret = btrfs_next_leaf(BTRFS_I(src)->root, path);
 			if (ret < 0)
@@ -3012,10 +3126,16 @@ process_slot:
 								    extent);
 			}
 
-			if (key.offset + datal <= off ||
-			    key.offset >= off + len - 1) {
+			/*
+			 * The first search might have left us at an extent
+			 * item that ends before our target range's start, can
+			 * happen if we have holes and NO_HOLES feature enabled.
+			 */
+			if (key.offset + datal <= off) {
 				path->slots[0]++;
 				goto process_slot;
+			} else if (key.offset >= off + len) {
+				break;
 			}
 
 			size = btrfs_item_size_nr(leaf, slot);
@@ -3099,6 +3219,28 @@ process_slot:
 							     datao);
 				btrfs_set_file_extent_num_bytes(leaf, extent,
 								datal);
+
+				/*
+				 * We need to look up the roots that point at
+				 * this bytenr and see if the new root does.  If
+				 * it does not we need to make sure we update
+				 * quotas appropriately.
+				 */
+				if (disko && root != BTRFS_I(src)->root &&
+				    disko != last_disko) {
+					no_quota = check_ref(trans, root,
+							     disko);
+					if (no_quota < 0) {
+						btrfs_abort_transaction(trans,
+									root,
+									ret);
+						btrfs_end_transaction(trans,
+								      root);
+						ret = no_quota;
+						goto out;
+					}
+				}
+
 				if (disko) {
 					inode_add_bytes(inode, datal);
 					ret = btrfs_inc_extent_ref(trans, root,
@@ -3106,7 +3248,7 @@ process_slot:
 							root->root_key.objectid,
 							btrfs_ino(inode),
 							new_key.offset - datao,
-							0);
+							no_quota);
 					if (ret) {
 						btrfs_abort_transaction(trans,
 									root,
@@ -3200,6 +3342,8 @@ process_slot:
 				goto out;
 			}
 			ret = btrfs_end_transaction(trans, root);
+			if (new_key.offset + datal >= destoff + len)
+				break;
 		}
 		btrfs_release_path(path);
 		key.offset++;
@@ -3207,7 +3351,6 @@ process_slot:
 	ret = 0;
 
 out:
-	btrfs_release_path(path);
 	btrfs_free_path(path);
 	vfree(buf);
 	return ret;
@@ -3319,15 +3462,41 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 			goto out_unlock;
 	}
 
-	/* truncate page cache pages from target inode range */
-	truncate_inode_pages_range(&inode->i_data, destoff,
-				   PAGE_CACHE_ALIGN(destoff + len) - 1);
+	/*
+	 * Lock the target range too. Right after we replace the file extent
+	 * items in the fs tree (which now point to the cloned data), we might
+	 * have a worker replace them with extent items relative to a write
+	 * operation that was issued before this clone operation (i.e. confront
+	 * with inode.c:btrfs_finish_ordered_io).
+	 */
+	if (same_inode) {
+		u64 lock_start = min_t(u64, off, destoff);
+		u64 lock_len = max_t(u64, off, destoff) + len - lock_start;
 
-	lock_extent_range(src, off, len);
+		lock_extent_range(src, lock_start, lock_len);
+	} else {
+		lock_extent_range(src, off, len);
+		lock_extent_range(inode, destoff, len);
+	}
 
 	ret = btrfs_clone(src, inode, off, olen, len, destoff);
 
-	unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1);
+	if (same_inode) {
+		u64 lock_start = min_t(u64, off, destoff);
+		u64 lock_end = max_t(u64, off, destoff) + len - 1;
+
+		unlock_extent(&BTRFS_I(src)->io_tree, lock_start, lock_end);
+	} else {
+		unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1);
+		unlock_extent(&BTRFS_I(inode)->io_tree, destoff,
+			      destoff + len - 1);
+	}
+	/*
+	 * Truncate page cache pages so that future reads will see the cloned
+	 * data immediately and not the previous data.
+	 */
+	truncate_inode_pages_range(&inode->i_data, destoff,
+				   PAGE_CACHE_ALIGN(destoff + len) - 1);
 out_unlock:
 	if (!same_inode) {
 		if (inode < src) {
