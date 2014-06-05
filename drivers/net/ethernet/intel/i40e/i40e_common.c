@@ -133,7 +133,11 @@ void i40e_debug_aq(struct i40e_hw *hw, enum i40e_debug_mask mask, void *desc,
  **/
 bool i40e_check_asq_alive(struct i40e_hw *hw)
 {
-	return !!(rd32(hw, hw->aq.asq.len) & I40E_PF_ATQLEN_ATQENABLE_MASK);
+	if (hw->aq.asq.len)
+		return !!(rd32(hw, hw->aq.asq.len) &
+			  I40E_PF_ATQLEN_ATQENABLE_MASK);
+	else
+		return false;
 }
 
 /**
@@ -789,6 +793,9 @@ void i40e_clear_pxe_mode(struct i40e_hw *hw)
 {
 	u32 reg;
 
+	if (i40e_check_asq_alive(hw))
+		i40e_aq_clear_pxe_mode(hw, NULL);
+
 	/* Clear single descriptor fetch/write-back mode */
 	reg = rd32(hw, I40E_GLLAN_RCTL_0);
 
@@ -907,6 +914,33 @@ void i40e_led_set(struct i40e_hw *hw, u32 mode, bool blink)
 /* Admin command wrappers */
 
 /**
+ * i40e_aq_clear_pxe_mode
+ * @hw: pointer to the hw struct
+ * @cmd_details: pointer to command details structure or NULL
+ *
+ * Tell the firmware that the driver is taking over from PXE
+ **/
+i40e_status i40e_aq_clear_pxe_mode(struct i40e_hw *hw,
+				struct i40e_asq_cmd_details *cmd_details)
+{
+	i40e_status status;
+	struct i40e_aq_desc desc;
+	struct i40e_aqc_clear_pxe *cmd =
+		(struct i40e_aqc_clear_pxe *)&desc.params.raw;
+
+	i40e_fill_default_direct_cmd_desc(&desc,
+					  i40e_aqc_opc_clear_pxe_mode);
+
+	cmd->rx_cnt = 0x2;
+
+	status = i40e_asq_send_command(hw, &desc, NULL, 0, cmd_details);
+
+	wr32(hw, I40E_GLLAN_RCTL_0, 0x1);
+
+	return status;
+}
+
+/**
  * i40e_aq_set_link_restart_an
  * @hw: pointer to the hw struct
  * @cmd_details: pointer to command details structure or NULL
@@ -975,6 +1009,13 @@ i40e_status i40e_aq_get_link_info(struct i40e_hw *hw,
 	hw_link_info->an_info = resp->an_info;
 	hw_link_info->ext_info = resp->ext_info;
 	hw_link_info->loopback = resp->loopback;
+	hw_link_info->max_frame_size = le16_to_cpu(resp->max_frame_size);
+	hw_link_info->pacing = resp->config & I40E_AQ_CONFIG_PACING_MASK;
+
+	if (resp->config & I40E_AQ_CONFIG_CRC_ENA)
+		hw_link_info->crc_enable = true;
+	else
+		hw_link_info->crc_enable = false;
 
 	if (resp->command_flags & cpu_to_le16(I40E_AQ_LSE_ENABLE))
 		hw_link_info->lse_enable = true;
@@ -1300,6 +1341,7 @@ i40e_status i40e_aq_send_driver_version(struct i40e_hw *hw,
 	struct i40e_aqc_driver_version *cmd =
 		(struct i40e_aqc_driver_version *)&desc.params.raw;
 	i40e_status status;
+	u16 len;
 
 	if (dv == NULL)
 		return I40E_ERR_PARAM;
@@ -1311,7 +1353,14 @@ i40e_status i40e_aq_send_driver_version(struct i40e_hw *hw,
 	cmd->driver_minor_ver = dv->minor_version;
 	cmd->driver_build_ver = dv->build_version;
 	cmd->driver_subbuild_ver = dv->subbuild_version;
-	status = i40e_asq_send_command(hw, &desc, NULL, 0, cmd_details);
+
+	len = 0;
+	while (len < sizeof(dv->driver_string) &&
+	       (dv->driver_string[len] < 0x80) &&
+	       dv->driver_string[len])
+		len++;
+	status = i40e_asq_send_command(hw, &desc, dv->driver_string,
+				       len, cmd_details);
 
 	return status;
 }
@@ -1900,6 +1949,12 @@ static void i40e_parse_discover_capabilities(struct i40e_hw *hw, void *buff,
 		}
 	}
 
+	/* Software override ensuring FCoE is disabled if npar or mfp
+	 * mode because it is not supported in these modes.
+	 */
+	if (p->npar_enable || p->mfp_mode_1)
+		p->fcoe = false;
+
 	/* additional HW specific goodies that might
 	 * someday be HW version specific
 	 */
@@ -2094,8 +2149,8 @@ i40e_status i40e_aq_start_lldp(struct i40e_hw *hw,
  * @cmd_details: pointer to command details structure or NULL
  **/
 i40e_status i40e_aq_add_udp_tunnel(struct i40e_hw *hw,
-				u16 udp_port, u8 header_len,
-				u8 protocol_index, u8 *filter_index,
+				u16 udp_port, u8 protocol_index,
+				u8 *filter_index,
 				struct i40e_asq_cmd_details *cmd_details)
 {
 	struct i40e_aq_desc desc;
@@ -2248,6 +2303,35 @@ static i40e_status i40e_aq_tx_sched_cmd(struct i40e_hw *hw, u16 seid,
 	cmd->vsi_seid = cpu_to_le16(seid);
 
 	status = i40e_asq_send_command(hw, &desc, buff, buff_size, cmd_details);
+
+	return status;
+}
+
+/**
+ * i40e_aq_config_vsi_bw_limit - Configure VSI BW Limit
+ * @hw: pointer to the hw struct
+ * @seid: VSI seid
+ * @credit: BW limit credits (0 = disabled)
+ * @max_credit: Max BW limit credits
+ * @cmd_details: pointer to command details structure or NULL
+ **/
+i40e_status i40e_aq_config_vsi_bw_limit(struct i40e_hw *hw,
+				u16 seid, u16 credit, u8 max_credit,
+				struct i40e_asq_cmd_details *cmd_details)
+{
+	struct i40e_aq_desc desc;
+	struct i40e_aqc_configure_vsi_bw_limit *cmd =
+		(struct i40e_aqc_configure_vsi_bw_limit *)&desc.params.raw;
+	i40e_status status;
+
+	i40e_fill_default_direct_cmd_desc(&desc,
+					  i40e_aqc_opc_configure_vsi_bw_limit);
+
+	cmd->vsi_seid = cpu_to_le16(seid);
+	cmd->credit = cpu_to_le16(credit);
+	cmd->max_credit = max_credit;
+
+	status = i40e_asq_send_command(hw, &desc, NULL, 0, cmd_details);
 
 	return status;
 }
