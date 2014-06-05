@@ -11,6 +11,8 @@
  *  Multiqueue VM started 5.8.00, Rik van Riel.
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/gfp.h>
@@ -43,6 +45,7 @@
 #include <linux/sysctl.h>
 #include <linux/oom.h>
 #include <linux/prefetch.h>
+#include <linux/printk.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -82,6 +85,9 @@ struct scan_control {
 
 	/* Scan (total_size >> priority) pages at once */
 	int priority;
+
+	/* anon vs. file LRUs scanning "ratio" */
+	int swappiness;
 
 	/*
 	 * The memory cgroup that hit its limit and as a result is the
@@ -477,7 +483,7 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 		if (page_has_private(page)) {
 			if (try_to_free_buffers(page)) {
 				ClearPageDirty(page);
-				printk("%s: orphaned page\n", __func__);
+				pr_info("%s: orphaned page\n", __func__);
 				return PAGE_CLEAN;
 			}
 		}
@@ -1845,13 +1851,6 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 	return shrink_inactive_list(nr_to_scan, lruvec, sc, lru);
 }
 
-static int vmscan_swappiness(struct scan_control *sc)
-{
-	if (global_reclaim(sc))
-		return vm_swappiness;
-	return mem_cgroup_swappiness(sc->target_mem_cgroup);
-}
-
 enum scan_balance {
 	SCAN_EQUAL,
 	SCAN_FRACT,
@@ -1912,7 +1911,7 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 * using the memory controller's swap limit feature would be
 	 * too expensive.
 	 */
-	if (!global_reclaim(sc) && !vmscan_swappiness(sc)) {
+	if (!global_reclaim(sc) && !sc->swappiness) {
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
@@ -1922,7 +1921,7 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 * system is close to OOM, scan both anon and file equally
 	 * (unless the swappiness setting disagrees with swapping).
 	 */
-	if (!sc->priority && vmscan_swappiness(sc)) {
+	if (!sc->priority && sc->swappiness) {
 		scan_balance = SCAN_EQUAL;
 		goto out;
 	}
@@ -1965,7 +1964,7 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 * With swappiness at 100, anonymous and file have the same priority.
 	 * This scanning priority is essentially the inverse of IO cost.
 	 */
-	anon_prio = vmscan_swappiness(sc);
+	anon_prio = sc->swappiness;
 	file_prio = 200 - anon_prio;
 
 	/*
@@ -2244,9 +2243,21 @@ static inline bool should_continue_reclaim(struct zone *zone,
 	}
 }
 
-static void shrink_zone(struct zone *zone, struct scan_control *sc)
+/**
+ * __shrink_zone - shrinks a given zone
+ *
+ * @zone: zone to shrink
+ * @sc: scan control with additional reclaim parameters
+ * @honor_memcg_guarantee: do not reclaim memcgs which are within their memory
+ * guarantee
+ *
+ * Returns the number of reclaimed memcgs.
+ */
+static unsigned __shrink_zone(struct zone *zone, struct scan_control *sc,
+		bool honor_memcg_guarantee)
 {
 	unsigned long nr_reclaimed, nr_scanned;
+	unsigned nr_scanned_groups = 0;
 
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
@@ -2263,8 +2274,22 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 		do {
 			struct lruvec *lruvec;
 
-			lruvec = mem_cgroup_zone_lruvec(zone, memcg);
+			/* Memcg might be protected from the reclaim */
+			if (honor_memcg_guarantee &&
+					mem_cgroup_within_guarantee(memcg, root)) {
+				/*
+				 * It would be more optimal to skip the memcg
+				 * subtree now but we do not have a memcg iter
+				 * helper for that. Anyone?
+				 */
+				memcg = mem_cgroup_iter(root, memcg, &reclaim);
+				continue;
+			}
 
+			lruvec = mem_cgroup_zone_lruvec(zone, memcg);
+			nr_scanned_groups++;
+
+			sc->swappiness = mem_cgroup_swappiness(memcg);
 			shrink_lruvec(lruvec, sc);
 
 			/*
@@ -2291,6 +2316,27 @@ static void shrink_zone(struct zone *zone, struct scan_control *sc)
 
 	} while (should_continue_reclaim(zone, sc->nr_reclaimed - nr_reclaimed,
 					 sc->nr_scanned - nr_scanned, sc));
+
+	return nr_scanned_groups;
+}
+
+static void shrink_zone(struct zone *zone, struct scan_control *sc)
+{
+	bool honor_guarantee = true;
+
+	while (!__shrink_zone(zone, sc, honor_guarantee)) {
+		/*
+		 * The previous round of reclaim didn't find anything to scan
+		 * because
+		 * a) the whole reclaimed hierarchy is within guarantee so
+		 *    we fallback to ignore the guarantee because other option
+		 *    would be the OOM
+		 * b) multiple reclaimers are racing and so the first round
+		 *    should be retried
+		 */
+		if (mem_cgroup_all_within_guarantee(sc->target_mem_cgroup))
+			honor_guarantee = false;
+	}
 }
 
 /* Returns true if compaction should go ahead for a high-order request */
@@ -2731,6 +2777,7 @@ unsigned long mem_cgroup_shrink_node_zone(struct mem_cgroup *memcg,
 		.may_swap = !noswap,
 		.order = 0,
 		.priority = 0,
+		.swappiness = mem_cgroup_swappiness(memcg),
 		.target_mem_cgroup = memcg,
 	};
 	struct lruvec *lruvec = mem_cgroup_zone_lruvec(zone, memcg);
