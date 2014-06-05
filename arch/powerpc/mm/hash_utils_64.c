@@ -449,6 +449,24 @@ static void mmu_psize_set_default_penc(void)
 			mmu_psize_defs[bpsize].penc[apsize] = -1;
 }
 
+#ifdef CONFIG_PPC_64K_PAGES
+
+static bool might_have_hea(void)
+{
+	/*
+	 * The HEA ethernet adapter requires awareness of the
+	 * GX bus. Without that awareness we can easily assume
+	 * we will never see an HEA ethernet device.
+	 */
+#ifdef CONFIG_IBMEBUS
+	return !cpu_has_feature(CPU_FTR_ARCH_207S);
+#else
+	return false;
+#endif
+}
+
+#endif /* #ifdef CONFIG_PPC_64K_PAGES */
+
 static void __init htab_init_page_sizes(void)
 {
 	int rc;
@@ -503,10 +521,11 @@ static void __init htab_init_page_sizes(void)
 			mmu_linear_psize = MMU_PAGE_64K;
 		if (mmu_has_feature(MMU_FTR_CI_LARGE_PAGE)) {
 			/*
-			 * Don't use 64k pages for ioremap on pSeries, since
-			 * that would stop us accessing the HEA ethernet.
+			 * When running on pSeries using 64k pages for ioremap
+			 * would stop us accessing the HEA ethernet. So if we
+			 * have the chance of ever seeing one, stay at 4k.
 			 */
-			if (!machine_is(pseries))
+			if (!might_have_hea() || !machine_is(pseries))
 				mmu_io_psize = MMU_PAGE_64K;
 		} else
 			mmu_ci_restrictions = 1;
@@ -607,47 +626,43 @@ int remove_section_mapping(unsigned long start, unsigned long end)
 }
 #endif /* CONFIG_MEMORY_HOTPLUG */
 
-#define FUNCTION_TEXT(A)	((*(unsigned long *)(A)))
+extern u32 htab_call_hpte_insert1[];
+extern u32 htab_call_hpte_insert2[];
+extern u32 htab_call_hpte_remove[];
+extern u32 htab_call_hpte_updatepp[];
+extern u32 ht64_call_hpte_insert1[];
+extern u32 ht64_call_hpte_insert2[];
+extern u32 ht64_call_hpte_remove[];
+extern u32 ht64_call_hpte_updatepp[];
 
 static void __init htab_finish_init(void)
 {
-	extern unsigned int *htab_call_hpte_insert1;
-	extern unsigned int *htab_call_hpte_insert2;
-	extern unsigned int *htab_call_hpte_remove;
-	extern unsigned int *htab_call_hpte_updatepp;
-
 #ifdef CONFIG_PPC_HAS_HASH_64K
-	extern unsigned int *ht64_call_hpte_insert1;
-	extern unsigned int *ht64_call_hpte_insert2;
-	extern unsigned int *ht64_call_hpte_remove;
-	extern unsigned int *ht64_call_hpte_updatepp;
-
 	patch_branch(ht64_call_hpte_insert1,
-		FUNCTION_TEXT(ppc_md.hpte_insert),
+		ppc_function_entry(ppc_md.hpte_insert),
 		BRANCH_SET_LINK);
 	patch_branch(ht64_call_hpte_insert2,
-		FUNCTION_TEXT(ppc_md.hpte_insert),
+		ppc_function_entry(ppc_md.hpte_insert),
 		BRANCH_SET_LINK);
 	patch_branch(ht64_call_hpte_remove,
-		FUNCTION_TEXT(ppc_md.hpte_remove),
+		ppc_function_entry(ppc_md.hpte_remove),
 		BRANCH_SET_LINK);
 	patch_branch(ht64_call_hpte_updatepp,
-		FUNCTION_TEXT(ppc_md.hpte_updatepp),
+		ppc_function_entry(ppc_md.hpte_updatepp),
 		BRANCH_SET_LINK);
-
 #endif /* CONFIG_PPC_HAS_HASH_64K */
 
 	patch_branch(htab_call_hpte_insert1,
-		FUNCTION_TEXT(ppc_md.hpte_insert),
+		ppc_function_entry(ppc_md.hpte_insert),
 		BRANCH_SET_LINK);
 	patch_branch(htab_call_hpte_insert2,
-		FUNCTION_TEXT(ppc_md.hpte_insert),
+		ppc_function_entry(ppc_md.hpte_insert),
 		BRANCH_SET_LINK);
 	patch_branch(htab_call_hpte_remove,
-		FUNCTION_TEXT(ppc_md.hpte_remove),
+		ppc_function_entry(ppc_md.hpte_remove),
 		BRANCH_SET_LINK);
 	patch_branch(htab_call_hpte_updatepp,
-		FUNCTION_TEXT(ppc_md.hpte_updatepp),
+		ppc_function_entry(ppc_md.hpte_updatepp),
 		BRANCH_SET_LINK);
 }
 
