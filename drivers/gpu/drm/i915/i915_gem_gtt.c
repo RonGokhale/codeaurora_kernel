@@ -30,7 +30,8 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 
-static void gen8_setup_private_ppat(struct drm_i915_private *dev_priv);
+static void bdw_setup_private_ppat(struct drm_i915_private *dev_priv);
+static void chv_setup_private_ppat(struct drm_i915_private *dev_priv);
 
 bool intel_enable_ppgtt(struct drm_device *dev, bool full)
 {
@@ -206,7 +207,7 @@ static gen6_gtt_pte_t iris_pte_encode(dma_addr_t addr,
 }
 
 /* Broadwell Page Directory Pointer Descriptors */
-static int gen8_write_pdp(struct intel_ring_buffer *ring, unsigned entry,
+static int gen8_write_pdp(struct intel_engine_cs *ring, unsigned entry,
 			   uint64_t val, bool synchronous)
 {
 	struct drm_i915_private *dev_priv = ring->dev->dev_private;
@@ -236,7 +237,7 @@ static int gen8_write_pdp(struct intel_ring_buffer *ring, unsigned entry,
 }
 
 static int gen8_mm_switch(struct i915_hw_ppgtt *ppgtt,
-			  struct intel_ring_buffer *ring,
+			  struct intel_engine_cs *ring,
 			  bool synchronous)
 {
 	int i, ret;
@@ -285,6 +286,8 @@ static void gen8_ppgtt_clear_range(struct i915_address_space *vm,
 			num_entries--;
 		}
 
+		if (!HAS_LLC(ppgtt->base.dev))
+			drm_clflush_virt_range(pt_vaddr, PAGE_SIZE);
 		kunmap_atomic(pt_vaddr);
 
 		pte = 0;
@@ -321,6 +324,8 @@ static void gen8_ppgtt_insert_entries(struct i915_address_space *vm,
 			gen8_pte_encode(sg_page_iter_dma_address(&sg_iter),
 					cache_level, true);
 		if (++pte == GEN8_PTES_PER_PAGE) {
+			if (!HAS_LLC(ppgtt->base.dev))
+				drm_clflush_virt_range(pt_vaddr, PAGE_SIZE);
 			kunmap_atomic(pt_vaddr);
 			pt_vaddr = NULL;
 			if (++pde == GEN8_PDES_PER_PAGE) {
@@ -330,8 +335,11 @@ static void gen8_ppgtt_insert_entries(struct i915_address_space *vm,
 			pte = 0;
 		}
 	}
-	if (pt_vaddr)
+	if (pt_vaddr) {
+		if (!HAS_LLC(ppgtt->base.dev))
+			drm_clflush_virt_range(pt_vaddr, PAGE_SIZE);
 		kunmap_atomic(pt_vaddr);
+	}
 }
 
 static void gen8_free_page_tables(struct page **pt_pages)
@@ -594,6 +602,8 @@ static int gen8_ppgtt_init(struct i915_hw_ppgtt *ppgtt, uint64_t size)
 			pd_vaddr[j] = gen8_pde_encode(ppgtt->base.dev, addr,
 						      I915_CACHE_LLC);
 		}
+		if (!HAS_LLC(ppgtt->base.dev))
+			drm_clflush_virt_range(pd_vaddr, PAGE_SIZE);
 		kunmap_atomic(pd_vaddr);
 	}
 
@@ -706,7 +716,7 @@ static uint32_t get_pd_offset(struct i915_hw_ppgtt *ppgtt)
 }
 
 static int hsw_mm_switch(struct i915_hw_ppgtt *ppgtt,
-			 struct intel_ring_buffer *ring,
+			 struct intel_engine_cs *ring,
 			 bool synchronous)
 {
 	struct drm_device *dev = ppgtt->base.dev;
@@ -750,7 +760,7 @@ static int hsw_mm_switch(struct i915_hw_ppgtt *ppgtt,
 }
 
 static int gen7_mm_switch(struct i915_hw_ppgtt *ppgtt,
-			  struct intel_ring_buffer *ring,
+			  struct intel_engine_cs *ring,
 			  bool synchronous)
 {
 	struct drm_device *dev = ppgtt->base.dev;
@@ -801,7 +811,7 @@ static int gen7_mm_switch(struct i915_hw_ppgtt *ppgtt,
 }
 
 static int gen6_mm_switch(struct i915_hw_ppgtt *ppgtt,
-			  struct intel_ring_buffer *ring,
+			  struct intel_engine_cs *ring,
 			  bool synchronous)
 {
 	struct drm_device *dev = ppgtt->base.dev;
@@ -822,7 +832,7 @@ static int gen8_ppgtt_enable(struct i915_hw_ppgtt *ppgtt)
 {
 	struct drm_device *dev = ppgtt->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
+	struct intel_engine_cs *ring;
 	int j, ret;
 
 	for_each_ring(ring, dev_priv, j) {
@@ -852,7 +862,7 @@ static int gen7_ppgtt_enable(struct i915_hw_ppgtt *ppgtt)
 {
 	struct drm_device *dev = ppgtt->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
+	struct intel_engine_cs *ring;
 	uint32_t ecochk, ecobits;
 	int i;
 
@@ -891,7 +901,7 @@ static int gen6_ppgtt_enable(struct i915_hw_ppgtt *ppgtt)
 {
 	struct drm_device *dev = ppgtt->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
+	struct intel_engine_cs *ring;
 	uint32_t ecochk, gab_ctl, ecobits;
 	int i;
 
@@ -1035,8 +1045,7 @@ alloc:
 						  &ppgtt->node, GEN6_PD_SIZE,
 						  GEN6_PD_ALIGN, 0,
 						  0, dev_priv->gtt.base.total,
-						  DRM_MM_SEARCH_DEFAULT,
-						  DRM_MM_CREATE_DEFAULT);
+						  DRM_MM_TOPDOWN);
 	if (ret == -ENOSPC && !retried) {
 		ret = i915_gem_evict_something(dev, &dev_priv->gtt.base,
 					       GEN6_PD_SIZE, GEN6_PD_ALIGN,
@@ -1262,7 +1271,7 @@ static void undo_idling(struct drm_i915_private *dev_priv, bool interruptible)
 void i915_check_and_clear_faults(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct intel_ring_buffer *ring;
+	struct intel_engine_cs *ring;
 	int i;
 
 	if (INTEL_INFO(dev)->gen < 6)
@@ -1337,7 +1346,11 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 
 
 	if (INTEL_INFO(dev)->gen >= 8) {
-		gen8_setup_private_ppat(dev_priv);
+		if (IS_CHERRYVIEW(dev))
+			chv_setup_private_ppat(dev_priv);
+		else
+			bdw_setup_private_ppat(dev_priv);
+
 		return;
 	}
 
@@ -1762,7 +1775,25 @@ static inline unsigned int gen8_get_total_gtt_size(u16 bdw_gmch_ctl)
 	bdw_gmch_ctl &= BDW_GMCH_GGMS_MASK;
 	if (bdw_gmch_ctl)
 		bdw_gmch_ctl = 1 << bdw_gmch_ctl;
+
+#ifdef CONFIG_X86_32
+	/* Limit 32b platforms to a 2GB GGTT: 4 << 20 / pte size * PAGE_SIZE */
+	if (bdw_gmch_ctl > 4)
+		bdw_gmch_ctl = 4;
+#endif
+
 	return bdw_gmch_ctl << 20;
+}
+
+static inline unsigned int chv_get_total_gtt_size(u16 gmch_ctrl)
+{
+	gmch_ctrl >>= SNB_GMCH_GGMS_SHIFT;
+	gmch_ctrl &= SNB_GMCH_GGMS_MASK;
+
+	if (gmch_ctrl)
+		return 1 << (20 + gmch_ctrl);
+
+	return 0;
 }
 
 static inline size_t gen6_get_stolen_size(u16 snb_gmch_ctl)
@@ -1777,6 +1808,24 @@ static inline size_t gen8_get_stolen_size(u16 bdw_gmch_ctl)
 	bdw_gmch_ctl >>= BDW_GMCH_GMS_SHIFT;
 	bdw_gmch_ctl &= BDW_GMCH_GMS_MASK;
 	return bdw_gmch_ctl << 25; /* 32 MB units */
+}
+
+static size_t chv_get_stolen_size(u16 gmch_ctrl)
+{
+	gmch_ctrl >>= SNB_GMCH_GMS_SHIFT;
+	gmch_ctrl &= SNB_GMCH_GMS_MASK;
+
+	/*
+	 * 0x0  to 0x10: 32MB increments starting at 0MB
+	 * 0x11 to 0x16: 4MB increments starting at 8MB
+	 * 0x17 to 0x1d: 4MB increments start at 36MB
+	 */
+	if (gmch_ctrl < 0x11)
+		return gmch_ctrl << 25;
+	else if (gmch_ctrl < 0x17)
+		return (gmch_ctrl - 0x11 + 2) << 22;
+	else
+		return (gmch_ctrl - 0x17 + 9) << 22;
 }
 
 static int ggtt_probe_common(struct drm_device *dev,
@@ -1809,7 +1858,7 @@ static int ggtt_probe_common(struct drm_device *dev,
 /* The GGTT and PPGTT need a private PPAT setup in order to handle cacheability
  * bits. When using advanced contexts each context stores its own PAT, but
  * writing this data shouldn't be harmful even in those cases. */
-static void gen8_setup_private_ppat(struct drm_i915_private *dev_priv)
+static void bdw_setup_private_ppat(struct drm_i915_private *dev_priv)
 {
 	uint64_t pat;
 
@@ -1824,6 +1873,33 @@ static void gen8_setup_private_ppat(struct drm_i915_private *dev_priv)
 
 	/* XXX: spec defines this as 2 distinct registers. It's unclear if a 64b
 	 * write would work. */
+	I915_WRITE(GEN8_PRIVATE_PAT, pat);
+	I915_WRITE(GEN8_PRIVATE_PAT + 4, pat >> 32);
+}
+
+static void chv_setup_private_ppat(struct drm_i915_private *dev_priv)
+{
+	uint64_t pat;
+
+	/*
+	 * Map WB on BDW to snooped on CHV.
+	 *
+	 * Only the snoop bit has meaning for CHV, the rest is
+	 * ignored.
+	 *
+	 * Note that the harware enforces snooping for all page
+	 * table accesses. The snoop bit is actually ignored for
+	 * PDEs.
+	 */
+	pat = GEN8_PPAT(0, CHV_PPAT_SNOOP) |
+	      GEN8_PPAT(1, 0) |
+	      GEN8_PPAT(2, 0) |
+	      GEN8_PPAT(3, 0) |
+	      GEN8_PPAT(4, CHV_PPAT_SNOOP) |
+	      GEN8_PPAT(5, CHV_PPAT_SNOOP) |
+	      GEN8_PPAT(6, CHV_PPAT_SNOOP) |
+	      GEN8_PPAT(7, CHV_PPAT_SNOOP);
+
 	I915_WRITE(GEN8_PRIVATE_PAT, pat);
 	I915_WRITE(GEN8_PRIVATE_PAT + 4, pat >> 32);
 }
@@ -1848,12 +1924,20 @@ static int gen8_gmch_probe(struct drm_device *dev,
 
 	pci_read_config_word(dev->pdev, SNB_GMCH_CTRL, &snb_gmch_ctl);
 
-	*stolen = gen8_get_stolen_size(snb_gmch_ctl);
+	if (IS_CHERRYVIEW(dev)) {
+		*stolen = chv_get_stolen_size(snb_gmch_ctl);
+		gtt_size = chv_get_total_gtt_size(snb_gmch_ctl);
+	} else {
+		*stolen = gen8_get_stolen_size(snb_gmch_ctl);
+		gtt_size = gen8_get_total_gtt_size(snb_gmch_ctl);
+	}
 
-	gtt_size = gen8_get_total_gtt_size(snb_gmch_ctl);
 	*gtt_total = (gtt_size / sizeof(gen8_gtt_pte_t)) << PAGE_SHIFT;
 
-	gen8_setup_private_ppat(dev_priv);
+	if (IS_CHERRYVIEW(dev))
+		chv_setup_private_ppat(dev_priv);
+	else
+		bdw_setup_private_ppat(dev_priv);
 
 	ret = ggtt_probe_common(dev, gtt_size);
 

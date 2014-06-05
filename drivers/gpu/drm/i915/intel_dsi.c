@@ -35,6 +35,11 @@
 
 /* the sub-encoders aka panel drivers */
 static const struct intel_dsi_device intel_dsi_devices[] = {
+	{
+		.panel_id = MIPI_DSI_GENERIC_PANEL_ID,
+		.name = "vbt-generic-dsi-vid-mode-display",
+		.dev_ops = &vbt_generic_dsi_display_ops,
+	},
 };
 
 static void band_gap_reset(struct drm_i915_private *dev_priv)
@@ -59,12 +64,12 @@ static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
 
 static inline bool is_vid_mode(struct intel_dsi *intel_dsi)
 {
-	return intel_dsi->dev.type == INTEL_DSI_VIDEO_MODE;
+	return intel_dsi->operation_mode == INTEL_DSI_VIDEO_MODE;
 }
 
 static inline bool is_cmd_mode(struct intel_dsi *intel_dsi)
 {
-	return intel_dsi->dev.type == INTEL_DSI_COMMAND_MODE;
+	return intel_dsi->operation_mode == INTEL_DSI_COMMAND_MODE;
 }
 
 static void intel_dsi_hot_plug(struct intel_encoder *encoder)
@@ -92,13 +97,6 @@ static bool intel_dsi_compute_config(struct intel_encoder *encoder,
 							  mode, adjusted_mode);
 
 	return true;
-}
-
-static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
-{
-	DRM_DEBUG_KMS("\n");
-
-	vlv_enable_dsi_pll(encoder);
 }
 
 static void intel_dsi_device_ready(struct intel_encoder *encoder)
@@ -185,6 +183,8 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	/* put device in ready state */
 	intel_dsi_device_ready(encoder);
 
+	msleep(intel_dsi->panel_on_delay);
+
 	if (intel_dsi->dev.dev_ops->panel_reset)
 		intel_dsi->dev.dev_ops->panel_reset(&intel_dsi->dev);
 
@@ -206,6 +206,19 @@ static void intel_dsi_enable_nop(struct intel_encoder *encoder)
 	 */
 }
 
+static void intel_dsi_pre_disable(struct intel_encoder *encoder)
+{
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+
+	DRM_DEBUG_KMS("\n");
+
+	if (is_vid_mode(intel_dsi)) {
+		/* Send Shutdown command to the panel in LP mode */
+		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
+		msleep(10);
+	}
+}
+
 static void intel_dsi_disable(struct intel_encoder *encoder)
 {
 	struct drm_device *dev = encoder->base.dev;
@@ -218,10 +231,6 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 
 	if (is_vid_mode(intel_dsi)) {
-		/* Send Shutdown command to the panel in LP mode */
-		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
-		msleep(10);
-
 		/* de-assert ip_tg_enable signal */
 		temp = I915_READ(MIPI_PORT_CTRL(pipe));
 		I915_WRITE(MIPI_PORT_CTRL(pipe), temp & ~DPI_ENABLE);
@@ -293,6 +302,8 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 
 	DRM_DEBUG_KMS("\n");
 
+	intel_dsi_disable(encoder);
+
 	intel_dsi_clear_device_ready(encoder);
 
 	val = I915_READ(DSPCLK_GATE_D);
@@ -301,6 +312,9 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 
 	if (intel_dsi->dev.dev_ops->disable_panel_power)
 		intel_dsi->dev.dev_ops->disable_panel_power(&intel_dsi->dev);
+
+	msleep(intel_dsi->panel_off_delay);
+	msleep(intel_dsi->panel_pwr_cycle_delay);
 }
 
 static bool intel_dsi_get_hw_state(struct intel_encoder *encoder,
@@ -428,7 +442,7 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	I915_WRITE(MIPI_VBP_COUNT(pipe), vbp);
 }
 
-static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
+static void intel_dsi_prepare(struct intel_encoder *intel_encoder)
 {
 	struct drm_encoder *encoder = &intel_encoder->base;
 	struct drm_device *dev = encoder->dev;
@@ -525,6 +539,9 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 	/* recovery disables */
 	I915_WRITE(MIPI_EOT_DISABLE(pipe), val);
 
+	/* in terms of low power clock */
+	I915_WRITE(MIPI_INIT_COUNT(pipe), intel_dsi->init_count);
+
 	/* in terms of txbyteclkhs. actual high to low switch +
 	 * MIPI_STOP_STATE_STALL * MIPI_LP_BYTECLK.
 	 *
@@ -560,6 +577,15 @@ static void intel_dsi_mode_set(struct intel_encoder *intel_encoder)
 				intel_dsi->video_mode_format |
 				IP_TG_CONFIG |
 				RANDOM_DPI_DISPLAY_RESOLUTION);
+}
+
+static void intel_dsi_pre_pll_enable(struct intel_encoder *encoder)
+{
+	DRM_DEBUG_KMS("\n");
+
+	intel_dsi_prepare(encoder);
+
+	vlv_enable_dsi_pll(encoder);
 }
 
 static enum drm_connector_status
@@ -631,7 +657,7 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 };
 
-bool intel_dsi_init(struct drm_device *dev)
+void intel_dsi_init(struct drm_device *dev)
 {
 	struct intel_dsi *intel_dsi;
 	struct intel_encoder *intel_encoder;
@@ -639,24 +665,36 @@ bool intel_dsi_init(struct drm_device *dev)
 	struct intel_connector *intel_connector;
 	struct drm_connector *connector;
 	struct drm_display_mode *fixed_mode = NULL;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	const struct intel_dsi_device *dsi;
 	unsigned int i;
 
 	DRM_DEBUG_KMS("\n");
 
+	/* There is no detection method for MIPI so rely on VBT */
+	if (!dev_priv->vbt.has_mipi)
+		return;
+
 	intel_dsi = kzalloc(sizeof(*intel_dsi), GFP_KERNEL);
 	if (!intel_dsi)
-		return false;
+		return;
 
 	intel_connector = kzalloc(sizeof(*intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
 		kfree(intel_dsi);
-		return false;
+		return;
 	}
 
 	intel_encoder = &intel_dsi->base;
 	encoder = &intel_encoder->base;
 	intel_dsi->attached_connector = intel_connector;
+
+	if (IS_VALLEYVIEW(dev)) {
+		dev_priv->mipi_mmio_base = VLV_MIPI_BASE;
+	} else {
+		DRM_ERROR("Unsupported Mipi device to reg base");
+		return;
+	}
 
 	connector = &intel_connector->base;
 
@@ -668,8 +706,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_encoder->pre_pll_enable = intel_dsi_pre_pll_enable;
 	intel_encoder->pre_enable = intel_dsi_pre_enable;
 	intel_encoder->enable = intel_dsi_enable_nop;
-	intel_encoder->mode_set = intel_dsi_mode_set;
-	intel_encoder->disable = intel_dsi_disable;
+	intel_encoder->disable = intel_dsi_pre_disable;
 	intel_encoder->post_disable = intel_dsi_post_disable;
 	intel_encoder->get_hw_state = intel_dsi_get_hw_state;
 	intel_encoder->get_config = intel_dsi_get_config;
@@ -716,12 +753,10 @@ bool intel_dsi_init(struct drm_device *dev)
 	fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 	intel_panel_init(&intel_connector->panel, fixed_mode, NULL);
 
-	return true;
+	return;
 
 err:
 	drm_encoder_cleanup(&intel_encoder->base);
 	kfree(intel_dsi);
 	kfree(intel_connector);
-
-	return false;
 }
