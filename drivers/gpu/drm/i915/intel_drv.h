@@ -386,7 +386,8 @@ struct intel_crtc {
 	uint32_t cursor_addr;
 	int16_t cursor_x, cursor_y;
 	int16_t cursor_width, cursor_height;
-	bool cursor_visible;
+	uint32_t cursor_cntl;
+	uint32_t cursor_base;
 
 	struct intel_plane_config plane_config;
 	struct intel_crtc_config config;
@@ -427,7 +428,6 @@ struct intel_plane {
 	struct drm_i915_gem_object *obj;
 	bool can_scale;
 	int max_downscale;
-	u32 lut_r[1024], lut_g[1024], lut_b[1024];
 	int crtc_x, crtc_y;
 	unsigned int crtc_w, crtc_h;
 	uint32_t src_x, src_y;
@@ -536,7 +536,6 @@ struct intel_dp {
 	unsigned long last_power_cycle;
 	unsigned long last_power_on;
 	unsigned long last_backlight_off;
-	bool psr_setup_done;
 	bool use_tps3;
 	struct intel_connector *attached_connector;
 
@@ -834,7 +833,7 @@ void intel_edp_psr_update(struct drm_device *dev);
 void intel_dp_set_drrs_state(struct drm_device *dev, int refresh_rate);
 
 /* intel_dsi.c */
-bool intel_dsi_init(struct drm_device *dev);
+void intel_dsi_init(struct drm_device *dev);
 
 
 /* intel_dvo.c */
@@ -973,7 +972,8 @@ void intel_runtime_pm_put(struct drm_i915_private *dev_priv);
 void intel_init_runtime_pm(struct drm_i915_private *dev_priv);
 void intel_fini_runtime_pm(struct drm_i915_private *dev_priv);
 void ilk_wm_get_hw_state(struct drm_device *dev);
-
+void __vlv_set_power_well(struct drm_i915_private *dev_priv,
+			  enum punit_power_well power_well_id, bool enable);
 
 /* intel_sdvo.c */
 bool intel_sdvo_init(struct drm_device *dev, uint32_t sdvo_reg, bool is_sdvob);

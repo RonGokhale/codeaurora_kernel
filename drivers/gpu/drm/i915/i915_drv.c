@@ -46,8 +46,6 @@ static struct drm_driver driver;
 			  PIPE_C_OFFSET, PIPE_EDP_OFFSET }, \
 	.trans_offsets = { TRANSCODER_A_OFFSET, TRANSCODER_B_OFFSET, \
 			   TRANSCODER_C_OFFSET, TRANSCODER_EDP_OFFSET }, \
-	.dpll_offsets = { DPLL_A_OFFSET, DPLL_B_OFFSET }, \
-	.dpll_md_offsets = { DPLL_A_MD_OFFSET, DPLL_B_MD_OFFSET }, \
 	.palette_offsets = { PALETTE_A_OFFSET, PALETTE_B_OFFSET }
 
 #define GEN_CHV_PIPEOFFSETS \
@@ -55,10 +53,6 @@ static struct drm_driver driver;
 			  CHV_PIPE_C_OFFSET }, \
 	.trans_offsets = { TRANSCODER_A_OFFSET, TRANSCODER_B_OFFSET, \
 			   CHV_TRANSCODER_C_OFFSET, }, \
-	.dpll_offsets = { DPLL_A_OFFSET, DPLL_B_OFFSET, \
-			  CHV_DPLL_C_OFFSET }, \
-	.dpll_md_offsets = { DPLL_A_MD_OFFSET, DPLL_B_MD_OFFSET, \
-			     CHV_DPLL_C_MD_OFFSET }, \
 	.palette_offsets = { PALETTE_A_OFFSET, PALETTE_B_OFFSET, \
 			     CHV_PALETTE_C_OFFSET }
 
@@ -811,17 +805,17 @@ int i915_reset(struct drm_device *dev)
 		}
 
 		/*
-		 * FIXME: This is horribly race against concurrent pageflip and
-		 * vblank wait ioctls since they can observe dev->irqs_disabled
-		 * being false when they shouldn't be able to.
+		 * FIXME: This races pretty badly against concurrent holders of
+		 * ring interrupts. This is possible since we've started to drop
+		 * dev->struct_mutex in select places when waiting for the gpu.
 		 */
-		drm_irq_uninstall(dev);
-		drm_irq_install(dev, dev->pdev->irq);
 
-		/* rps/rc6 re-init is necessary to restore state lost after the
-		 * reset and the re-install of drm irq. Skip for ironlake per
+		/*
+		 * rps/rc6 re-init is necessary to restore state lost after the
+		 * reset and the re-install of gt irqs. Skip for ironlake per
 		 * previous concerns that it doesn't respond well to some forms
-		 * of re-init after reset. */
+		 * of re-init after reset.
+		 */
 		if (INTEL_INFO(dev)->gen > 5)
 			intel_reset_gt_powersave(dev);
 
@@ -1583,6 +1577,7 @@ static int __init i915_init(void)
 		driver.get_vblank_timestamp = NULL;
 #ifndef CONFIG_DRM_I915_UMS
 		/* Silently fail loading to not upset userspace. */
+		DRM_DEBUG_DRIVER("KMS and UMS disabled.\n");
 		return 0;
 #endif
 	}

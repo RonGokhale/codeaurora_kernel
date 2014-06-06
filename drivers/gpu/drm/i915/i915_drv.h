@@ -552,8 +552,6 @@ struct intel_device_info {
 	/* Register offsets for the various display pipes and transcoders */
 	int pipe_offsets[I915_MAX_TRANSCODERS];
 	int trans_offsets[I915_MAX_TRANSCODERS];
-	int dpll_offsets[I915_MAX_PIPES];
-	int dpll_md_offsets[I915_MAX_PIPES];
 	int palette_offsets[I915_MAX_PIPES];
 	int cursor_offsets[I915_MAX_PIPES];
 };
@@ -638,6 +636,7 @@ struct i915_drrs {
 struct i915_psr {
 	bool sink_support;
 	bool source_ok;
+	bool setup_done;
 };
 
 enum intel_pch {
@@ -1207,6 +1206,7 @@ struct intel_vbt_data {
 	unsigned int lvds_use_ssc:1;
 	unsigned int display_clock_mode:1;
 	unsigned int fdi_rx_polarity_inverted:1;
+	unsigned int has_mipi:1;
 	int lvds_ssc_freq;
 	unsigned int bios_lvds_val; /* initial [PCH_]LVDS reg val in VBIOS */
 
@@ -1230,6 +1230,7 @@ struct intel_vbt_data {
 
 	/* MIPI DSI */
 	struct {
+		u16 port;
 		u16 panel_id;
 		struct mipi_config *config;
 		struct mipi_pps_data *pps;
@@ -1935,10 +1936,8 @@ struct drm_i915_cmd_table {
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
 
 #define HAS_HW_CONTEXTS(dev)	(INTEL_INFO(dev)->gen >= 6)
-#define HAS_ALIASING_PPGTT(dev)	(INTEL_INFO(dev)->gen >= 6 && \
-				 (!IS_VALLEYVIEW(dev) || IS_CHERRYVIEW(dev)))
-#define HAS_PPGTT(dev)		(INTEL_INFO(dev)->gen >= 7 \
-				 && !IS_GEN8(dev))
+#define HAS_ALIASING_PPGTT(dev)	(INTEL_INFO(dev)->gen >= 6)
+#define HAS_PPGTT(dev)		(INTEL_INFO(dev)->gen >= 7 && !IS_GEN8(dev))
 #define USES_PPGTT(dev)		intel_enable_ppgtt(dev, false)
 #define USES_FULL_PPGTT(dev)	intel_enable_ppgtt(dev, true)
 

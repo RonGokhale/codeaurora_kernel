@@ -35,6 +35,11 @@
 
 /* the sub-encoders aka panel drivers */
 static const struct intel_dsi_device intel_dsi_devices[] = {
+	{
+		.panel_id = MIPI_DSI_GENERIC_PANEL_ID,
+		.name = "vbt-generic-dsi-vid-mode-display",
+		.dev_ops = &vbt_generic_dsi_display_ops,
+	},
 };
 
 static void band_gap_reset(struct drm_i915_private *dev_priv)
@@ -201,6 +206,19 @@ static void intel_dsi_enable_nop(struct intel_encoder *encoder)
 	 */
 }
 
+static void intel_dsi_pre_disable(struct intel_encoder *encoder)
+{
+	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
+
+	DRM_DEBUG_KMS("\n");
+
+	if (is_vid_mode(intel_dsi)) {
+		/* Send Shutdown command to the panel in LP mode */
+		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
+		msleep(10);
+	}
+}
+
 static void intel_dsi_disable(struct intel_encoder *encoder)
 {
 	struct drm_device *dev = encoder->base.dev;
@@ -213,10 +231,6 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 
 	if (is_vid_mode(intel_dsi)) {
-		/* Send Shutdown command to the panel in LP mode */
-		dpi_send_cmd(intel_dsi, SHUTDOWN, DPI_LP_MODE_EN);
-		msleep(10);
-
 		/* de-assert ip_tg_enable signal */
 		temp = I915_READ(MIPI_PORT_CTRL(pipe));
 		I915_WRITE(MIPI_PORT_CTRL(pipe), temp & ~DPI_ENABLE);
@@ -287,6 +301,8 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 	u32 val;
 
 	DRM_DEBUG_KMS("\n");
+
+	intel_dsi_disable(encoder);
 
 	intel_dsi_clear_device_ready(encoder);
 
@@ -641,7 +657,7 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 };
 
-bool intel_dsi_init(struct drm_device *dev)
+void intel_dsi_init(struct drm_device *dev)
 {
 	struct intel_dsi *intel_dsi;
 	struct intel_encoder *intel_encoder;
@@ -655,14 +671,18 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	DRM_DEBUG_KMS("\n");
 
+	/* There is no detection method for MIPI so rely on VBT */
+	if (!dev_priv->vbt.has_mipi)
+		return;
+
 	intel_dsi = kzalloc(sizeof(*intel_dsi), GFP_KERNEL);
 	if (!intel_dsi)
-		return false;
+		return;
 
 	intel_connector = kzalloc(sizeof(*intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
 		kfree(intel_dsi);
-		return false;
+		return;
 	}
 
 	intel_encoder = &intel_dsi->base;
@@ -673,7 +693,7 @@ bool intel_dsi_init(struct drm_device *dev)
 		dev_priv->mipi_mmio_base = VLV_MIPI_BASE;
 	} else {
 		DRM_ERROR("Unsupported Mipi device to reg base");
-		return false;
+		return;
 	}
 
 	connector = &intel_connector->base;
@@ -686,7 +706,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_encoder->pre_pll_enable = intel_dsi_pre_pll_enable;
 	intel_encoder->pre_enable = intel_dsi_pre_enable;
 	intel_encoder->enable = intel_dsi_enable_nop;
-	intel_encoder->disable = intel_dsi_disable;
+	intel_encoder->disable = intel_dsi_pre_disable;
 	intel_encoder->post_disable = intel_dsi_post_disable;
 	intel_encoder->get_hw_state = intel_dsi_get_hw_state;
 	intel_encoder->get_config = intel_dsi_get_config;
@@ -733,12 +753,10 @@ bool intel_dsi_init(struct drm_device *dev)
 	fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 	intel_panel_init(&intel_connector->panel, fixed_mode, NULL);
 
-	return true;
+	return;
 
 err:
 	drm_encoder_cleanup(&intel_encoder->base);
 	kfree(intel_dsi);
 	kfree(intel_connector);
-
-	return false;
 }

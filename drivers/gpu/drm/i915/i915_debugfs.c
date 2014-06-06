@@ -1675,9 +1675,6 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 
 #ifdef CONFIG_DRM_I915_FBDEV
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int ret = mutex_lock_interruptible(&dev->mode_config.mutex);
-	if (ret)
-		return ret;
 
 	ifbdev = dev_priv->fbdev;
 	fb = to_intel_framebuffer(ifbdev->helper.fb);
@@ -1690,7 +1687,6 @@ static int i915_gem_framebuffer_info(struct seq_file *m, void *data)
 		   atomic_read(&fb->base.refcount.refcount));
 	describe_obj(m, fb->obj);
 	seq_putc(m, '\n');
-	mutex_unlock(&dev->mode_config.mutex);
 #endif
 
 	mutex_lock(&dev->mode_config.fb_lock);
@@ -1721,7 +1717,7 @@ static int i915_context_status(struct seq_file *m, void *unused)
 	struct intel_context *ctx;
 	int ret, i;
 
-	ret = mutex_lock_interruptible(&dev->mode_config.mutex);
+	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
 
@@ -1751,7 +1747,7 @@ static int i915_context_status(struct seq_file *m, void *unused)
 		seq_putc(m, '\n');
 	}
 
-	mutex_unlock(&dev->mode_config.mutex);
+	mutex_unlock(&dev->struct_mutex);
 
 	return 0;
 }
@@ -2353,10 +2349,14 @@ static int i915_display_info(struct seq_file *m, void *unused)
 
 			active = cursor_position(dev, crtc->pipe, &x, &y);
 			seq_printf(m, "\tcursor visible? %s, position (%d, %d), addr 0x%08x, active? %s\n",
-				   yesno(crtc->cursor_visible),
+				   yesno(crtc->cursor_base),
 				   x, y, crtc->cursor_addr,
 				   yesno(active));
 		}
+
+		seq_printf(m, "\tunderrun reporting: cpu=%s pch=%s \n",
+			   yesno(!crtc->cpu_fifo_underrun_disabled),
+			   yesno(!crtc->pch_fifo_underrun_disabled));
 	}
 
 	seq_printf(m, "\n");

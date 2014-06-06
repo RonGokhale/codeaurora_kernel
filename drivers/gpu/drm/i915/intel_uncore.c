@@ -231,8 +231,8 @@ static void __vlv_force_wake_get(struct drm_i915_private *dev_priv,
 	}
 
 	/* WaRsForcewakeWaitTC0:vlv */
-	__gen6_gt_wait_for_thread_c0(dev_priv);
-
+	if (!IS_CHERRYVIEW(dev_priv->dev))
+		__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
 static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
@@ -250,9 +250,10 @@ static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
 		__raw_i915_write32(dev_priv, FORCEWAKE_MEDIA_VLV,
 				_MASKED_BIT_DISABLE(FORCEWAKE_KERNEL));
 
-	/* The below doubles as a POSTING_READ */
-	gen6_gt_check_fifodbg(dev_priv);
-
+	/* something from same cacheline, but !FORCEWAKE_VLV */
+	__raw_posting_read(dev_priv, FORCEWAKE_ACK_VLV);
+	if (!IS_CHERRYVIEW(dev_priv->dev))
+		gen6_gt_check_fifodbg(dev_priv);
 }
 
 static void vlv_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine)
@@ -393,26 +394,8 @@ void intel_uncore_early_sanitize(struct drm_device *dev)
 
 void intel_uncore_sanitize(struct drm_device *dev)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 reg_val;
-
 	/* BIOS often leaves RC6 enabled, but disable it for hw init */
 	intel_disable_gt_powersave(dev);
-
-	/* Turn off power gate, require especially for the BIOS less system */
-	if (IS_VALLEYVIEW(dev)) {
-
-		mutex_lock(&dev_priv->rps.hw_lock);
-		reg_val = vlv_punit_read(dev_priv, PUNIT_REG_PWRGT_STATUS);
-
-		if (reg_val & (PUNIT_PWRGT_PWR_GATE(PUNIT_POWER_WELL_RENDER) |
-			       PUNIT_PWRGT_PWR_GATE(PUNIT_POWER_WELL_MEDIA) |
-			       PUNIT_PWRGT_PWR_GATE(PUNIT_POWER_WELL_DISP2D)))
-			vlv_punit_write(dev_priv, PUNIT_REG_PWRGT_CTRL, 0x0);
-
-		mutex_unlock(&dev_priv->rps.hw_lock);
-
-	}
 }
 
 /*
@@ -486,16 +469,43 @@ void assert_force_wake_inactive(struct drm_i915_private *dev_priv)
 #define NEEDS_FORCE_WAKE(dev_priv, reg) \
 	 ((reg) < 0x40000 && (reg) != FORCEWAKE)
 
-#define FORCEWAKE_VLV_RENDER_RANGE_OFFSET(reg) \
-	(((reg) >= 0x2000 && (reg) < 0x4000) ||\
-	((reg) >= 0x5000 && (reg) < 0x8000) ||\
-	((reg) >= 0xB000 && (reg) < 0x12000) ||\
-	((reg) >= 0x2E000 && (reg) < 0x30000))
+#define REG_RANGE(reg, start, end) ((reg) >= (start) && (reg) < (end))
 
-#define FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(reg)\
-	(((reg) >= 0x12000 && (reg) < 0x14000) ||\
-	((reg) >= 0x22000 && (reg) < 0x24000) ||\
-	((reg) >= 0x30000 && (reg) < 0x40000))
+#define FORCEWAKE_VLV_RENDER_RANGE_OFFSET(reg) \
+	(REG_RANGE((reg), 0x2000, 0x4000) || \
+	 REG_RANGE((reg), 0x5000, 0x8000) || \
+	 REG_RANGE((reg), 0xB000, 0x12000) || \
+	 REG_RANGE((reg), 0x2E000, 0x30000))
+
+#define FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(reg) \
+	(REG_RANGE((reg), 0x12000, 0x14000) || \
+	 REG_RANGE((reg), 0x22000, 0x24000) || \
+	 REG_RANGE((reg), 0x30000, 0x40000))
+
+#define FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg) \
+	(REG_RANGE((reg), 0x2000, 0x4000) || \
+	 REG_RANGE((reg), 0x5000, 0x8000) || \
+	 REG_RANGE((reg), 0x8300, 0x8500) || \
+	 REG_RANGE((reg), 0xB000, 0xC000) || \
+	 REG_RANGE((reg), 0xE000, 0xE800))
+
+#define FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg) \
+	(REG_RANGE((reg), 0x8800, 0x8900) || \
+	 REG_RANGE((reg), 0xD000, 0xD800) || \
+	 REG_RANGE((reg), 0x12000, 0x14000) || \
+	 REG_RANGE((reg), 0x1A000, 0x1C000) || \
+	 REG_RANGE((reg), 0x1E800, 0x1EA00) || \
+	 REG_RANGE((reg), 0x30000, 0x40000))
+
+#define FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg) \
+	(REG_RANGE((reg), 0x4000, 0x5000) || \
+	 REG_RANGE((reg), 0x8000, 0x8300) || \
+	 REG_RANGE((reg), 0x8500, 0x8600) || \
+	 REG_RANGE((reg), 0x9000, 0xB000) || \
+	 REG_RANGE((reg), 0xC000, 0xC800) || \
+	 REG_RANGE((reg), 0xF000, 0x10000) || \
+	 REG_RANGE((reg), 0x14000, 0x14400) || \
+	 REG_RANGE((reg), 0x22000, 0x24000))
 
 static void
 ilk_dummy_write(struct drm_i915_private *dev_priv)
@@ -590,7 +600,35 @@ vlv_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
 	REG_READ_FOOTER; \
 }
 
+#define __chv_read(x) \
+static u##x \
+chv_read##x(struct drm_i915_private *dev_priv, off_t reg, bool trace) { \
+	unsigned fwengine = 0; \
+	REG_READ_HEADER(x); \
+	if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) { \
+		if (dev_priv->uncore.fw_rendercount == 0) \
+			fwengine = FORCEWAKE_RENDER; \
+	} else if (FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg)) { \
+		if (dev_priv->uncore.fw_mediacount == 0) \
+			fwengine = FORCEWAKE_MEDIA; \
+	} else if (FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg)) { \
+		if (dev_priv->uncore.fw_rendercount == 0) \
+			fwengine |= FORCEWAKE_RENDER; \
+		if (dev_priv->uncore.fw_mediacount == 0) \
+			fwengine |= FORCEWAKE_MEDIA; \
+	} \
+	if (fwengine) \
+		dev_priv->uncore.funcs.force_wake_get(dev_priv, fwengine); \
+	val = __raw_i915_read##x(dev_priv, reg); \
+	if (fwengine) \
+		dev_priv->uncore.funcs.force_wake_put(dev_priv, fwengine); \
+	REG_READ_FOOTER; \
+}
 
+__chv_read(8)
+__chv_read(16)
+__chv_read(32)
+__chv_read(64)
 __vlv_read(8)
 __vlv_read(16)
 __vlv_read(32)
@@ -608,6 +646,7 @@ __gen4_read(16)
 __gen4_read(32)
 __gen4_read(64)
 
+#undef __chv_read
 #undef __vlv_read
 #undef __gen6_read
 #undef __gen5_read
@@ -712,6 +751,38 @@ gen8_write##x(struct drm_i915_private *dev_priv, off_t reg, u##x val, bool trace
 	REG_WRITE_FOOTER; \
 }
 
+#define __chv_write(x) \
+static void \
+chv_write##x(struct drm_i915_private *dev_priv, off_t reg, u##x val, bool trace) { \
+	unsigned fwengine = 0; \
+	bool shadowed = is_gen8_shadowed(dev_priv, reg); \
+	REG_WRITE_HEADER; \
+	if (!shadowed) { \
+		if (FORCEWAKE_CHV_RENDER_RANGE_OFFSET(reg)) { \
+			if (dev_priv->uncore.fw_rendercount == 0) \
+				fwengine = FORCEWAKE_RENDER; \
+		} else if (FORCEWAKE_CHV_MEDIA_RANGE_OFFSET(reg)) { \
+			if (dev_priv->uncore.fw_mediacount == 0) \
+				fwengine = FORCEWAKE_MEDIA; \
+		} else if (FORCEWAKE_CHV_COMMON_RANGE_OFFSET(reg)) { \
+			if (dev_priv->uncore.fw_rendercount == 0) \
+				fwengine |= FORCEWAKE_RENDER; \
+			if (dev_priv->uncore.fw_mediacount == 0) \
+				fwengine |= FORCEWAKE_MEDIA; \
+		} \
+	} \
+	if (fwengine) \
+		dev_priv->uncore.funcs.force_wake_get(dev_priv, fwengine); \
+	__raw_i915_write##x(dev_priv, reg, val); \
+	if (fwengine) \
+		dev_priv->uncore.funcs.force_wake_put(dev_priv, fwengine); \
+	REG_WRITE_FOOTER; \
+}
+
+__chv_write(8)
+__chv_write(16)
+__chv_write(32)
+__chv_write(64)
 __gen8_write(8)
 __gen8_write(16)
 __gen8_write(32)
@@ -733,6 +804,7 @@ __gen4_write(16)
 __gen4_write(32)
 __gen4_write(64)
 
+#undef __chv_write
 #undef __gen8_write
 #undef __hsw_write
 #undef __gen6_write
@@ -796,14 +868,26 @@ void intel_uncore_init(struct drm_device *dev)
 
 	switch (INTEL_INFO(dev)->gen) {
 	default:
-		dev_priv->uncore.funcs.mmio_writeb  = gen8_write8;
-		dev_priv->uncore.funcs.mmio_writew  = gen8_write16;
-		dev_priv->uncore.funcs.mmio_writel  = gen8_write32;
-		dev_priv->uncore.funcs.mmio_writeq  = gen8_write64;
-		dev_priv->uncore.funcs.mmio_readb  = gen6_read8;
-		dev_priv->uncore.funcs.mmio_readw  = gen6_read16;
-		dev_priv->uncore.funcs.mmio_readl  = gen6_read32;
-		dev_priv->uncore.funcs.mmio_readq  = gen6_read64;
+		if (IS_CHERRYVIEW(dev)) {
+			dev_priv->uncore.funcs.mmio_writeb  = chv_write8;
+			dev_priv->uncore.funcs.mmio_writew  = chv_write16;
+			dev_priv->uncore.funcs.mmio_writel  = chv_write32;
+			dev_priv->uncore.funcs.mmio_writeq  = chv_write64;
+			dev_priv->uncore.funcs.mmio_readb  = chv_read8;
+			dev_priv->uncore.funcs.mmio_readw  = chv_read16;
+			dev_priv->uncore.funcs.mmio_readl  = chv_read32;
+			dev_priv->uncore.funcs.mmio_readq  = chv_read64;
+
+		} else {
+			dev_priv->uncore.funcs.mmio_writeb  = gen8_write8;
+			dev_priv->uncore.funcs.mmio_writew  = gen8_write16;
+			dev_priv->uncore.funcs.mmio_writel  = gen8_write32;
+			dev_priv->uncore.funcs.mmio_writeq  = gen8_write64;
+			dev_priv->uncore.funcs.mmio_readb  = gen6_read8;
+			dev_priv->uncore.funcs.mmio_readw  = gen6_read16;
+			dev_priv->uncore.funcs.mmio_readl  = gen6_read32;
+			dev_priv->uncore.funcs.mmio_readq  = gen6_read64;
+		}
 		break;
 	case 7:
 	case 6:
@@ -967,6 +1051,9 @@ static int i965_do_reset(struct drm_device *dev)
 {
 	int ret;
 
+	/* FIXME: i965g/gm need a display save/restore for gpu reset. */
+	return -ENODEV;
+
 	/*
 	 * Set the domains we want to reset (GRDOM/bits 2 and 3) as
 	 * well as the reset bit (GR/bit 0).  Setting the GR bit
@@ -1067,18 +1154,16 @@ static int gen6_do_reset(struct drm_device *dev)
 
 int intel_gpu_reset(struct drm_device *dev)
 {
-	switch (INTEL_INFO(dev)->gen) {
-	case 8:
-	case 7:
-	case 6: return gen6_do_reset(dev);
-	case 5: return ironlake_do_reset(dev);
-	case 4:
-		if (IS_G4X(dev))
-			return g4x_do_reset(dev);
-		else
-			return i965_do_reset(dev);
-	default: return -ENODEV;
-	}
+	if (INTEL_INFO(dev)->gen >= 6)
+		return gen6_do_reset(dev);
+	else if (IS_GEN5(dev))
+		return ironlake_do_reset(dev);
+	else if (IS_G4X(dev))
+		return g4x_do_reset(dev);
+	else if (IS_GEN4(dev))
+		return i965_do_reset(dev);
+	else
+		return -ENODEV;
 }
 
 void intel_uncore_check_errors(struct drm_device *dev)
