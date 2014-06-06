@@ -1011,10 +1011,9 @@ static int f2fs_write_end(struct file *file,
 }
 
 static int check_direct_IO(struct inode *inode, int rw,
-		const struct iovec *iov, loff_t offset, unsigned long nr_segs)
+		struct iov_iter *iter, loff_t offset)
 {
 	unsigned blocksize_mask = inode->i_sb->s_blocksize - 1;
-	int i;
 
 	if (rw == READ)
 		return 0;
@@ -1022,14 +1021,14 @@ static int check_direct_IO(struct inode *inode, int rw,
 	if (offset & blocksize_mask)
 		return -EINVAL;
 
-	for (i = 0; i < nr_segs; i++)
-		if (iov[i].iov_len & blocksize_mask)
-			return -EINVAL;
+	if (iov_iter_alignment(iter) & blocksize_mask)
+		return -EINVAL;
+
 	return 0;
 }
 
 static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
-		const struct iovec *iov, loff_t offset, unsigned long nr_segs)
+		struct iov_iter *iter, loff_t offset)
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
@@ -1038,11 +1037,11 @@ static ssize_t f2fs_direct_IO(int rw, struct kiocb *iocb,
 	if (f2fs_has_inline_data(inode))
 		return 0;
 
-	if (check_direct_IO(inode, rw, iov, offset, nr_segs))
+	if (check_direct_IO(inode, rw, iter, offset))
 		return 0;
 
-	return blockdev_direct_IO(rw, iocb, inode, iov, offset, nr_segs,
-							get_data_block);
+	return blockdev_direct_IO(rw, iocb, inode, iter, offset,
+				  get_data_block);
 }
 
 static void f2fs_invalidate_data_page(struct page *page, unsigned int offset,
