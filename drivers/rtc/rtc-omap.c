@@ -73,43 +73,52 @@
 #define OMAP_RTC_IRQWAKEEN		0x7c
 
 /* OMAP_RTC_CTRL_REG bit fields: */
-#define OMAP_RTC_CTRL_SPLIT		(1<<7)
-#define OMAP_RTC_CTRL_DISABLE		(1<<6)
-#define OMAP_RTC_CTRL_SET_32_COUNTER	(1<<5)
-#define OMAP_RTC_CTRL_TEST		(1<<4)
-#define OMAP_RTC_CTRL_MODE_12_24	(1<<3)
-#define OMAP_RTC_CTRL_AUTO_COMP		(1<<2)
-#define OMAP_RTC_CTRL_ROUND_30S		(1<<1)
-#define OMAP_RTC_CTRL_STOP		(1<<0)
+#define OMAP_RTC_CTRL_SPLIT		BIT(7)
+#define OMAP_RTC_CTRL_DISABLE		BIT(6)
+#define OMAP_RTC_CTRL_SET_32_COUNTER	BIT(5)
+#define OMAP_RTC_CTRL_TEST		BIT(4)
+#define OMAP_RTC_CTRL_MODE_12_24	BIT(3)
+#define OMAP_RTC_CTRL_AUTO_COMP		BIT(2)
+#define OMAP_RTC_CTRL_ROUND_30S		BIT(1)
+#define OMAP_RTC_CTRL_STOP		BIT(0)
 
 /* OMAP_RTC_STATUS_REG bit fields: */
-#define OMAP_RTC_STATUS_POWER_UP        (1<<7)
-#define OMAP_RTC_STATUS_ALARM           (1<<6)
-#define OMAP_RTC_STATUS_1D_EVENT        (1<<5)
-#define OMAP_RTC_STATUS_1H_EVENT        (1<<4)
-#define OMAP_RTC_STATUS_1M_EVENT        (1<<3)
-#define OMAP_RTC_STATUS_1S_EVENT        (1<<2)
-#define OMAP_RTC_STATUS_RUN             (1<<1)
-#define OMAP_RTC_STATUS_BUSY            (1<<0)
+#define OMAP_RTC_STATUS_POWER_UP	BIT(7)
+#define OMAP_RTC_STATUS_ALARM		BIT(6)
+#define OMAP_RTC_STATUS_1D_EVENT	BIT(5)
+#define OMAP_RTC_STATUS_1H_EVENT	BIT(4)
+#define OMAP_RTC_STATUS_1M_EVENT	BIT(3)
+#define OMAP_RTC_STATUS_1S_EVENT	BIT(2)
+#define OMAP_RTC_STATUS_RUN		BIT(1)
+#define OMAP_RTC_STATUS_BUSY		BIT(0)
 
 /* OMAP_RTC_INTERRUPTS_REG bit fields: */
-#define OMAP_RTC_INTERRUPTS_IT_ALARM    (1<<3)
-#define OMAP_RTC_INTERRUPTS_IT_TIMER    (1<<2)
+#define OMAP_RTC_INTERRUPTS_IT_ALARM	BIT(3)
+#define OMAP_RTC_INTERRUPTS_IT_TIMER	BIT(2)
+
+/* OMAP_RTC_OSC_REG bit fields: */
+#define OMAP_RTC_OSC_32KCLK_EN		BIT(6)
 
 /* OMAP_RTC_IRQWAKEEN bit fields: */
-#define OMAP_RTC_IRQWAKEEN_ALARM_WAKEEN    (1<<1)
+#define OMAP_RTC_IRQWAKEEN_ALARM_WAKEEN	BIT(1)
 
 /* OMAP_RTC_KICKER values */
 #define	KICK0_VALUE			0x83e70b13
 #define	KICK1_VALUE			0x95a4f1e0
 
-#define	OMAP_RTC_HAS_KICKER		0x1
+#define	OMAP_RTC_HAS_KICKER		BIT(0)
 
 /*
  * Few RTC IP revisions has special WAKE-EN Register to enable Wakeup
  * generation for event Alarm.
  */
-#define	OMAP_RTC_HAS_IRQWAKEEN		0x2
+#define	OMAP_RTC_HAS_IRQWAKEEN		BIT(1)
+
+/*
+ * Some RTC IP revisions (like those in AM335x and DRA7x) need
+ * the 32KHz clock to be explicitly enabled.
+ */
+#define OMAP_RTC_HAS_32KCLK_EN		BIT(2)
 
 static void __iomem	*rtc_base;
 
@@ -319,7 +328,8 @@ static struct platform_device_id omap_rtc_devtype[] = {
 	},
 	[OMAP_RTC_DATA_AM3352_IDX] = {
 		.name	= "am3352-rtc",
-		.driver_data = OMAP_RTC_HAS_KICKER | OMAP_RTC_HAS_IRQWAKEEN,
+		.driver_data = OMAP_RTC_HAS_KICKER | OMAP_RTC_HAS_IRQWAKEEN |
+			       OMAP_RTC_HAS_32KCLK_EN,
 	},
 	[OMAP_RTC_DATA_DA830_IDX] = {
 		.name	= "da830-rtc",
@@ -352,6 +362,12 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	if (of_id)
 		pdev->id_entry = of_id->data;
 
+	id_entry = platform_get_device_id(pdev);
+	if (!id_entry) {
+		dev_err(&pdev->dev, "no matching device entry\n");
+		return -ENODEV;
+	}
+
 	omap_rtc_timer = platform_get_irq(pdev, 0);
 	if (omap_rtc_timer <= 0) {
 		pr_debug("%s: no update irq?\n", pdev->name);
@@ -373,8 +389,7 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_sync(&pdev->dev);
 
-	id_entry = platform_get_device_id(pdev);
-	if (id_entry && (id_entry->driver_data & OMAP_RTC_HAS_KICKER)) {
+	if (id_entry->driver_data & OMAP_RTC_HAS_KICKER) {
 		rtc_writel(KICK0_VALUE, OMAP_RTC_KICK0_REG);
 		rtc_writel(KICK1_VALUE, OMAP_RTC_KICK1_REG);
 	}
@@ -392,6 +407,10 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	 * which we'll use instead of update irqs
 	 */
 	rtc_write(0, OMAP_RTC_INTERRUPTS_REG);
+
+	/* enable RTC functional clock */
+	if (id_entry->driver_data & OMAP_RTC_HAS_32KCLK_EN)
+		rtc_writel(OMAP_RTC_OSC_32KCLK_EN, OMAP_RTC_OSC_REG);
 
 	/* clear old status */
 	reg = rtc_read(OMAP_RTC_STATUS_REG);
@@ -452,7 +471,7 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	return 0;
 
 fail0:
-	if (id_entry && (id_entry->driver_data & OMAP_RTC_HAS_KICKER))
+	if (id_entry->driver_data & OMAP_RTC_HAS_KICKER)
 		rtc_writel(0, OMAP_RTC_KICK0_REG);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -469,7 +488,7 @@ static int __exit omap_rtc_remove(struct platform_device *pdev)
 	/* leave rtc running, but disable irqs */
 	rtc_write(0, OMAP_RTC_INTERRUPTS_REG);
 
-	if (id_entry && (id_entry->driver_data & OMAP_RTC_HAS_KICKER))
+	if (id_entry->driver_data & OMAP_RTC_HAS_KICKER)
 		rtc_writel(0, OMAP_RTC_KICK0_REG);
 
 	/* Disable the clock/module */

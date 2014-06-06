@@ -2438,7 +2438,7 @@ ssize_t generic_perform_write(struct file *file,
 		flags |= AOP_FLAG_UNINTERRUPTIBLE;
 
 	do {
-		struct page *page;
+		struct page *page = NULL;
 		unsigned long offset;	/* Offset into pagecache page */
 		unsigned long bytes;	/* Bytes to write to page */
 		size_t copied;		/* Bytes copied from user */
