@@ -80,8 +80,8 @@ tegra_connector_detect(struct drm_connector *connector, bool force)
 	if (output->ops->detect)
 		return output->ops->detect(output);
 
-	if (gpio_is_valid(output->hpd_gpio)) {
-		if (gpio_get_value(output->hpd_gpio) == 0)
+	if (output->hpd_gpio) {
+		if (gpiod_get_value(output->hpd_gpio) == 0)
 			status = connector_status_disconnected;
 		else
 			status = connector_status_connected;
@@ -190,14 +190,48 @@ static irqreturn_t hpd_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static int tegra_output_hpd_setup(struct tegra_output *output)
+{
+	unsigned long flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
+			      IRQF_ONESHOT;
+	struct device *dev = output->dev;
+	int err;
+
+	err = gpiod_direction_input(output->hpd_gpio);
+	if (err < 0) {
+		dev_err(dev, "failed to setup hotplug detect GPIO: %d\n", err);
+		return err;
+	}
+
+	err = gpiod_to_irq(output->hpd_gpio);
+	if (err < 0) {
+		dev_err(dev, "failed to get hotplug detect IRQ: %d\n", err);
+		return err;
+	}
+
+	output->hpd_irq = err;
+
+	err = request_threaded_irq(output->hpd_irq, NULL, hpd_irq, flags,
+				   "hpd", output);
+	if (err < 0) {
+		dev_err(dev, "failed to request IRQ#%u: %d\n", output->hpd_irq,
+			err);
+		return err;
+	}
+
+	output->connector.polled = DRM_CONNECTOR_POLL_HPD;
+
+	return 0;
+}
+
 int tegra_output_probe(struct tegra_output *output)
 {
+	struct device *dev = output->dev;
 	struct device_node *ddc, *panel;
-	enum of_gpio_flags flags;
 	int err, size;
 
 	if (!output->of_node)
-		output->of_node = output->dev->of_node;
+		output->of_node = dev->of_node;
 
 	panel = of_parse_phandle(output->of_node, "nvidia,panel", 0);
 	if (panel) {
@@ -222,41 +256,15 @@ int tegra_output_probe(struct tegra_output *output)
 		of_node_put(ddc);
 	}
 
-	output->hpd_gpio = of_get_named_gpio_flags(output->of_node,
-						   "nvidia,hpd-gpio", 0,
-						   &flags);
-	if (gpio_is_valid(output->hpd_gpio)) {
-		unsigned long flags;
-
-		err = gpio_request_one(output->hpd_gpio, GPIOF_DIR_IN,
-				       "HDMI hotplug detect");
-		if (err < 0) {
-			dev_err(output->dev, "gpio_request_one(): %d\n", err);
+	output->hpd_gpio = devm_gpiod_get_optional(dev, "nvidia,hpd");
+	if (IS_ERR(output->hpd_gpio)) {
+		err = PTR_ERR(output->hpd_gpio);
+		dev_err(dev, "failed to get hotplug detect GPIO: %d\n", err);
+		return err;
+	} else if (output->hpd_gpio) {
+		err = tegra_output_hpd_setup(output);
+		if (err < 0)
 			return err;
-		}
-
-		err = gpio_to_irq(output->hpd_gpio);
-		if (err < 0) {
-			dev_err(output->dev, "gpio_to_irq(): %d\n", err);
-			gpio_free(output->hpd_gpio);
-			return err;
-		}
-
-		output->hpd_irq = err;
-
-		flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING |
-			IRQF_ONESHOT;
-
-		err = request_threaded_irq(output->hpd_irq, NULL, hpd_irq,
-					   flags, "hpd", output);
-		if (err < 0) {
-			dev_err(output->dev, "failed to request IRQ#%u: %d\n",
-				output->hpd_irq, err);
-			gpio_free(output->hpd_gpio);
-			return err;
-		}
-
-		output->connector.polled = DRM_CONNECTOR_POLL_HPD;
 	}
 
 	return 0;
@@ -264,10 +272,8 @@ int tegra_output_probe(struct tegra_output *output)
 
 int tegra_output_remove(struct tegra_output *output)
 {
-	if (gpio_is_valid(output->hpd_gpio)) {
+	if (output->hpd_gpio)
 		free_irq(output->hpd_irq, output);
-		gpio_free(output->hpd_gpio);
-	}
 
 	if (output->ddc)
 		put_device(&output->ddc->dev);
