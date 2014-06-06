@@ -1590,7 +1590,7 @@ static int _init_blk_request(struct osd_request *or,
 	}
 
 	or->request = req;
-	req->cmd_type = REQ_TYPE_BLOCK_PC;
+	blk_rq_set_block_pc(req);
 	req->cmd_flags |= REQ_QUIET;
 
 	req->timeout = or->timeout;
@@ -1608,7 +1608,7 @@ static int _init_blk_request(struct osd_request *or,
 				ret = PTR_ERR(req);
 				goto out;
 			}
-			req->cmd_type = REQ_TYPE_BLOCK_PC;
+			blk_rq_set_block_pc(req);
 			or->in.req = or->request->next_rq = req;
 		}
 	} else if (has_in)
