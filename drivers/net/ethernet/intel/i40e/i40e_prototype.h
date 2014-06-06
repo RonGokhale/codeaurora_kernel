@@ -74,6 +74,8 @@ i40e_status i40e_aq_set_phy_reset(struct i40e_hw *hw,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_set_default_vsi(struct i40e_hw *hw, u16 vsi_id,
 				struct i40e_asq_cmd_details *cmd_details);
+i40e_status i40e_aq_clear_pxe_mode(struct i40e_hw *hw,
+				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_set_link_restart_an(struct i40e_hw *hw,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_get_link_info(struct i40e_hw *hw,
@@ -157,8 +159,8 @@ i40e_status i40e_aq_stop_lldp(struct i40e_hw *hw, bool shutdown_agent,
 i40e_status i40e_aq_start_lldp(struct i40e_hw *hw,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_add_udp_tunnel(struct i40e_hw *hw,
-				u16 udp_port, u8 header_len,
-				u8 protocol_index, u8 *filter_index,
+				u16 udp_port, u8 protocol_index,
+				u8 *filter_index,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_del_udp_tunnel(struct i40e_hw *hw, u8 index,
 				struct i40e_asq_cmd_details *cmd_details);
@@ -167,6 +169,9 @@ i40e_status i40e_aq_delete_element(struct i40e_hw *hw, u16 seid,
 i40e_status i40e_aq_mac_address_write(struct i40e_hw *hw,
 				    u16 flags, u8 *mac_addr,
 				    struct i40e_asq_cmd_details *cmd_details);
+i40e_status i40e_aq_config_vsi_bw_limit(struct i40e_hw *hw,
+				u16 seid, u16 credit, u8 max_credit,
+				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_dcb_updated(struct i40e_hw *hw,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_aq_set_hmc_resource_profile(struct i40e_hw *hw,

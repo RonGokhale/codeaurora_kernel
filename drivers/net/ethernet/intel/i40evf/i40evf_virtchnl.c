@@ -12,6 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
+ * You should have received a copy of the GNU General Public License along
+ * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -745,9 +748,8 @@ void i40evf_virtchnl_completion(struct i40evf_adapter *adapter,
 						 stats->tx_broadcast;
 		adapter->net_stats.rx_bytes = stats->rx_bytes;
 		adapter->net_stats.tx_bytes = stats->tx_bytes;
-		adapter->net_stats.rx_errors = stats->rx_errors;
 		adapter->net_stats.tx_errors = stats->tx_errors;
-		adapter->net_stats.rx_dropped = stats->rx_missed;
+		adapter->net_stats.rx_dropped = stats->rx_discards;
 		adapter->net_stats.tx_dropped = stats->tx_discards;
 		adapter->current_stats = *stats;
 		}

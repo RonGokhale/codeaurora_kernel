@@ -360,6 +360,7 @@ int br_vlan_filter_toggle(struct net_bridge *br, unsigned long val)
 		goto unlock;
 
 	br->vlan_enabled = val;
+	br_manage_promisc(br);
 
 unlock:
 	rtnl_unlock();

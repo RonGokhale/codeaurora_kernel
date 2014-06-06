@@ -24,6 +24,7 @@
  *
  ******************************************************************************/
 
+#include <linux/prefetch.h>
 #include "i40e.h"
 #include "i40e_prototype.h"
 
@@ -183,7 +184,6 @@ static int i40e_add_del_fdir_udpv4(struct i40e_vsi *vsi,
 	struct iphdr *ip;
 	bool err = false;
 	int ret;
-	int i;
 	static char packet[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x08, 0,
 		0x45, 0, 0, 0x1c, 0, 0, 0x40, 0, 0x40, 0x11, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -199,21 +199,17 @@ static int i40e_add_del_fdir_udpv4(struct i40e_vsi *vsi,
 	ip->saddr = fd_data->src_ip[0];
 	udp->source = fd_data->src_port;
 
-	for (i = I40E_FILTER_PCTYPE_NONF_UNICAST_IPV4_UDP;
-	     i <= I40E_FILTER_PCTYPE_NONF_IPV4_UDP; i++) {
-		fd_data->pctype = i;
-		ret = i40e_program_fdir_filter(fd_data, raw_packet, pf, add);
-
-		if (ret) {
-			dev_info(&pf->pdev->dev,
-				 "Filter command send failed for PCTYPE %d (ret = %d)\n",
-				 fd_data->pctype, ret);
-			err = true;
-		} else {
-			dev_info(&pf->pdev->dev,
-				 "Filter OK for PCTYPE %d (ret = %d)\n",
-				 fd_data->pctype, ret);
-		}
+	fd_data->pctype = I40E_FILTER_PCTYPE_NONF_IPV4_UDP;
+	ret = i40e_program_fdir_filter(fd_data, raw_packet, pf, add);
+	if (ret) {
+		dev_info(&pf->pdev->dev,
+			 "Filter command send failed for PCTYPE %d (ret = %d)\n",
+			 fd_data->pctype, ret);
+		err = true;
+	} else {
+		dev_info(&pf->pdev->dev,
+			 "Filter OK for PCTYPE %d (ret = %d)\n",
+			 fd_data->pctype, ret);
 	}
 
 	return err ? -EOPNOTSUPP : 0;
@@ -262,7 +258,7 @@ static int i40e_add_del_fdir_tcpv4(struct i40e_vsi *vsi,
 		}
 	}
 
-	fd_data->pctype = I40E_FILTER_PCTYPE_NONF_IPV4_TCP_SYN;
+	fd_data->pctype = I40E_FILTER_PCTYPE_NONF_IPV4_TCP;
 	ret = i40e_program_fdir_filter(fd_data, raw_packet, pf, add);
 
 	if (ret) {
@@ -455,22 +451,20 @@ static void i40e_fd_handle_status(struct i40e_ring *rx_ring,
 
 		/* filter programming failed most likely due to table full */
 		fcnt_prog = i40e_get_current_fd_count(pf);
-		fcnt_avail = pf->hw.fdir_shared_filter_count +
-						       pf->fdir_pf_filter_count;
-
+		fcnt_avail = i40e_get_fd_cnt_all(pf);
 		/* If ATR is running fcnt_prog can quickly change,
 		 * if we are very close to full, it makes sense to disable
 		 * FD ATR/SB and then re-enable it when there is room.
 		 */
 		if (fcnt_prog >= (fcnt_avail - I40E_FDIR_BUFFER_FULL_MARGIN)) {
 			/* Turn off ATR first */
-			if (pf->flags | I40E_FLAG_FD_ATR_ENABLED) {
+			if (pf->flags & I40E_FLAG_FD_ATR_ENABLED) {
 				pf->flags &= ~I40E_FLAG_FD_ATR_ENABLED;
 				dev_warn(&pdev->dev, "FD filter space full, ATR for further flows will be turned off\n");
 				pf->auto_disable_flags |=
 						       I40E_FLAG_FD_ATR_ENABLED;
 				pf->flags |= I40E_FLAG_FDIR_REQUIRES_REINIT;
-			} else if (pf->flags | I40E_FLAG_FD_SB_ENABLED) {
+			} else if (pf->flags & I40E_FLAG_FD_SB_ENABLED) {
 				pf->flags &= ~I40E_FLAG_FD_SB_ENABLED;
 				dev_warn(&pdev->dev, "FD filter space full, new ntuple rules will not be added\n");
 				pf->auto_disable_flags |=
@@ -1824,9 +1818,6 @@ static int i40e_tsyn(struct i40e_ring *tx_ring, struct sk_buff *skb,
 
 	*cd_type_cmd_tso_mss |= (u64)I40E_TX_CTX_DESC_TSYN <<
 				I40E_TXD_CTX_QW1_CMD_SHIFT;
-
-	pf->ptp_tx_start = jiffies;
-	schedule_work(&pf->ptp_tx_work);
 
 	return 1;
 }

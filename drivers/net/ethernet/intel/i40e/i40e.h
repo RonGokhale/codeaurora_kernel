@@ -97,10 +97,6 @@
 #define STRINGIFY(foo)  #foo
 #define XSTRINGIFY(bar) STRINGIFY(bar)
 
-#ifndef ARCH_HAS_PREFETCH
-#define prefetch(X)
-#endif
-
 #define I40E_RX_DESC(R, i)			\
 	((ring_is_16byte_desc_enabled(R))	\
 		? (union i40e_32byte_rx_desc *)	\
@@ -329,9 +325,7 @@ struct i40e_pf {
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_caps;
 	struct sk_buff *ptp_tx_skb;
-	struct work_struct ptp_tx_work;
 	struct hwtstamp_config tstamp_config;
-	unsigned long ptp_tx_start;
 	unsigned long last_rx_ptp_check;
 	spinlock_t tmreg_lock; /* Used to protect the device time registers. */
 	u64 ptp_base_adj;
@@ -538,6 +532,15 @@ static inline bool i40e_rx_is_programming_status(u64 qw)
 {
 	return I40E_RX_PROG_STATUS_DESC_LENGTH ==
 		(qw >> I40E_RX_PROG_STATUS_DESC_LENGTH_SHIFT);
+}
+
+/**
+ * i40e_get_fd_cnt_all - get the total FD filter space available
+ * @pf: pointer to the pf struct
+ **/
+static inline int i40e_get_fd_cnt_all(struct i40e_pf *pf)
+{
+	return pf->hw.fdir_shared_filter_count + pf->fdir_pf_filter_count;
 }
 
 /* needed by i40e_ethtool.c */
