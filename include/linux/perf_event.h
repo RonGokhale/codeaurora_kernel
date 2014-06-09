@@ -167,6 +167,11 @@ struct perf_event;
 #define PERF_EVENT_TXN 0x1
 
 /**
+ * pmu::capabilities flags
+ */
+#define PERF_PMU_CAP_NO_INTERRUPT		0x01
+
+/**
  * struct pmu - generic performance monitoring unit
  */
 struct pmu {
@@ -177,6 +182,11 @@ struct pmu {
 	const struct attribute_group	**attr_groups;
 	const char			*name;
 	int				type;
+
+	/*
+	 * various common per-pmu feature flags
+	 */
+	int				capabilities;
 
 	int * __percpu			pmu_disable_count;
 	struct perf_cpu_context * __percpu pmu_cpu_context;
@@ -697,7 +707,7 @@ extern int perf_register_guest_info_callbacks(struct perf_guest_info_callbacks *
 extern int perf_unregister_guest_info_callbacks(struct perf_guest_info_callbacks *callbacks);
 
 extern void perf_event_exec(void);
-extern void perf_event_comm(struct task_struct *tsk);
+extern void perf_event_comm(struct task_struct *tsk, bool exec);
 extern void perf_event_fork(struct task_struct *tsk);
 
 /* Callchains */
@@ -805,7 +815,7 @@ static inline int perf_unregister_guest_info_callbacks
 
 static inline void perf_event_mmap(struct vm_area_struct *vma)		{ }
 static inline void perf_event_exec(void)				{ }
-static inline void perf_event_comm(struct task_struct *tsk)		{ }
+static inline void perf_event_comm(struct task_struct *tsk, bool exec)	{ }
 static inline void perf_event_fork(struct task_struct *tsk)		{ }
 static inline void perf_event_init(void)				{ }
 static inline int  perf_swevent_get_recursion_context(void)		{ return -1; }
