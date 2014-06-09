@@ -811,6 +811,9 @@ mwifiex_tx_timeout(struct net_device *dev)
 		    priv->bss_num);
 	mwifiex_set_trans_start(dev);
 
+	if (priv->adapter->if_ops.read_regs)
+		priv->adapter->if_ops.read_regs(priv->adapter);
+
 	if (priv->tx_timeout_cnt > TX_TIMEOUT_THRESHOLD &&
 	    priv->adapter->if_ops.card_reset) {
 		mwifiex_dbg(priv->adapter, ERROR,

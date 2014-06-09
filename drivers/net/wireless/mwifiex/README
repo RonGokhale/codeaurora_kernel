@@ -237,4 +237,11 @@ fw_dump
 
 	cat fw_dump
 
+sdio_regs
+	This command is used to read the status of SDIO hardware registers. The
+	information will be displayed in dmesg log.
+	Usage:
+
+	cat sdio_reg
+
 ===============================================================================

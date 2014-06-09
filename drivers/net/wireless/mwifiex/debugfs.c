@@ -955,6 +955,27 @@ mwifiex_reset_write(struct file *file,
 	return count;
 }
 
+/* Proc sdio register dump read handler.
+ *
+ * This function is called when the 'sdio_regs_read' file is opened
+ * for reading
+ *
+ * This function can be used to trigger an SDIO register debug register dump.
+ */
+static ssize_t
+mwifiex_sdio_regs_read(struct file *file, char __user *ubuf,
+			  size_t count, loff_t *ppos)
+{
+	struct mwifiex_private *priv =
+		(struct mwifiex_private *)file->private_data;
+
+	if (!priv->adapter->if_ops.read_regs)
+		return -EIO;
+
+	priv->adapter->if_ops.read_regs(priv->adapter);
+	return 0;
+}
+
 #define MWIFIEX_DFS_ADD_FILE(name) do {                                 \
 	if (!debugfs_create_file(#name, 0644, priv->dfs_dev_dir,        \
 			priv, &mwifiex_dfs_##name##_fops))              \
@@ -985,6 +1006,7 @@ MWIFIEX_DFS_FILE_READ_OPS(info);
 MWIFIEX_DFS_FILE_READ_OPS(debug);
 MWIFIEX_DFS_FILE_READ_OPS(getlog);
 MWIFIEX_DFS_FILE_READ_OPS(fw_dump);
+MWIFIEX_DFS_FILE_READ_OPS(sdio_regs);
 MWIFIEX_DFS_FILE_OPS(regrdwr);
 MWIFIEX_DFS_FILE_OPS(rdeeprom);
 MWIFIEX_DFS_FILE_OPS(memrw);
@@ -1013,6 +1035,7 @@ mwifiex_dev_debugfs_init(struct mwifiex_private *priv)
 	MWIFIEX_DFS_ADD_FILE(regrdwr);
 	MWIFIEX_DFS_ADD_FILE(rdeeprom);
 	MWIFIEX_DFS_ADD_FILE(fw_dump);
+	MWIFIEX_DFS_ADD_FILE(sdio_regs);
 	MWIFIEX_DFS_ADD_FILE(memrw);
 	MWIFIEX_DFS_ADD_FILE(debug_mask);
 	MWIFIEX_DFS_ADD_FILE(hscfg);

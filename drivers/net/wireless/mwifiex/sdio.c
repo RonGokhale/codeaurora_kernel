@@ -2129,6 +2129,89 @@ static void mwifiex_sdio_card_reset_work(struct mwifiex_adapter *adapter)
 	mmc_add_host(target);
 }
 
+/* This function reads and displays SDIO registers for debugging. */
+static void mwifiex_sdio_read_regs_work(struct mwifiex_adapter *adapter)
+{
+	struct sdio_mmc_card *card = adapter->card;
+	struct sdio_func *func = card->func;
+	struct sdio_reg_dbg cccr = {
+		"CCCR", 0, 0, 10,
+		 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+	};
+	struct sdio_reg_dbg fn1 = {
+		"FN1", 1, 0, 10,
+		 {0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+	};
+	struct sdio_reg_dbg fn1_status = {
+		"FN1 Status", 1, 0, 5, {
+			CARD_INT_STATUS_REG,
+			card->reg->poll_reg,
+			card->reg->host_int_mask,
+			card->reg->card_int_status,
+			card->reg->card_int_rsr,
+		},
+	};
+	struct sdio_reg_dbg fn1_scratch = {
+		"FN1 Scratch", 1, 100, 11, {
+			card->reg->card_fw_status0,
+			card->reg->card_fw_status0 + 1,
+			card->reg->card_fw_status0 + 2,
+			card->reg->card_fw_status0 + 3,
+			card->reg->card_fw_status0 + 4,
+			card->reg->card_fw_status0 + 5,
+			card->reg->card_fw_status0 + 6,
+			card->reg->card_fw_status0 + 7,
+			card->reg->card_fw_status0 + 8,
+			card->reg->card_fw_status0 + 9,
+			card->reg->card_fw_status0 + 10,
+		},
+	};
+	struct sdio_reg_dbg *regs[] = {
+		&cccr,
+		&fn1,
+		&fn1_status,
+		&fn1_scratch,
+		/* read fn1_scratch again for any changes */
+		&fn1_scratch,
+		NULL
+	};
+	int n, i, ret = 0;
+	u32 reg;
+
+	sdio_claim_host(func);
+
+	for (n = 0; regs[n]; n++) {
+		char buf[REG_DBG_MAX_NUM*5+1];
+		char *p = buf;
+
+		mdelay(regs[n]->delay);
+
+		memset(buf, 0, sizeof(buf));
+		for (i = 0; i < regs[n]->num_regs; i++)
+			p += sprintf(p, "%04X ", regs[n]->reg[i]);
+		p += sprintf(p, "\n");
+
+		dev_info(adapter->dev, "%s: %s", regs[n]->name, buf);
+
+		memset(buf, 0, sizeof(buf));
+		p = buf;
+		for (i = 0; i < regs[n]->num_regs; i++) {
+			reg = regs[n]->reg[i];
+			regs[n]->val[i] = regs[n]->fn ?
+					  sdio_readb(func, reg, &ret) :
+					  sdio_f0_readb(func, reg, &ret);
+			if (!ret)
+				p += sprintf(p, "%04X ", regs[n]->val[i]);
+			else
+				p += sprintf(p, "ERR  ");
+		}
+		p += sprintf(p, "\n");
+
+		dev_info(adapter->dev, "%s: %s", regs[n]->name, buf);
+	}
+
+	sdio_release_host(func);
+}
 /* This function read/write firmware */
 static enum
 rdwr_status mwifiex_sdio_rdwr_firmware(struct mwifiex_adapter *adapter,
@@ -2303,6 +2386,8 @@ static void mwifiex_sdio_work(struct work_struct *work)
 	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_CARD_RESET,
 			       &iface_work_flags))
 		mwifiex_sdio_card_reset_work(save_adapter);
+	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_READ_REGS, &iface_work_flags))
+		mwifiex_sdio_read_regs_work(save_adapter);
 }
 
 static DECLARE_WORK(sdio_work, mwifiex_sdio_work);
@@ -2332,6 +2417,16 @@ static void mwifiex_sdio_fw_dump(struct mwifiex_adapter *adapter)
 	schedule_work(&sdio_work);
 }
 
+static void mwifiex_sdio_read_regs(struct mwifiex_adapter *adapter)
+{
+	save_adapter = adapter;
+	if (test_bit(MWIFIEX_IFACE_WORK_READ_REGS, &iface_work_flags))
+		return;
+
+	set_bit(MWIFIEX_IFACE_WORK_READ_REGS, &iface_work_flags);
+	schedule_work(&sdio_work);
+}
+
 static struct mwifiex_if_ops sdio_ops = {
 	.init_if = mwifiex_init_sdio,
 	.cleanup_if = mwifiex_cleanup_sdio,
@@ -2355,6 +2450,7 @@ static struct mwifiex_if_ops sdio_ops = {
 	.card_reset = mwifiex_sdio_card_reset,
 	.deaggr_pkt = mwifiex_deaggr_sdio_pkt,
 	.fw_dump = mwifiex_sdio_fw_dump,
+	.read_regs = mwifiex_sdio_read_regs,
 };
 
 /*

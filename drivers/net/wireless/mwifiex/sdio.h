@@ -20,6 +20,15 @@
 #ifndef	_MWIFIEX_SDIO_H
 #define	_MWIFIEX_SDIO_H
 
+#define REG_DBG_MAX_NUM 16
+struct sdio_reg_dbg {
+	char name[REG_DBG_MAX_NUM];
+	u8 fn;
+	int delay;
+	int num_regs;
+	u32 reg[REG_DBG_MAX_NUM];
+	u8 val[REG_DBG_MAX_NUM];
+};
 
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_ids.h>
@@ -193,6 +202,7 @@ struct mwifiex_sdio_card_reg {
 	u8 status_reg_0;
 	u8 status_reg_1;
 	u8 sdio_int_mask;
+	u8 host_int_mask;
 	u32 data_port_mask;
 	u8 io_port_0_reg;
 	u8 io_port_1_reg;
@@ -209,6 +219,9 @@ struct mwifiex_sdio_card_reg {
 	u8 rd_len_p0_l;
 	u8 rd_len_p0_u;
 	u8 card_misc_cfg_reg;
+	u8 card_int_status;
+	u8 card_int_rsr;
+	u8 card_fw_status0;
 	u8 card_cfg_2_1_reg;
 	u8 cmd_rd_len_0;
 	u8 cmd_rd_len_1;
@@ -279,6 +292,7 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd87xx = {
 	.status_reg_0 = 0x60,
 	.status_reg_1 = 0x61,
 	.sdio_int_mask = 0x3f,
+	.host_int_mask = 0x34,
 	.data_port_mask = 0x0000fffe,
 	.io_port_0_reg = 0x78,
 	.io_port_1_reg = 0x79,
@@ -291,6 +305,9 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd87xx = {
 	.rd_len_p0_l = 0x08,
 	.rd_len_p0_u = 0x09,
 	.card_misc_cfg_reg = 0x6c,
+	.card_int_status = 0x38,
+	.card_int_rsr = 0x3c,
+	.card_fw_status0 = 0x60,
 };
 
 static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
@@ -307,6 +324,7 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
 	.status_reg_0 = 0xc0,
 	.status_reg_1 = 0xc1,
 	.sdio_int_mask = 0xff,
+	.host_int_mask = 0x54,
 	.data_port_mask = 0xffffffff,
 	.io_port_0_reg = 0xD8,
 	.io_port_1_reg = 0xD9,
@@ -323,6 +341,9 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
 	.rd_len_p0_l = 0x0c,
 	.rd_len_p0_u = 0x0d,
 	.card_misc_cfg_reg = 0xcc,
+	.card_int_status = 0x58,
+	.card_int_rsr = 0x5c,
+	.card_fw_status0 = 0xc0,
 	.card_cfg_2_1_reg = 0xcd,
 	.cmd_rd_len_0 = 0xb4,
 	.cmd_rd_len_1 = 0xb5,
