@@ -30,6 +30,7 @@
 #include <linux/mfd/samsung/s2mps14.h>
 #include <linux/mfd/samsung/s5m8763.h>
 #include <linux/mfd/samsung/s5m8767.h>
+#include <linux/regulator/machine.h>
 #include <linux/regmap.h>
 
 static const struct mfd_cell s5m8751_devs[] = {
@@ -386,6 +387,13 @@ static int sec_pmic_suspend(struct device *dev)
 	 * suspended) and RTC Alarm interrupt is disabled.
 	 */
 	disable_irq(sec_pmic->irq);
+
+	switch (sec_pmic->device_type) {
+	case S2MPS14X:
+	case S2MPU02:
+		regulator_suspend_prepare(PM_SUSPEND_MEM);
+		break;
+	};
 
 	return 0;
 }
