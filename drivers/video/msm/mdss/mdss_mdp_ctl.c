@@ -523,6 +523,9 @@ struct mdss_mdp_mixer *mdss_mdp_wb_mixer_alloc(int rotator)
 
 	ctl->start_fnc = mdss_mdp_writeback_start;
 	ctl->power_on = true;
+	ctl->bus_ab_quota = 0;
+	ctl->bus_ib_quota = 0;
+	ctl->clk_rate = 0;
 
 	if (ctl->start_fnc)
 		ctl->start_fnc(ctl);
