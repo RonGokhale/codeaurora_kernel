@@ -1088,7 +1088,7 @@ static void exynos_dp_dpms(struct exynos_drm_display *display, int mode)
 		break;
 	default:
 		break;
-	};
+	}
 	dp->dpms_mode = mode;
 }
 
