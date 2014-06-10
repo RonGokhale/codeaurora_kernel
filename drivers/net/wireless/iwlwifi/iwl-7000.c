@@ -67,8 +67,8 @@
 #include "iwl-agn-hw.h"
 
 /* Highest firmware API version supported */
-#define IWL7260_UCODE_API_MAX	8
-#define IWL3160_UCODE_API_MAX	8
+#define IWL7260_UCODE_API_MAX	9
+#define IWL3160_UCODE_API_MAX	9
 
 /* Oldest version we won't warn about */
 #define IWL7260_UCODE_API_OK	8
@@ -134,6 +134,7 @@ const struct iwl_cfg iwl7260_2ac_cfg = {
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
 	.host_interrupt_operation_mode = true,
+	.lp_xtal_workaround = true,
 };
 
 const struct iwl_cfg iwl7260_2ac_cfg_high_temp = {
@@ -145,6 +146,7 @@ const struct iwl_cfg iwl7260_2ac_cfg_high_temp = {
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
 	.high_temp = true,
 	.host_interrupt_operation_mode = true,
+	.lp_xtal_workaround = true,
 };
 
 const struct iwl_cfg iwl7260_2n_cfg = {
@@ -155,6 +157,7 @@ const struct iwl_cfg iwl7260_2n_cfg = {
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
 	.host_interrupt_operation_mode = true,
+	.lp_xtal_workaround = true,
 };
 
 const struct iwl_cfg iwl7260_n_cfg = {
@@ -165,6 +168,7 @@ const struct iwl_cfg iwl7260_n_cfg = {
 	.nvm_ver = IWL7260_NVM_VERSION,
 	.nvm_calib_ver = IWL7260_TX_POWER_VERSION,
 	.host_interrupt_operation_mode = true,
+	.lp_xtal_workaround = true,
 };
 
 const struct iwl_cfg iwl3160_2ac_cfg = {
@@ -240,3 +244,4 @@ const struct iwl_cfg iwl7265_n_cfg = {
 
 MODULE_FIRMWARE(IWL7260_MODULE_FIRMWARE(IWL7260_UCODE_API_OK));
 MODULE_FIRMWARE(IWL3160_MODULE_FIRMWARE(IWL3160_UCODE_API_OK));
+MODULE_FIRMWARE(IWL7265_MODULE_FIRMWARE(IWL7260_UCODE_API_OK));
