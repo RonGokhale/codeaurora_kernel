@@ -1296,7 +1296,8 @@ static int ptr_to_user(struct v4l2_ext_control *c,
 	u32 len;
 
 	if (ctrl->is_ptr && !ctrl->is_string)
-		return copy_to_user(c->ptr, ptr.p, c->size);
+		return copy_to_user(c->ptr, ptr.p, c->size) ?
+		       -EFAULT : 0;
 
 	switch (ctrl->type) {
 	case V4L2_CTRL_TYPE_STRING:
@@ -1306,7 +1307,7 @@ static int ptr_to_user(struct v4l2_ext_control *c,
 			return -ENOSPC;
 		}
 		return copy_to_user(c->string, ptr.p_char, len + 1) ?
-								-EFAULT : 0;
+		       -EFAULT : 0;
 	case V4L2_CTRL_TYPE_INTEGER64:
 		c->value64 = *ptr.p_s64;
 		break;
@@ -1343,7 +1344,7 @@ static int user_to_ptr(struct v4l2_ext_control *c,
 	if (ctrl->is_ptr && !ctrl->is_string) {
 		unsigned idx;
 
-		ret = copy_from_user(ptr.p, c->ptr, c->size);
+		ret = copy_from_user(ptr.p, c->ptr, c->size) ? -EFAULT : 0;
 		if (ret || !ctrl->is_array)
 			return ret;
 		for (idx = c->size / ctrl->elem_size; idx < ctrl->elems; idx++)
@@ -1361,7 +1362,7 @@ static int user_to_ptr(struct v4l2_ext_control *c,
 			return -ERANGE;
 		if (size > ctrl->maximum + 1)
 			size = ctrl->maximum + 1;
-		ret = copy_from_user(ptr.p_char, c->string, size);
+		ret = copy_from_user(ptr.p_char, c->string, size) ? -EFAULT : 0;
 		if (!ret) {
 			char last = ptr.p_char[size - 1];
 
@@ -1371,7 +1372,7 @@ static int user_to_ptr(struct v4l2_ext_control *c,
 			if (strlen(ptr.p_char) == ctrl->maximum && last)
 				return -ERANGE;
 		}
-		return ret ? -EFAULT : 0;
+		return ret;
 	default:
 		*ptr.p_s32 = c->value;
 		break;
