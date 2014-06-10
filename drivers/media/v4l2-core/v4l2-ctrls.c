@@ -1131,7 +1131,7 @@ static void send_event(struct v4l2_fh *fh, struct v4l2_ctrl *ctrl, u32 changes)
 			v4l2_event_queue_fh(sev->fh, &ev);
 }
 
-static bool std_equal(const struct v4l2_ctrl *ctrl,
+static bool std_equal(const struct v4l2_ctrl *ctrl, u32 idx,
 		      union v4l2_ctrl_ptr ptr1,
 		      union v4l2_ctrl_ptr ptr2)
 {
@@ -1150,7 +1150,7 @@ static bool std_equal(const struct v4l2_ctrl *ctrl,
 	}
 }
 
-static void std_init(const struct v4l2_ctrl *ctrl,
+static void std_init(const struct v4l2_ctrl *ctrl, u32 idx,
 		     union v4l2_ctrl_ptr ptr)
 {
 	switch (ctrl->type) {
@@ -1176,6 +1176,14 @@ static void std_init(const struct v4l2_ctrl *ctrl,
 static void std_log(const struct v4l2_ctrl *ctrl)
 {
 	union v4l2_ctrl_ptr ptr = ctrl->p_cur;
+
+	if (ctrl->is_array) {
+		unsigned i;
+
+		for (i = 0; i < ctrl->nr_of_dims; i++)
+			pr_cont("[%u]", ctrl->dims[i]);
+		pr_cont(" ");
+	}
 
 	switch (ctrl->type) {
 	case V4L2_CTRL_TYPE_INTEGER:
@@ -1219,7 +1227,7 @@ static void std_log(const struct v4l2_ctrl *ctrl)
 })
 
 /* Validate a new control */
-static int std_validate(const struct v4l2_ctrl *ctrl,
+static int std_validate(const struct v4l2_ctrl *ctrl, u32 idx,
 			union v4l2_ctrl_ptr ptr)
 {
 	size_t len;
@@ -1443,8 +1451,8 @@ static int cluster_changed(struct v4l2_ctrl *master)
 
 		if (ctrl == NULL)
 			continue;
-		ctrl->has_changed = !ctrl->type_ops->equal(ctrl,
-						ctrl->p_cur, ctrl->p_new);
+		ctrl->has_changed = !ctrl->type_ops->equal(ctrl, 0,
+				ctrl->p_cur, ctrl->p_new);
 		changed |= ctrl->has_changed;
 	}
 	return changed;
@@ -1501,15 +1509,15 @@ static int validate_new(const struct v4l2_ctrl *ctrl,
 	case V4L2_CTRL_TYPE_BUTTON:
 	case V4L2_CTRL_TYPE_CTRL_CLASS:
 		ptr.p_s32 = &c->value;
-		return ctrl->type_ops->validate(ctrl, ptr);
+		return ctrl->type_ops->validate(ctrl, 0, ptr);
 
 	case V4L2_CTRL_TYPE_INTEGER64:
 		ptr.p_s64 = &c->value64;
-		return ctrl->type_ops->validate(ctrl, ptr);
+		return ctrl->type_ops->validate(ctrl, 0, ptr);
 
 	default:
 		ptr.p = c->ptr;
-		return ctrl->type_ops->validate(ctrl, ptr);
+		return ctrl->type_ops->validate(ctrl, 0, ptr);
 	}
 }
 
@@ -1737,6 +1745,8 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 	unsigned sz_extra;
 	unsigned nr_of_dims = 0;
 	unsigned elems = 1;
+	bool is_array;
+	unsigned tot_ctrl_size;
 	void *data;
 	int err;
 
@@ -1749,6 +1759,7 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		if (nr_of_dims == V4L2_CTRL_MAX_DIMS)
 			break;
 	}
+	is_array = nr_of_dims > 0;
 
 	if (type == V4L2_CTRL_TYPE_INTEGER64)
 		elem_size = sizeof(s64);
@@ -1756,10 +1767,11 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		elem_size = max + 1;
 	else if (type < V4L2_CTRL_COMPOUND_TYPES)
 		elem_size = sizeof(s32);
+	tot_ctrl_size = elem_size * elems;
 
 	/* Sanity checks */
-	if (id == 0 || name == NULL || id >= V4L2_CID_PRIVATE_BASE ||
-	    elem_size == 0 ||
+	if (id == 0 || name == NULL || !elem_size ||
+	    id >= V4L2_CID_PRIVATE_BASE ||
 	    (type == V4L2_CTRL_TYPE_MENU && qmenu == NULL) ||
 	    (type == V4L2_CTRL_TYPE_INTEGER_MENU && qmenu_int == NULL)) {
 		handler_set_err(hdl, -ERANGE);
@@ -1774,6 +1786,12 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		handler_set_err(hdl, -ERANGE);
 		return NULL;
 	}
+	if (is_array &&
+	    (type == V4L2_CTRL_TYPE_BUTTON ||
+	     type == V4L2_CTRL_TYPE_CTRL_CLASS)) {
+		handler_set_err(hdl, -EINVAL);
+		return NULL;
+	}
 
 	sz_extra = 0;
 	if (type == V4L2_CTRL_TYPE_BUTTON)
@@ -1782,8 +1800,9 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 		flags |= V4L2_CTRL_FLAG_READ_ONLY;
 	else if (type == V4L2_CTRL_TYPE_INTEGER64 ||
 		 type == V4L2_CTRL_TYPE_STRING ||
-		 type >= V4L2_CTRL_COMPOUND_TYPES)
-		sz_extra += 2 * elem_size;
+		 type >= V4L2_CTRL_COMPOUND_TYPES ||
+		 is_array)
+		sz_extra += 2 * tot_ctrl_size;
 
 	ctrl = kzalloc(sizeof(*ctrl) + sz_extra, GFP_KERNEL);
 	if (ctrl == NULL) {
@@ -1804,9 +1823,10 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 	ctrl->maximum = max;
 	ctrl->step = step;
 	ctrl->default_value = def;
-	ctrl->is_string = type == V4L2_CTRL_TYPE_STRING;
-	ctrl->is_ptr = type >= V4L2_CTRL_COMPOUND_TYPES || ctrl->is_string;
+	ctrl->is_string = !is_array && type == V4L2_CTRL_TYPE_STRING;
+	ctrl->is_ptr = is_array || type >= V4L2_CTRL_COMPOUND_TYPES || ctrl->is_string;
 	ctrl->is_int = !ctrl->is_ptr && type != V4L2_CTRL_TYPE_INTEGER64;
+	ctrl->is_array = is_array;
 	ctrl->elems = elems;
 	ctrl->nr_of_dims = nr_of_dims;
 	if (nr_of_dims)
@@ -1822,13 +1842,13 @@ static struct v4l2_ctrl *v4l2_ctrl_new(struct v4l2_ctrl_handler *hdl,
 
 	if (!ctrl->is_int) {
 		ctrl->p_new.p = data;
-		ctrl->p_cur.p = data + elem_size;
+		ctrl->p_cur.p = data + tot_ctrl_size;
 	} else {
 		ctrl->p_new.p = &ctrl->val;
 		ctrl->p_cur.p = &ctrl->cur.val;
 	}
-	ctrl->type_ops->init(ctrl, ctrl->p_cur);
-	ctrl->type_ops->init(ctrl, ctrl->p_new);
+	ctrl->type_ops->init(ctrl, 0, ctrl->p_cur);
+	ctrl->type_ops->init(ctrl, 0, ctrl->p_new);
 
 	if (handler_new_ref(hdl, ctrl)) {
 		kfree(ctrl);
@@ -2734,7 +2754,7 @@ s64 v4l2_ctrl_g_ctrl_int64(struct v4l2_ctrl *ctrl)
 	struct v4l2_ext_control c;
 
 	/* It's a driver bug if this happens. */
-	WARN_ON(ctrl->type != V4L2_CTRL_TYPE_INTEGER64);
+	WARN_ON(ctrl->is_ptr || ctrl->type != V4L2_CTRL_TYPE_INTEGER64);
 	c.value = 0;
 	get_ctrl(ctrl, &c);
 	return c.value;
@@ -3044,7 +3064,7 @@ int v4l2_ctrl_s_ctrl_int64(struct v4l2_ctrl *ctrl, s64 val)
 	struct v4l2_ext_control c;
 
 	/* It's a driver bug if this happens. */
-	WARN_ON(ctrl->type != V4L2_CTRL_TYPE_INTEGER64);
+	WARN_ON(ctrl->is_ptr || ctrl->type != V4L2_CTRL_TYPE_INTEGER64);
 	c.value64 = val;
 	return set_ctrl_lock(NULL, ctrl, &c);
 }
