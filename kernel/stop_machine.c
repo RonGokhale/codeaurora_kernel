@@ -21,6 +21,7 @@
 #include <linux/smpboot.h>
 #include <linux/atomic.h>
 #include <linux/lglock.h>
+#include <linux/smp.h>
 
 /*
  * Structure to determine completion condition and record errors.  May
@@ -130,8 +131,10 @@ enum multi_stop_state {
 	MULTI_STOP_NONE,
 	/* Awaiting everyone to be scheduled. */
 	MULTI_STOP_PREPARE,
-	/* Disable interrupts. */
-	MULTI_STOP_DISABLE_IRQ,
+	/* Disable interrupts on CPUs not in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_INACTIVE,
+	/* Disable interrupts on CPUs in ->active_cpus mask. */
+	MULTI_STOP_DISABLE_IRQ_ACTIVE,
 	/* Run the function */
 	MULTI_STOP_RUN,
 	/* Exit */
@@ -189,12 +192,50 @@ static int multi_cpu_stop(void *data)
 	do {
 		/* Chill out and ensure we re-read multi_stop_state. */
 		cpu_relax();
+
+		/*
+		 * We use 2 separate stages to disable interrupts, namely
+		 * _INACTIVE and _ACTIVE, to ensure that the inactive CPUs
+		 * disable their interrupts first, followed by the active CPUs.
+		 *
+		 * This is done to avoid a race in the CPU offline path, which
+		 * can lead to receiving IPIs on the outgoing CPU *after* it
+		 * has gone offline.
+		 *
+		 * During CPU offline, we don't want the other CPUs to send
+		 * IPIs to the active_cpu (the outgoing CPU) *after* it has
+		 * disabled interrupts (because, then it will notice the IPIs
+		 * only after it has gone offline). We can prevent this by
+		 * making the other CPUs disable their interrupts first - that
+		 * way, they will run the stop-machine code with interrupts
+		 * disabled, and hence won't send IPIs after that point.
+		 */
+
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
-			case MULTI_STOP_DISABLE_IRQ:
-				local_irq_disable();
-				hard_irq_disable();
+			case MULTI_STOP_DISABLE_IRQ_INACTIVE:
+				if (!is_active) {
+					local_irq_disable();
+					hard_irq_disable();
+				}
+				break;
+			case MULTI_STOP_DISABLE_IRQ_ACTIVE:
+				if (is_active) {
+					local_irq_disable();
+					hard_irq_disable();
+
+					/*
+					 * IPIs (from the inactive CPUs) might
+					 * arrive late due to hardware
+					 * latencies.  So flush out any pending
+					 * IPI callbacks explicitly, to ensure
+					 * that the outgoing CPU doesn't go
+					 * offline with work still pending
+					 * (during CPU hotplug).
+					 */
+					generic_smp_call_function_single_interrupt();
+				}
 				break;
 			case MULTI_STOP_RUN:
 				if (is_active)
