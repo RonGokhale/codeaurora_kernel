@@ -54,7 +54,7 @@ ENTRY(exynos_cpu_resume)
 	ldr	r1, =CPU_CORTEX_A9
 	cmp	r0, r1
 	bne	skip_l2_resume
-	adr	r0, l2x0_regs_phys
+	adr	r0, .Ll2x0_regs_phys
 	ldr	r0, [r0]
 	cmp	r0, #0
 	beq	skip_l2_resume
@@ -79,6 +79,8 @@ skip_l2_resume:
 	b	cpu_resume
 ENDPROC(exynos_cpu_resume)
 #ifdef CONFIG_CACHE_L2X0
+
+.Ll2x0_regs_phys:
 	.globl l2x0_regs_phys
 l2x0_regs_phys:
 	.long	0
