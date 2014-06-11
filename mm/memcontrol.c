@@ -1666,8 +1666,9 @@ void mem_cgroup_print_oom_info(struct mem_cgroup *memcg, struct task_struct *p)
 
 	rcu_read_unlock();
 
-	pr_info("memory: usage %llukB, limit %llukB, failcnt %llu\n",
+	pr_info("memory: usage %llukB, low_limit %llukB limit %llukB, failcnt %llu\n",
 		res_counter_read_u64(&memcg->res, RES_USAGE) >> 10,
+		res_counter_read_u64(&memcg->res, RES_LOW_LIMIT) >> 10,
 		res_counter_read_u64(&memcg->res, RES_LIMIT) >> 10,
 		res_counter_read_u64(&memcg->res, RES_FAILCNT));
 	pr_info("memory+swap: usage %llukB, limit %llukB, failcnt %llu\n",
@@ -2777,6 +2778,43 @@ static struct mem_cgroup *mem_cgroup_lookup(unsigned short id)
 	if (!id)
 		return NULL;
 	return mem_cgroup_from_id(id);
+}
+
+/**
+ * mem_cgroup_within_guarantee - checks whether given memcg is within its
+ * memory guarantee
+ * @memcg: target memcg for the reclaim
+ * @root: root of the reclaim hierarchy (null for the global reclaim)
+ *
+ * The given group is within its reclaim gurantee if it is below its low limit
+ * or the same applies for any parent up the hierarchy until root (including).
+ * Such a group might be excluded from the reclaim.
+ */
+bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
+		struct mem_cgroup *root)
+{
+	do {
+		if (!res_counter_low_limit_excess(&memcg->res))
+			return true;
+		if (memcg == root)
+			break;
+
+	} while ((memcg = parent_mem_cgroup(memcg)));
+
+	return false;
+}
+
+bool mem_cgroup_all_within_guarantee(struct mem_cgroup *root)
+{
+	struct mem_cgroup *iter;
+
+	for_each_mem_cgroup_tree(iter, root)
+		if (!mem_cgroup_within_guarantee(iter, root)) {
+			mem_cgroup_iter_break(root, iter);
+			return false;
+		}
+
+	return true;
 }
 
 struct mem_cgroup *try_get_mem_cgroup_from_page(struct page *page)
@@ -4773,6 +4811,10 @@ static ssize_t mem_cgroup_force_empty_write(struct kernfs_open_file *of,
 
 	if (mem_cgroup_is_root(memcg))
 		return -EINVAL;
+	pr_info_once("%s (%d): memory.force_empty is deprecated and will be "
+		     "removed.  Let us know if it is needed in your usecase at "
+		     "linux-mm@kvack.org\n",
+		     current->comm, task_pid_nr(current));
 	return mem_cgroup_force_empty(memcg) ?: nbytes;
 }
 
@@ -5056,6 +5098,24 @@ static ssize_t mem_cgroup_write(struct kernfs_open_file *of,
 		else
 			return -EINVAL;
 		break;
+	case RES_LOW_LIMIT:
+		if (mem_cgroup_is_root(memcg)) { /* Can't set limit on root */
+			ret = -EINVAL;
+			break;
+		}
+		ret = res_counter_memparse_write_strategy(buf, &val);
+		if (ret)
+			break;
+		if (type == _MEM) {
+			ret = res_counter_set_low_limit(&memcg->res, val);
+			break;
+		}
+		/*
+		 * memsw low limit doesn't make any sense and kmem is not
+		 * implemented yet - if ever
+		 */
+		return -EINVAL;
+
 	case RES_SOFT_LIMIT:
 		ret = res_counter_memparse_write_strategy(buf, &val);
 		if (ret)
@@ -5982,6 +6042,12 @@ static struct cftype mem_cgroup_files[] = {
 		.read_u64 = mem_cgroup_read_u64,
 	},
 	{
+		.name = "low_limit_in_bytes",
+		.private = MEMFILE_PRIVATE(_MEM, RES_LOW_LIMIT),
+		.write = mem_cgroup_write,
+		.read_u64 = mem_cgroup_read_u64,
+	},
+	{
 		.name = "soft_limit_in_bytes",
 		.private = MEMFILE_PRIVATE(_MEM, RES_SOFT_LIMIT),
 		.write = mem_cgroup_write,
@@ -5999,6 +6065,7 @@ static struct cftype mem_cgroup_files[] = {
 	},
 	{
 		.name = "force_empty",
+		.flags = CFTYPE_INSANE,
 		.write = mem_cgroup_force_empty_write,
 	},
 	{
