@@ -105,10 +105,6 @@ ifeq ("$(origin O)", "command line")
   KBUILD_OUTPUT := $(O)
 endif
 
-ifeq ("$(origin W)", "command line")
-  export KBUILD_ENABLE_EXTRA_GCC_CHECKS := $(W)
-endif
-
 # That's our default target when none is given on the command line
 PHONY := _all
 _all:
@@ -153,8 +149,18 @@ else
 _all: modules
 endif
 
-srctree		:= $(if $(KBUILD_SRC),$(KBUILD_SRC),$(CURDIR))
-objtree		:= $(CURDIR)
+ifeq ($(KBUILD_SRC),)
+        # building in the source tree
+        srctree := .
+else
+        ifeq ($(KBUILD_SRC)/,$(dir $(CURDIR)))
+                # building in a subdirectory of the source tree
+                srctree := ..
+        else
+                srctree := $(KBUILD_SRC)
+        endif
+endif
+objtree		:= .
 src		:= $(srctree)
 obj		:= $(objtree)
 
@@ -166,7 +172,7 @@ export srctree objtree VPATH
 # SUBARCH tells the usermode build what the underlying arch is.  That is set
 # first, and if a usermode build is happening, the "ARCH=um" on the command
 # line overrides the setting of ARCH below.  If a native build is happening,
-# then ARCH is assigned, getting whatever value it gets normally, and 
+# then ARCH is assigned, getting whatever value it gets normally, and
 # SUBARCH is subsequently ignored.
 
 SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
@@ -259,18 +265,18 @@ endif
 KBUILD_MODULES :=
 KBUILD_BUILTIN := 1
 
-#	If we have only "make modules", don't compile built-in objects.
-#	When we're building modules with modversions, we need to consider
-#	the built-in objects during the descend as well, in order to
-#	make sure the checksums are up to date before we record them.
+# If we have only "make modules", don't compile built-in objects.
+# When we're building modules with modversions, we need to consider
+# the built-in objects during the descend as well, in order to
+# make sure the checksums are up to date before we record them.
 
 ifeq ($(MAKECMDGOALS),modules)
   KBUILD_BUILTIN := $(if $(CONFIG_MODVERSIONS),1)
 endif
 
-#	If we have "make <whatever> modules", compile modules
-#	in addition to whatever we do anyway.
-#	Just "make" or "make all" shall build modules as well
+# If we have "make <whatever> modules", compile modules
+# in addition to whatever we do anyway.
+# Just "make" or "make all" shall build modules as well
 
 ifneq ($(filter all _all modules,$(MAKECMDGOALS)),)
   KBUILD_MODULES := 1
@@ -294,7 +300,7 @@ export KBUILD_CHECKSRC KBUILD_SRC KBUILD_EXTMOD
 #         cmd_cc_o_c       = $(CC) $(c_flags) -c -o $@ $<
 #
 # If $(quiet) is empty, the whole command will be printed.
-# If it is set to "quiet_", only the short version will be printed. 
+# If it is set to "quiet_", only the short version will be printed.
 # If it is set to "silent_", nothing will be printed at all, since
 # the variable $(silent_cmd_cc_o_c) doesn't exist.
 #
@@ -346,12 +352,16 @@ $(srctree)/scripts/Kbuild.include: ;
 include $(srctree)/scripts/Kbuild.include
 
 # Make variables (CC, etc...)
-
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
+LDFINAL	= $(LD)
 CC		= $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
+ifdef CONFIG_LTO
+AR		= $(CROSS_COMPILE)gcc-ar
+else
 AR		= $(CROSS_COMPILE)ar
+endif
 NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
@@ -395,8 +405,8 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
-		   $(call cc-option,-fno-delete-null-pointer-checks,)
+		   -Wno-format-security
+
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
@@ -410,7 +420,7 @@ KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(S
 
 export VERSION PATCHLEVEL SUBLEVEL KERNELRELEASE KERNELVERSION
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC
-export CPP AR NM STRIP OBJCOPY OBJDUMP
+export CPP AR NM STRIP OBJCOPY OBJDUMP LDFINAL
 export MAKE AWK GENKSYMS INSTALLKERNEL PERL UTS_MACHINE
 export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODULE CHECK CHECKFLAGS
 
@@ -420,6 +430,17 @@ export KBUILD_AFLAGS AFLAGS_KERNEL AFLAGS_MODULE
 export KBUILD_AFLAGS_MODULE KBUILD_CFLAGS_MODULE KBUILD_LDFLAGS_MODULE
 export KBUILD_AFLAGS_KERNEL KBUILD_CFLAGS_KERNEL
 export KBUILD_ARFLAGS
+
+ifdef CONFIG_LTO
+# LTO gcc creates a lot of files in TMPDIR, and with /tmp as tmpfs
+# it's easy to drive the machine OOM. Use the object directory
+# instead.
+ifndef TMPDIR
+TMPDIR ?= $(objtree)
+export TMPDIR
+$(info setting TMPDIR=$(objtree) for LTO build)
+endif
+endif
 
 # When compiling out-of-tree modules, put MODVERDIR in the module
 # tree rather than in the kernel tree. The kernel tree might
@@ -504,8 +525,16 @@ ifeq ($(mixed-targets),1)
 # We're called with mixed targets (*config and build targets).
 # Handle them one by one.
 
-%:: FORCE
-	$(Q)$(MAKE) -C $(srctree) KBUILD_SRC= $@
+PHONY += $(MAKECMDGOALS) __build_one_by_one
+
+$(filter-out __build_one_by_one, $(MAKECMDGOALS)): __build_one_by_one
+	@:
+
+__build_one_by_one:
+	$(Q)set -e; \
+	for i in $(MAKECMDGOALS); do \
+		$(MAKE) -f $(srctree)/Makefile $$i; \
+	done
 
 else
 ifeq ($(config-targets),1)
@@ -520,11 +549,9 @@ include $(srctree)/arch/$(SRCARCH)/Makefile
 export KBUILD_DEFCONFIG KBUILD_KCONFIG
 
 config: scripts_basic outputmakefile FORCE
-	$(Q)mkdir -p include/linux include/config
 	$(Q)$(MAKE) $(build)=scripts/kconfig $@
 
 %config: scripts_basic outputmakefile FORCE
-	$(Q)mkdir -p include/linux include/config
 	$(Q)$(MAKE) $(build)=scripts/kconfig $@
 
 else
@@ -594,13 +621,15 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
+include $(srctree)/arch/$(SRCARCH)/Makefile
+
+KBUILD_CFLAGS	+= $(call cc-option,-fno-delete-null-pointer-checks,)
+
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
 KBUILD_CFLAGS	+= -O2
 endif
-
-include $(srctree)/arch/$(SRCARCH)/Makefile
 
 ifdef CONFIG_READABLE_ASM
 # Disable optimizations that make assembler listings hard to read.
@@ -731,6 +760,9 @@ ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
 endif
 
+include $(srctree)/scripts/Makefile.extrawarn
+include ${srctree}/scripts/Makefile.lto
+
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 KBUILD_CPPFLAGS += $(KCPPFLAGS)
 KBUILD_AFLAGS += $(KAFLAGS)
@@ -775,10 +807,10 @@ MODLIB	= $(INSTALL_MOD_PATH)/lib/modules/$(KERNELRELEASE)
 export MODLIB
 
 #
-#  INSTALL_MOD_STRIP, if defined, will cause modules to be
-#  stripped after they are installed.  If INSTALL_MOD_STRIP is '1', then
-#  the default option --strip-debug will be used.  Otherwise,
-#  INSTALL_MOD_STRIP value will be used as the options to the strip command.
+# INSTALL_MOD_STRIP, if defined, will cause modules to be
+# stripped after they are installed.  If INSTALL_MOD_STRIP is '1', then
+# the default option --strip-debug will be used.  Otherwise,
+# INSTALL_MOD_STRIP value will be used as the options to the strip command.
 
 ifdef INSTALL_MOD_STRIP
 ifeq ($(INSTALL_MOD_STRIP),1)
@@ -863,7 +895,7 @@ ifdef CONFIG_BUILD_DOCSRC
 endif
 	+$(call if_changed,link-vmlinux)
 
-# The actual objects are generated when descending, 
+# The actual objects are generated when descending,
 # make sure no implicit rule kicks in
 $(sort $(vmlinux-deps)): $(vmlinux-dirs) ;
 
@@ -1021,11 +1053,11 @@ ifdef CONFIG_MODULES
 
 all: modules
 
-#	Build modules
+# Build modules
 #
-#	A module can be listed more than once in obj-m resulting in
-#	duplicate lines in modules.order files.  Those are removed
-#	using awk while concatenating to the final file.
+# A module can be listed more than once in obj-m resulting in
+# duplicate lines in modules.order files.  Those are removed
+# using awk while concatenating to the final file.
 
 PHONY += modules
 modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin
@@ -1054,10 +1086,10 @@ _modinst_:
 	@rm -rf $(MODLIB)/kernel
 	@rm -f $(MODLIB)/source
 	@mkdir -p $(MODLIB)/kernel
-	@ln -s $(srctree) $(MODLIB)/source
+	@ln -s `cd $(srctree) && /bin/pwd` $(MODLIB)/source
 	@if [ ! $(objtree) -ef  $(MODLIB)/build ]; then \
 		rm -f $(MODLIB)/build ; \
-		ln -s $(objtree) $(MODLIB)/build ; \
+		ln -s $(CURDIR) $(MODLIB)/build ; \
 	fi
 	@cp -f $(objtree)/modules.order $(MODLIB)/
 	@cp -f $(objtree)/modules.builtin $(MODLIB)/
@@ -1104,7 +1136,7 @@ CLEAN_DIRS  += $(MODVERDIR)
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config usr/include include/generated          \
-                  arch/*/include/generated .tmp_objdiff
+		  arch/*/include/generated .tmp_objdiff
 MRPROPER_FILES += .config .config.old .version .old_version $(version_h) \
 		  Module.symvers tags TAGS cscope* GPATH GTAGS GRTAGS GSYMS \
 		  signing_key.priv signing_key.x509 x509.genkey		\
@@ -1478,7 +1510,7 @@ endif
 	$(build)=$(build-dir) $(@:.ko=.o)
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
-# FIXME Should go into a make.lib or something 
+# FIXME Should go into a make.lib or something
 # ===========================================================================
 
 quiet_cmd_rmdirs = $(if $(wildcard $(rm-dirs)),CLEAN   $(wildcard $(rm-dirs)))
