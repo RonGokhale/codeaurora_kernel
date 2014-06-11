@@ -1,4 +1,4 @@
-	/*
+/*
  * Copyright 2011 Red Hat Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -957,7 +957,7 @@ nv50_crtc_prepare(struct drm_crtc *crtc)
 
 	nv50_display_flip_stop(crtc);
 
-	push = evo_wait(mast, 2);
+	push = evo_wait(mast, 6);
 	if (push) {
 		if (nv50_vers(mast) < NV84_DISP_MAST_CLASS) {
 			evo_mthd(push, 0x0874 + (nv_crtc->index * 0x400), 1);
@@ -2295,7 +2295,7 @@ nv50_display_create(struct drm_device *dev)
 			continue;
 
 		NV_WARN(drm, "%s has no encoders, removing\n",
-			drm_get_connector_name(connector));
+			connector->name);
 		connector->funcs->destroy(connector);
 	}
 
