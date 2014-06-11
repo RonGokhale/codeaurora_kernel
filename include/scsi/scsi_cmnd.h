@@ -7,6 +7,7 @@
 #include <linux/types.h>
 #include <linux/timer.h>
 #include <linux/scatterlist.h>
+#include <scsi/scsi_device.h>
 
 struct Scsi_Host;
 struct scsi_device;
@@ -313,6 +314,44 @@ static inline void set_host_byte(struct scsi_cmnd *cmd, char status)
 static inline void set_driver_byte(struct scsi_cmnd *cmd, char status)
 {
 	cmd->result = (cmd->result & 0x00ffffff) | (status << 24);
+}
+
+static inline unsigned scsi_prot_length(unsigned data_length,
+					unsigned sector_size)
+{
+	switch (sector_size) {
+	case 512:
+		return (data_length >> 9) * 8;
+	case 1024:
+		return (data_length >> 10) * 8;
+	case 2048:
+		return (data_length >> 11) * 8;
+	case 4096:
+		return (data_length >> 12) * 8;
+	default:
+		return (data_length >> ilog2(sector_size)) * 8;
+	}
+}
+
+static inline unsigned scsi_transfer_length(struct scsi_cmnd *cmd)
+{
+	unsigned data_length;
+
+	if (cmd->sc_data_direction == DMA_FROM_DEVICE) {
+		data_length = scsi_in(cmd)->length;
+		if (scsi_get_prot_op(cmd) ==  SCSI_PROT_NORMAL ||
+		    scsi_get_prot_op(cmd) ==  SCSI_PROT_READ_INSERT)
+			return data_length;
+	} else {
+		data_length = scsi_out(cmd)->length;
+		if (scsi_get_prot_op(cmd) ==  SCSI_PROT_NORMAL ||
+		    scsi_get_prot_op(cmd) ==  SCSI_PROT_WRITE_STRIP)
+			return data_length;
+	}
+
+	/* Protection information exists on the wire */
+	return data_length + scsi_prot_length(data_length,
+					      cmd->device->sector_size);
 }
 
 #endif /* _SCSI_SCSI_CMND_H */
