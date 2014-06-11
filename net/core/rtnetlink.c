@@ -1744,7 +1744,6 @@ static int rtnl_dellink(struct sk_buff *skb, struct nlmsghdr *nlh)
 
 	ops->dellink(dev, &list_kill);
 	unregister_netdevice_many(&list_kill);
-	list_del(&list_kill);
 	return 0;
 }
 
@@ -2019,11 +2018,15 @@ replay:
 		if (ops->newlink) {
 			err = ops->newlink(net, dev, tb, data);
 			/* Drivers should call free_netdev() in ->destructor
-			 * and unregister it on failure so that device could be
-			 * finally freed in rtnl_unlock.
+			 * and unregister it on failure after registration
+			 * so that device could be finally freed in rtnl_unlock.
 			 */
-			if (err < 0)
+			if (err < 0) {
+				/* If device is not registered at all, free it now */
+				if (dev->reg_state == NETREG_UNINITIALIZED)
+					free_netdev(dev);
 				goto out;
+			}
 		} else {
 			err = register_netdevice(dev);
 			if (err < 0) {
