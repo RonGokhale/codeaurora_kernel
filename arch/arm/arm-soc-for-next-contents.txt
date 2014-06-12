@@ -1,0 +1,26 @@
+next/fixes-non-critical
+
+next/cleanup
+
+next/soc
+
+next/soc2
+	depends/dma-ranges
+		Merge branch 'depends/dma-ranges' into next/soc
+	keystone/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
+	keystone/soc3
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc-2
+	patch
+		ARM: orion5x: fix mvebu_mbus_dt_init call
+		ARM: keystone: Drop use of meminfo since its not available anymore
+
+next/defconfig
+
+next/boards
+
+next/dt
+
+next/drivers
+
+fixes
