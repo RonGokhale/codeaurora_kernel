@@ -149,6 +149,8 @@ smp_call_function_any(const struct cpumask *mask, smp_call_func_t func,
 
 static inline void kick_all_cpus_sync(void) {  }
 
+static inline void generic_smp_call_function_single_interrupt(void) { }
+
 #endif /* !SMP */
 
 /*
