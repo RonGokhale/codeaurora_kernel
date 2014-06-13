@@ -596,7 +596,6 @@ static int queue_pages_test_walk(unsigned long start, unsigned long end,
 	}
 
 	qp->prev = vma;
-	walk->skip = 1;
 
 	if (vma->vm_flags & VM_PFNMAP)
 		return 0;
@@ -610,7 +609,7 @@ static int queue_pages_test_walk(unsigned long start, unsigned long end,
 	    ((flags & (MPOL_MF_MOVE | MPOL_MF_MOVE_ALL)) &&
 	     vma_migratable(vma)))
 		/* queue pages from current vma */
-		walk->skip = 0;
+		walk->control = PTWALK_DOWN;
 	return 0;
 }
 

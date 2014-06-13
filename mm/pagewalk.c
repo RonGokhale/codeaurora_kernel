@@ -3,22 +3,12 @@
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
 
-/*
- * Check the current skip status of page table walker.
- *
- * Here what I mean by skip is to skip lower level walking, and that was
- * determined for each entry independently. For example, when walk_pmd_range
- * handles a pmd_trans_huge we don't have to walk over ptes under that pmd,
- * and the skipping does not affect the walking over ptes under other pmds.
- * That's why we reset @walk->skip after tested.
- */
-static bool skip_lower_level_walking(struct mm_walk *walk)
+static int get_reset_walk_control(struct mm_walk *walk)
 {
-	if (walk->skip) {
-		walk->skip = 0;
-		return true;
-	}
-	return false;
+	int ret = walk->control;
+	/* Reset to default value */
+	walk->control = PTWALK_NEXT;
+	return ret;
 }
 
 static int walk_pte_range(pmd_t *pmd, unsigned long addr,
@@ -47,7 +37,18 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr,
 		err = walk->pte_entry(pte, addr, addr + PAGE_SIZE, walk);
 		if (err)
 		       break;
+		switch (get_reset_walk_control(walk)) {
+		case PTWALK_NEXT:
+			continue;
+		case PTWALK_DOWN:
+			break;
+		case PTWALK_BREAK:
+			goto out_unlock;
+		default:
+			BUG();
+		}
 	} while (pte++, addr += PAGE_SIZE, addr < end);
+out_unlock:
 	pte_unmap_unlock(orig_pte, ptl);
 	cond_resched();
 	return addr == end ? 0 : err;
@@ -75,10 +76,16 @@ again:
 
 		if (walk->pmd_entry) {
 			err = walk->pmd_entry(pmd, addr, next, walk);
-			if (skip_lower_level_walking(walk))
-				continue;
 			if (err)
 				break;
+			switch (get_reset_walk_control(walk)) {
+			case PTWALK_NEXT:
+				continue;
+			case PTWALK_DOWN:
+				break;
+			default:
+				BUG();
+			}
 		}
 
 		if (walk->pte_entry) {
@@ -204,13 +211,13 @@ static inline int walk_hugetlb_range(unsigned long addr, unsigned long end,
 #endif /* CONFIG_HUGETLB_PAGE */
 
 /*
- * Decide whether we really walk over the current vma on [@start, @end)
- * or skip it. When we skip it, we set @walk->skip to 1.
- * The return value is used to control the page table walking to
- * continue (for zero) or not (for non-zero).
+ * Decide whether we really walk over the current vma on [@start, @end) or
+ * skip it. If we walk over it, we should set @walk->control to PTWALK_DOWN.
+ * Otherwise, we skip it. The return value is used to control the current
+ * walking to continue (for zero) or terminate (for non-zero).
  *
- * Default check (only VM_PFNMAP check for now) is used when the caller
- * doesn't define test_walk() callback.
+ * We fall through to the default check if the caller doesn't define its own
+ * test_walk() callback.
  */
 static int walk_page_test(unsigned long start, unsigned long end,
 			struct mm_walk *walk)
@@ -224,8 +231,8 @@ static int walk_page_test(unsigned long start, unsigned long end,
 	 * Do not walk over vma(VM_PFNMAP), because we have no valid struct
 	 * page backing a VM_PFNMAP range. See also commit a9ff785e4437.
 	 */
-	if (vma->vm_flags & VM_PFNMAP)
-		walk->skip = 1;
+	if (!(vma->vm_flags & VM_PFNMAP))
+		walk->control = PTWALK_DOWN;
 	return 0;
 }
 
@@ -266,7 +273,7 @@ static int __walk_page_range(unsigned long start, unsigned long end,
  * defines test_walk(), pmd_entry(), and pte_entry(), then callbacks are
  * called in the order of test_walk(), pmd_entry(), and pte_entry().
  * If you don't want to go down to lower level at some point and move to
- * the next entry in the same level, you set @walk->skip to 1.
+ * the next entry in the same level, you set @walk->control to PTWALK_DOWN.
  * For example if you succeed to handle some pmd entry as trans_huge entry,
  * you need not call walk_pte_range() any more, so set it to avoid that.
  * We can't determine whether to go down to lower level with the return
@@ -310,10 +317,16 @@ int walk_page_range(unsigned long start, unsigned long end,
 			next = min(end, vma->vm_end);
 
 			err = walk_page_test(start, next, walk);
-			if (skip_lower_level_walking(walk))
-				continue;
 			if (err)
 				break;
+			switch (get_reset_walk_control(walk)) {
+			case PTWALK_NEXT:
+				continue;
+			case PTWALK_DOWN:
+				break;
+			default:
+				BUG();
+			}
 		}
 		err = __walk_page_range(start, next, walk);
 		if (err)
@@ -333,9 +346,15 @@ int walk_page_vma(struct vm_area_struct *vma, struct mm_walk *walk)
 	VM_BUG_ON(!vma);
 	walk->vma = vma;
 	err = walk_page_test(vma->vm_start, vma->vm_end, walk);
-	if (skip_lower_level_walking(walk))
-		return 0;
 	if (err)
 		return err;
+	switch (get_reset_walk_control(walk)) {
+	case PTWALK_NEXT:
+		return 0;
+	case PTWALK_DOWN:
+		break;
+	default:
+		BUG();
+	}
 	return __walk_page_range(vma->vm_start, vma->vm_end, walk);
 }

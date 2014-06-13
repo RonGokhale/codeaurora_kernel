@@ -1112,8 +1112,7 @@ void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
  *             walk_page_test() for how the skip control works.
  * @mm:        mm_struct representing the target process of page table walk
  * @vma:       vma currently walked
- * @skip:      internal control flag which is set when we skip the lower
- *             level entries.
+ * @control:   walk control flag
  * @private:   private data for callbacks' use
  *
  * (see the comment on walk_page_range() for more details)
@@ -1131,8 +1130,16 @@ struct mm_walk {
 			struct mm_walk *walk);
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
-	int skip;
+	int control;
 	void *private;
+};
+
+enum mm_walk_control {
+	PTWALK_NEXT = 0,	/* Go to the next entry in the same level or
+				 * the next vma. This is default behavior. */
+	PTWALK_DOWN,		/* Go down to lower level */
+	PTWALK_BREAK,		/* Break current loop and continue from the
+				 * next loop */
 };
 
 int walk_page_range(unsigned long addr, unsigned long end,

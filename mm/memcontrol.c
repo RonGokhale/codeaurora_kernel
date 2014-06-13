@@ -6670,9 +6670,8 @@ static int mem_cgroup_count_precharge_pmd(pmd_t *pmd,
 		if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
 			mc.precharge += HPAGE_PMD_NR;
 		spin_unlock(ptl);
-		/* don't call mem_cgroup_count_precharge_pte() */
-		walk->skip = 1;
-	}
+	} else
+		skip->control = PTWALK_DOWN;
 	return 0;
 }
 

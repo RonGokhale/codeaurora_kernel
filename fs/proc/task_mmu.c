@@ -508,9 +508,8 @@ static int smaps_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 		smaps_pte((pte_t *)pmd, addr, addr + HPAGE_PMD_SIZE, walk);
 		spin_unlock(ptl);
 		mss->anonymous_thp += HPAGE_PMD_SIZE;
-		/* don't call smaps_pte() */
-		walk->skip = 1;
-	}
+	} else
+		walk->control = PTWALK_DOWN;
 	return 0;
 }
 
@@ -821,13 +820,14 @@ static int clear_refs_test_walk(unsigned long start, unsigned long end,
 	 * Writing 4 to /proc/pid/clear_refs affects all pages.
 	 */
 	if (cp->type == CLEAR_REFS_ANON && vma->vm_file)
-		walk->skip = 1;
+		return 0;
 	if (cp->type == CLEAR_REFS_MAPPED && !vma->vm_file)
-		walk->skip = 1;
+		return 0;
 	if (cp->type == CLEAR_REFS_SOFT_DIRTY) {
 		if (vma->vm_flags & VM_SOFTDIRTY)
 			vma->vm_flags &= ~VM_SOFTDIRTY;
 	}
+	walk->control = PTWALK_DOWN;
 	return 0;
 }
 
@@ -1066,9 +1066,8 @@ static int pagemap_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 				break;
 		}
 		spin_unlock(ptl);
-		/* don't call pagemap_pte() */
-		walk->skip = 1;
-	}
+	} else
+		walk->control = PTWALK_DOWN;
 	return err;
 }
 
@@ -1348,9 +1347,8 @@ static int gather_pmd_stats(pmd_t *pmd, unsigned long addr,
 			gather_stats(page, md, pte_dirty(huge_pte),
 				     HPAGE_PMD_SIZE/PAGE_SIZE);
 		spin_unlock(ptl);
-		/* don't call gather_pte_stats() */
-		walk->skip = 1;
-	}
+	} else
+		walk->control = PTWALK_DOWN;
 	return 0;
 }
 #ifdef CONFIG_HUGETLB_PAGE
