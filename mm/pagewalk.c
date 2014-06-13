@@ -78,13 +78,13 @@ again:
 		/*
 		 * We don't take compound_lock() here but no race with splitting
 		 * thp happens because:
-		 *  - if pmd_trans_huge_lock() returns 1, the relevant thp is
-		 *    not under splitting, which means there's no concurrent
-		 *    thp split,
-		 *  - if another thread runs into split_huge_page() just after
-		 *    we entered this if-block, the thread must wait for page
-		 *    table lock to be unlocked in __split_huge_page_splitting(),
-		 *    where the main part of thp split is not executed yet.
+		 * - if pmd_trans_huge_lock() returns 1, the relevant thp is
+		 *   not under splitting, which means there's no concurrent
+		 *   thp split,
+		 * - if another thread runs into split_huge_page() just after
+		 *   we entered this if-block, the thread must wait for page
+		 *   table lock to be unlocked in __split_huge_page_splitting(),
+		 *   where the main part of thp split is not executed yet.
 		 */
 		if (walk->pmd_entry) {
 			if (pmd_trans_huge_lock(pmd, walk->vma, &ptl) == 1) {
