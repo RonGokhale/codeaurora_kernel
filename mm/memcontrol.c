@@ -2792,6 +2792,9 @@ static struct mem_cgroup *mem_cgroup_lookup(unsigned short id)
 bool mem_cgroup_within_guarantee(struct mem_cgroup *memcg,
 		struct mem_cgroup *root)
 {
+	if (mem_cgroup_disabled())
+		return false;
+
 	do {
 		if (!res_counter_low_limit_excess(&memcg->res))
 			return true;
