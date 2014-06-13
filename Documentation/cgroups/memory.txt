@@ -236,23 +236,26 @@ it by cgroup.
 2.5 Reclaim
 
 Each cgroup maintains a per cgroup LRU which has the same structure as
-global VM. When a cgroup goes over its limit, we first try
-to reclaim memory from the cgroup so as to make space for the new
-pages that the cgroup has touched. If the reclaim is unsuccessful,
-an OOM routine is invoked to select and kill the bulkiest task in the
-cgroup. (See 10. OOM Control below.)
+global VM. Cgroups can get reclaimed basically under two conditions
+ - under global memory pressure when all cgroups are reclaimed
+   proportionally wrt. their LRU size in a round robin fashion
+ - when a cgroup or its hierarchical parent (see 6. Hierarchical support)
+   hits hard limit. If the reclaim is unsuccessful, an OOM routine is invoked
+   to select and kill the bulkiest task in the cgroup. (See 10. OOM Control
+   below.)
 
-The reclaim algorithm has not been modified for cgroups, except that
-pages that are selected for reclaiming come from the per-cgroup LRU
-list.
+Global and hard-limit reclaims share the same code the only difference
+is the objective of the reclaim. The global reclaim aims at balancing
+zones' watermarks while the limit reclaim frees some memory to allow new
+charges.
 
-NOTE: Reclaim does not work for the root cgroup, since we cannot set any
-limits on the root cgroup.
+NOTE: Hard limit reclaim does not work for the root cgroup, since we cannot set
+any limits on the root cgroup.
 
 Note2: When panic_on_oom is set to "2", the whole system will panic.
 
-When oom event notifier is registered, event will be delivered.
-(See oom_control section)
+When oom event notifier is registered, event will be delivered to the root
+of the memory pressure which cannot be handled (See oom_control section)
 
 2.6 Locking
 
