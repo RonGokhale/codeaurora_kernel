@@ -17,7 +17,6 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr,
 	struct mm_struct *mm = walk->mm;
 	pte_t *pte;
 	pte_t *orig_pte;
-	spinlock_t *ptl;
 	int err = 0;
 
 	walk->pmd = pmd;
