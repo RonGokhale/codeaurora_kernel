@@ -6659,6 +6659,7 @@ static int mem_cgroup_count_precharge_pte(pte_t *pte,
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int mem_cgroup_count_precharge_pmd(pmd_t *pmd,
 					unsigned long addr, unsigned long end,
 					struct mm_walk *walk)
@@ -6669,6 +6670,7 @@ static int mem_cgroup_count_precharge_pmd(pmd_t *pmd,
 		mc.precharge += HPAGE_PMD_NR;
 	return 0;
 }
+#endif
 
 static unsigned long mem_cgroup_count_precharge(struct mm_struct *mm)
 {
@@ -6676,7 +6678,9 @@ static unsigned long mem_cgroup_count_precharge(struct mm_struct *mm)
 	struct vm_area_struct *vma;
 
 	struct mm_walk mem_cgroup_count_precharge_walk = {
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		.pmd_entry = mem_cgroup_count_precharge_pmd,
+#endif
 		.pte_entry = mem_cgroup_count_precharge_pte,
 		.mm = mm,
 	};
@@ -6878,6 +6882,7 @@ put:		/* get_mctgt_type() gets the page */
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int mem_cgroup_move_charge_pmd(pmd_t *pmd,
 				unsigned long addr, unsigned long end,
 				struct mm_walk *walk)
@@ -6906,12 +6911,15 @@ static int mem_cgroup_move_charge_pmd(pmd_t *pmd,
 	}
 	return 0;
 }
+#endif
 
 static void mem_cgroup_move_charge(struct mm_struct *mm)
 {
 	struct vm_area_struct *vma;
 	struct mm_walk mem_cgroup_move_charge_walk = {
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		.pmd_entry = mem_cgroup_move_charge_pmd,
+#endif
 		.pte_entry = mem_cgroup_move_charge_pte,
 		.mm = mm,
 	};

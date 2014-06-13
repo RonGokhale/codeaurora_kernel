@@ -138,6 +138,7 @@ static int mincore_pte(pte_t *pte, unsigned long addr, unsigned long end,
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int mincore_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -145,6 +146,7 @@ static int mincore_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 	walk->private += (end - addr) >> PAGE_SHIFT;
 	return 0;
 }
+#endif
 
 /*
  * Do a chunk of "sys_mincore()". We've already checked
@@ -157,7 +159,9 @@ static long do_mincore(unsigned long addr, unsigned long pages,
 	struct vm_area_struct *vma;
 	int err;
 	struct mm_walk mincore_walk = {
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		.pmd_entry = mincore_pmd,
+#endif
 		.pte_entry = mincore_pte,
 		.pte_hole = mincore_hole,
 		.hugetlb_entry = mincore_hugetlb,

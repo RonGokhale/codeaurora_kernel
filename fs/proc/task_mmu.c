@@ -498,6 +498,7 @@ static int smaps_pte(pte_t *pte, unsigned long addr, unsigned long end,
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int smaps_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 			struct mm_walk *walk)
 {
@@ -506,6 +507,7 @@ static int smaps_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 	mss->anonymous_thp += HPAGE_PMD_SIZE;
 	return 0;
 }
+#endif
 
 static void show_smap_vma_flags(struct seq_file *m, struct vm_area_struct *vma)
 {
@@ -568,7 +570,9 @@ static int show_smap(struct seq_file *m, void *v, int is_pid)
 	struct vm_area_struct *vma = v;
 	struct mem_size_stats mss;
 	struct mm_walk smaps_walk = {
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		.pmd_entry = smaps_pmd,
+#endif
 		.pte_entry = smaps_pte,
 		.mm = vma->vm_mm,
 		.vma = vma,
@@ -774,6 +778,7 @@ static int clear_refs_pte(pte_t *pte, unsigned long addr,
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int clear_refs_pmd(pmd_t *pmd, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
 {
@@ -800,6 +805,7 @@ out:
 	walk->control = PTWALK_DOWN;
 	return 0;
 }
+#endif
 
 static int clear_refs_test_walk(unsigned long start, unsigned long end,
 				struct mm_walk *walk)
@@ -865,7 +871,9 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 		};
 		struct mm_walk clear_refs_walk = {
 			.pte_entry = clear_refs_pte,
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 			.pmd_entry = clear_refs_pmd,
+#endif
 			.test_walk = clear_refs_test_walk,
 			.mm = mm,
 			.private = &cp,
@@ -1030,6 +1038,7 @@ static int pagemap_pte(pte_t *pte, unsigned long addr, unsigned long end,
 	return add_to_pagemap(addr, &pme, pm);
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int pagemap_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 			     struct mm_walk *walk)
 {
@@ -1055,6 +1064,7 @@ static int pagemap_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 	}
 	return err;
 }
+#endif
 
 #ifdef CONFIG_HUGETLB_PAGE
 static void huge_pte_to_pagemap_entry(pagemap_entry_t *pme, struct pagemapread *pm,
@@ -1160,7 +1170,9 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		goto out_free;
 
 	pagemap_walk.pte_entry = pagemap_pte;
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	pagemap_walk.pmd_entry = pagemap_pmd;
+#endif
 	pagemap_walk.pte_hole = pagemap_pte_hole;
 #ifdef CONFIG_HUGETLB_PAGE
 	pagemap_walk.hugetlb_entry = pagemap_hugetlb;
@@ -1316,6 +1328,7 @@ static int gather_pte_stats(pte_t *pte, unsigned long addr,
 	return 0;
 }
 
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static int gather_pmd_stats(pmd_t *pmd, unsigned long addr,
 		unsigned long end, struct mm_walk *walk)
 {
@@ -1330,6 +1343,8 @@ static int gather_pmd_stats(pmd_t *pmd, unsigned long addr,
 			     HPAGE_PMD_SIZE/PAGE_SIZE);
 	return 0;
 }
+#endif
+
 #ifdef CONFIG_HUGETLB_PAGE
 static int gather_hugetlb_stats(pte_t *pte, unsigned long addr,
 				unsigned long end, struct mm_walk *walk)
@@ -1381,7 +1396,9 @@ static int show_numa_map(struct seq_file *m, void *v, int is_pid)
 	memset(md, 0, sizeof(*md));
 
 	walk.hugetlb_entry = gather_hugetlb_stats;
+#ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	walk.pmd_entry = gather_pmd_stats;
+#endif
 	walk.pte_entry = gather_pte_stats;
 	walk.private = md;
 	walk.mm = mm;
