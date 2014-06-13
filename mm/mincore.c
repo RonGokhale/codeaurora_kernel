@@ -151,32 +151,34 @@ static int mincore_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
  * all the arguments, we hold the mmap semaphore: we should
  * just return the amount of info we're asked for.
  */
-static long do_mincore(unsigned long addr, unsigned long pages, unsigned char *vec)
+static long do_mincore(unsigned long addr, unsigned long pages,
+		       unsigned char *vec)
 {
 	struct vm_area_struct *vma;
-	unsigned long end;
 	int err;
-
-	vma = find_vma(current->mm, addr);
-	if (!vma || addr < vma->vm_start)
-		return -ENOMEM;
-
-	end = min(vma->vm_end, addr + (pages << PAGE_SHIFT));
-
 	struct mm_walk mincore_walk = {
 		.pmd_entry = mincore_pmd,
 		.pte_entry = mincore_pte,
 		.pte_hole = mincore_hole,
 		.hugetlb_entry = mincore_hugetlb,
-		.mm = vma->vm_mm,
-		.vma = vma,
 		.private = vec,
 	};
+
+	vma = find_vma(current->mm, addr);
+	if (!vma || addr < vma->vm_start)
+		return -ENOMEM;
+	mincore_walk.vma = vma;
+	mincore_walk.mm = vma->vm_mm;
+
 	err = walk_page_vma(vma, &mincore_walk);
-	if (err < 0)
+	if (err < 0) {
 		return err;
-	else
+	} else {
+		unsigned long end;
+
+		end = min(vma->vm_end, addr + (pages << PAGE_SHIFT));
 		return (end - addr) >> PAGE_SHIFT;
+	}
 }
 
 /*
