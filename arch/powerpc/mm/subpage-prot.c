@@ -131,11 +131,10 @@ static void subpage_prot_clear(unsigned long addr, unsigned long len)
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-static int subpage_walk_pmd_entry(pmd_t *pmd, unsigned long addr,
+static int subpage_walk_pte(pte_t *pte, unsigned long addr,
 				  unsigned long end, struct mm_walk *walk)
 {
-	struct vm_area_struct *vma = walk->vma;
-	split_huge_page_pmd(vma, addr, pmd);
+	walk->control = PTWALK_BREAK;
 	return 0;
 }
 
@@ -143,9 +142,14 @@ static void subpage_mark_vma_nohuge(struct mm_struct *mm, unsigned long addr,
 				    unsigned long len)
 {
 	struct vm_area_struct *vma;
+	/*
+	 * What this walking expects is to split all thps under this mm.
+	 * Page table walker internally splits thps just before we try to
+	 * call .pte_entry() on them, so let's utilize it.
+	 */
 	struct mm_walk subpage_proto_walk = {
 		.mm = mm,
-		.pmd_entry = subpage_walk_pmd_entry,
+		.pte_entry = subpage_walk_pte,
 	};
 
 	/*
