@@ -6835,6 +6835,7 @@ static int mem_cgroup_move_charge_pte(pte_t *pte,
 retry:
 	if (!mc.precharge) {
 		pte_t *orig_pte = pte - ((addr & (PMD_SIZE - 1)) >> PAGE_SHIFT);
+
 		pte_unmap_unlock(orig_pte, walk->ptl);
 		cond_resched();
 		/*
