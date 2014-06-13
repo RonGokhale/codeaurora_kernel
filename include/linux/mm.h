@@ -1112,6 +1112,8 @@ void unmap_vmas(struct mmu_gather *tlb, struct vm_area_struct *start_vma,
  *             walk_page_test() for how the skip control works.
  * @mm:        mm_struct representing the target process of page table walk
  * @vma:       vma currently walked
+ * @pmd:       current pmd entry
+ * @ptl:       page table lock associated with current entry
  * @control:   walk control flag
  * @private:   private data for callbacks' use
  *
@@ -1130,6 +1132,8 @@ struct mm_walk {
 			struct mm_walk *walk);
 	struct mm_struct *mm;
 	struct vm_area_struct *vma;
+	pmd_t *pmd;
+	spinlock_t *ptl;
 	int control;
 	void *private;
 };

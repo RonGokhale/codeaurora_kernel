@@ -20,7 +20,8 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr,
 	spinlock_t *ptl;
 	int err = 0;
 
-	orig_pte = pte = pte_offset_map_lock(mm, pmd, addr, &ptl);
+	walk->pmd = pmd;
+	orig_pte = pte = pte_offset_map_lock(mm, pmd, addr, &walk->ptl);
 	do {
 		if (pte_none(*pte)) {
 			if (walk->pte_hole)
@@ -49,7 +50,7 @@ static int walk_pte_range(pmd_t *pmd, unsigned long addr,
 		}
 	} while (pte++, addr += PAGE_SIZE, addr < end);
 out_unlock:
-	pte_unmap_unlock(orig_pte, ptl);
+	pte_unmap_unlock(orig_pte, walk->ptl);
 	cond_resched();
 	return addr == end ? 0 : err;
 }
