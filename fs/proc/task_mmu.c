@@ -502,14 +502,8 @@ static int smaps_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 			struct mm_walk *walk)
 {
 	struct mem_size_stats *mss = walk->private;
-	spinlock_t *ptl;
-
-	if (pmd_trans_huge_lock(pmd, walk->vma, &ptl) == 1) {
-		smaps_pte((pte_t *)pmd, addr, addr + HPAGE_PMD_SIZE, walk);
-		spin_unlock(ptl);
-		mss->anonymous_thp += HPAGE_PMD_SIZE;
-	} else
-		walk->control = PTWALK_DOWN;
+	smaps_pte((pte_t *)pmd, addr, addr + HPAGE_PMD_SIZE, walk);
+	mss->anonymous_thp += HPAGE_PMD_SIZE;
 	return 0;
 }
 
@@ -1043,31 +1037,22 @@ static int pagemap_pmd(pmd_t *pmd, unsigned long addr, unsigned long end,
 	struct vm_area_struct *vma = walk->vma;
 	struct pagemapread *pm = walk->private;
 	pagemap_entry_t pme = make_pme(PM_NOT_PRESENT(pm->v2));
-	spinlock_t *ptl;
+	int pmd_flags2;
 
-	if (!vma)
-		return err;
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
-		int pmd_flags2;
+	if ((vma->vm_flags & VM_SOFTDIRTY) || pmd_soft_dirty(*pmd))
+		pmd_flags2 = __PM_SOFT_DIRTY;
+	else
+		pmd_flags2 = 0;
 
-		if ((vma->vm_flags & VM_SOFTDIRTY) || pmd_soft_dirty(*pmd))
-			pmd_flags2 = __PM_SOFT_DIRTY;
-		else
-			pmd_flags2 = 0;
+	for (; addr != end; addr += PAGE_SIZE) {
+		unsigned long offset;
 
-		for (; addr != end; addr += PAGE_SIZE) {
-			unsigned long offset;
-
-			offset = (addr & ~PAGEMAP_WALK_MASK) >>
-					PAGE_SHIFT;
-			thp_pmd_to_pagemap_entry(&pme, pm, *pmd, offset, pmd_flags2);
-			err = add_to_pagemap(addr, &pme, pm);
-			if (err)
-				break;
-		}
-		spin_unlock(ptl);
-	} else
-		walk->control = PTWALK_DOWN;
+		offset = (addr & ~PAGEMAP_WALK_MASK) >> PAGE_SHIFT;
+		thp_pmd_to_pagemap_entry(&pme, pm, *pmd, offset, pmd_flags2);
+		err = add_to_pagemap(addr, &pme, pm);
+		if (err)
+			break;
+	}
 	return err;
 }
 
@@ -1336,19 +1321,13 @@ static int gather_pmd_stats(pmd_t *pmd, unsigned long addr,
 {
 	struct numa_maps *md = walk->private;
 	struct vm_area_struct *vma = walk->vma;
-	spinlock_t *ptl;
+	pte_t huge_pte = *(pte_t *)pmd;
+	struct page *page;
 
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
-		pte_t huge_pte = *(pte_t *)pmd;
-		struct page *page;
-
-		page = can_gather_numa_stats(huge_pte, vma, addr);
-		if (page)
-			gather_stats(page, md, pte_dirty(huge_pte),
-				     HPAGE_PMD_SIZE/PAGE_SIZE);
-		spin_unlock(ptl);
-	} else
-		walk->control = PTWALK_DOWN;
+	page = can_gather_numa_stats(huge_pte, vma, addr);
+	if (page)
+		gather_stats(page, md, pte_dirty(huge_pte),
+			     HPAGE_PMD_SIZE/PAGE_SIZE);
 	return 0;
 }
 #ifdef CONFIG_HUGETLB_PAGE

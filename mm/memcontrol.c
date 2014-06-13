@@ -6664,14 +6664,9 @@ static int mem_cgroup_count_precharge_pmd(pmd_t *pmd,
 					struct mm_walk *walk)
 {
 	struct vm_area_struct *vma = walk->vma;
-	spinlock_t *ptl;
 
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
-		if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
-			mc.precharge += HPAGE_PMD_NR;
-		spin_unlock(ptl);
-	} else
-		skip->control = PTWALK_DOWN;
+	if (get_mctgt_type_thp(vma, addr, *pmd, NULL) == MC_TARGET_PAGE)
+		mc.precharge += HPAGE_PMD_NR;
 	return 0;
 }
 
@@ -6893,38 +6888,22 @@ static int mem_cgroup_move_charge_pmd(pmd_t *pmd,
 	struct page *page;
 	struct page_cgroup *pc;
 
-	/*
-	 * We don't take compound_lock() here but no race with splitting thp
-	 * happens because:
-	 *  - if pmd_trans_huge_lock() returns 1, the relevant thp is not
-	 *    under splitting, which means there's no concurrent thp split,
-	 *  - if another thread runs into split_huge_page() just after we
-	 *    entered this if-block, the thread must wait for page table lock
-	 *    to be unlocked in __split_huge_page_splitting(), where the main
-	 *    part of thp split is not executed yet.
-	 */
-	if (pmd_trans_huge_lock(pmd, vma, &ptl) == 1) {
-		if (mc.precharge < HPAGE_PMD_NR) {
-			spin_unlock(ptl);
-			return 0;
-		}
-		target_type = get_mctgt_type_thp(vma, addr, *pmd, &target);
-		if (target_type == MC_TARGET_PAGE) {
-			page = target.page;
-			if (!isolate_lru_page(page)) {
-				pc = lookup_page_cgroup(page);
-				if (!mem_cgroup_move_account(page, HPAGE_PMD_NR,
-							pc, mc.from, mc.to)) {
-					mc.precharge -= HPAGE_PMD_NR;
-					mc.moved_charge += HPAGE_PMD_NR;
-				}
-				putback_lru_page(page);
+	if (mc.precharge < HPAGE_PMD_NR)
+		return 0;
+	target_type = get_mctgt_type_thp(vma, addr, *pmd, &target);
+	if (target_type == MC_TARGET_PAGE) {
+		page = target.page;
+		if (!isolate_lru_page(page)) {
+			pc = lookup_page_cgroup(page);
+			if (!mem_cgroup_move_account(page, HPAGE_PMD_NR,
+						     pc, mc.from, mc.to)) {
+				mc.precharge -= HPAGE_PMD_NR;
+				mc.moved_charge += HPAGE_PMD_NR;
 			}
-			put_page(page);
+			putback_lru_page(page);
 		}
-		spin_unlock(ptl);
-	} else
-		walk->control = PTWALK_DOWN;
+		put_page(page);
+	}
 	return 0;
 }
 

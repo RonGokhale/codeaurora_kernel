@@ -60,6 +60,7 @@ static int walk_pmd_range(pud_t *pud, unsigned long addr,
 	pmd_t *pmd;
 	unsigned long next;
 	int err = 0;
+	spinlock_t *ptl;
 
 	pmd = pmd_offset(pud, addr);
 	do {
@@ -74,8 +75,22 @@ again:
 			continue;
 		}
 
+		/*
+		 * We don't take compound_lock() here but no race with splitting
+		 * thp happens because:
+		 *  - if pmd_trans_huge_lock() returns 1, the relevant thp is
+		 *    not under splitting, which means there's no concurrent
+		 *    thp split,
+		 *  - if another thread runs into split_huge_page() just after
+		 *    we entered this if-block, the thread must wait for page
+		 *    table lock to be unlocked in __split_huge_page_splitting(),
+		 *    where the main part of thp split is not executed yet.
+		 */
 		if (walk->pmd_entry) {
-			err = walk->pmd_entry(pmd, addr, next, walk);
+			if (pmd_trans_huge_lock(pmd, walk->vma, &ptl) == 1) {
+				err = walk->pmd_entry(pmd, addr, next, walk);
+				spin_unlock(ptl);
+			}
 			if (err)
 				break;
 			switch (get_reset_walk_control(walk)) {
@@ -285,9 +300,11 @@ static int __walk_page_range(unsigned long start, unsigned long end,
  * outside a vma. If you want to access to some caller-specific data from
  * callbacks, @walk->private should be helpful.
  *
- * The callers should hold @walk->mm->mmap_sem. Note that the lower level
- * iterators can take page table lock in lowest level iteration and/or
- * in split_huge_page_pmd().
+ * Locking:
+ *   Callers of walk_page_range() and walk_page_vma() should hold
+ *   @walk->mm->mmap_sem, because these function traverse vma list and/or
+ *   access to vma's data. And page table lock is held during running
+ *   pmd_entry() and pte_entry().
  */
 int walk_page_range(unsigned long start, unsigned long end,
 		    struct mm_walk *walk)
