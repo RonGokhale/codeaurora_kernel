@@ -803,7 +803,7 @@ static int clear_refs_pmd(pmd_t *pmd, unsigned long addr,
 out:
 	spin_unlock(ptl);
 	/* handled as pmd, no need to call clear_refs_pte() */
-	walk->skip = 1;
+	walk->control = PTWALK_DOWN;
 	return 0;
 }
 
