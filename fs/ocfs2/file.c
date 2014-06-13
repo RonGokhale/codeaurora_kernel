@@ -2104,13 +2104,16 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 					 size_t count,
 					 int appending,
 					 int *direct_io,
-					 int *has_refcount)
+					 int *has_refcount,
+					 int *meta_level_out)
 {
 	int ret = 0, meta_level = 0;
 	struct dentry *dentry = file->f_path.dentry;
 	struct inode *inode = dentry->d_inode;
 	loff_t saved_pos = 0, end;
 
+	if (meta_level_out)
+		*meta_level_out = -1;
 	/*
 	 * We start with a read level meta lock and only jump to an ex
 	 * if we need to make modifications here.
@@ -2226,6 +2229,15 @@ out_unlock:
 					    saved_pos, appending, count,
 					    direct_io, has_refcount);
 
+	/*
+	 * If direct IO would be done later, we have to keep inode_lock locked.
+	 * Buffer'd IO is fine since the COW work will be done again in
+	 * ocfs2_write_begin.
+	 */
+	if (direct_io && *direct_io && meta_level_out && !ret) {
+		*meta_level_out = meta_level;
+		meta_level = -1;
+	}
 	if (meta_level >= 0)
 		ocfs2_inode_unlock(inode, meta_level);
 
@@ -2251,6 +2263,7 @@ static ssize_t ocfs2_file_aio_write(struct kiocb *iocb,
 	int full_coherency = !(osb->s_mount_opt &
 			       OCFS2_MOUNT_COHERENCY_BUFFERED);
 	int unaligned_dio = 0;
+	int meta_level = -1;
 
 	trace_ocfs2_file_aio_write(inode, file, file->f_path.dentry,
 		(unsigned long long)OCFS2_I(inode)->ip_blkno,
@@ -2310,7 +2323,8 @@ relock:
 	can_do_direct = direct_io;
 	ret = ocfs2_prepare_inode_for_write(file, ppos,
 					    iocb->ki_nbytes, appending,
-					    &can_do_direct, &has_refcount);
+					    &can_do_direct, &has_refcount,
+					    &meta_level);
 	if (ret < 0) {
 		mlog_errno(ret);
 		goto out;
@@ -2434,6 +2448,8 @@ out_sems:
 	if (have_alloc_sem)
 		ocfs2_iocb_clear_sem_locked(iocb);
 
+	if (meta_level >= 0)
+		ocfs2_inode_unlock(inode, meta_level);
 	mutex_unlock(&inode->i_mutex);
 
 	if (written)
@@ -2448,7 +2464,8 @@ static int ocfs2_splice_to_file(struct pipe_inode_info *pipe,
 	int ret;
 
 	ret = ocfs2_prepare_inode_for_write(out, &sd->pos,
-					    sd->total_len, 0, NULL, NULL);
+					    sd->total_len, 0, NULL, NULL,
+					    NULL);
 	if (ret < 0) {
 		mlog_errno(ret);
 		return ret;
