@@ -26,6 +26,7 @@
 #include <linux/platform_device.h>
 #include <linux/smp.h>
 #include <linux/resource.h>
+#include <asm/barrier.h>
 #include <asm/cacheflush.h>
 #include <asm/cp15.h>
 #include <asm/smp_plat.h>
@@ -200,7 +201,9 @@ static noinline int do_armada_370_xp_cpu_suspend(unsigned long deepidle)
 	/* If we are here, wfi failed. As processors run out of
 	 * coherency for some time, tlbs might be stale, so flush them
 	 */
+#ifdef CONFIG_MMU
 	local_flush_tlb_all();
+#endif
 
 	ll_enable_coherency();
 
@@ -210,8 +213,9 @@ static noinline int do_armada_370_xp_cpu_suspend(unsigned long deepidle)
 	"tst	%0, #(1 << 2) \n\t"
 	"orreq	%0, %0, #(1 << 2) \n\t"
 	"mcreq	p15, 0, %0, c1, c0, 0 \n\t"
-	"isb	"
 	: : "r" (0));
+
+	isb();
 
 	pr_warn("Failed to suspend the system\n");
 
@@ -220,6 +224,9 @@ static noinline int do_armada_370_xp_cpu_suspend(unsigned long deepidle)
 
 static int armada_370_xp_cpu_suspend(unsigned long deepidle)
 {
+	if (!IS_ENABLED(CONFIG_CPU_IDLE))
+		return -ENODEV;
+
 	return cpu_suspend(deepidle, do_armada_370_xp_cpu_suspend);
 }
 

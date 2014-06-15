@@ -1,6 +1,11 @@
-if ARCH_OMAP
+menuconfig ARCH_OMAP_ENABLE
+	bool "TI OMAP platforms" if ARCH_MULTI_V6 || ARCH_MULTI_V7
+	default ARCH_OMAP1
 
-menu "TI OMAP Common Features"
+if ARCH_OMAP_ENABLE
+
+source "arch/arm/mach-omap1/Kconfig"
+source "arch/arm/mach-omap2/Kconfig"
 
 config ARCH_OMAP_OTG
 	bool
@@ -152,7 +157,5 @@ config OMAP_PM_NOOP
 	bool "No-op/debug PM layer"
 
 endchoice
-
-endmenu
 
 endif

@@ -1,8 +1,6 @@
 if ARCH_OMAP1
 
-menu "TI OMAP1 specific features"
-
-comment "OMAP Core Type"
+comment "OMAP1 Core Type"
 	depends on ARCH_OMAP1
 
 config ARCH_OMAP730
@@ -163,7 +161,5 @@ config MACH_OMAP_GENERIC
           no FPGA. Can be used as template for porting Linux to
           custom OMAP boards. Say Y here if you have a custom
           board.
-
-endmenu
 
 endif
