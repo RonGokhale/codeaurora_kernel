@@ -1,0 +1,87 @@
+Maxim MAX77802 multi-function device
+
+MAX77802 is a Mulitifunction device with PMIC, RTC and Charger on chip. It is
+interfaced to host controller using i2c interface. PMIC, Charger and RTC
+submodules are addressed using same i2c slave address
+
+This document describes the binding for mfd device and PMIC submodule.
+
+Binding for the built-in 32k clock generator block is defined separately
+in bindings/clk/maxim,max77802.txt file.
+
+Required properties:
+- compatible : Must be "maxim,max77802";
+- reg : Specifies the i2c slave address of PMIC block.
+- interrupts : This i2c device has an IRQ line connected to the main SoC.
+- interrupt-parent : The parent interrupt controller.
+
+Optional properties:
+- max77802,pmic-buck-default-dvs-idx: We'll always write this DVS index in the
+  PMIC for BUCKs with DVS (Bucks 1-4, 6).
+  NOTE: at the moment these bindings don't include enough details for actual
+  GPIO-DVS--this just lets you choose which single slot to use.
+
+- max77802,pmic-buck-dvs-gpios: The DVS GPIOs. We'll try to set these GPIOs
+  to match pmic-buck-default-dvs-idx at probe time if they are defined. If
+  some or all of these GPIOs are not defined it's assumed that the board has
+  any missing GPIOs hardwired to match pmic-buck-default-dvs-idx.
+
+- max77802,pmic-buck-selb-gpios: GPIOs to enable DVS-GPIO for BUCKs.
+  Should be five values: 1, 2, 3, 4, 6.  It is strongly suggested to include
+  these GPIOs if there's any chance that changing DVS GPIOs one line at a
+  time might glitch your DVS values.
+
+Optional node:
+- regulators : The regulators of max77802 have to be instantiated
+  under subnode named "regulators" using the following format.
+
+	regulator_name {
+		standard regulator constraints....
+	};
+	refer Documentation/devicetree/bindings/regulator/regulator.txt
+
+  The regulator node name should be initialized with a string
+to get matched with their hardware counterparts as follow:
+
+	-LDOn 	:	for LDOs, where n can lie in range 1 to 35.
+			example: LDO1, LDO2, LDO35.
+	-BUCKn 	:	for BUCKs, where n can lie in range 1 to 10.
+			example: BUCK1, BUCK5, BUCK10.
+Example:
+
+	max77802@09 {
+		compatible = "maxim,max77802";
+		interrupt-parent = <&wakeup_eint>;
+		interrupts = <26 0>;
+		reg = <0x09>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		max77802,pmic-buck-default-dvs-idx = <1>;
+		max77802,pmic-buck-dvs-gpios = <&gpy7 6 0>,
+					       <&gpj4 2 0>,
+					       <&gpj4 3 0>;
+		max77802,pmic-buck-selb-gpios = <&gph0 2 0>,
+						<&gph0 3 0>,
+						<&gph0 4 0>,
+						<&gph0 5 0>,
+						<&gph0 6 0>;
+
+		regulators {
+			ldo11_reg: LDO11 {
+				regulator-compatible = "LDO11";
+				regulator-name = "vdd_ldo11";
+				regulator-min-microvolt = <1900000>;
+				regulator-max-microvolt = <1900000>;
+				regulator-always-on;
+			};
+
+			buck1_reg {
+				regulator-compatible = "BUCK1";
+				regulator-name = "vdd_mif";
+				regulator-min-microvolt = <950000>;
+				regulator-max-microvolt = <1300000>;
+				regulator-always-on;
+				regulator-boot-on;
+			};
+	};
