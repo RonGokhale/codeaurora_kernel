@@ -2295,6 +2295,8 @@ sub process {
 		if ($sline =~ /^\+\s+\S/ &&			#Not at char 1
 			# actual declarations
 		    ($prevline =~ /^\+\s+$Declare\s*$Ident\s*[=,;:\[]/ ||
+			# function pointer declarations
+		     $prevline =~ /^\+\s+$Declare\s*\(\s*\*\s*$Ident\s*\)\s*[=,;:\[\(]/ ||
 			# foo bar; where foo is some local typedef or #define
 		     $prevline =~ /^\+\s+$Ident(?:\s+|\s*\*\s*)$Ident\s*[=,;\[]/ ||
 			# known declaration macros
@@ -2307,6 +2309,8 @@ sub process {
 		      $prevline =~ /(?:\{\s*|\\)$/) &&
 			# looks like a declaration
 		    !($sline =~ /^\+\s+$Declare\s*$Ident\s*[=,;:\[]/ ||
+			# function pointer declarations
+		      $sline =~ /^\+\s+$Declare\s*\(\s*\*\s*$Ident\s*\)\s*[=,;:\[\(]/ ||
 			# foo bar; where foo is some local typedef or #define
 		      $sline =~ /^\+\s+$Ident(?:\s+|\s*\*\s*)$Ident\s*[=,;\[]/ ||
 			# known declaration macros
@@ -2341,6 +2345,16 @@ sub process {
 
 # check we are in a valid C source file if not then ignore this hunk
 		next if ($realfile !~ /\.(h|c)$/);
+
+# check indentation of any line with a bare else
+# if the previous line is a break or return and is indented 1 tab more...
+		if ($sline =~ /^\+([\t]+)(?:}[ \t]*)?else(?:[ \t]*{)?\s*$/) {
+			my $tabs = length($1) + 1;
+			if ($prevline =~ /^\+\t{$tabs,$tabs}(?:break|return)\b/) {
+				WARN("UNNECESSARY_ELSE",
+				     "else is not generally useful after a break or return\n" . $hereprev);
+			}
+		}
 
 # discourage the addition of CONFIG_EXPERIMENTAL in #if(def).
 		if ($line =~ /^\+\s*\#\s*if.*\bCONFIG_EXPERIMENTAL\b/) {
@@ -3757,7 +3771,7 @@ sub process {
 			    $dstat !~ /^(?:$Ident|-?$Constant),$/ &&			# 10, // foo(),
 			    $dstat !~ /^(?:$Ident|-?$Constant);$/ &&			# foo();
 			    $dstat !~ /^[!~-]?(?:$Lval|$Constant)$/ &&		# 10 // foo() // !foo // ~foo // -foo // foo->bar // foo.bar->baz
-			    $dstat !~ /^'X'$/ &&					# character constants
+			    $dstat !~ /^'X'$/ && $dstat !~ /^'XX'$/ &&			# character constants
 			    $dstat !~ /$exceptions/ &&
 			    $dstat !~ /^\.$Ident\s*=/ &&				# .foo =
 			    $dstat !~ /^(?:\#\s*$Ident|\#\s*$Constant)\s*$/ &&		# stringification #foo
@@ -4006,6 +4020,23 @@ sub process {
 			if ($line =~ /\b(kfree|usb_free_urb|debugfs_remove(?:_recursive)?)$expr/) {
 				WARN('NEEDLESS_IF',
 				     "$1(NULL) is safe this check is probably not required\n" . $hereprev);
+			}
+		}
+
+# check for unnecessary "Out of Memory" messages
+		if ($line =~ /^\+.*\b$logFunctions\s*\(/ &&
+		    $prevline =~ /^[ \+]\s*if\s*\(\s*(\!\s*|NULL\s*==\s*)?($Lval)(\s*==\s*NULL\s*)?\s*\)/ &&
+		    (defined $1 || defined $3) &&
+		    $linenr > 3) {
+			my $testval = $2;
+			my $testline = $lines[$linenr - 3];
+
+			my ($s, $c) = ctx_statement_block($linenr - 3, $realcnt, 0);
+#			print("line: <$line>\nprevline: <$prevline>\ns: <$s>\nc: <$c>\n\n\n");
+
+			if ($c =~ /(?:^|\n)[ \+]\s*(?:$Type\s*)?\Q$testval\E\s*=\s*(?:\([^\)]*\)\s*)?\s*(?:devm_)?(?:[kv][czm]alloc(?:_node|_array)?\b|kstrdup|(?:dev_)?alloc_skb)/) {
+				WARN("OOM_MESSAGE",
+				     "Possible unnecessary 'out of memory' message\n" . $hereprev);
 			}
 		}
 
