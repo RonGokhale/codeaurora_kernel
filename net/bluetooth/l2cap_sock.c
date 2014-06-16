@@ -787,11 +787,6 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname,
 
 		/*change security for LE channels */
 		if (chan->scid == L2CAP_CID_ATT) {
-			if (!conn->hcon->out) {
-				err = -EINVAL;
-				break;
-			}
-
 			if (smp_conn_security(conn->hcon, sec.level))
 				break;
 			sk->sk_state = BT_CONFIG;
@@ -969,7 +964,7 @@ static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock,
 		return err;
 
 	l2cap_chan_lock(chan);
-	err = l2cap_chan_send(chan, msg, len, sk->sk_priority);
+	err = l2cap_chan_send(chan, msg, len);
 	l2cap_chan_unlock(chan);
 
 	return err;
@@ -1297,6 +1292,7 @@ static void l2cap_sock_state_change_cb(struct l2cap_chan *chan, int state,
 }
 
 static struct sk_buff *l2cap_sock_alloc_skb_cb(struct l2cap_chan *chan,
+					       unsigned long hdr_len,
 					       unsigned long len, int nb)
 {
 	struct sock *sk = chan->data;
@@ -1304,11 +1300,13 @@ static struct sk_buff *l2cap_sock_alloc_skb_cb(struct l2cap_chan *chan,
 	int err;
 
 	l2cap_chan_unlock(chan);
-	skb = bt_skb_send_alloc(sk, len, nb, &err);
+	skb = bt_skb_send_alloc(sk, hdr_len + len, nb, &err);
 	l2cap_chan_lock(chan);
 
 	if (!skb)
 		return ERR_PTR(err);
+
+	skb->priority = sk->sk_priority;
 
 	bt_cb(skb)->chan = chan;
 
@@ -1380,7 +1378,7 @@ static void l2cap_sock_suspend_cb(struct l2cap_chan *chan)
 	sk->sk_state_change(sk);
 }
 
-static struct l2cap_ops l2cap_chan_ops = {
+static const struct l2cap_ops l2cap_chan_ops = {
 	.name		= "L2CAP Socket Interface",
 	.new_connection	= l2cap_sock_new_connection_cb,
 	.recv		= l2cap_sock_recv_cb,
