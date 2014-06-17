@@ -724,7 +724,7 @@ struct ocfs2_dinode {
 	__le64 i_xattr_loc;
 /*80*/	struct ocfs2_block_check i_check;	/* Error checking */
 /*88*/	__le64 i_dx_root;		/* Pointer to dir index root block */
-/*90*/	__le64 i_refcount_loc;
+/*90*/	__le64 i_refcount_loc;		/* Root block of the refcount tree */
 	__le64 i_suballoc_loc;		/* Suballocator block group this
 					   inode belongs to.  Only valid
 					   if allocated from a
