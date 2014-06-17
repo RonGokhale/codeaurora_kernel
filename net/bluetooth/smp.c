@@ -35,11 +35,13 @@
 
 #define AUTH_REQ_MASK   0x07
 
-#define SMP_FLAG_TK_VALID	1
-#define SMP_FLAG_CFM_PENDING	2
-#define SMP_FLAG_MITM_AUTH	3
-#define SMP_FLAG_COMPLETE	4
-#define SMP_FLAG_INITIATOR	5
+enum {
+	SMP_FLAG_TK_VALID,
+	SMP_FLAG_CFM_PENDING,
+	SMP_FLAG_MITM_AUTH,
+	SMP_FLAG_COMPLETE,
+	SMP_FLAG_INITIATOR,
+};
 
 struct smp_chan {
 	struct l2cap_conn *conn;
@@ -62,18 +64,12 @@ struct smp_chan {
 	unsigned long	flags;
 };
 
-static inline void swap128(const u8 src[16], u8 dst[16])
+static inline void swap_buf(const u8 *src, u8 *dst, size_t len)
 {
-	int i;
-	for (i = 0; i < 16; i++)
-		dst[15 - i] = src[i];
-}
+	size_t i;
 
-static inline void swap56(const u8 src[7], u8 dst[7])
-{
-	int i;
-	for (i = 0; i < 7; i++)
-		dst[6 - i] = src[i];
+	for (i = 0; i < len; i++)
+		dst[len - 1 - i] = src[i];
 }
 
 static int smp_e(struct crypto_blkcipher *tfm, const u8 *k, u8 *r)
@@ -92,7 +88,7 @@ static int smp_e(struct crypto_blkcipher *tfm, const u8 *k, u8 *r)
 	desc.flags = 0;
 
 	/* The most significant octet of key corresponds to k[0] */
-	swap128(k, tmp);
+	swap_buf(k, tmp, 16);
 
 	err = crypto_blkcipher_setkey(tfm, tmp, 16);
 	if (err) {
@@ -101,7 +97,7 @@ static int smp_e(struct crypto_blkcipher *tfm, const u8 *k, u8 *r)
 	}
 
 	/* Most significant octet of plaintextData corresponds to data[0] */
-	swap128(r, data);
+	swap_buf(r, data, 16);
 
 	sg_init_one(&sg, data, 16);
 
@@ -110,7 +106,7 @@ static int smp_e(struct crypto_blkcipher *tfm, const u8 *k, u8 *r)
 		BT_ERR("Encrypt data error %d", err);
 
 	/* Most significant octet of encryptedData corresponds to data[0] */
-	swap128(data, r);
+	swap_buf(data, r, 16);
 
 	return err;
 }
@@ -544,7 +540,7 @@ static u8 smp_random(struct smp_chan *smp)
 		hci_le_start_enc(hcon, ediv, rand, stk);
 		hcon->enc_key_size = smp->enc_key_size;
 	} else {
-		u8 stk[16];
+		u8 stk[16], auth;
 		__le64 rand = 0;
 		__le16 ediv = 0;
 
@@ -556,9 +552,17 @@ static u8 smp_random(struct smp_chan *smp)
 		memset(stk + smp->enc_key_size, 0,
 		       SMP_MAX_ENC_KEY_SIZE - smp->enc_key_size);
 
+		if (hcon->pending_sec_level == BT_SECURITY_HIGH)
+			auth = 1;
+		else
+			auth = 0;
+
+		/* Even though there's no _SLAVE suffix this is the
+		 * slave STK we're adding for later lookup (the master
+		 * STK never needs to be stored).
+		 */
 		hci_add_ltk(hcon->hdev, &hcon->dst, hcon->dst_type,
-			    HCI_SMP_STK_SLAVE, 0, stk, smp->enc_key_size,
-			    ediv, rand);
+			    SMP_STK, auth, stk, smp->enc_key_size, ediv, rand);
 	}
 
 	return 0;
@@ -851,6 +855,8 @@ static u8 smp_cmd_security_req(struct l2cap_conn *conn, struct sk_buff *skb)
 		return 0;
 
 	smp = smp_chan_create(conn);
+	if (!smp)
+		return SMP_UNSPECIFIED;
 
 	skb_pull(skb, sizeof(*rp));
 
@@ -984,7 +990,7 @@ static int smp_cmd_master_ident(struct l2cap_conn *conn, struct sk_buff *skb)
 
 	hci_dev_lock(hdev);
 	authenticated = (hcon->sec_level == BT_SECURITY_HIGH);
-	ltk = hci_add_ltk(hdev, &hcon->dst, hcon->dst_type, HCI_SMP_LTK,
+	ltk = hci_add_ltk(hdev, &hcon->dst, hcon->dst_type, SMP_LTK,
 			  authenticated, smp->tk, smp->enc_key_size,
 			  rp->ediv, rp->rand);
 	smp->ltk = ltk;
@@ -1300,7 +1306,7 @@ int smp_distribute_keys(struct l2cap_conn *conn)
 
 		authenticated = hcon->sec_level == BT_SECURITY_HIGH;
 		ltk = hci_add_ltk(hdev, &hcon->dst, hcon->dst_type,
-				  HCI_SMP_LTK_SLAVE, authenticated, enc.ltk,
+				  SMP_LTK_SLAVE, authenticated, enc.ltk,
 				  smp->enc_key_size, ediv, rand);
 		smp->slave_ltk = ltk;
 
