@@ -234,6 +234,7 @@ int mdp4_dsi_video_pipe_commit(int cndx, int wait)
 				else
 					pipe->mfd->cache_reg_en = true;
 				mdp4_overlay_vsync_commit(pipe);
+				real_pipe->is_pp_dirty = pipe->is_pp_dirty;
 			}
 		}
 	}
