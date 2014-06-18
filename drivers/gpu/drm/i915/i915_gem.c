@@ -1095,7 +1095,7 @@ i915_gem_check_wedge(struct i915_gpu_error *error,
  * Compare seqno against outstanding lazy request. Emit a request if they are
  * equal.
  */
-static int
+int
 i915_gem_check_olr(struct intel_engine_cs *ring, u32 seqno)
 {
 	int ret;
@@ -1395,6 +1395,8 @@ i915_gem_set_domain_ioctl(struct drm_device *dev, void *data,
 		goto unlock;
 	}
 
+	intel_edp_psr_exit(dev, true);
+
 	/* Try to flush the object off the GPU without holding the lock.
 	 * We will repeat the flush holding the lock in the normal manner
 	 * to catch cases where we are gazumped.
@@ -1439,6 +1441,8 @@ i915_gem_sw_finish_ioctl(struct drm_device *dev, void *data,
 	ret = i915_mutex_lock_interruptible(dev);
 	if (ret)
 		return ret;
+
+	intel_edp_psr_exit(dev, true);
 
 	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->handle));
 	if (&obj->base == NULL) {
@@ -1561,14 +1565,29 @@ int i915_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	if (ret)
 		goto unpin;
 
-	obj->fault_mappable = true;
-
+	/* Finally, remap it using the new GTT offset */
 	pfn = dev_priv->gtt.mappable_base + i915_gem_obj_ggtt_offset(obj);
 	pfn >>= PAGE_SHIFT;
-	pfn += page_offset;
 
-	/* Finally, remap it using the new GTT offset */
-	ret = vm_insert_pfn(vma, (unsigned long)vmf->virtual_address, pfn);
+	if (!obj->fault_mappable) {
+		unsigned long size = min_t(unsigned long,
+					   vma->vm_end - vma->vm_start,
+					   obj->base.size);
+		int i;
+
+		for (i = 0; i < size >> PAGE_SHIFT; i++) {
+			ret = vm_insert_pfn(vma,
+					    (unsigned long)vma->vm_start + i * PAGE_SIZE,
+					    pfn + i);
+			if (ret)
+				break;
+		}
+
+		obj->fault_mappable = true;
+	} else
+		ret = vm_insert_pfn(vma,
+				    (unsigned long)vmf->virtual_address,
+				    pfn + page_offset);
 unpin:
 	i915_gem_object_ggtt_unpin(obj);
 unlock:
@@ -1616,22 +1635,6 @@ out:
 	return ret;
 }
 
-void i915_gem_release_all_mmaps(struct drm_i915_private *dev_priv)
-{
-	struct i915_vma *vma;
-
-	/*
-	 * Only the global gtt is relevant for gtt memory mappings, so restrict
-	 * list traversal to objects bound into the global address space. Note
-	 * that the active list should be empty, but better safe than sorry.
-	 */
-	WARN_ON(!list_empty(&dev_priv->gtt.base.active_list));
-	list_for_each_entry(vma, &dev_priv->gtt.base.active_list, mm_list)
-		i915_gem_release_mmap(vma->obj);
-	list_for_each_entry(vma, &dev_priv->gtt.base.inactive_list, mm_list)
-		i915_gem_release_mmap(vma->obj);
-}
-
 /**
  * i915_gem_release_mmap - remove physical page mappings
  * @obj: obj in question
@@ -1655,6 +1658,15 @@ i915_gem_release_mmap(struct drm_i915_gem_object *obj)
 	drm_vma_node_unmap(&obj->base.vma_node,
 			   obj->base.dev->anon_inode->i_mapping);
 	obj->fault_mappable = false;
+}
+
+void
+i915_gem_release_all_mmaps(struct drm_i915_private *dev_priv)
+{
+	struct drm_i915_gem_object *obj;
+
+	list_for_each_entry(obj, &dev_priv->mm.bound_list, global_list)
+		i915_gem_release_mmap(obj);
 }
 
 uint32_t
@@ -2059,16 +2071,10 @@ i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj)
 			 * our own buffer, now let the real VM do its job and
 			 * go down in flames if truly OOM.
 			 */
-			gfp &= ~(__GFP_NORETRY | __GFP_NOWARN | __GFP_NO_KSWAPD);
-			gfp |= __GFP_IO | __GFP_WAIT;
-
 			i915_gem_shrink_all(dev_priv);
-			page = shmem_read_mapping_page_gfp(mapping, i, gfp);
+			page = shmem_read_mapping_page(mapping, i);
 			if (IS_ERR(page))
 				goto err_pages;
-
-			gfp |= __GFP_NORETRY | __GFP_NOWARN | __GFP_NO_KSWAPD;
-			gfp &= ~(__GFP_IO | __GFP_WAIT);
 		}
 #ifdef CONFIG_SWIOTLB
 		if (swiotlb_nr_tbl()) {
@@ -4230,6 +4236,8 @@ i915_gem_busy_ioctl(struct drm_device *dev, void *data,
 	if (ret)
 		return ret;
 
+	intel_edp_psr_exit(dev, true);
+
 	obj = to_intel_bo(drm_gem_object_lookup(dev, file, args->handle));
 	if (&obj->base == NULL) {
 		ret = -ENOENT;
@@ -4450,7 +4458,6 @@ void i915_gem_free_object(struct drm_gem_object *gem_obj)
 		obj->madv = I915_MADV_DONTNEED;
 	i915_gem_object_put_pages(obj);
 	i915_gem_object_free_mmap_offset(obj);
-	i915_gem_object_release_stolen(obj);
 
 	BUG_ON(obj->pages);
 
@@ -5071,12 +5078,13 @@ unsigned long i915_gem_obj_offset(struct drm_i915_gem_object *o,
 	    vm == &dev_priv->mm.aliasing_ppgtt->base)
 		vm = &dev_priv->gtt.base;
 
-	BUG_ON(list_empty(&o->vma_list));
 	list_for_each_entry(vma, &o->vma_list, vma_link) {
 		if (vma->vm == vm)
 			return vma->node.start;
 
 	}
+	WARN(1, "%s vma for this object not found.\n",
+	     i915_is_ggtt(vm) ? "global" : "ppgtt");
 	return -1;
 }
 
