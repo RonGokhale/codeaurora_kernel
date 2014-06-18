@@ -225,11 +225,11 @@ config SND_SOC_ADAU1373
 config SND_SOC_ADAU1701
 	tristate "Analog Devices ADAU1701 CODEC"
 	depends on I2C
-	select SND_SOC_SIGMADSP
+	select SND_SOC_SIGMADSP_I2C
 
 config SND_SOC_ADAU17X1
 	tristate
-	select SND_SOC_SIGMADSP
+	select SND_SOC_SIGMADSP_REGMAP
 
 config SND_SOC_ADAU1761
 	tristate
@@ -445,9 +445,11 @@ config SND_SOC_RL6231
 	default y if SND_SOC_RT5640=y
 	default y if SND_SOC_RT5645=y
 	default y if SND_SOC_RT5651=y
+	default y if SND_SOC_RT5677=y
 	default m if SND_SOC_RT5640=m
 	default m if SND_SOC_RT5645=m
 	default m if SND_SOC_RT5651=m
+	default m if SND_SOC_RT5677=m
 
 config SND_SOC_RT5631
 	tristate
@@ -475,6 +477,14 @@ config SND_SOC_SI476X
 config SND_SOC_SIGMADSP
 	tristate
 	select CRC32
+
+config SND_SOC_SIGMADSP_I2C
+	tristate
+	select SND_SOC_SIGMADSP
+
+config SND_SOC_SIGMADSP_REGMAP
+	tristate
+	select SND_SOC_SIGMADSP
 
 config SND_SOC_SIRF_AUDIO_CODEC
 	tristate "SiRF SoC internal audio codec"
