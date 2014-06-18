@@ -697,55 +697,6 @@ int rtw_get_sec_ie23a(u8 *in_ie, uint in_len, u8 *rsn_ie, u16 *rsn_len,
 }
 
 /**
- * rtw_get_wps_ie23a - Search WPS IE from a series of IEs
- * @in_ie: Address of IEs to search
- * @in_len: Length limit from in_ie
- * @wps_ie: If not NULL and WPS IE is found, WPS IE will be copied to the
- *          buf starting from wps_ie
- * @wps_ielen: If not NULL and WPS IE is found, will set to the length of
- *             the entire WPS IE
- *
- * Returns: The address of the WPS IE found, or NULL
- */
-u8 *rtw_get_wps_ie23a(u8 *in_ie, uint in_len, u8 *wps_ie, uint *wps_ielen)
-{
-	uint cnt;
-	u8 *wpsie_ptr = NULL;
-	u8 eid, wps_oui[4] = {0x0, 0x50, 0xf2, 0x04};
-
-	if (wps_ielen)
-		*wps_ielen = 0;
-
-	if (!in_ie || in_len <= 0)
-		return wpsie_ptr;
-
-	cnt = 0;
-
-	while (cnt < in_len) {
-		eid = in_ie[cnt];
-
-		if (eid == WLAN_EID_VENDOR_SPECIFIC &&
-		    !memcmp(&in_ie[cnt+2], wps_oui, 4)) {
-			wpsie_ptr = &in_ie[cnt];
-
-			if (wps_ie)
-				memcpy(wps_ie, &in_ie[cnt], in_ie[cnt + 1] + 2);
-
-			if (wps_ielen)
-				*wps_ielen = in_ie[cnt + 1] + 2;
-
-			cnt += in_ie[cnt + 1] + 2;
-
-			break;
-		} else {
-			cnt += in_ie[cnt + 1] + 2; /* goto next */
-		}
-	}
-
-	return wpsie_ptr;
-}
-
-/**
  * rtw_get_wps_attr23a - Search a specific WPS attribute from a given WPS IE
  * @wps_ie: Address of WPS IE to search
  * @wps_ielen: Length limit from wps_ie
@@ -757,11 +708,11 @@ u8 *rtw_get_wps_ie23a(u8 *in_ie, uint in_len, u8 *wps_ie, uint *wps_ielen)
  *
  * Returns: the address of the specific WPS attribute found, or NULL
  */
-u8 *rtw_get_wps_attr23a(u8 *wps_ie, uint wps_ielen, u16 target_attr_id,
-		     u8 *buf_attr, u32 *len_attr)
+const u8 *rtw_get_wps_attr23a(const u8 *wps_ie, uint wps_ielen,
+			      u16 target_attr_id, u8 *buf_attr, u32 *len_attr)
 {
-	u8 *attr_ptr = NULL;
-	u8 * target_attr_ptr = NULL;
+	const u8 *attr_ptr = NULL;
+	const u8 *target_attr_ptr = NULL;
 	u8 wps_oui[4] = {0x00, 0x50, 0xF2, 0x04};
 
 	if (len_attr)
@@ -813,10 +764,11 @@ u8 *rtw_get_wps_attr23a(u8 *wps_ie, uint wps_ielen, u16 target_attr_id,
  *
  * Returns: the address of the specific WPS attribute content found, or NULL
  */
-u8 *rtw_get_wps_attr_content23a(u8 *wps_ie, uint wps_ielen, u16 target_attr_id,
-				u8 *buf_content, uint *len_content)
+const u8 *rtw_get_wps_attr_content23a(const u8 *wps_ie, uint wps_ielen,
+				      u16 target_attr_id, u8 *buf_content,
+				      uint *len_content)
 {
-	u8 *attr_ptr;
+	const u8 *attr_ptr;
 	u32 attr_len;
 
 	if (len_content)
