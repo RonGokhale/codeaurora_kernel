@@ -2766,6 +2766,10 @@ static int set_io_capability(struct sock *sk, struct hci_dev *hdev, void *data,
 
 	BT_DBG("");
 
+	if (cp->io_capability > SMP_IO_KEYBOARD_DISPLAY)
+		return cmd_complete(sk, hdev->id, MGMT_OP_SET_IO_CAPABILITY,
+				    MGMT_STATUS_INVALID_PARAMS, NULL, 0);
+
 	hci_dev_lock(hdev);
 
 	hdev->io_capability = cp->io_capability;
@@ -2874,6 +2878,11 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 	rp.addr.type = cp->addr.type;
 
 	if (!bdaddr_type_is_valid(cp->addr.type))
+		return cmd_complete(sk, hdev->id, MGMT_OP_PAIR_DEVICE,
+				    MGMT_STATUS_INVALID_PARAMS,
+				    &rp, sizeof(rp));
+
+	if (cp->io_cap > SMP_IO_KEYBOARD_DISPLAY)
 		return cmd_complete(sk, hdev->id, MGMT_OP_PAIR_DEVICE,
 				    MGMT_STATUS_INVALID_PARAMS,
 				    &rp, sizeof(rp));
@@ -4550,9 +4559,9 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 			addr_type = ADDR_LE_DEV_RANDOM;
 
 		if (key->master)
-			type = HCI_SMP_LTK;
+			type = SMP_LTK;
 		else
-			type = HCI_SMP_LTK_SLAVE;
+			type = SMP_LTK_SLAVE;
 
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
@@ -5279,7 +5288,7 @@ void mgmt_new_ltk(struct hci_dev *hdev, struct smp_ltk *key, bool persistent)
 	ev.key.ediv = key->ediv;
 	ev.key.rand = key->rand;
 
-	if (key->type == HCI_SMP_LTK)
+	if (key->type == SMP_LTK)
 		ev.key.master = 1;
 
 	memcpy(ev.key.val, key->val, sizeof(key->val));
