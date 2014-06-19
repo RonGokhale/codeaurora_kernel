@@ -136,7 +136,7 @@ static void i915_free_hws(struct drm_device *dev)
 	I915_WRITE(HWS_PGA, 0x1ffff000);
 }
 
-void i915_kernel_lost_context(struct drm_device * dev)
+void i915_kernel_lost_context(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv;
@@ -164,7 +164,7 @@ void i915_kernel_lost_context(struct drm_device * dev)
 		master_priv->sarea_priv->perf_boxes |= I915_BOX_RING_EMPTY;
 }
 
-static int i915_dma_cleanup(struct drm_device * dev)
+static int i915_dma_cleanup(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i;
@@ -188,7 +188,7 @@ static int i915_dma_cleanup(struct drm_device * dev)
 	return 0;
 }
 
-static int i915_initialize(struct drm_device * dev, drm_i915_init_t * init)
+static int i915_initialize(struct drm_device *dev, drm_i915_init_t *init)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv = dev->primary->master->driver_priv;
@@ -233,7 +233,7 @@ static int i915_initialize(struct drm_device * dev, drm_i915_init_t * init)
 	return 0;
 }
 
-static int i915_dma_resume(struct drm_device * dev)
+static int i915_dma_resume(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_engine_cs *ring = LP_RING(dev_priv);
@@ -357,7 +357,7 @@ static int validate_cmd(int cmd)
 	return 0;
 }
 
-static int i915_emit_cmds(struct drm_device * dev, int *buffer, int dwords)
+static int i915_emit_cmds(struct drm_device *dev, int *buffer, int dwords)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int i, ret;
@@ -367,6 +367,7 @@ static int i915_emit_cmds(struct drm_device * dev, int *buffer, int dwords)
 
 	for (i = 0; i < dwords;) {
 		int sz = validate_cmd(buffer[i]);
+
 		if (sz == 0 || i + sz > dwords)
 			return -EINVAL;
 		i += sz;
@@ -451,7 +452,7 @@ static void i915_emit_breadcrumb(struct drm_device *dev)
 	}
 }
 
-static int i915_dispatch_cmdbuffer(struct drm_device * dev,
+static int i915_dispatch_cmdbuffer(struct drm_device *dev,
 				   drm_i915_cmdbuffer_t *cmd,
 				   struct drm_clip_rect *cliprects,
 				   void *cmdbuf)
@@ -485,8 +486,8 @@ static int i915_dispatch_cmdbuffer(struct drm_device * dev,
 	return 0;
 }
 
-static int i915_dispatch_batchbuffer(struct drm_device * dev,
-				     drm_i915_batchbuffer_t * batch,
+static int i915_dispatch_batchbuffer(struct drm_device *dev,
+				     drm_i915_batchbuffer_t *batch,
 				     struct drm_clip_rect *cliprects)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -547,7 +548,7 @@ static int i915_dispatch_batchbuffer(struct drm_device * dev,
 	return 0;
 }
 
-static int i915_dispatch_flip(struct drm_device * dev)
+static int i915_dispatch_flip(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv =
@@ -753,7 +754,7 @@ fail_batch_free:
 	return ret;
 }
 
-static int i915_emit_irq(struct drm_device * dev)
+static int i915_emit_irq(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv = dev->primary->master->driver_priv;
@@ -779,7 +780,7 @@ static int i915_emit_irq(struct drm_device * dev)
 	return dev_priv->dri1.counter;
 }
 
-static int i915_wait_irq(struct drm_device * dev, int irq_nr)
+static int i915_wait_irq(struct drm_device *dev, int irq_nr)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_master_private *master_priv = dev->primary->master->driver_priv;
@@ -1264,6 +1265,7 @@ static void i915_switcheroo_set_state(struct pci_dev *pdev, enum vga_switcheroo_
 {
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	pm_message_t pmm = { .event = PM_EVENT_SUSPEND };
+
 	if (state == VGA_SWITCHEROO_ON) {
 		pr_info("switched on\n");
 		dev->switch_power_state = DRM_SWITCH_POWER_CHANGING;
@@ -1458,10 +1460,11 @@ static void i915_dump_device_info(struct drm_i915_private *dev_priv)
 #define SEP_EMPTY
 #define PRINT_FLAG(name) info->name ? #name "," : ""
 #define SEP_COMMA ,
-	DRM_DEBUG_DRIVER("i915 device info: gen=%i, pciid=0x%04x flags="
+	DRM_DEBUG_DRIVER("i915 device info: gen=%i, pciid=0x%04x rev=0x%02x flags="
 			 DEV_INFO_FOR_EACH_FLAG(PRINT_S, SEP_EMPTY),
 			 info->gen,
 			 dev_priv->dev->pdev->device,
+			 dev_priv->dev->pdev->revision,
 			 DEV_INFO_FOR_EACH_FLAG(PRINT_FLAG, SEP_COMMA));
 #undef PRINT_S
 #undef SEP_EMPTY
@@ -1572,6 +1575,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	spin_lock_init(&dev_priv->backlight_lock);
 	spin_lock_init(&dev_priv->uncore.lock);
 	spin_lock_init(&dev_priv->mm.object_stat_lock);
+	spin_lock_init(&dev_priv->mmio_flip_lock);
 	mutex_init(&dev_priv->dpio_lock);
 	mutex_init(&dev_priv->modeset_restore_lock);
 
@@ -1895,7 +1899,7 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
  * and DMA structures, since the kernel won't be using them, and clea
  * up any GEM state.
  */
-void i915_driver_lastclose(struct drm_device * dev)
+void i915_driver_lastclose(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
@@ -1916,7 +1920,7 @@ void i915_driver_lastclose(struct drm_device * dev)
 	i915_dma_cleanup(dev);
 }
 
-void i915_driver_preclose(struct drm_device * dev, struct drm_file *file_priv)
+void i915_driver_preclose(struct drm_device *dev, struct drm_file *file_priv)
 {
 	mutex_lock(&dev->struct_mutex);
 	i915_gem_context_close(dev, file_priv);
@@ -1993,7 +1997,7 @@ int i915_max_ioctl = ARRAY_SIZE(i915_ioctls);
  * manage the gtt, we need to claim that all intel devices are agp.  For
  * otherwise the drm core refuses to initialize the agp support code.
  */
-int i915_driver_device_is_agp(struct drm_device * dev)
+int i915_driver_device_is_agp(struct drm_device *dev)
 {
 	return 1;
 }

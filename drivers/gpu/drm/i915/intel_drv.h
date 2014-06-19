@@ -358,6 +358,11 @@ struct intel_pipe_wm {
 	bool sprites_scaled;
 };
 
+struct intel_mmio_flip {
+	u32 seqno;
+	u32 ring_id;
+};
+
 struct intel_crtc {
 	struct drm_crtc base;
 	enum pipe pipe;
@@ -384,7 +389,6 @@ struct intel_crtc {
 
 	struct drm_i915_gem_object *cursor_bo;
 	uint32_t cursor_addr;
-	int16_t cursor_x, cursor_y;
 	int16_t cursor_width, cursor_height;
 	uint32_t cursor_cntl;
 	uint32_t cursor_base;
@@ -412,6 +416,7 @@ struct intel_crtc {
 	wait_queue_head_t vbl_wait;
 
 	int scanline_offset;
+	struct intel_mmio_flip mmio_flip;
 };
 
 struct intel_plane_wm_parameters {
@@ -428,7 +433,6 @@ struct intel_plane {
 	struct drm_i915_gem_object *obj;
 	bool can_scale;
 	int max_downscale;
-	u32 lut_r[1024], lut_g[1024], lut_b[1024];
 	int crtc_x, crtc_y;
 	unsigned int crtc_w, crtc_h;
 	uint32_t src_x, src_y;
@@ -537,7 +541,6 @@ struct intel_dp {
 	unsigned long last_power_cycle;
 	unsigned long last_power_on;
 	unsigned long last_backlight_off;
-	bool psr_setup_done;
 	bool use_tps3;
 	struct intel_connector *attached_connector;
 
@@ -833,9 +836,12 @@ void intel_edp_psr_enable(struct intel_dp *intel_dp);
 void intel_edp_psr_disable(struct intel_dp *intel_dp);
 void intel_edp_psr_update(struct drm_device *dev);
 void intel_dp_set_drrs_state(struct drm_device *dev, int refresh_rate);
+void intel_edp_psr_exit(struct drm_device *dev, bool schedule_back);
+void intel_edp_psr_init(struct drm_device *dev);
+
 
 /* intel_dsi.c */
-bool intel_dsi_init(struct drm_device *dev);
+void intel_dsi_init(struct drm_device *dev);
 
 
 /* intel_dvo.c */
@@ -961,6 +967,7 @@ void intel_init_gt_powersave(struct drm_device *dev);
 void intel_cleanup_gt_powersave(struct drm_device *dev);
 void intel_enable_gt_powersave(struct drm_device *dev);
 void intel_disable_gt_powersave(struct drm_device *dev);
+void intel_suspend_gt_powersave(struct drm_device *dev);
 void intel_reset_gt_powersave(struct drm_device *dev);
 void ironlake_teardown_rc6(struct drm_device *dev);
 void gen6_update_ring_freq(struct drm_device *dev);
