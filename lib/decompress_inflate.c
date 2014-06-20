@@ -34,11 +34,11 @@ static long INIT nofill(void *buffer, unsigned long len)
 
 /* Included from initramfs et al code */
 STATIC int INIT gunzip(unsigned char *buf, long len,
-		       long(*fill)(void*, unsigned long),
-		       long(*flush)(void*, unsigned long),
+		       long (*fill)(void*, unsigned long),
+		       long (*flush)(void*, unsigned long),
 		       unsigned char *out_buf,
 		       long *pos,
-		       void(*error)(char *x)) {
+		       void (*error)(char *x)) {
 	u8 *zbuf;
 	struct z_stream_s *strm;
 	int rc;

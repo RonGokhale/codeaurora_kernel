@@ -280,7 +280,7 @@ struct writer {
 	size_t buffer_pos;
 	int bufsize;
 	size_t global_pos;
-	long(*flush)(void*, unsigned long);
+	long (*flush)(void*, unsigned long);
 	struct lzma_header *header;
 };
 
@@ -535,11 +535,11 @@ static inline int INIT process_bit1(struct writer *wr, struct rc *rc,
 
 
 STATIC inline int INIT unlzma(unsigned char *buf, long in_len,
-			      long(*fill)(void*, unsigned long),
-			      long(*flush)(void*, unsigned long),
+			      long (*fill)(void*, unsigned long),
+			      long (*flush)(void*, unsigned long),
 			      unsigned char *output,
 			      long *posp,
-			      void(*error)(char *x)
+			      void (*error)(char *x)
 	)
 {
 	struct lzma_header header;
@@ -668,11 +668,11 @@ exit_0:
 
 #ifdef PREBOOT
 STATIC int INIT decompress(unsigned char *buf, long in_len,
-			      long(*fill)(void*, unsigned long),
-			      long(*flush)(void*, unsigned long),
+			      long (*fill)(void*, unsigned long),
+			      long (*flush)(void*, unsigned long),
 			      unsigned char *output,
 			      long *posp,
-			      void(*error)(char *x)
+			      void (*error)(char *x)
 	)
 {
 	return unlzma(buf, in_len - 4, fill, flush, output, posp, error);

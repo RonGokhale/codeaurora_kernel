@@ -676,11 +676,11 @@ static int INIT start_bunzip(struct bunzip_data **bdp, void *inbuf, long len,
 /* Example usage: decompress src_fd to dst_fd.  (Stops at end of bzip2 data,
    not end of file.) */
 STATIC int INIT bunzip2(unsigned char *buf, long len,
-			long(*fill)(void*, unsigned long),
-			long(*flush)(void*, unsigned long),
+			long (*fill)(void*, unsigned long),
+			long (*flush)(void*, unsigned long),
 			unsigned char *outbuf,
 			long *pos,
-			void(*error)(char *x))
+			void (*error)(char *x))
 {
 	struct bunzip_data *bd;
 	int i = -1;
@@ -744,11 +744,11 @@ exit_0:
 
 #ifdef PREBOOT
 STATIC int INIT decompress(unsigned char *buf, long len,
-			long(*fill)(void*, unsigned long),
-			long(*flush)(void*, unsigned long),
+			long (*fill)(void*, unsigned long),
+			long (*flush)(void*, unsigned long),
 			unsigned char *outbuf,
 			long *pos,
-			void(*error)(char *x))
+			void (*error)(char *x))
 {
 	return bunzip2(buf, len - 4, fill, flush, outbuf, pos, error);
 }

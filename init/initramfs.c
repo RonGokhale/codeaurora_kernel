@@ -173,9 +173,9 @@ static __initdata enum state {
 	Reset
 } state, next_state;
 
-static __initdata char *victim;
-static __initdata unsigned long count;
-static __initdata loff_t this_header, next_header;
+static char *victim __initdata;
+static unsigned long count __initdata;
+static loff_t this_header, next_header __initdata;
 
 static inline void __init eat(unsigned n)
 {
