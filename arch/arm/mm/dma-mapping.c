@@ -26,7 +26,6 @@
 #include <linux/io.h>
 #include <linux/vmalloc.h>
 #include <linux/sizes.h>
-#include <linux/cma.h>
 
 #include <asm/memory.h>
 #include <asm/highmem.h>
