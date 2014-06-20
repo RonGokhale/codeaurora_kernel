@@ -2590,6 +2590,7 @@ int copy_hugetlb_page_range(struct mm_struct *dst, struct mm_struct *src,
 		} else if (unlikely(is_hugetlb_entry_migration(entry) ||
 				    is_hugetlb_entry_hwpoisoned(entry))) {
 			swp_entry_t swp_entry = pte_to_swp_entry(entry);
+
 			if (is_write_migration_entry(swp_entry) && cow) {
 				/*
 				 * COW mappings require pages in both
