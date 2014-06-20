@@ -212,10 +212,10 @@ void generic_smp_call_function_single_interrupt(void)
  *
  * Flush any pending smp-call-function callbacks queued on this CPU. This is
  * invoked by the generic IPI handler, as well as by a CPU about to go offline,
- * to ensure that all pending IPI functions are run before it goes completely
+ * to ensure that all pending IPI callbacks are run before it goes completely
  * offline.
  *
- * Loop through the call_single_queue and run all the queued functions.
+ * Loop through the call_single_queue and run all the queued callbacks.
  * Must be called with interrupts disabled.
  */
 static void flush_smp_call_function_queue(bool warn_cpu_offline)
