@@ -951,21 +951,25 @@ static void get_user_huge_page(struct page *page)
 {
 	if (IS_ENABLED(CONFIG_DEBUG_PAGEALLOC)) {
 		struct page *endpage = page + HPAGE_PMD_NR;
+
 		atomic_add(HPAGE_PMD_NR, &page->_count);
 		while (++page < endpage)
 			get_huge_page_tail(page);
-	} else
+	} else {
 		get_page(page);
+	}
 }
 
 static void put_user_huge_page(struct page *page)
 {
 	if (IS_ENABLED(CONFIG_DEBUG_PAGEALLOC)) {
 		struct page *endpage = page + HPAGE_PMD_NR;
+
 		while (page < endpage)
 			put_page(page++);
-	} else
+	} else {
 		put_page(page);
+	}
 }
 
 static int do_huge_pmd_wp_page_fallback(struct mm_struct *mm,
