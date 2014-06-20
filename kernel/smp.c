@@ -53,6 +53,13 @@ hotplug_cfd(struct notifier_block *nfb, unsigned long action, void *hcpu)
 #ifdef CONFIG_HOTPLUG_CPU
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
+		/* Fall-through to the CPU_DEAD[_FROZEN] case. */
+
+	case CPU_DEAD:
+	case CPU_DEAD_FROZEN:
+		free_cpumask_var(cfd->cpumask);
+		free_percpu(cfd->csd);
+		break;
 
 	case CPU_DYING:
 	case CPU_DYING_FROZEN:
@@ -66,12 +73,6 @@ hotplug_cfd(struct notifier_block *nfb, unsigned long action, void *hcpu)
 		 * still pending.
 		 */
 		flush_smp_call_function_queue(false);
-		break;
-
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		free_cpumask_var(cfd->cpumask);
-		free_percpu(cfd->csd);
 		break;
 #endif
 	};
