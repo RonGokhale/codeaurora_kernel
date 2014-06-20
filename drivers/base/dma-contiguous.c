@@ -165,7 +165,7 @@ int __init dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t base,
 {
 	int ret;
 
-	ret = cma_declare_contiguous(base, size, limit, 0, 0, fixed, res_cma);
+	ret = cma_declare_contiguous(size, base, limit, 0, 0, res_cma, fixed);
 	if (ret)
 		return ret;
 
