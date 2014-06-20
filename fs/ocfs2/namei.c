@@ -1222,10 +1222,9 @@ static int ocfs2_rename(struct inode *old_dir,
 			goto bail;
 		} else if (status == 1) {
 			status = -EPERM;
-			mlog(ML_ERROR, "src inode %llu should not be ancestor "
-				"of new dir inode %llu\n",
-				(unsigned long long)old_inode->i_ino,
-				(unsigned long long)new_dir->i_ino);
+			trace_ocfs2_rename_not_permitted(
+					(unsigned long long)old_inode->i_ino,
+					(unsigned long long)new_dir->i_ino);
 			goto bail;
 		}
 	}
