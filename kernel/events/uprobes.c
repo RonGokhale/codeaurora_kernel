@@ -316,8 +316,8 @@ retry:
 	if (!new_page)
 		goto put_old;
 
-	if (mem_cgroup_charge_anon(new_page, mm, GFP_KERNEL))
-		goto put_new;
+//	if (mem_cgroup_charge_anon(new_page, mm, GFP_KERNEL))
+//		goto put_new;
 
 	__SetPageUptodate(new_page);
 	copy_highpage(new_page, old_page);
