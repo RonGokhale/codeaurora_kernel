@@ -27,6 +27,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 
+#include "rl6231.h"
 #include "rt5677.h"
 
 #define RT5677_DEVICE_ID 0x6327
@@ -636,21 +637,7 @@ static int set_dmic_clk(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_codec *codec = w->codec;
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int div[] = {2, 3, 4, 6, 8, 12}, idx = -EINVAL, i;
-	int rate, red, bound, temp;
-
-	rate = rt5677->sysclk;
-	red = 3000000 * 12;
-	for (i = 0; i < ARRAY_SIZE(div); i++) {
-		bound = div[i] * 3000000;
-		if (rate > bound)
-			continue;
-		temp = bound - rate;
-		if (temp < red) {
-			red = temp;
-			idx = i;
-		}
-	}
+	int idx = rl6231_calc_dmic_clk(rt5677->sysclk);
 
 	if (idx < 0)
 		dev_err(codec->dev, "Failed to set DMIC clock\n");
@@ -2798,21 +2785,6 @@ static const struct snd_soc_dapm_route rt5677_dapm_routes[] = {
 	{ "PDM2R", NULL, "PDM2 R Mux" },
 };
 
-static int get_clk_info(int sclk, int rate)
-{
-	int i, pd[] = {1, 2, 3, 4, 6, 8, 12, 16};
-
-	if (sclk <= 0 || rate <= 0)
-		return -EINVAL;
-
-	rate = rate << 8;
-	for (i = 0; i < ARRAY_SIZE(pd); i++)
-		if (sclk == rate * pd[i])
-			return i;
-
-	return -EINVAL;
-}
-
 static int rt5677_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
@@ -2822,7 +2794,7 @@ static int rt5677_hw_params(struct snd_pcm_substream *substream,
 	int pre_div, bclk_ms, frame_size;
 
 	rt5677->lrck[dai->id] = params_rate(params);
-	pre_div = get_clk_info(rt5677->sysclk, rt5677->lrck[dai->id]);
+	pre_div = rl6231_get_clk_info(rt5677->sysclk, rt5677->lrck[dai->id]);
 	if (pre_div < 0) {
 		dev_err(codec->dev, "Unsupported clock setting\n");
 		return -EINVAL;
@@ -3480,18 +3452,7 @@ static struct i2c_driver rt5677_i2c_driver = {
 	.remove   = rt5677_i2c_remove,
 	.id_table = rt5677_i2c_id,
 };
-
-static int __init rt5677_modinit(void)
-{
-	return i2c_add_driver(&rt5677_i2c_driver);
-}
-module_init(rt5677_modinit);
-
-static void __exit rt5677_modexit(void)
-{
-	i2c_del_driver(&rt5677_i2c_driver);
-}
-module_exit(rt5677_modexit);
+module_i2c_driver(rt5677_i2c_driver);
 
 MODULE_DESCRIPTION("ASoC RT5677 driver");
 MODULE_AUTHOR("Oder Chiou <oder_chiou@realtek.com>");
