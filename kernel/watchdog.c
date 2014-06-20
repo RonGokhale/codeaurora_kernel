@@ -363,7 +363,7 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 
 			clear_bit(0, &soft_lockup_nmi_warn);
 			/* Barrier to sync with other cpus */
-			smp_mb__after_clear_bit();
+			smp_mb__after_atomic();
 		}
 
 		if (softlockup_panic)
