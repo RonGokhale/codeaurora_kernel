@@ -24,7 +24,6 @@
 #include <recv_osdep.h>
 #include <cmd_osdep.h>
 #include <mlme_osdep.h>
-#include <rtw_br_ext.h>
 #include <rtw_mlme_ext.h>
 
 /*
@@ -1542,8 +1541,6 @@ static void dynamic_chk_wk_hdl(struct adapter *padapter, u8 *pbuf, int sz)
 		expire_timeout_chk(padapter);
 #endif
 
-	rtw_hal_sreset_xmit_status_check(padapter);
-
 	linked_status_chk(padapter);
 	traffic_status_watchdog(padapter);
 
@@ -2061,8 +2058,7 @@ void rtw_disassoc_cmd_callback(struct adapter *padapter, struct cmd_obj *pcmd)
 
 		RT_TRACE(_module_rtl871x_cmd_c_, _drv_err_, ("\n ***Error: disconnect_cmd_callback Fail ***\n."));
 		return;
-	} else /* clear bridge database */
-		nat25_db_cleanup(padapter);
+	}
 
 	/*  free cmd */
 	rtw_free_cmd_obj(pcmd);

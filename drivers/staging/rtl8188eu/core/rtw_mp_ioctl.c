@@ -22,7 +22,7 @@
 #include <osdep_service.h>
 #include <drv_types.h>
 #include <mlme_osdep.h>
-
+#include <usb_ops_linux.h>
 /* include <rtw_mp.h> */
 #include <rtw_mp_ioctl.h>
 
@@ -801,14 +801,14 @@ int rtl8188eu_oid_rt_pro_read_register_hdl(struct oid_par_priv *poid_par_priv)
 
 	switch (width) {
 	case 1:
-		RegRWStruct->value = rtw_read8(Adapter, offset);
+		RegRWStruct->value = usb_read8(Adapter, offset);
 		break;
 	case 2:
-		RegRWStruct->value = rtw_read16(Adapter, offset);
+		RegRWStruct->value = usb_read16(Adapter, offset);
 		break;
 	default:
 		width = 4;
-		RegRWStruct->value = rtw_read32(Adapter, offset);
+		RegRWStruct->value = usb_read32(Adapter, offset);
 		break;
 	}
 	RT_TRACE(_module_mp_, _drv_notice_,
@@ -853,17 +853,17 @@ int rtl8188eu_oid_rt_pro_write_register_hdl(struct oid_par_priv *poid_par_priv)
 			status = NDIS_STATUS_NOT_ACCEPTED;
 			break;
 		}
-		rtw_write8(padapter, offset, (u8)value);
+		usb_write8(padapter, offset, (u8)value);
 		break;
 	case 2:
 		if (value > 0xFFFF) {
 			status = NDIS_STATUS_NOT_ACCEPTED;
 			break;
 		}
-		rtw_write16(padapter, offset, (u16)value);
+		usb_write16(padapter, offset, (u16)value);
 		break;
 	case 4:
-		rtw_write32(padapter, offset, value);
+		usb_write32(padapter, offset, value);
 		break;
 	default:
 		status = NDIS_STATUS_NOT_ACCEPTED;

@@ -22,8 +22,7 @@
 #include <osdep_service.h>
 #include <drv_types.h>
 #include <rtw_efuse.h>
-
-
+#include <usb_ops_linux.h>
 
 /*------------------------Define local variable------------------------------*/
 u8 fakeEfuseBank;
@@ -181,19 +180,19 @@ ReadEFuseByte(
 	}
 
 	/* Write Address */
-	rtw_write8(Adapter, EFUSE_CTRL+1, (_offset & 0xff));
-	readbyte = rtw_read8(Adapter, EFUSE_CTRL+2);
-	rtw_write8(Adapter, EFUSE_CTRL+2, ((_offset >> 8) & 0x03) | (readbyte & 0xfc));
+	usb_write8(Adapter, EFUSE_CTRL+1, (_offset & 0xff));
+	readbyte = usb_read8(Adapter, EFUSE_CTRL+2);
+	usb_write8(Adapter, EFUSE_CTRL+2, ((_offset >> 8) & 0x03) | (readbyte & 0xfc));
 
 	/* Write bit 32 0 */
-	readbyte = rtw_read8(Adapter, EFUSE_CTRL+3);
-	rtw_write8(Adapter, EFUSE_CTRL+3, (readbyte & 0x7f));
+	readbyte = usb_read8(Adapter, EFUSE_CTRL+3);
+	usb_write8(Adapter, EFUSE_CTRL+3, (readbyte & 0x7f));
 
 	/* Check bit 32 read-ready */
 	retry = 0;
-	value32 = rtw_read32(Adapter, EFUSE_CTRL);
+	value32 = usb_read32(Adapter, EFUSE_CTRL);
 	while (!(((value32 >> 24) & 0xff) & 0x80)  && (retry < 10000)) {
-		value32 = rtw_read32(Adapter, EFUSE_CTRL);
+		value32 = usb_read32(Adapter, EFUSE_CTRL);
 		retry++;
 	}
 
@@ -202,7 +201,7 @@ ReadEFuseByte(
 	/*  Designer says that there shall be some delay after ready bit is set, or the */
 	/*  result will always stay on last data we read. */
 	udelay(50);
-	value32 = rtw_read32(Adapter, EFUSE_CTRL);
+	value32 = usb_read32(Adapter, EFUSE_CTRL);
 
 	*pbuf = (u8)(value32 & 0xff);
 }
@@ -263,28 +262,28 @@ u8 EFUSE_Read1Byte(struct adapter *Adapter, u16 Address)
 	if (Address < contentLen) {	/* E-fuse 512Byte */
 		/* Write E-fuse Register address bit0~7 */
 		temp = Address & 0xFF;
-		rtw_write8(Adapter, EFUSE_CTRL+1, temp);
-		Bytetemp = rtw_read8(Adapter, EFUSE_CTRL+2);
+		usb_write8(Adapter, EFUSE_CTRL+1, temp);
+		Bytetemp = usb_read8(Adapter, EFUSE_CTRL+2);
 		/* Write E-fuse Register address bit8~9 */
 		temp = ((Address >> 8) & 0x03) | (Bytetemp & 0xFC);
-		rtw_write8(Adapter, EFUSE_CTRL+2, temp);
+		usb_write8(Adapter, EFUSE_CTRL+2, temp);
 
 		/* Write 0x30[31]= 0 */
-		Bytetemp = rtw_read8(Adapter, EFUSE_CTRL+3);
+		Bytetemp = usb_read8(Adapter, EFUSE_CTRL+3);
 		temp = Bytetemp & 0x7F;
-		rtw_write8(Adapter, EFUSE_CTRL+3, temp);
+		usb_write8(Adapter, EFUSE_CTRL+3, temp);
 
 		/* Wait Write-ready (0x30[31]= 1) */
-		Bytetemp = rtw_read8(Adapter, EFUSE_CTRL+3);
+		Bytetemp = usb_read8(Adapter, EFUSE_CTRL+3);
 		while (!(Bytetemp & 0x80)) {
-			Bytetemp = rtw_read8(Adapter, EFUSE_CTRL+3);
+			Bytetemp = usb_read8(Adapter, EFUSE_CTRL+3);
 			k++;
 			if (k == 1000) {
 				k = 0;
 				break;
 			}
 		}
-		data = rtw_read8(Adapter, EFUSE_CTRL);
+		data = usb_read8(Adapter, EFUSE_CTRL);
 		return data;
 	} else {
 		return 0xFF;
@@ -304,16 +303,16 @@ u8 efuse_OneByteRead(struct adapter *pAdapter, u16 addr, u8 *data, bool pseudo)
 	}
 	/*  -----------------e-fuse reg ctrl --------------------------------- */
 	/* address */
-	rtw_write8(pAdapter, EFUSE_CTRL+1, (u8)(addr & 0xff));
-	rtw_write8(pAdapter, EFUSE_CTRL+2, ((u8)((addr>>8) & 0x03)) |
-		   (rtw_read8(pAdapter, EFUSE_CTRL+2) & 0xFC));
+	usb_write8(pAdapter, EFUSE_CTRL+1, (u8)(addr & 0xff));
+	usb_write8(pAdapter, EFUSE_CTRL+2, ((u8)((addr>>8) & 0x03)) |
+		   (usb_read8(pAdapter, EFUSE_CTRL+2) & 0xFC));
 
-	rtw_write8(pAdapter, EFUSE_CTRL+3,  0x72);/* read cmd */
+	usb_write8(pAdapter, EFUSE_CTRL+3,  0x72);/* read cmd */
 
-	while (!(0x80 & rtw_read8(pAdapter, EFUSE_CTRL+3)) && (tmpidx < 100))
+	while (!(0x80 & usb_read8(pAdapter, EFUSE_CTRL+3)) && (tmpidx < 100))
 		tmpidx++;
 	if (tmpidx < 100) {
-		*data = rtw_read8(pAdapter, EFUSE_CTRL);
+		*data = usb_read8(pAdapter, EFUSE_CTRL);
 		result = true;
 	} else {
 		*data = 0xff;
@@ -335,15 +334,15 @@ u8 efuse_OneByteWrite(struct adapter *pAdapter, u16 addr, u8 data, bool pseudo)
 
 	/*  -----------------e-fuse reg ctrl --------------------------------- */
 	/* address */
-	rtw_write8(pAdapter, EFUSE_CTRL+1, (u8)(addr&0xff));
-	rtw_write8(pAdapter, EFUSE_CTRL+2,
-		   (rtw_read8(pAdapter, EFUSE_CTRL+2) & 0xFC) |
+	usb_write8(pAdapter, EFUSE_CTRL+1, (u8)(addr&0xff));
+	usb_write8(pAdapter, EFUSE_CTRL+2,
+		   (usb_read8(pAdapter, EFUSE_CTRL+2) & 0xFC) |
 		   (u8)((addr>>8) & 0x03));
-	rtw_write8(pAdapter, EFUSE_CTRL, data);/* data */
+	usb_write8(pAdapter, EFUSE_CTRL, data);/* data */
 
-	rtw_write8(pAdapter, EFUSE_CTRL+3, 0xF2);/* write cmd */
+	usb_write8(pAdapter, EFUSE_CTRL+3, 0xF2);/* write cmd */
 
-	while ((0x80 &  rtw_read8(pAdapter, EFUSE_CTRL+3)) && (tmpidx < 100))
+	while ((0x80 &  usb_read8(pAdapter, EFUSE_CTRL+3)) && (tmpidx < 100))
 		tmpidx++;
 
 	if (tmpidx < 100)
