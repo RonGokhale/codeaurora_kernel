@@ -324,8 +324,8 @@ retry:
 	copy_to_page(new_page, vaddr, &opcode, UPROBE_SWBP_INSN_SIZE);
 
 	ret = __replace_page(vma, vaddr, old_page, new_page);
-	if (ret)
-		mem_cgroup_uncharge_page(new_page);
+//	if (ret)
+//		mem_cgroup_uncharge_page(new_page);
 
 put_new:
 	page_cache_release(new_page);
