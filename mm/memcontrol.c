@@ -4132,6 +4132,10 @@ static ssize_t mem_cgroup_force_empty_write(struct kernfs_open_file *of,
 
 	if (mem_cgroup_is_root(memcg))
 		return -EINVAL;
+	pr_info("%s (%d): memory.force_empty is deprecated and will be removed.",
+			current->comm, task_pid_nr(current));
+	pr_cont(" Let us know if you know if it needed in your usecase at");
+	pr_cont(" linux-mm@kvack.org\n");
 	return mem_cgroup_force_empty(memcg) ?: nbytes;
 }
 
@@ -5308,6 +5312,7 @@ static struct cftype mem_cgroup_files[] = {
 	},
 	{
 		.name = "force_empty",
+		.flags = CFTYPE_INSANE,
 		.write = mem_cgroup_force_empty_write,
 	},
 	{
