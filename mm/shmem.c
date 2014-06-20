@@ -1240,10 +1240,11 @@ static int shmem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	 * prevent the hole-punch from ever completing: which in turn
 	 * locks writers out with its hold on i_mutex.  So refrain from
 	 * faulting pages into the hole while it's being punched, and
-	 * wait on i_mutex to be released if vmf->flags permits, 
+	 * wait on i_mutex to be released if vmf->flags permits.
 	 */
 	if (unlikely(inode->i_private)) {
 		struct shmem_falloc *shmem_falloc;
+
 		spin_lock(&inode->i_lock);
 		shmem_falloc = inode->i_private;
 		if (!shmem_falloc ||
