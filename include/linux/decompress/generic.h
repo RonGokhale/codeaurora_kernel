@@ -1,12 +1,12 @@
 #ifndef DECOMPRESS_GENERIC_H
 #define DECOMPRESS_GENERIC_H
 
-typedef int (*decompress_fn) (unsigned char *inbuf, int len,
-			      int(*fill)(void*, unsigned int),
-			      int(*flush)(void*, unsigned int),
+typedef int (*decompress_fn) (unsigned char *inbuf, long len,
+			      long (*fill)(void*, unsigned long),
+			      long (*flush)(void*, unsigned long),
 			      unsigned char *outbuf,
-			      int *posp,
-			      void(*error)(char *x));
+			      long *posp,
+			      void (*error)(char *x));
 
 /* inbuf   - input buffer
  *len     - len of pre-read data in inbuf
@@ -33,7 +33,7 @@ typedef int (*decompress_fn) (unsigned char *inbuf, int len,
 
 
 /* Utility routine to detect the decompression method */
-decompress_fn decompress_method(const unsigned char *inbuf, int len,
+decompress_fn decompress_method(const unsigned char *inbuf, long len,
 				const char **name);
 
 #endif
