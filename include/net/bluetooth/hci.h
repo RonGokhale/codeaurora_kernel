@@ -104,6 +104,15 @@ enum {
 	HCI_RESET,
 };
 
+/* BR/EDR and/or LE controller flags: the flags defined here should represent
+ * states configured via debugfs for debugging and testing purposes only.
+ */
+enum {
+	HCI_DUT_MODE,
+	HCI_FORCE_SC,
+	HCI_FORCE_STATIC_ADDR,
+};
+
 /*
  * BR/EDR and/or LE controller flags: the flags defined here should represent
  * states from the controller.
@@ -116,9 +125,6 @@ enum {
 	HCI_PAIRABLE,
 	HCI_SERVICE_CACHE,
 	HCI_DEBUG_KEYS,
-	HCI_DUT_MODE,
-	HCI_FORCE_SC,
-	HCI_FORCE_STATIC_ADDR,
 	HCI_UNREGISTER,
 	HCI_USER_CHANNEL,
 
@@ -347,15 +353,6 @@ enum {
 #define HCI_LK_CHANGED_COMBINATION	0x06
 #define HCI_LK_UNAUTH_COMBINATION_P256	0x07
 #define HCI_LK_AUTH_COMBINATION_P256	0x08
-/* The spec doesn't define types for SMP keys, the _MASTER suffix is implied */
-#define HCI_SMP_STK			0x80
-#define HCI_SMP_STK_SLAVE		0x81
-#define HCI_SMP_LTK			0x82
-#define HCI_SMP_LTK_SLAVE		0x83
-
-/* Long Term Key types */
-#define HCI_LTK_UNAUTH			0x00
-#define HCI_LTK_AUTH			0x01
 
 /* ---- HCI Error Codes ---- */
 #define HCI_ERROR_AUTH_FAILURE		0x05

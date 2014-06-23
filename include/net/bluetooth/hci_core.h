@@ -273,7 +273,7 @@ struct hci_dev {
 
 	struct delayed_work	service_cache;
 
-	struct timer_list	cmd_timer;
+	struct delayed_work	cmd_timer;
 
 	struct work_struct	rx_work;
 	struct work_struct	cmd_work;
@@ -318,6 +318,7 @@ struct hci_dev {
 
 	struct rfkill		*rfkill;
 
+	unsigned long		dbg_flags;
 	unsigned long		dev_flags;
 
 	struct delayed_work	le_scan_disable;
