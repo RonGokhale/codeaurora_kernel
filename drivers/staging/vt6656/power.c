@@ -26,12 +26,12 @@
  * Date: July 17, 2002
  *
  * Functions:
- *      PSvEnablePowerSaving - Enable Power Saving Mode
+ *      vnt_enable_power_saving - Enable Power Saving Mode
  *      PSvDiasblePowerSaving - Disable Power Saving Mode
  *      PSbConsiderPowerDown - Decide if we can Power Down
  *      PSvSendPSPOLL - Send PS-POLL packet
  *      PSbSendNullPacket - Send Null packet
- *      PSbIsNextTBTTWakeUp - Decide if we need to wake up at next Beacon
+ *      vnt_next_tbtt_wakeup - Decide if we need to wake up at next Beacon
  *
  * Revision History:
  *
@@ -58,60 +58,60 @@ static int msglevel = MSG_LEVEL_INFO;
  *
  */
 
-void PSvEnablePowerSaving(struct vnt_private *pDevice, u16 wListenInterval)
+void vnt_enable_power_saving(struct vnt_private *priv, u16 listen_interval)
 {
-	struct vnt_manager *pMgmt = &pDevice->vnt_mgmt;
-	u16 wAID = pMgmt->wCurrAID | BIT14 | BIT15;
+	struct vnt_manager *mgmt = &priv->vnt_mgmt;
+	u16 aid = mgmt->wCurrAID | BIT14 | BIT15;
 
 	/* set period of power up before TBTT */
-	MACvWriteWord(pDevice, MAC_REG_PWBT, C_PWBT);
+	vnt_mac_write_word(priv, MAC_REG_PWBT, C_PWBT);
 
-	if (pDevice->op_mode != NL80211_IFTYPE_ADHOC) {
+	if (priv->op_mode != NL80211_IFTYPE_ADHOC) {
 		/* set AID */
-		MACvWriteWord(pDevice, MAC_REG_AIDATIM, wAID);
+		vnt_mac_write_word(priv, MAC_REG_AIDATIM, aid);
 	}
 
 	/* Warren:06-18-2004,the sequence must follow
 	 * PSEN->AUTOSLEEP->GO2DOZE
 	 */
 	/* enable power saving hw function */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_PSEN);
+	vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_PSEN);
 
 	/* Set AutoSleep */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCFG, PSCFG_AUTOSLEEP);
+	vnt_mac_reg_bits_on(priv, MAC_REG_PSCFG, PSCFG_AUTOSLEEP);
 
 	/* Warren:MUST turn on this once before turn on AUTOSLEEP ,or the
 	 * AUTOSLEEP doesn't work
 	 */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_GO2DOZE);
+	vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_GO2DOZE);
 
-	if (wListenInterval >= 2) {
+	if (listen_interval >= 2) {
 
 		/* clear always listen beacon */
-		MACvRegBitsOff(pDevice, MAC_REG_PSCTL, PSCTL_ALBCN);
+		vnt_mac_reg_bits_off(priv, MAC_REG_PSCTL, PSCTL_ALBCN);
 
 		/* first time set listen next beacon */
-		MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_LNBCN);
+		vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_LNBCN);
 
-		pMgmt->wCountToWakeUp = wListenInterval;
+		mgmt->wCountToWakeUp = listen_interval;
 
 	} else {
 
 		/* always listen beacon */
-		MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_ALBCN);
+		vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_ALBCN);
 
-		pMgmt->wCountToWakeUp = 0;
+		mgmt->wCountToWakeUp = 0;
 	}
 
-	pDevice->bEnablePSMode = true;
+	priv->bEnablePSMode = true;
 
 	/* We don't send null pkt in ad hoc mode
 	 * since beacon will handle this.
 	 */
-	if (pDevice->op_mode == NL80211_IFTYPE_STATION)
-		PSbSendNullPacket(pDevice);
+	if (priv->op_mode == NL80211_IFTYPE_STATION)
+		PSbSendNullPacket(priv);
 
-	pDevice->bPWBitOn = true;
+	priv->bPWBitOn = true;
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "PS:Power Saving Mode Enable...\n");
 }
 
@@ -125,24 +125,24 @@ void PSvEnablePowerSaving(struct vnt_private *pDevice, u16 wListenInterval)
  *
  */
 
-void PSvDisablePowerSaving(struct vnt_private *pDevice)
+void vnt_disable_power_saving(struct vnt_private *priv)
 {
 
 	/* disable power saving hw function */
-	vnt_control_out(pDevice, MESSAGE_TYPE_DISABLE_PS, 0,
+	vnt_control_out(priv, MESSAGE_TYPE_DISABLE_PS, 0,
 						0, 0, NULL);
 
 	/* clear AutoSleep */
-	MACvRegBitsOff(pDevice, MAC_REG_PSCFG, PSCFG_AUTOSLEEP);
+	vnt_mac_reg_bits_off(priv, MAC_REG_PSCFG, PSCFG_AUTOSLEEP);
 
 	/* set always listen beacon */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_ALBCN);
-	pDevice->bEnablePSMode = false;
+	vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_ALBCN);
+	priv->bEnablePSMode = false;
 
-	if (pDevice->op_mode == NL80211_IFTYPE_STATION)
-		PSbSendNullPacket(pDevice);
+	if (priv->op_mode == NL80211_IFTYPE_STATION)
+		PSbSendNullPacket(priv);
 
-	pDevice->bPWBitOn = false;
+	priv->bPWBitOn = false;
 }
 
 /*
@@ -183,7 +183,7 @@ int PSbConsiderPowerDown(struct vnt_private *pDevice, int bCheckRxDMA,
 		return false;
 
 	/* Froce PSEN on */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_PSEN);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_PSCTL, PSCTL_PSEN);
 
 	if (pMgmt->eCurrMode != WMAC_MODE_IBSS_STA) {
 		if (bCheckCountToWakeUp && (pMgmt->wCountToWakeUp == 0
@@ -195,7 +195,7 @@ int PSbConsiderPowerDown(struct vnt_private *pDevice, int bCheckRxDMA,
 	pDevice->bPSRxBeacon = true;
 
 	/* no Tx, no Rx isr, now go to Doze */
-	MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_GO2DOZE);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_PSCTL, PSCTL_GO2DOZE);
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Go to Doze ZZZZZZZZZZZZZZZ\n");
 	return true;
 }
@@ -312,27 +312,27 @@ int PSbSendNullPacket(struct vnt_private *pDevice)
  *
  */
 
-int PSbIsNextTBTTWakeUp(struct vnt_private *pDevice)
+int vnt_next_tbtt_wakeup(struct vnt_private *priv)
 {
-	struct vnt_manager *pMgmt = &pDevice->vnt_mgmt;
-	int bWakeUp = false;
+	struct vnt_manager *mgmt = &priv->vnt_mgmt;
+	int wake_up = false;
 
-	if (pMgmt->wListenInterval >= 2) {
-		if (pMgmt->wCountToWakeUp == 0)
-			pMgmt->wCountToWakeUp = pMgmt->wListenInterval;
+	if (mgmt->wListenInterval >= 2) {
+		if (mgmt->wCountToWakeUp == 0)
+			mgmt->wCountToWakeUp = mgmt->wListenInterval;
 
-		pMgmt->wCountToWakeUp--;
+		mgmt->wCountToWakeUp--;
 
-		if (pMgmt->wCountToWakeUp == 1) {
+		if (mgmt->wCountToWakeUp == 1) {
 			/* Turn on wake up to listen next beacon */
-			MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_LNBCN);
-			pDevice->bPSRxBeacon = false;
-			bWakeUp = true;
-		} else if (!pDevice->bPSRxBeacon) {
+			vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_LNBCN);
+			priv->bPSRxBeacon = false;
+			wake_up = true;
+		} else if (!priv->bPSRxBeacon) {
 			/* Listen until RxBeacon */
-			MACvRegBitsOn(pDevice, MAC_REG_PSCTL, PSCTL_LNBCN);
+			vnt_mac_reg_bits_on(priv, MAC_REG_PSCTL, PSCTL_LNBCN);
 		}
 	}
-	return bWakeUp;
+	return wake_up;
 }
 

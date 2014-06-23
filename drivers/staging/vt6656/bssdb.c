@@ -946,11 +946,11 @@ void BSSvSecondCallBack(struct work_struct *work)
 		/* on/off protect mode */
 		if (WLAN_GET_ERP_USE_PROTECTION(pDevice->byERPFlag)) {
 			if (!pDevice->bProtectMode) {
-				MACvEnableProtectMD(pDevice);
+				vnt_mac_enable_protect_mode(pDevice);
 				pDevice->bProtectMode = true;
 			}
 		} else if (pDevice->bProtectMode) {
-			MACvDisableProtectMD(pDevice);
+			vnt_mac_disable_protect_mode(pDevice);
 			pDevice->bProtectMode = false;
 		}
 		/* on/off short slot time */
@@ -959,23 +959,23 @@ void BSSvSecondCallBack(struct work_struct *work)
 			if (pDevice->bShortSlotTime) {
 				pDevice->bShortSlotTime = false;
 				BBvSetShortSlotTime(pDevice);
-				vUpdateIFS((void *) pDevice);
+				vnt_update_ifs(pDevice);
 			}
 		} else if (!pDevice->bShortSlotTime) {
 				pDevice->bShortSlotTime = true;
 				BBvSetShortSlotTime(pDevice);
-				vUpdateIFS((void *) pDevice);
+				vnt_update_ifs(pDevice);
 		}
 
 		/* on/off barker long preamble mode */
 
 		if (uLongPreambleSTACnt > 0) {
 			if (!pDevice->bBarkerPreambleMd) {
-				MACvEnableBarkerPreambleMd(pDevice);
+				vnt_mac_enable_barker_preamble_mode(pDevice);
 				pDevice->bBarkerPreambleMd = true;
 			}
 		} else if (pDevice->bBarkerPreambleMd) {
-				MACvDisableBarkerPreambleMd(pDevice);
+				vnt_mac_disable_barker_preamble_mode(pDevice);
 				pDevice->bBarkerPreambleMd = false;
 		}
 
