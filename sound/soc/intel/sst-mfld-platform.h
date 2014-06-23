@@ -39,9 +39,10 @@ extern struct sst_device *sst;
 
 struct pcm_stream_info {
 	int str_id;
-	void *mad_substream;
-	void (*period_elapsed) (void *mad_substream);
+	void *arg;
+	void (*period_elapsed) (void *arg);
 	unsigned long long buffer_ptr;
+	unsigned long long pcm_delay;
 	int sfreq;
 };
 
