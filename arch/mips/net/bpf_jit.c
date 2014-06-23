@@ -447,6 +447,17 @@ static inline void emit_wsbh(unsigned int dst, unsigned int src,
 	emit_instr(ctx, wsbh, dst, src);
 }
 
+/* load address to register */
+static inline void emit_load_addr(unsigned int dst, unsigned int src,
+				     int imm, struct jit_ctx *ctx)
+{
+	/* src contains the base addr of the 32/64-pointer */
+	if (config_enabled(CONFIG_64BIT))
+		emit_instr(ctx, ld, dst, imm, src);
+	else
+		emit_instr(ctx, lw, dst, imm, src);
+}
+
 /* load a function pointer to register */
 static inline void emit_load_func(unsigned int reg, ptr imm,
 				  struct jit_ctx *ctx)
@@ -1271,7 +1282,8 @@ jmp_cmp:
 			/* A = skb->dev->ifindex */
 			ctx->flags |= SEEN_SKB | SEEN_A | SEEN_S0;
 			off = offsetof(struct sk_buff, dev);
-			emit_load(r_s0, r_skb, off, ctx);
+			/* Load address of *dev member */
+			emit_load_addr(r_s0, r_skb, off, ctx);
 			/* error (0) in the delay slot */
 			emit_bcond(MIPS_COND_EQ, r_s0, r_zero,
 				   b_imm(prog->len, ctx), ctx);
