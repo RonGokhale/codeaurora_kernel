@@ -309,7 +309,8 @@ static inline void emit_sll(unsigned int dst, unsigned int src,
 			    unsigned int sa, struct jit_ctx *ctx)
 {
 	/* sa is 5-bits long */
-	BUG_ON(sa >= BIT(5));
+	if (sa >= BIT(5))
+		sa = BIT(5) - 1;
 	emit_instr(ctx, sll, dst, src, sa);
 }
 
@@ -323,7 +324,8 @@ static inline void emit_srl(unsigned int dst, unsigned int src,
 			    unsigned int sa, struct jit_ctx *ctx)
 {
 	/* sa is 5-bits long */
-	BUG_ON(sa >= BIT(5));
+	if (sa >= BIT(5))
+		sa =  BIT(5) - 1;
 	emit_instr(ctx, srl, dst, src, sa);
 }
 
