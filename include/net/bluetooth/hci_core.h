@@ -273,7 +273,7 @@ struct hci_dev {
 
 	struct delayed_work	service_cache;
 
-	struct timer_list	cmd_timer;
+	struct delayed_work	cmd_timer;
 
 	struct work_struct	rx_work;
 	struct work_struct	cmd_work;
@@ -318,6 +318,7 @@ struct hci_dev {
 
 	struct rfkill		*rfkill;
 
+	unsigned long		dbg_flags;
 	unsigned long		dev_flags;
 
 	struct delayed_work	le_scan_disable;
@@ -380,6 +381,9 @@ struct hci_conn {
 	__u16		setting;
 	__u16		le_conn_min_interval;
 	__u16		le_conn_max_interval;
+	__u16		le_conn_interval;
+	__u16		le_conn_latency;
+	__u16		le_supv_timeout;
 	__s8		rssi;
 	__s8		tx_power;
 	__s8		max_tx_power;
@@ -520,7 +524,6 @@ enum {
 	HCI_CONN_AES_CCM,
 	HCI_CONN_POWER_SAVE,
 	HCI_CONN_REMOTE_OOB,
-	HCI_CONN_6LOWPAN,
 };
 
 static inline bool hci_conn_ssp_enabled(struct hci_conn *conn)

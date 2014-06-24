@@ -104,6 +104,15 @@ enum {
 	HCI_RESET,
 };
 
+/* BR/EDR and/or LE controller flags: the flags defined here should represent
+ * states configured via debugfs for debugging and testing purposes only.
+ */
+enum {
+	HCI_DUT_MODE,
+	HCI_FORCE_SC,
+	HCI_FORCE_STATIC_ADDR,
+};
+
 /*
  * BR/EDR and/or LE controller flags: the flags defined here should represent
  * states from the controller.
@@ -116,9 +125,6 @@ enum {
 	HCI_PAIRABLE,
 	HCI_SERVICE_CACHE,
 	HCI_DEBUG_KEYS,
-	HCI_DUT_MODE,
-	HCI_FORCE_SC,
-	HCI_FORCE_STATIC_ADDR,
 	HCI_UNREGISTER,
 	HCI_USER_CHANNEL,
 
@@ -139,7 +145,6 @@ enum {
 	HCI_PERIODIC_INQ,
 	HCI_FAST_CONNECTABLE,
 	HCI_BREDR_ENABLED,
-	HCI_6LOWPAN_ENABLED,
 	HCI_LE_SCAN_INTERRUPTED,
 };
 
@@ -347,15 +352,6 @@ enum {
 #define HCI_LK_CHANGED_COMBINATION	0x06
 #define HCI_LK_UNAUTH_COMBINATION_P256	0x07
 #define HCI_LK_AUTH_COMBINATION_P256	0x08
-/* The spec doesn't define types for SMP keys, the _MASTER suffix is implied */
-#define HCI_SMP_STK			0x80
-#define HCI_SMP_STK_SLAVE		0x81
-#define HCI_SMP_LTK			0x82
-#define HCI_SMP_LTK_SLAVE		0x83
-
-/* Long Term Key types */
-#define HCI_LTK_UNAUTH			0x00
-#define HCI_LTK_AUTH			0x01
 
 /* ---- HCI Error Codes ---- */
 #define HCI_ERROR_AUTH_FAILURE		0x05
@@ -1668,6 +1664,15 @@ struct hci_ev_le_conn_complete {
 	__le16   latency;
 	__le16   supervision_timeout;
 	__u8     clk_accurancy;
+} __packed;
+
+#define HCI_EV_LE_CONN_UPDATE_COMPLETE	0x03
+struct hci_ev_le_conn_update_complete {
+	__u8     status;
+	__le16   handle;
+	__le16   interval;
+	__le16   latency;
+	__le16   supervision_timeout;
 } __packed;
 
 #define HCI_EV_LE_LTK_REQ		0x05

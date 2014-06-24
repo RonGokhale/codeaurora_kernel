@@ -68,7 +68,7 @@ static ssize_t dut_mode_read(struct file *file, char __user *user_buf,
 	struct hci_dev *hdev = file->private_data;
 	char buf[3];
 
-	buf[0] = test_bit(HCI_DUT_MODE, &hdev->dev_flags) ? 'Y': 'N';
+	buf[0] = test_bit(HCI_DUT_MODE, &hdev->dbg_flags) ? 'Y': 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
 	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
@@ -94,7 +94,7 @@ static ssize_t dut_mode_write(struct file *file, const char __user *user_buf,
 	if (strtobool(buf, &enable))
 		return -EINVAL;
 
-	if (enable == test_bit(HCI_DUT_MODE, &hdev->dev_flags))
+	if (enable == test_bit(HCI_DUT_MODE, &hdev->dbg_flags))
 		return -EALREADY;
 
 	hci_req_lock(hdev);
@@ -115,7 +115,7 @@ static ssize_t dut_mode_write(struct file *file, const char __user *user_buf,
 	if (err < 0)
 		return err;
 
-	change_bit(HCI_DUT_MODE, &hdev->dev_flags);
+	change_bit(HCI_DUT_MODE, &hdev->dbg_flags);
 
 	return count;
 }
@@ -407,7 +407,7 @@ static ssize_t force_sc_support_read(struct file *file, char __user *user_buf,
 	struct hci_dev *hdev = file->private_data;
 	char buf[3];
 
-	buf[0] = test_bit(HCI_FORCE_SC, &hdev->dev_flags) ? 'Y': 'N';
+	buf[0] = test_bit(HCI_FORCE_SC, &hdev->dbg_flags) ? 'Y': 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
 	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
@@ -432,10 +432,10 @@ static ssize_t force_sc_support_write(struct file *file,
 	if (strtobool(buf, &enable))
 		return -EINVAL;
 
-	if (enable == test_bit(HCI_FORCE_SC, &hdev->dev_flags))
+	if (enable == test_bit(HCI_FORCE_SC, &hdev->dbg_flags))
 		return -EALREADY;
 
-	change_bit(HCI_FORCE_SC, &hdev->dev_flags);
+	change_bit(HCI_FORCE_SC, &hdev->dbg_flags);
 
 	return count;
 }
@@ -719,7 +719,7 @@ static ssize_t force_static_address_read(struct file *file,
 	struct hci_dev *hdev = file->private_data;
 	char buf[3];
 
-	buf[0] = test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dev_flags) ? 'Y': 'N';
+	buf[0] = test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dbg_flags) ? 'Y': 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
 	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
@@ -744,10 +744,10 @@ static ssize_t force_static_address_write(struct file *file,
 	if (strtobool(buf, &enable))
 		return -EINVAL;
 
-	if (enable == test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dev_flags))
+	if (enable == test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dbg_flags))
 		return -EALREADY;
 
-	change_bit(HCI_FORCE_STATIC_ADDR, &hdev->dev_flags);
+	change_bit(HCI_FORCE_STATIC_ADDR, &hdev->dbg_flags);
 
 	return count;
 }
@@ -927,49 +927,6 @@ static int adv_channel_map_get(void *data, u64 *val)
 
 DEFINE_SIMPLE_ATTRIBUTE(adv_channel_map_fops, adv_channel_map_get,
 			adv_channel_map_set, "%llu\n");
-
-static ssize_t lowpan_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
-{
-	struct hci_dev *hdev = file->private_data;
-	char buf[3];
-
-	buf[0] = test_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags) ? 'Y' : 'N';
-	buf[1] = '\n';
-	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
-}
-
-static ssize_t lowpan_write(struct file *fp, const char __user *user_buffer,
-			    size_t count, loff_t *position)
-{
-	struct hci_dev *hdev = fp->private_data;
-	bool enable;
-	char buf[32];
-	size_t buf_size = min(count, (sizeof(buf)-1));
-
-	if (copy_from_user(buf, user_buffer, buf_size))
-		return -EFAULT;
-
-	buf[buf_size] = '\0';
-
-	if (strtobool(buf, &enable) < 0)
-		return -EINVAL;
-
-	if (enable == test_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags))
-		return -EALREADY;
-
-	change_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags);
-
-	return count;
-}
-
-static const struct file_operations lowpan_debugfs_fops = {
-	.open		= simple_open,
-	.read		= lowpan_read,
-	.write		= lowpan_write,
-	.llseek		= default_llseek,
-};
 
 static int le_auto_conn_show(struct seq_file *sf, void *ptr)
 {
@@ -1752,7 +1709,7 @@ static void hci_init4_req(struct hci_request *req, unsigned long opt)
 
 	/* Enable Secure Connections if supported and configured */
 	if ((lmp_sc_capable(hdev) ||
-	     test_bit(HCI_FORCE_SC, &hdev->dev_flags)) &&
+	     test_bit(HCI_FORCE_SC, &hdev->dbg_flags)) &&
 	    test_bit(HCI_SC_ENABLED, &hdev->dev_flags)) {
 		u8 support = 0x01;
 		hci_req_add(req, HCI_OP_WRITE_SC_SUPPORT,
@@ -1881,8 +1838,6 @@ static int __hci_init(struct hci_dev *hdev)
 				    hdev, &conn_max_interval_fops);
 		debugfs_create_file("adv_channel_map", 0644, hdev->debugfs,
 				    hdev, &adv_channel_map_fops);
-		debugfs_create_file("6lowpan", 0644, hdev->debugfs, hdev,
-				    &lowpan_debugfs_fops);
 		debugfs_create_file("le_auto_conn", 0644, hdev->debugfs, hdev,
 				    &le_auto_conn_fops);
 		debugfs_create_u16("discov_interleaved_timeout", 0644,
@@ -2432,7 +2387,7 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 	hci_req_lock(hdev);
 
 	if (!test_and_clear_bit(HCI_UP, &hdev->flags)) {
-		del_timer_sync(&hdev->cmd_timer);
+		cancel_delayed_work_sync(&hdev->cmd_timer);
 		hci_req_unlock(hdev);
 		return 0;
 	}
@@ -2488,7 +2443,7 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 
 	/* Drop last sent command */
 	if (hdev->sent_cmd) {
-		del_timer_sync(&hdev->cmd_timer);
+		cancel_delayed_work_sync(&hdev->cmd_timer);
 		kfree_skb(hdev->sent_cmd);
 		hdev->sent_cmd = NULL;
 	}
@@ -2974,10 +2929,7 @@ static bool hci_persistent_key(struct hci_dev *hdev, struct hci_conn *conn,
 
 static bool ltk_type_master(u8 type)
 {
-	if (type == HCI_SMP_STK || type == HCI_SMP_LTK)
-		return true;
-
-	return false;
+	return (type == SMP_LTK);
 }
 
 struct smp_ltk *hci_find_ltk(struct hci_dev *hdev, __le16 ediv, __le64 rand,
@@ -3205,9 +3157,10 @@ void hci_remove_irk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 addr_type)
 }
 
 /* HCI command timer function */
-static void hci_cmd_timeout(unsigned long arg)
+static void hci_cmd_timeout(struct work_struct *work)
 {
-	struct hci_dev *hdev = (void *) arg;
+	struct hci_dev *hdev = container_of(work, struct hci_dev,
+					    cmd_timer.work);
 
 	if (hdev->sent_cmd) {
 		struct hci_command_hdr *sent = (void *) hdev->sent_cmd->data;
@@ -3784,7 +3737,7 @@ int hci_update_random_address(struct hci_request *req, bool require_privacy,
 	 * the HCI command if the current random address is already the
 	 * static one.
 	 */
-	if (test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dev_flags) ||
+	if (test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dbg_flags) ||
 	    !bacmp(&hdev->bdaddr, BDADDR_ANY)) {
 		*own_addr_type = ADDR_LE_DEV_RANDOM;
 		if (bacmp(&hdev->static_addr, &hdev->random_addr))
@@ -3813,7 +3766,7 @@ int hci_update_random_address(struct hci_request *req, bool require_privacy,
 void hci_copy_identity_address(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			       u8 *bdaddr_type)
 {
-	if (test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dev_flags) ||
+	if (test_bit(HCI_FORCE_STATIC_ADDR, &hdev->dbg_flags) ||
 	    !bacmp(&hdev->bdaddr, BDADDR_ANY)) {
 		bacpy(bdaddr, &hdev->static_addr);
 		*bdaddr_type = ADDR_LE_DEV_RANDOM;
@@ -3884,7 +3837,7 @@ struct hci_dev *hci_alloc_dev(void)
 
 	init_waitqueue_head(&hdev->req_wait_q);
 
-	setup_timer(&hdev->cmd_timer, hci_cmd_timeout, (unsigned long) hdev);
+	INIT_DELAYED_WORK(&hdev->cmd_timer, hci_cmd_timeout);
 
 	hci_init_sysfs(hdev);
 	discovery_init(hdev);
@@ -5287,10 +5240,10 @@ static void hci_cmd_work(struct work_struct *work)
 			atomic_dec(&hdev->cmd_cnt);
 			hci_send_frame(hdev, skb);
 			if (test_bit(HCI_RESET, &hdev->flags))
-				del_timer(&hdev->cmd_timer);
+				cancel_delayed_work(&hdev->cmd_timer);
 			else
-				mod_timer(&hdev->cmd_timer,
-					  jiffies + HCI_CMD_TIMEOUT);
+				schedule_delayed_work(&hdev->cmd_timer,
+						      HCI_CMD_TIMEOUT);
 		} else {
 			skb_queue_head(&hdev->cmd_q, skb);
 			queue_work(hdev->workqueue, &hdev->cmd_work);

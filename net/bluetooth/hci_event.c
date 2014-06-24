@@ -32,6 +32,7 @@
 
 #include "a2mp.h"
 #include "amp.h"
+#include "smp.h"
 
 /* Handle HCI Event packets */
 
@@ -2709,7 +2710,7 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	if (opcode != HCI_OP_NOP)
-		del_timer(&hdev->cmd_timer);
+		cancel_delayed_work(&hdev->cmd_timer);
 
 	hci_req_cmd_complete(hdev, opcode, status);
 
@@ -2800,7 +2801,7 @@ static void hci_cmd_status_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	if (opcode != HCI_OP_NOP)
-		del_timer(&hdev->cmd_timer);
+		cancel_delayed_work(&hdev->cmd_timer);
 
 	if (ev->status ||
 	    (hdev->sent_cmd && !bt_cb(hdev->sent_cmd)->req.event))
@@ -4025,6 +4026,14 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		conn->init_addr_type = ev->bdaddr_type;
 		bacpy(&conn->init_addr, &ev->bdaddr);
+
+		/* For incoming connections, set the default minimum
+		 * and maximum connection interval. They will be used
+		 * to check if the parameters are in range and if not
+		 * trigger the connection update procedure.
+		 */
+		conn->le_conn_min_interval = hdev->le_conn_min_interval;
+		conn->le_conn_max_interval = hdev->le_conn_max_interval;
 	}
 
 	/* Lookup the identity address from the stored connection
@@ -4055,8 +4064,9 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	conn->handle = __le16_to_cpu(ev->handle);
 	conn->state = BT_CONNECTED;
 
-	if (test_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags))
-		set_bit(HCI_CONN_6LOWPAN, &conn->flags);
+	conn->le_conn_interval = le16_to_cpu(ev->interval);
+	conn->le_conn_latency = le16_to_cpu(ev->latency);
+	conn->le_supv_timeout = le16_to_cpu(ev->supervision_timeout);
 
 	hci_conn_add_sysfs(conn);
 
@@ -4065,6 +4075,29 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_pend_le_conn_del(hdev, &conn->dst, conn->dst_type);
 
 unlock:
+	hci_dev_unlock(hdev);
+}
+
+static void hci_le_conn_update_complete_evt(struct hci_dev *hdev,
+					    struct sk_buff *skb)
+{
+	struct hci_ev_le_conn_update_complete *ev = (void *) skb->data;
+	struct hci_conn *conn;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
+
+	if (ev->status)
+		return;
+
+	hci_dev_lock(hdev);
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (conn) {
+		conn->le_conn_interval = le16_to_cpu(ev->interval);
+		conn->le_conn_latency = le16_to_cpu(ev->latency);
+		conn->le_supv_timeout = le16_to_cpu(ev->supervision_timeout);
+	}
+
 	hci_dev_unlock(hdev);
 }
 
@@ -4241,7 +4274,7 @@ static void hci_le_ltk_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	 * distribute the keys. Later, security can be re-established
 	 * using a distributed LTK.
 	 */
-	if (ltk->type == HCI_SMP_STK_SLAVE) {
+	if (ltk->type == SMP_STK) {
 		list_del(&ltk->list);
 		kfree(ltk);
 	}
@@ -4265,6 +4298,10 @@ static void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	switch (le_ev->subevent) {
 	case HCI_EV_LE_CONN_COMPLETE:
 		hci_le_conn_complete_evt(hdev, skb);
+		break;
+
+	case HCI_EV_LE_CONN_UPDATE_COMPLETE:
+		hci_le_conn_update_complete_evt(hdev, skb);
 		break;
 
 	case HCI_EV_LE_ADVERTISING_REPORT:
