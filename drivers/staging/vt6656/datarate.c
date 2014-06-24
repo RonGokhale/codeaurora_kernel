@@ -163,7 +163,7 @@ void RATEvParseMaxRate(struct vnt_private *pDevice,
 			 * add to basic rate set, update pDevice->byTopCCKBasicRate and
 			 * pDevice->byTopOFDMBasicRate
 			 */
-			CARDbAddBasicRate((void *)pDevice, RATEwGetRateIdx(byRate));
+			vnt_add_basic_rate(pDevice, RATEwGetRateIdx(byRate));
 			DBG_PRT(MSG_LEVEL_DEBUG,
 				KERN_INFO"ParseMaxRate AddBasicRate: %d\n",
 				RATEwGetRateIdx(byRate));
@@ -191,7 +191,7 @@ void RATEvParseMaxRate(struct vnt_private *pDevice,
 				 * add to basic rate set, update pDevice->byTopCCKBasicRate and
 				 * pDevice->byTopOFDMBasicRate
 				 */
-				CARDbAddBasicRate((void *)pDevice, RATEwGetRateIdx(byRate));
+				vnt_add_basic_rate(pDevice, RATEwGetRateIdx(byRate));
 				DBG_PRT(MSG_LEVEL_DEBUG,
 						KERN_INFO"ParseMaxRate AddBasicRate: %d\n",
 						RATEwGetRateIdx(byRate));
@@ -210,7 +210,7 @@ void RATEvParseMaxRate(struct vnt_private *pDevice,
 	}
 
 	if ((pDevice->byPacketType == PK_TYPE_11GB)
-			&& CARDbIsOFDMinBasicRate((void *)pDevice)) {
+			&& vnt_ofdm_min_rate(pDevice)) {
 		pDevice->byPacketType = PK_TYPE_11GA;
 	}
 
@@ -222,7 +222,7 @@ void RATEvParseMaxRate(struct vnt_private *pDevice,
 	else
 		*pwMaxBasicRate = pDevice->byTopOFDMBasicRate;
 	if (wOldBasicRate != pDevice->wBasicRate)
-		CARDvSetRSPINF((void *)pDevice, pDevice->byBBType);
+		vnt_set_rspinf(pDevice, pDevice->byBBType);
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Exit ParseMaxRate\n");
 }
