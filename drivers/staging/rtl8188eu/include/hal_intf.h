@@ -233,29 +233,7 @@ struct hal_ops {
 			       enum rf_radio_path eRFPath, u32 RegAddr,
 			       u32 BitMask, u32 Data);
 
-	void (*EfusePowerSwitch)(struct adapter *padapter, u8 bWrite,
-				 u8 PwrState);
-	void (*ReadEFuse)(struct adapter *padapter, u8 efuseType, u16 _offset,
-			  u16 _size_byte, u8 *pbuf, bool bPseudoTest);
-	void (*EFUSEGetEfuseDefinition)(struct adapter *padapter, u8 efuseType,
-					u8 type, void *pOut, bool bPseudoTest);
-	u16	(*EfuseGetCurrentSize)(struct adapter *padapter, u8 efuseType,
-				       bool bPseudoTest);
-	int	(*Efuse_PgPacketRead)(struct adapter *adapter, u8 offset,
-				      u8 *data, bool bPseudoTest);
-	int	(*Efuse_PgPacketWrite)(struct adapter *padapter, u8 offset,
-				       u8 word_en, u8 *data, bool bPseudoTest);
-	u8	(*Efuse_WordEnableDataWrite)(struct adapter *padapter,
-					     u16 efuse_addr, u8 word_en,
-					     u8 *data, bool bPseudoTest);
-	bool	(*Efuse_PgPacketWrite_BT)(struct adapter *padapter, u8 offset,
-					  u8 word_en, u8 *data, bool test);
-
 	void (*sreset_init_value)(struct adapter *padapter);
-	void (*sreset_reset_value)(struct adapter *padapter);
-	void (*silentreset)(struct adapter *padapter);
-	void (*sreset_xmit_status_check)(struct adapter *padapter);
-	void (*sreset_linked_status_check) (struct adapter *padapter);
 	u8 (*sreset_get_wifi_status)(struct adapter *padapter);
 
 	int (*IOL_exec_cmds_sync)(struct adapter *padapter,
@@ -368,10 +346,6 @@ void	rtw_hal_antdiv_rssi_compared(struct adapter *padapter,
 				     struct wlan_bssid_ex *src);
 
 void rtw_hal_sreset_init(struct adapter *padapter);
-void rtw_hal_sreset_reset(struct adapter *padapter);
-void rtw_hal_sreset_reset_value(struct adapter *padapter);
-void rtw_hal_sreset_xmit_status_check(struct adapter *padapter);
-void rtw_hal_sreset_linked_status_check(struct adapter *padapter);
 u8   rtw_hal_sreset_get_wifi_status(struct adapter *padapter);
 
 int rtw_hal_iol_cmd(struct adapter  *adapter, struct xmit_frame *xmit_frame,

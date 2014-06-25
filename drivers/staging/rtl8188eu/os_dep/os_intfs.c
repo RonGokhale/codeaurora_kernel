@@ -20,23 +20,21 @@
 #define _OS_INTFS_C_
 
 #include <osdep_service.h>
+#include <osdep_intf.h>
 #include <drv_types.h>
 #include <xmit_osdep.h>
 #include <recv_osdep.h>
 #include <hal_intf.h>
 #include <rtw_ioctl.h>
-#include <rtw_version.h>
 
 #include <usb_osintf.h>
 #include <usb_hal.h>
-#include <rtw_br_ext.h>
 
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Realtek Wireless Lan Driver");
 MODULE_AUTHOR("Realtek Semiconductor Corp.");
 MODULE_VERSION(DRIVERVERSION);
 
-#define CONFIG_BR_EXT_BRNAME "br0"
 #define RTW_NOTCH_FILTER 0 /* 0:Disable, 1:Enable, */
 
 /* module param defaults */
@@ -837,8 +835,7 @@ u8 rtw_reset_drv_sw(struct adapter *padapter)
 	pmlmepriv->LinkDetectInfo.bBusyTraffic = false;
 
 	_clr_fwstate_(pmlmepriv, _FW_UNDER_SURVEY | _FW_UNDER_LINKING);
-
-	rtw_hal_sreset_reset_value(padapter);
+	rtw_hal_sreset_init(padapter);
 	pwrctrlpriv->pwr_state_check_cnts = 0;
 
 	/* mlmeextpriv */
@@ -995,38 +992,11 @@ u8 rtw_free_drv_sw(struct adapter *padapter)
 		padapter->rereg_nd_name_priv.old_pnetdev = NULL;
 	}
 
-	/*  clear pbuddystruct adapter to avoid access wrong pointer. */
-	if (padapter->pbuddy_adapter != NULL)
-		padapter->pbuddy_adapter->pbuddy_adapter = NULL;
+	mutex_destroy(&padapter->hw_init_mutex);
 
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("-rtw_free_drv_sw\n"));
 
 	return _SUCCESS;
-}
-
-void netdev_br_init(struct net_device *netdev)
-{
-	struct adapter *adapter = (struct adapter *)rtw_netdev_priv(netdev);
-
-	rcu_read_lock();
-
-	if (rcu_dereference(adapter->pnetdev->rx_handler_data)) {
-		struct net_device *br_netdev;
-		struct net *devnet = NULL;
-
-		devnet = dev_net(netdev);
-		br_netdev = dev_get_by_name(devnet, CONFIG_BR_EXT_BRNAME);
-		if (br_netdev) {
-			memcpy(adapter->br_mac, br_netdev->dev_addr, ETH_ALEN);
-			dev_put(br_netdev);
-		} else {
-			pr_info("%s()-%d: dev_get_by_name(%s) failed!",
-				__func__, __LINE__, CONFIG_BR_EXT_BRNAME);
-		}
-	}
-	adapter->ethBrExtInfo.addPPPoETag = 1;
-
-	rcu_read_unlock();
 }
 
 int _netdev_open(struct net_device *pnetdev)
@@ -1046,7 +1016,6 @@ int _netdev_open(struct net_device *pnetdev)
 	if (!padapter->bup) {
 		padapter->bDriverStopped = false;
 		padapter->bSurpriseRemoved = false;
-		padapter->bCardDisableWOHSM = false;
 
 		status = rtw_hal_init(padapter);
 		if (status == _FAIL) {
@@ -1086,8 +1055,6 @@ int _netdev_open(struct net_device *pnetdev)
 	else
 		netif_tx_wake_all_queues(pnetdev);
 
-	netdev_br_init(pnetdev);
-
 netdev_open_normal_process:
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("-88eu_drv - dev_open\n"));
 	DBG_88E("-88eu_drv - drv_open, bup =%d\n", padapter->bup);
@@ -1107,9 +1074,9 @@ int netdev_open(struct net_device *pnetdev)
 	int ret;
 	struct adapter *padapter = (struct adapter *)rtw_netdev_priv(pnetdev);
 
-	_enter_critical_mutex(padapter->hw_init_mutex, NULL);
+	_enter_critical_mutex(&padapter->hw_init_mutex, NULL);
 	ret = _netdev_open(pnetdev);
-	mutex_unlock(padapter->hw_init_mutex);
+	mutex_unlock(&padapter->hw_init_mutex);
 	return ret;
 }
 
@@ -1121,7 +1088,6 @@ static int  ips_netdrv_open(struct adapter *padapter)
 
 	padapter->bDriverStopped = false;
 	padapter->bSurpriseRemoved = false;
-	padapter->bCardDisableWOHSM = false;
 
 	status = rtw_hal_init(padapter);
 	if (status == _FAIL) {
@@ -1164,13 +1130,11 @@ void rtw_ips_pwr_down(struct adapter *padapter)
 	u32 start_time = jiffies;
 	DBG_88E("===> rtw_ips_pwr_down...................\n");
 
-	padapter->bCardDisableWOHSM = true;
 	padapter->net_closed = true;
 
 	rtw_led_control(padapter, LED_CTL_POWER_OFF);
 
 	rtw_ips_dev_unload(padapter);
-	padapter->bCardDisableWOHSM = false;
 	DBG_88E("<=== rtw_ips_pwr_down..................... in %dms\n", rtw_get_passing_time_ms(start_time));
 }
 
@@ -1234,8 +1198,6 @@ int netdev_close(struct net_device *pnetdev)
 		/*  Close LED */
 		rtw_led_control(padapter, LED_CTL_POWER_OFF);
 	}
-
-	nat25_db_cleanup(padapter);
 
 #ifdef CONFIG_88EU_P2P
 	rtw_p2p_enable(padapter, P2P_ROLE_DISABLE);

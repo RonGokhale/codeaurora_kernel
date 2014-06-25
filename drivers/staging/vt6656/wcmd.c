@@ -111,7 +111,7 @@ static void vAdHocBeaconStop(struct vnt_private *pDevice)
 	if (bStop) {
 		//PMESG(("STOP_BEACON: IBSSChannel = %u, ScanChannel = %u\n",
 		//        pMgmt->uIBSSChannel, pMgmt->uScanChannel));
-		MACvRegBitsOff(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
+		vnt_mac_reg_bits_off(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
 	}
 
 } /* vAdHocBeaconStop */
@@ -142,7 +142,7 @@ static void vAdHocBeaconRestart(struct vnt_private *pDevice)
 	if ((pMgmt->eCurrMode == WMAC_MODE_IBSS_STA) &&
 	    (pMgmt->eCurrState >= WMAC_STATE_STARTED)) {
 		//PMESG(("RESTART_BEACON\n"));
-		MACvRegBitsOn(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
+		vnt_mac_reg_bits_on(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
 	}
 
 }
@@ -325,7 +325,7 @@ void vRunCommand(struct work_struct *work)
 				pDevice->byScanBBType = pDevice->byBBType;  //lucas
 				pDevice->bStopDataPkt = true;
 				// Turn off RCR_BSSID filter every time
-				MACvRegBitsOff(pDevice, MAC_REG_RCR, RCR_BSSID);
+				vnt_mac_reg_bits_off(pDevice, MAC_REG_RCR, RCR_BSSID);
 				pDevice->byRxMode &= ~RCR_BSSID;
 			}
 			//lucas
@@ -333,15 +333,15 @@ void vRunCommand(struct work_struct *work)
 			if ((pDevice->byBBType != BB_TYPE_11A) &&
 			    (pMgmt->uScanChannel > CB_MAX_CHANNEL_24G)) {
 				pDevice->byBBType = BB_TYPE_11A;
-				CARDvSetBSSMode(pDevice);
+				vnt_set_bss_mode(pDevice);
 			} else if ((pDevice->byBBType == BB_TYPE_11A) &&
 				   (pMgmt->uScanChannel <= CB_MAX_CHANNEL_24G)) {
 				pDevice->byBBType = BB_TYPE_11G;
-				CARDvSetBSSMode(pDevice);
+				vnt_set_bss_mode(pDevice);
 			}
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Scanning....  channel: [%d]\n", pMgmt->uScanChannel);
 			// Set channel
-			CARDbSetMediaChannel(pDevice, pMgmt->uScanChannel);
+			vnt_set_channel(pDevice, pMgmt->uScanChannel);
 			// Set Baseband to be more sensitive.
 
 			BBvSetShortSlotTime(pDevice);
@@ -377,7 +377,7 @@ void vRunCommand(struct work_struct *work)
 		// Set Baseband's sensitivity back.
 		if (pDevice->byBBType != pDevice->byScanBBType) {
 			pDevice->byBBType = pDevice->byScanBBType;
-			CARDvSetBSSMode(pDevice);
+			vnt_set_bss_mode(pDevice);
 		}
 
 		BBvSetShortSlotTime(pDevice);
@@ -387,10 +387,10 @@ void vRunCommand(struct work_struct *work)
 		// Set channel back
 		vAdHocBeaconRestart(pDevice);
 		// Set channel back
-		CARDbSetMediaChannel(pDevice, pMgmt->uCurrChannel);
+		vnt_set_channel(pDevice, pMgmt->uCurrChannel);
 		// Set Filter
 		if (pMgmt->bCurrBSSIDFilterOn) {
-			MACvRegBitsOn(pDevice, MAC_REG_RCR, RCR_BSSID);
+			vnt_mac_reg_bits_on(pDevice, MAC_REG_RCR, RCR_BSSID);
 			pDevice->byRxMode |= RCR_BSSID;
 		}
 		DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Scanning, set back to channel: [%d]\n", pMgmt->uCurrChannel);
@@ -439,7 +439,7 @@ void vRunCommand(struct work_struct *work)
 		}
 		netif_stop_queue(pDevice->dev);
 		if (pDevice->bNeedRadioOFF == true)
-			CARDbRadioPowerOff(pDevice);
+			vnt_radio_power_off(pDevice);
 
 		break;
 
@@ -480,7 +480,7 @@ void vRunCommand(struct work_struct *work)
 		// set initial state
 		pMgmt->eCurrState = WMAC_STATE_IDLE;
 		pMgmt->eCurrMode = WMAC_MODE_STANDBY;
-		PSvDisablePowerSaving((void *) pDevice);
+		vnt_disable_power_saving(pDevice);
 		BSSvClearNodeDBTable(pDevice, 0);
 		vMgrJoinBSSBegin((void *) pDevice, &Status);
 		// if Infra mode
@@ -593,7 +593,7 @@ void vRunCommand(struct work_struct *work)
 		if (pMgmt->eCurrState == WMAC_STATE_ASSOC) {
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"eCurrState == WMAC_STATE_ASSOC\n");
 			if (pDevice->ePSMode != WMAC_POWER_CAM) {
-				PSvEnablePowerSaving((void *) pDevice,
+				vnt_enable_power_saving(pDevice,
 						pMgmt->wListenInterval);
 			}
 /*
@@ -647,7 +647,7 @@ void vRunCommand(struct work_struct *work)
 					KERN_INFO "vMgrCreateOwnIBSS fail!\n");
 			}
 			// always turn off unicast bit
-			MACvRegBitsOff(pDevice, MAC_REG_RCR, RCR_UNICAST);
+			vnt_mac_reg_bits_off(pDevice, MAC_REG_RCR, RCR_UNICAST);
 			pDevice->byRxMode &= ~RCR_UNICAST;
 			DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "wcmd: rx_mode = %x\n", pDevice->byRxMode);
 			BSSvAddMulticastNode(pDevice);
@@ -798,8 +798,8 @@ void vRunCommand(struct work_struct *work)
 				memset(pItemSSID->abySSID, 0, WLAN_SSID_MAXLEN);
 
 				netif_stop_queue(pDevice->dev);
-				CARDbRadioPowerOff(pDevice);
-				MACvRegBitsOn(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
+				vnt_radio_power_off(pDevice);
+				vnt_mac_reg_bits_on(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
 
 				vnt_mac_set_led(pDevice, LEDSTS_STS, LEDSTS_OFF);
 
@@ -807,8 +807,8 @@ void vRunCommand(struct work_struct *work)
 			} else {
 				DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO" WLAN_CMD_RADIO_START_ON........................\n");
 				pDevice->bHWRadioOff = false;
-				CARDbRadioPowerOn(pDevice);
-				MACvRegBitsOff(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
+				vnt_radio_power_on(pDevice);
+				vnt_mac_reg_bits_off(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
 
 				vnt_mac_set_led(pDevice, LEDSTS_STS, LEDSTS_ON);
 			}
@@ -826,7 +826,7 @@ void vRunCommand(struct work_struct *work)
 		break;
 
 	case WLAN_CMD_TBTT_WAKEUP_START:
-		PSbIsNextTBTTWakeUp(pDevice);
+		vnt_next_tbtt_wakeup(pDevice);
 		break;
 
 	case WLAN_CMD_BECON_SEND_START:
@@ -876,7 +876,7 @@ void vRunCommand(struct work_struct *work)
 		break;
 
 	case WLAN_CMD_11H_CHSW_START:
-		CARDbSetMediaChannel(pDevice, pDevice->byNewChannel);
+		vnt_set_channel(pDevice, pDevice->byNewChannel);
 		pDevice->bChannelSwitch = false;
 		pMgmt->uCurrChannel = pDevice->byNewChannel;
 		pDevice->bStopDataPkt = false;
