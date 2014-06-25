@@ -1959,7 +1959,7 @@ static void check_page_uptodate(struct extent_io_tree *tree, struct page *page)
 		SetPageUptodate(page);
 }
 
-static int free_io_failure(struct inode *inode, struct io_failure_record *rec)
+int free_io_failure(struct inode *inode, struct io_failure_record *rec)
 {
 	int ret;
 	int err = 0;
@@ -2078,8 +2078,8 @@ int repair_eb_io_failure(struct btrfs_root *root, struct extent_buffer *eb,
  * each time an IO finishes, we do a fast check in the IO failure tree
  * to see if we need to process or clean up an io_failure_record
  */
-static int clean_io_failure(struct inode *inode, u64 start,
-			    struct page *page, unsigned int pg_offset)
+int clean_io_failure(struct inode *inode, u64 start, struct page *page,
+		     unsigned int pg_offset)
 {
 	u64 private;
 	u64 private_failure;
@@ -2288,7 +2288,7 @@ int btrfs_check_repairable(struct inode *inode, struct bio *failed_bio,
 struct bio *btrfs_create_repair_bio(struct inode *inode, struct bio *failed_bio,
 				    struct io_failure_record *failrec,
 				    struct page *page, int pg_offset, int icsum,
-				    bio_end_io_t *endio_func)
+				    bio_end_io_t *endio_func, void *data)
 {
 	struct bio *bio;
 	struct btrfs_io_bio *btrfs_failed_bio;
@@ -2302,6 +2302,7 @@ struct bio *btrfs_create_repair_bio(struct inode *inode, struct bio *failed_bio,
 	bio->bi_iter.bi_sector = failrec->logical >> 9;
 	bio->bi_bdev = BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev;
 	bio->bi_iter.bi_size = 0;
+	bio->bi_private = data;
 
 	btrfs_failed_bio = btrfs_io_bio(failed_bio);
 	if (btrfs_failed_bio->csum) {
@@ -2359,7 +2360,8 @@ static int bio_readpage_error(struct bio *failed_bio, u64 phy_offset,
 	phy_offset >>= inode->i_sb->s_blocksize_bits;
 	bio = btrfs_create_repair_bio(inode, failed_bio, failrec, page,
 				      start - page_offset(page),
-				      (int)phy_offset, failed_bio->bi_end_io);
+				      (int)phy_offset, failed_bio->bi_end_io,
+				      NULL);
 	if (!bio) {
 		free_io_failure(inode, failrec);
 		return -EIO;
