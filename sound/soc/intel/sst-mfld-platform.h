@@ -39,9 +39,10 @@ extern struct sst_device *sst;
 
 struct pcm_stream_info {
 	int str_id;
-	void *mad_substream;
-	void (*period_elapsed) (void *mad_substream);
+	void *arg;
+	void (*period_elapsed) (void *arg);
 	unsigned long long buffer_ptr;
+	unsigned long long pcm_delay;
 	int sfreq;
 };
 
@@ -124,7 +125,7 @@ struct compress_sst_ops {
 };
 
 struct sst_ops {
-	int (*open) (struct sst_stream_params *str_param);
+	int (*open) (struct snd_sst_params *str_param);
 	int (*device_control) (int cmd, void *arg);
 	int (*close) (unsigned int str_id);
 };
