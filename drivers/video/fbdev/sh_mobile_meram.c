@@ -222,7 +222,7 @@ static int meram_plane_alloc(struct sh_mobile_meram_priv *priv,
 	unsigned long idx;
 
 	idx = find_first_zero_bit(&priv->used_icb, 28);
-	if (idx == 28)
+	if (idx >= 28)
 		return -ENOMEM;
 	plane->cache = &priv->icbs[idx];
 
