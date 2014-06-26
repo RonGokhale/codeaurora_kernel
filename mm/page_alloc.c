@@ -816,9 +816,21 @@ void __init init_cma_reserved_pageblock(struct page *page)
 		set_page_count(p, 0);
 	} while (++p, --i);
 
-	set_page_refcounted(page);
 	set_pageblock_migratetype(page, MIGRATE_CMA);
-	__free_pages(page, pageblock_order);
+
+	if (pageblock_order >= MAX_ORDER) {
+		i = pageblock_nr_pages;
+		p = page;
+		do {
+			set_page_refcounted(p);
+			__free_pages(p, MAX_ORDER - 1);
+			p += MAX_ORDER_NR_PAGES;
+		} while (i -= MAX_ORDER_NR_PAGES);
+	} else {
+		set_page_refcounted(page);
+		__free_pages(page, pageblock_order);
+	}
+
 	adjust_managed_page_count(page, pageblock_nr_pages);
 }
 #endif
@@ -1245,15 +1257,11 @@ static int rmqueue_bulk(struct zone *zone, unsigned int order,
 void drain_zone_pages(struct zone *zone, struct per_cpu_pages *pcp)
 {
 	unsigned long flags;
-	int to_drain;
-	unsigned long batch;
+	int to_drain, batch;
 
 	local_irq_save(flags);
 	batch = ACCESS_ONCE(pcp->batch);
-	if (pcp->count >= batch)
-		to_drain = batch;
-	else
-		to_drain = pcp->count;
+	to_drain = min(pcp->count, batch);
 	if (to_drain > 0) {
 		free_pcppages_bulk(zone, to_drain, pcp);
 		pcp->count -= to_drain;
@@ -2950,7 +2958,7 @@ EXPORT_SYMBOL(alloc_pages_exact);
  * Note this is not alloc_pages_exact_node() which allocates on a specific node,
  * but is not exact.
  */
-void *alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask)
+void * __meminit alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask)
 {
 	unsigned order = get_order(size);
 	struct page *p = alloc_pages_node(nid, gfp_mask, order);
@@ -2958,7 +2966,6 @@ void *alloc_pages_exact_nid(int nid, size_t size, gfp_t gfp_mask)
 		return NULL;
 	return make_alloc_exact((unsigned long)page_address(p), order, size);
 }
-EXPORT_SYMBOL(alloc_pages_exact_nid);
 
 /**
  * free_pages_exact - release memory allocated via alloc_pages_exact()
@@ -6050,10 +6057,11 @@ static inline int pfn_to_bitidx(struct zone *zone, unsigned long pfn)
 }
 
 /**
- * get_pageblock_flags_group - Return the requested group of flags for the pageblock_nr_pages block of pages
+ * get_pfnblock_flags_mask - Return the requested group of flags for the pageblock_nr_pages block of pages
  * @page: The page within the block of interest
- * @start_bitidx: The first bit of interest to retrieve
+ * @pfn: Page Number of the page
  * @end_bitidx: The last bit of interest
+ * @mask: The mask for flags
  * returns pageblock_bits flags
  */
 unsigned long get_pfnblock_flags_mask(struct page *page, unsigned long pfn,
@@ -6079,9 +6087,10 @@ unsigned long get_pfnblock_flags_mask(struct page *page, unsigned long pfn,
 /**
  * set_pfnblock_flags_mask - Set the requested group of flags for a pageblock_nr_pages block of pages
  * @page: The page within the block of interest
- * @start_bitidx: The first bit of interest
- * @end_bitidx: The last bit of interest
  * @flags: The flags to set
+ * @pfn: Page Number of the page
+ * @end_bitidx: The last bit of interest
+ * @mask: The mask for flags
  */
 void set_pfnblock_flags_mask(struct page *page, unsigned long flags,
 					unsigned long pfn,
