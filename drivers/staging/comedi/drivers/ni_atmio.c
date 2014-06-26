@@ -107,8 +107,6 @@ are not supported.
 
 #define NI_SIZE 0x20
 
-#define MAX_N_CALDACS 32
-
 static const struct ni_board_struct ni_boards[] = {
 	{.device_id = 44,
 	 .isapnp_id = 0x0000,	/* XXX unknown */
@@ -272,59 +270,7 @@ static const int ni_irqpin[] = {
 
 #define NI_E_IRQ_FLAGS		0
 
-struct ni_private {
-	struct pnp_dev *isapnp_dev;
-	NI_PRIVATE_COMMON
-
-};
-
-/* How we access registers */
-
-#define ni_writel(a, b)		(outl((a), (b)+dev->iobase))
-#define ni_readl(a)		(inl((a)+dev->iobase))
-#define ni_writew(a, b)		(outw((a), (b)+dev->iobase))
-#define ni_readw(a)		(inw((a)+dev->iobase))
-#define ni_writeb(a, b)		(outb((a), (b)+dev->iobase))
-#define ni_readb(a)		(inb((a)+dev->iobase))
-
-/* How we access windowed registers */
-
-/* We automatically take advantage of STC registers that can be
- * read/written directly in the I/O space of the board.  The
- * AT-MIO devices map the low 8 STC registers to iobase+addr*2. */
-
-static void ni_atmio_win_out(struct comedi_device *dev, uint16_t data, int addr)
-{
-	struct ni_private *devpriv = dev->private;
-	unsigned long flags;
-
-	spin_lock_irqsave(&devpriv->window_lock, flags);
-	if ((addr) < 8) {
-		ni_writew(data, addr * 2);
-	} else {
-		ni_writew(addr, Window_Address);
-		ni_writew(data, Window_Data);
-	}
-	spin_unlock_irqrestore(&devpriv->window_lock, flags);
-}
-
-static uint16_t ni_atmio_win_in(struct comedi_device *dev, int addr)
-{
-	struct ni_private *devpriv = dev->private;
-	unsigned long flags;
-	uint16_t ret;
-
-	spin_lock_irqsave(&devpriv->window_lock, flags);
-	if (addr < 8) {
-		ret = ni_readw(addr * 2);
-	} else {
-		ni_writew(addr, Window_Address);
-		ret = ni_readw(Window_Data);
-	}
-	spin_unlock_irqrestore(&devpriv->window_lock, flags);
-
-	return ret;
-}
+#include "ni_mio_common.c"
 
 static struct pnp_device_id device_ids[] = {
 	{.id = "NIC1900", .driver_data = 0},
@@ -336,8 +282,6 @@ static struct pnp_device_id device_ids[] = {
 };
 
 MODULE_DEVICE_TABLE(pnp, device_ids);
-
-#include "ni_mio_common.c"
 
 static int ni_isapnp_find_board(struct pnp_dev **dev)
 {
@@ -413,11 +357,6 @@ static int ni_atmio_attach(struct comedi_device *dev,
 		return ret;
 	devpriv = dev->private;
 
-	devpriv->stc_writew = &ni_atmio_win_out;
-	devpriv->stc_readw = &ni_atmio_win_in;
-	devpriv->stc_writel = &win_out2;
-	devpriv->stc_readl = &win_in2;
-
 	iobase = it->options[0];
 	irq = it->options[1];
 	isapnp_dev = NULL;
@@ -428,7 +367,7 @@ static int ni_atmio_attach(struct comedi_device *dev,
 
 		iobase = pnp_port_start(isapnp_dev, 0);
 		irq = pnp_irq(isapnp_dev, 0);
-		devpriv->isapnp_dev = isapnp_dev;
+		comedi_set_hw_dev(dev, &isapnp_dev->dev);
 	}
 
 	ret = comedi_request_region(dev, iobase, NI_SIZE);
@@ -477,12 +416,14 @@ static int ni_atmio_attach(struct comedi_device *dev,
 
 static void ni_atmio_detach(struct comedi_device *dev)
 {
-	struct ni_private *devpriv = dev->private;
+	struct pnp_dev *isapnp_dev;
 
 	mio_common_detach(dev);
 	comedi_legacy_detach(dev);
-	if (devpriv->isapnp_dev)
-		pnp_device_detach(devpriv->isapnp_dev);
+
+	isapnp_dev = dev->hw_dev ? to_pnp_dev(dev->hw_dev) : NULL;
+	if (isapnp_dev)
+		pnp_device_detach(isapnp_dev);
 }
 
 static struct comedi_driver ni_atmio_driver = {

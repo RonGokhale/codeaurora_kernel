@@ -1655,11 +1655,11 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                     if ((pBSSList->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION) != pDevice->bProtectMode) {//0000 0010
                         pDevice->bProtectMode = (pBSSList->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION);
                         if (pDevice->bProtectMode) {
-                            MACvEnableProtectMD(pDevice);
+			    vnt_mac_enable_protect_mode(pDevice);
                         } else {
-                            MACvDisableProtectMD(pDevice);
+			    vnt_mac_disable_protect_mode(pDevice);
                         }
-                        vUpdateIFS(pDevice);
+			vnt_update_ifs(pDevice);
                     }
                     if ((pBSSList->sERP.byERP & WLAN_EID_ERP_NONERP_PRESENT) != pDevice->bNonERPPresent) {//0000 0001
                         pDevice->bNonERPPresent = (pBSSList->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION);
@@ -1668,9 +1668,9 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                         pDevice->bBarkerPreambleMd = (pBSSList->sERP.byERP & WLAN_EID_ERP_BARKER_MODE);
                         //BarkerPreambleMd has higher priority than shortPreamble bit in Cap
                         if (pDevice->bBarkerPreambleMd) {
-                            MACvEnableBarkerPreambleMd(pDevice);
+			    vnt_mac_enable_barker_preamble_mode(pDevice);
                         } else {
-                            MACvDisableBarkerPreambleMd(pDevice);
+			    vnt_mac_disable_barker_preamble_mode(pDevice);
                         }
                     }
                 }
@@ -1690,7 +1690,7 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                     if (bShortSlotTime != pDevice->bShortSlotTime) {
                         pDevice->bShortSlotTime = bShortSlotTime;
                         BBvSetShortSlotTime(pDevice);
-                        vUpdateIFS(pDevice);
+			vnt_update_ifs(pDevice);
                     }
                 }
 
@@ -1705,7 +1705,7 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                     pDevice->byPreambleType = 0;
                 }
                 if (pDevice->byPreambleType != byOldPreambleType)
-                    CARDvSetRSPINF(pDevice, (u8)pDevice->byBBType);
+			vnt_set_rspinf(pDevice, (u8)pDevice->byBBType);
             //
             // Basic Rate Set may change dynamically
             //
@@ -1750,10 +1750,10 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
 		bTSFOffsetPostive = false;
 
     if (bTSFOffsetPostive) {
-        qwTSFOffset = CARDqGetTSFOffset(pRxPacket->byRxRate, (qwTimestamp), (qwLocalTSF));
+	qwTSFOffset = vnt_get_tsf_offset(pRxPacket->byRxRate, (qwTimestamp), (qwLocalTSF));
     }
     else {
-        qwTSFOffset = CARDqGetTSFOffset(pRxPacket->byRxRate, (qwLocalTSF), (qwTimestamp));
+	qwTSFOffset = vnt_get_tsf_offset(pRxPacket->byRxRate, (qwLocalTSF), (qwTimestamp));
     }
 
 	if (qwTSFOffset > TRIVIAL_SYNC_DIFFERENCE)
@@ -1915,12 +1915,12 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                      // set HW beacon interval and re-synchronizing....
                      DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "Rejoining to Other Adhoc group with same SSID........\n");
 
-                     MACvWriteBeaconInterval(pDevice, pMgmt->wCurrBeaconPeriod);
-                     CARDvAdjustTSF(pDevice, pRxPacket->byRxRate, qwTimestamp, pRxPacket->qwLocalTSF);
-                     CARDvUpdateNextTBTT(pDevice, qwTimestamp, pMgmt->wCurrBeaconPeriod);
+		     vnt_mac_set_beacon_interval(pDevice, pMgmt->wCurrBeaconPeriod);
+		     vnt_adjust_tsf(pDevice, pRxPacket->byRxRate, qwTimestamp, pRxPacket->qwLocalTSF);
+		     vnt_update_next_tbtt(pDevice, qwTimestamp, pMgmt->wCurrBeaconPeriod);
 
                      // Turn off bssid filter to avoid filter others adhoc station which bssid is different.
-                     MACvWriteBSSIDAddress(pDevice, pMgmt->abyCurrBSSID);
+		    vnt_mac_set_bssid_addr(pDevice, pMgmt->abyCurrBSSID);
 
                     byOldPreambleType = pDevice->byPreambleType;
                     if (WLAN_GET_CAP_INFO_SHORTPREAMBLE(*sFrame.pwCapInfo)) {
@@ -1930,9 +1930,8 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
                         pDevice->byPreambleType = 0;
                     }
                     if (pDevice->byPreambleType != byOldPreambleType)
-                        CARDvSetRSPINF(pDevice, (u8)pDevice->byBBType);
+			vnt_set_rspinf(pDevice, (u8)pDevice->byBBType);
 
-                     // MACvRegBitsOff(pDevice->PortOffset, MAC_REG_RCR, RCR_BSSID);
                      // set highest basic rate
                      // s_vSetHighestBasicRate(pDevice, (PWLAN_IE_SUPP_RATES)pMgmt->abyCurrSuppRates);
                      // Prepare beacon frame
@@ -1944,10 +1943,10 @@ if(ChannelExceedZoneType(pDevice,byCurrChannel)==true)
     // endian issue ???
     // Update TSF
     if (bUpdateTSF) {
-        CARDbGetCurrentTSF(pDevice, &qwCurrTSF);
-        CARDvAdjustTSF(pDevice, pRxPacket->byRxRate, qwTimestamp , pRxPacket->qwLocalTSF);
-        CARDbGetCurrentTSF(pDevice, &qwCurrTSF);
-        CARDvUpdateNextTBTT(pDevice, qwTimestamp, pMgmt->wCurrBeaconPeriod);
+	vnt_get_current_tsf(pDevice, &qwCurrTSF);
+	vnt_adjust_tsf(pDevice, pRxPacket->byRxRate, qwTimestamp , pRxPacket->qwLocalTSF);
+	vnt_get_current_tsf(pDevice, &qwCurrTSF);
+	vnt_update_next_tbtt(pDevice, qwTimestamp, pMgmt->wCurrBeaconPeriod);
     }
 
     return;
@@ -2032,26 +2031,26 @@ void vMgrCreateOwnIBSS(struct vnt_private *pDevice, PCMD_STATUS pStatus)
 
     // Disable Protect Mode
     pDevice->bProtectMode = 0;
-    MACvDisableProtectMD(pDevice);
+    vnt_mac_disable_protect_mode(pDevice);
 
     pDevice->bBarkerPreambleMd = 0;
-    MACvDisableBarkerPreambleMd(pDevice);
+    vnt_mac_disable_barker_preamble_mode(pDevice);
 
     // Kyle Test 2003.11.04
 
     // set HW beacon interval
     if (pMgmt->wIBSSBeaconPeriod == 0)
         pMgmt->wIBSSBeaconPeriod = DEFAULT_IBSS_BI;
-    MACvWriteBeaconInterval(pDevice, pMgmt->wIBSSBeaconPeriod);
+    vnt_mac_set_beacon_interval(pDevice, pMgmt->wIBSSBeaconPeriod);
 
-    CARDbGetCurrentTSF(pDevice, &qwCurrTSF);
+    vnt_get_current_tsf(pDevice, &qwCurrTSF);
     // clear TSF counter
-    CARDbClearCurrentTSF(pDevice);
+    vnt_clear_current_tsf(pDevice);
 
     // enable TSF counter
-    MACvRegBitsOn(pDevice,MAC_REG_TFTCTL,TFTCTL_TSFCNTREN);
+    vnt_mac_reg_bits_on(pDevice, MAC_REG_TFTCTL, TFTCTL_TSFCNTREN);
     // set Next TBTT
-    CARDvSetFirstNextTBTT(pDevice, pMgmt->wIBSSBeaconPeriod);
+    vnt_reset_next_tbtt(pDevice, pMgmt->wIBSSBeaconPeriod);
 
     pMgmt->uIBSSChannel = pDevice->uChannel;
 
@@ -2059,7 +2058,7 @@ void vMgrCreateOwnIBSS(struct vnt_private *pDevice, PCMD_STATUS pStatus)
         pMgmt->uIBSSChannel = DEFAULT_IBSS_CHANNEL;
 
     // set channel and clear NAV
-    CARDbSetMediaChannel(pDevice, pMgmt->uIBSSChannel);
+    vnt_set_channel(pDevice, pMgmt->uIBSSChannel);
     pMgmt->uCurrChannel = pMgmt->uIBSSChannel;
 
     pDevice->byPreambleType = pDevice->byShortPreamble;
@@ -2081,15 +2080,15 @@ void vMgrCreateOwnIBSS(struct vnt_private *pDevice, PCMD_STATUS pStatus)
     // vUpdateIFS() use pDevice->bShortSlotTime as parameter so it must be called
     // after setting ShortSlotTime.
     // CARDvSetBSSMode call vUpdateIFS()
-    CARDvSetBSSMode(pDevice);
+    vnt_set_bss_mode(pDevice);
 
     if (pMgmt->eConfigMode == WMAC_CONFIG_AP) {
-        MACvRegBitsOn(pDevice, MAC_REG_HOSTCR, HOSTCR_AP);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_HOSTCR, HOSTCR_AP);
         pMgmt->eCurrMode = WMAC_MODE_ESS_AP;
     }
 
     if (pMgmt->eConfigMode == WMAC_CONFIG_IBSS_STA) {
-        MACvRegBitsOn(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
         pMgmt->eCurrMode = WMAC_MODE_IBSS_STA;
     }
 
@@ -2140,10 +2139,10 @@ void vMgrCreateOwnIBSS(struct vnt_private *pDevice, PCMD_STATUS pStatus)
     }
 
     // set BSSID filter
-    MACvWriteBSSIDAddress(pDevice, pMgmt->abyCurrBSSID);
+    vnt_mac_set_bssid_addr(pDevice, pMgmt->abyCurrBSSID);
     memcpy(pDevice->abyBSSID, pMgmt->abyCurrBSSID, WLAN_ADDR_LEN);
 
-    MACvRegBitsOn(pDevice, MAC_REG_RCR, RCR_BSSID);
+    vnt_mac_reg_bits_on(pDevice, MAC_REG_RCR, RCR_BSSID);
     pDevice->byRxMode |= RCR_BSSID;
     pMgmt->bCurrBSSIDFilterOn = true;
 
@@ -2337,7 +2336,8 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
 	    RATEvParseMaxRate((void *)pDevice, pItemRates, pItemExtRates, true,
                               &wMaxBasicRate, &wMaxSuppRate, &wSuppRate,
                               &byTopCCKBasicRate, &byTopOFDMBasicRate);
-            vUpdateIFS(pDevice);
+
+	    vnt_update_ifs(pDevice);
             // TODO: deal with if wCapInfo the privacy is on, but station WEP is off
             // TODO: deal with if wCapInfo the PS-Pollable is on.
             pMgmt->wCurrBeaconPeriod = pCurr->wBeaconInterval;
@@ -2378,7 +2378,7 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
                 pDevice->byPreambleType = 0;
             }
             // Change PreambleType must set RSPINF again
-            CARDvSetRSPINF(pDevice, (u8)pDevice->byBBType);
+	    vnt_set_rspinf(pDevice, (u8)pDevice->byBBType);
 
             DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"Join ESS\n");
 
@@ -2387,11 +2387,11 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
                 if ((pCurr->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION) != pDevice->bProtectMode) {//0000 0010
                     pDevice->bProtectMode = (pCurr->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION);
                     if (pDevice->bProtectMode) {
-                        MACvEnableProtectMD(pDevice);
+			vnt_mac_enable_protect_mode(pDevice);
                     } else {
-                        MACvDisableProtectMD(pDevice);
+			vnt_mac_disable_protect_mode(pDevice);
                     }
-                    vUpdateIFS(pDevice);
+		    vnt_update_ifs(pDevice);
                 }
                 if ((pCurr->sERP.byERP & WLAN_EID_ERP_NONERP_PRESENT) != pDevice->bNonERPPresent) {//0000 0001
                     pDevice->bNonERPPresent = (pCurr->sERP.byERP & WLAN_EID_ERP_USE_PROTECTION);
@@ -2400,9 +2400,9 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
                     pDevice->bBarkerPreambleMd = (pCurr->sERP.byERP & WLAN_EID_ERP_BARKER_MODE);
                     //BarkerPreambleMd has higher priority than shortPreamble bit in Cap
                     if (pDevice->bBarkerPreambleMd) {
-                        MACvEnableBarkerPreambleMd(pDevice);
+			vnt_mac_enable_barker_preamble_mode(pDevice);
                     } else {
-                        MACvDisableBarkerPreambleMd(pDevice);
+			vnt_mac_disable_barker_preamble_mode(pDevice);
                     }
                 }
             }
@@ -2421,7 +2421,7 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
                 if (bShortSlotTime != pDevice->bShortSlotTime) {
                     pDevice->bShortSlotTime = bShortSlotTime;
                     BBvSetShortSlotTime(pDevice);
-                    vUpdateIFS(pDevice);
+		    vnt_update_ifs(pDevice);
                 }
             }
 
@@ -2480,7 +2480,7 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
 			      (PWLAN_IE_SUPP_RATES)pMgmt->abyCurrSuppRates,
                               NULL, true, &wMaxBasicRate, &wMaxSuppRate, &wSuppRate,
                               &byTopCCKBasicRate, &byTopOFDMBasicRate);
-            vUpdateIFS(pDevice);
+	    vnt_update_ifs(pDevice);
             pMgmt->wCurrCapInfo = pCurr->wCapInfo;
             pMgmt->wCurrBeaconPeriod = pCurr->wBeaconInterval;
             memset(pMgmt->abyCurrSSID, 0, WLAN_IEHDR_LEN + WLAN_SSID_MAXLEN);
@@ -2509,7 +2509,7 @@ void vMgrJoinBSSBegin(struct vnt_private *pDevice, PCMD_STATUS pStatus)
                 pDevice->byPreambleType = 0;
             }
             // Change PreambleType must set RSPINF again
-            CARDvSetRSPINF(pDevice, (u8)pDevice->byBBType);
+	    vnt_set_rspinf(pDevice, (u8)pDevice->byBBType);
 
             // Prepare beacon
 		bMgrPrepareBeaconToSend((void *) pDevice, pMgmt);
@@ -2560,33 +2560,33 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
 
     // if previous mode is IBSS.
     if(pMgmt->eCurrMode == WMAC_MODE_IBSS_STA) {
-        MACvRegBitsOff(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
+	vnt_mac_reg_bits_off(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
     }
 
     // Init the BSS informations
     pDevice->bProtectMode = false;
-    MACvDisableProtectMD(pDevice);
+    vnt_mac_disable_protect_mode(pDevice);
     pDevice->bBarkerPreambleMd = false;
-    MACvDisableBarkerPreambleMd(pDevice);
+    vnt_mac_disable_barker_preamble_mode(pDevice);
     pDevice->bNonERPPresent = false;
     pDevice->byPreambleType = 0;
     pDevice->wBasicRate = 0;
     // Set Basic Rate
-    CARDbAddBasicRate((void *)pDevice, RATE_1M);
+    vnt_add_basic_rate(pDevice, RATE_1M);
 
     // calculate TSF offset
     // TSF Offset = Received Timestamp TSF - Marked Local's TSF
-    CARDvAdjustTSF(pDevice, pCurr->byRxRate, pCurr->qwBSSTimestamp, pCurr->qwLocalTSF);
+    vnt_adjust_tsf(pDevice, pCurr->byRxRate, pCurr->qwBSSTimestamp, pCurr->qwLocalTSF);
 
     // set HW beacon interval
-    MACvWriteBeaconInterval(pDevice, pCurr->wBeaconInterval);
+    vnt_mac_set_beacon_interval(pDevice, pCurr->wBeaconInterval);
 
     // set Next TBTT
     // Next TBTT = ((local_current_TSF / beacon_interval) + 1 ) * beacon_interval
-    CARDvSetFirstNextTBTT(pDevice, pCurr->wBeaconInterval);
+    vnt_reset_next_tbtt(pDevice, pCurr->wBeaconInterval);
 
     // set BSSID
-    MACvWriteBSSIDAddress(pDevice, pCurr->abyBSSID);
+    vnt_mac_set_bssid_addr(pDevice, pCurr->abyBSSID);
 
     memcpy(pMgmt->abyCurrBSSID, pCurr->abyBSSID, 6);
 
@@ -2600,7 +2600,7 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
             pMgmt->eCurrentPHYMode = PHY_TYPE_11A;
             pDevice->bShortSlotTime = true;
             BBvSetShortSlotTime(pDevice);
-            CARDvSetBSSMode(pDevice);
+	    vnt_set_bss_mode(pDevice);
         } else {
             return;
         }
@@ -2612,7 +2612,7 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
             pMgmt->eCurrentPHYMode = PHY_TYPE_11B;
             pDevice->bShortSlotTime = false;
             BBvSetShortSlotTime(pDevice);
-            CARDvSetBSSMode(pDevice);
+	    vnt_set_bss_mode(pDevice);
         } else {
             return;
         }
@@ -2623,26 +2623,26 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
             pMgmt->eCurrentPHYMode = PHY_TYPE_11G;
             pDevice->bShortSlotTime = true;
             BBvSetShortSlotTime(pDevice);
-            CARDvSetBSSMode(pDevice);
+	    vnt_set_bss_mode(pDevice);
         } else if (pDevice->eConfigPHYMode == PHY_TYPE_11B) {
             pDevice->byBBType = BB_TYPE_11B;
             pDevice->bShortSlotTime = false;
             BBvSetShortSlotTime(pDevice);
-            CARDvSetBSSMode(pDevice);
+	    vnt_set_bss_mode(pDevice);
         } else {
             return;
         }
     }
 
     if (uBSSMode == WMAC_MODE_ESS_STA) {
-        MACvRegBitsOff(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
-        MACvRegBitsOn(pDevice, MAC_REG_RCR, RCR_BSSID);
+	vnt_mac_reg_bits_off(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_RCR, RCR_BSSID);
         pDevice->byRxMode |= RCR_BSSID;
         pMgmt->bCurrBSSIDFilterOn = true;
     }
 
     // set channel and clear NAV
-    CARDbSetMediaChannel(pDevice, pCurr->uChannel);
+    vnt_set_channel(pDevice, pCurr->uChannel);
     pMgmt->uCurrChannel = pCurr->uChannel;
     DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "<----s_bSynchBSS Set Channel [%d]\n", pCurr->uChannel);
 
@@ -2658,8 +2658,8 @@ static void s_vMgrSynchBSS(struct vnt_private *pDevice, u32 uBSSMode,
     // 2. In Infra mode : Supposed we already synchronized with AP right now.
 
     if (uBSSMode == WMAC_MODE_IBSS_STA) {
-        MACvRegBitsOn(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
-        MACvRegBitsOn(pDevice, MAC_REG_RCR, RCR_BSSID);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_HOSTCR, HOSTCR_ADHOC);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_RCR, RCR_BSSID);
         pDevice->byRxMode |= RCR_BSSID;
         pMgmt->bCurrBSSIDFilterOn = true;
     }
@@ -4059,7 +4059,7 @@ int bMgrPrepareBeaconToSend(struct vnt_private *pDevice,
 
 	spin_unlock_irqrestore(&pDevice->lock, flags);
 
-	MACvRegBitsOn(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_TCR, TCR_AUTOBCNTX);
 
     return true;
 }

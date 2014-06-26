@@ -36,10 +36,10 @@ static void dm_InitGPIOSetting(struct adapter *Adapter)
 {
 	u8	tmp1byte;
 
-	tmp1byte = rtw_read8(Adapter, REG_GPIO_MUXCFG);
+	tmp1byte = usb_read8(Adapter, REG_GPIO_MUXCFG);
 	tmp1byte &= (GPIOSEL_GPIO | ~GPIOSEL_ENBT);
 
-	rtw_write8(Adapter, REG_GPIO_MUXCFG, tmp1byte);
+	usb_write8(Adapter, REG_GPIO_MUXCFG, tmp1byte);
 }
 
 /*  */
