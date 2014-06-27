@@ -4,6 +4,8 @@
 #include <linux/regmap.h>
 #include <linux/platform_data/adau17x1.h>
 
+#include "sigmadsp.h"
+
 enum adau17x1_type {
 	ADAU1361,
 	ADAU1761,
@@ -42,6 +44,7 @@ struct adau {
 	bool dsp_bypass[2];
 
 	struct regmap *regmap;
+	struct sigmadsp sigmadsp;
 };
 
 int adau17x1_add_widgets(struct snd_soc_codec *codec);
@@ -57,8 +60,7 @@ int adau17x1_resume(struct snd_soc_codec *codec);
 
 extern const struct snd_soc_dai_ops adau17x1_dai_ops;
 
-int adau17x1_load_firmware(struct adau *adau, struct device *dev,
-	const char *firmware);
+int adau17x1_setup_firmware(struct adau *adau, unsigned int rate);
 bool adau17x1_has_dsp(struct adau *adau);
 
 #define ADAU17X1_CLOCK_CONTROL			0x4000

@@ -699,10 +699,12 @@ static int adau1761_codec_probe(struct snd_soc_codec *codec)
 		if (ret)
 			return ret;
 
-		ret = adau17x1_load_firmware(adau, codec->dev,
-			ADAU1761_FIRMWARE);
-		if (ret)
-			dev_warn(codec->dev, "Failed to firmware\n");
+		if (adau17x1_has_dsp(adau)) {
+			ret = sigmadsp_firmware_load(&adau->sigmadsp, codec,
+				ADAU1761_FIRMWARE);
+			if (ret)
+				dev_warn(codec->dev, "Failed to firmware\n");
+		}
 	}
 
 	ret = adau17x1_add_routes(codec);

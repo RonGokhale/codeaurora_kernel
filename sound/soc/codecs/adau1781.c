@@ -437,7 +437,7 @@ static int adau1781_codec_probe(struct snd_soc_codec *codec)
 	if (ret < 0)
 		return ret;
 
-	ret = adau17x1_load_firmware(adau, codec->dev, firmware);
+	ret = sigmadsp_firmware_load(&adau->sigmadsp, codec, firmware);
 	if (ret)
 		dev_warn(codec->dev, "Failed to load firmware\n");
 
