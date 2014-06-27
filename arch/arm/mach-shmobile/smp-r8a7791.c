@@ -17,10 +17,12 @@
 #include <linux/init.h>
 #include <linux/smp.h>
 #include <linux/io.h>
+
 #include <asm/smp_plat.h>
-#include <mach/common.h>
-#include <mach/r8a7791.h>
-#include <mach/rcar-gen2.h>
+
+#include "common.h"
+#include "r8a7791.h"
+#include "rcar-gen2.h"
 
 #define RST		0xe6160000
 #define CA15BAR		0x0020
@@ -50,6 +52,9 @@ static void __init r8a7791_smp_prepare_cpus(unsigned int max_cpus)
 	writel_relaxed((readl_relaxed(p + CA15RESCNT) & ~0x0f) | 0xa5a50000,
 		       p + CA15RESCNT);
 	iounmap(p);
+
+	r8a7791_pm_init();
+	shmobile_smp_apmu_suspend_init();
 }
 
 static int r8a7791_smp_boot_secondary(unsigned int cpu,

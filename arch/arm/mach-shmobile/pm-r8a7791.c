@@ -1,7 +1,7 @@
 /*
- * r8a7790 Power management support
+ * r8a7791 Power management support
  *
- * Copyright (C) 2013  Renesas Electronics Corporation
+ * Copyright (C) 2014  Renesas Electronics Corporation
  * Copyright (C) 2011  Renesas Solutions Corp.
  * Copyright (C) 2011  Magnus Damm
  *
@@ -15,7 +15,7 @@
 #include <asm/io.h>
 
 #include "pm-rcar.h"
-#include "r8a7790.h"
+#include "r8a7791.h"
 
 /* SYSC */
 #define SYSCIER 0x0c
@@ -23,7 +23,7 @@
 
 #if defined(CONFIG_SMP)
 
-static void __init r8a7790_sysc_init(void)
+static void __init r8a7791_sysc_init(void)
 {
 	void __iomem *base = rcar_sysc_init(0xe6180000);
 
@@ -34,14 +34,16 @@ static void __init r8a7790_sysc_init(void)
 
 #else /* CONFIG_SMP */
 
-static inline void r8a7790_sysc_init(void) {}
+static inline void r8a7791_sysc_init(void) {}
 
 #endif /* CONFIG_SMP */
 
-void __init r8a7790_pm_init(void)
+void __init r8a7791_pm_init(void)
 {
 	static int once;
 
-	if (!once++)
-		r8a7790_sysc_init();
+	if (once++)
+		return;
+
+	r8a7791_sysc_init();
 }
