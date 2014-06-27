@@ -20,7 +20,7 @@
 #define _RTW_MP_C_
 
 #include <drv_types.h>
-
+#include <usb_ops_linux.h>
 #include "rtl8188e_hal.h"
 #include <linux/vmalloc.h>
 
@@ -30,13 +30,13 @@ u32 read_macreg(struct adapter *padapter, u32 addr, u32 sz)
 
 	switch (sz) {
 	case 1:
-		val = rtw_read8(padapter, addr);
+		val = usb_read8(padapter, addr);
 		break;
 	case 2:
-		val = rtw_read16(padapter, addr);
+		val = usb_read16(padapter, addr);
 		break;
 	case 4:
-		val = rtw_read32(padapter, addr);
+		val = usb_read32(padapter, addr);
 		break;
 	default:
 		val = 0xffffffff;
@@ -50,13 +50,13 @@ void write_macreg(struct adapter *padapter, u32 addr, u32 val, u32 sz)
 {
 	switch (sz) {
 	case 1:
-		rtw_write8(padapter, addr, (u8)val);
+		usb_write8(padapter, addr, (u8)val);
 		break;
 	case 2:
-		rtw_write16(padapter, addr, (u16)val);
+		usb_write16(padapter, addr, (u16)val);
 		break;
 	case 4:
-		rtw_write32(padapter, addr, val);
+		usb_write32(padapter, addr, val);
 		break;
 	default:
 		break;
@@ -221,7 +221,7 @@ s32 MPT_InitializeAdapter(struct adapter *pAdapter, u8 Channel)
 	/*  */
 
 	/*  Don't accept any packets */
-	rtw_write32(pAdapter, REG_RCR, 0);
+	usb_write32(pAdapter, REG_RCR, 0);
 
 	PHY_IQCalibrate(pAdapter, false);
 	dm_CheckTXPowerTracking(&pHalData->odmpriv);	/* trigger thermal meter */
@@ -234,8 +234,8 @@ s32 MPT_InitializeAdapter(struct adapter *pAdapter, u8 Channel)
 	pMptCtx->backup0x52_RF_B = (u8)PHY_QueryRFReg(pAdapter, RF_PATH_A, RF_0x52, 0x000F0);
 
 	/* set ant to wifi side in mp mode */
-	rtw_write16(pAdapter, 0x870, 0x300);
-	rtw_write16(pAdapter, 0x860, 0x110);
+	usb_write16(pAdapter, 0x870, 0x300);
+	usb_write16(pAdapter, 0x860, 0x110);
 
 	if (pAdapter->registrypriv.mp_mode == 1)
 		pmlmepriv->fw_state = WIFI_MP_STATE;
@@ -302,9 +302,9 @@ static void disable_dm(struct adapter *padapter)
 
 	/* 3 1. disable firmware dynamic mechanism */
 	/*  disable Power Training, Rate Adaptive */
-	v8 = rtw_read8(padapter, REG_BCN_CTRL);
+	v8 = usb_read8(padapter, REG_BCN_CTRL);
 	v8 &= ~EN_BCN_FUNCTION;
-	rtw_write8(padapter, REG_BCN_CTRL, v8);
+	usb_write8(padapter, REG_BCN_CTRL, v8);
 
 	/* 3 2. disable driver dynamic mechanism */
 	/*  disable Dynamic Initial Gain */
@@ -421,9 +421,9 @@ end_of_mp_start_test:
 
 	if (res == _SUCCESS) {
 		/*  set MSR to WIFI_FW_ADHOC_STATE */
-		val8 = rtw_read8(padapter, MSR) & 0xFC; /*  0x0102 */
+		val8 = usb_read8(padapter, MSR) & 0xFC; /*  0x0102 */
 		val8 |= WIFI_FW_ADHOC_STATE;
-		rtw_write8(padapter, MSR, val8); /*  Link in ad hoc network */
+		usb_write8(padapter, MSR, val8); /*  Link in ad hoc network */
 	}
 	return res;
 }
@@ -788,12 +788,12 @@ void SetPacketRx(struct adapter *pAdapter, u8 bStartRx)
 
 		pHalData->ReceiveConfig |= ACRC32;
 
-		rtw_write32(pAdapter, REG_RCR, pHalData->ReceiveConfig);
+		usb_write32(pAdapter, REG_RCR, pHalData->ReceiveConfig);
 
 		/*  Accept all data frames */
-		rtw_write16(pAdapter, REG_RXFLTMAP2, 0xFFFF);
+		usb_write16(pAdapter, REG_RXFLTMAP2, 0xFFFF);
 	} else {
-		rtw_write32(pAdapter, REG_RCR, 0);
+		usb_write32(pAdapter, REG_RCR, 0);
 	}
 }
 
@@ -805,7 +805,7 @@ void ResetPhyRxPktCount(struct adapter *pAdapter)
 		phyrx_set = 0;
 		phyrx_set |= _RXERR_RPT_SEL(i);	/* select */
 		phyrx_set |= RXERR_RPT_RST;	/*  set counter to zero */
-		rtw_write32(pAdapter, REG_RXERR_RPT, phyrx_set);
+		usb_write32(pAdapter, REG_RXERR_RPT, phyrx_set);
 	}
 }
 
@@ -815,10 +815,10 @@ static u32 GetPhyRxPktCounts(struct adapter *pAdapter, u32 selbit)
 	u32 phyrx_set = 0, count = 0;
 
 	phyrx_set = _RXERR_RPT_SEL(selbit & 0xF);
-	rtw_write32(pAdapter, REG_RXERR_RPT, phyrx_set);
+	usb_write32(pAdapter, REG_RXERR_RPT, phyrx_set);
 
 	/* Read packet count */
-	count = rtw_read32(pAdapter, REG_RXERR_RPT) & RXERR_COUNTER_MASK;
+	count = usb_read32(pAdapter, REG_RXERR_RPT) & RXERR_COUNTER_MASK;
 
 	return count;
 }
@@ -853,17 +853,17 @@ static u32 rtw_GetPSDData(struct adapter *pAdapter, u32 point)
 	int psd_val;
 
 
-	psd_val = rtw_read32(pAdapter, 0x808);
+	psd_val = usb_read32(pAdapter, 0x808);
 	psd_val &= 0xFFBFFC00;
 	psd_val |= point;
 
-	rtw_write32(pAdapter, 0x808, psd_val);
+	usb_write32(pAdapter, 0x808, psd_val);
 	mdelay(1);
 	psd_val |= 0x00400000;
 
-	rtw_write32(pAdapter, 0x808, psd_val);
+	usb_write32(pAdapter, 0x808, psd_val);
 	mdelay(1);
-	psd_val = rtw_read32(pAdapter, 0x8B4);
+	psd_val = usb_read32(pAdapter, 0x8B4);
 
 	psd_val &= 0x0000FFFF;
 

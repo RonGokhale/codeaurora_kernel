@@ -73,8 +73,8 @@
 #include <linux/interrupt.h>
 #include <linux/in.h>
 #include <linux/delay.h>
-#include <asm/io.h>
-#include <asm/bitops.h>
+#include <linux/io.h>
+#include <linux/bitops.h>
 
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
@@ -131,11 +131,11 @@ static int wl_adapter_attach(struct pcmcia_device *link)
 		return -ENOMEM;
 	}
 
-	link->resource[0]->end  = HCF_NUM_IO_PORTS;
-	link->resource[0]->flags= IO_DATA_PATH_WIDTH_16;
-	link->config_flags     |= CONF_ENABLE_IRQ;
-	link->config_index      = 5;
-	link->config_regs       = PRESENT_OPTION;
+	link->resource[0]->end   = HCF_NUM_IO_PORTS;
+	link->resource[0]->flags = IO_DATA_PATH_WIDTH_16;
+	link->config_flags      |= CONF_ENABLE_IRQ;
+	link->config_index       = 5;
+	link->config_regs        = PRESENT_OPTION;
 
 	link->priv = dev;
 	lp = wl_priv(dev);
@@ -340,8 +340,9 @@ static const struct pcmcia_device_id wl_adapter_ids[] = {
 				0x33103a9b, 0xe175b0dd),
 #else
 	PCMCIA_DEVICE_MANF_CARD(0x0156, 0x0004),
-	PCMCIA_DEVICE_PROD_ID12("Linksys", "WCF54G_Wireless-G_CompactFlash_Card",
-				0x0733cc81, 0x98a599e1),
+	PCMCIA_DEVICE_PROD_ID12("Linksys",
+			"WCF54G_Wireless-G_CompactFlash_Card", 0x0733cc81,
+			0x98a599e1),
 #endif  /* (HCF_TYPE) & HCF_TYPE_HII5 */
 	PCMCIA_DEVICE_NULL,
 };

@@ -1224,7 +1224,7 @@ int iwctl_siwencode(struct net_device *dev, struct iw_request_info *info,
 		pDevice->eEncryptionStatus = Ndis802_11EncryptionDisabled;
 		if (pDevice->flags & DEVICE_FLAGS_OPENED) {
 			for (uu = 0; uu < MAX_KEY_TABLE; uu++)
-				MACvDisableKeyEntry(pDevice, uu);
+				vnt_mac_disable_keyentry(pDevice, uu);
 		}
 	}
 	if (wrq->flags & IW_ENCODE_RESTRICTED) {
@@ -1323,16 +1323,16 @@ int iwctl_siwpower(struct net_device *dev, struct iw_request_info *info,
 
 	if (wrq->disabled) {
 		pDevice->ePSMode = WMAC_POWER_CAM;
-		PSvDisablePowerSaving(pDevice);
+		vnt_disable_power_saving(pDevice);
 		return rc;
 	}
 	if ((wrq->flags & IW_POWER_TYPE) == IW_POWER_TIMEOUT) {
 		pDevice->ePSMode = WMAC_POWER_FAST;
-		PSvEnablePowerSaving((void *)pDevice, pMgmt->wListenInterval);
+		vnt_enable_power_saving(pDevice, pMgmt->wListenInterval);
 
 	} else if ((wrq->flags & IW_POWER_TYPE) == IW_POWER_PERIOD) {
 		pDevice->ePSMode = WMAC_POWER_FAST;
-		PSvEnablePowerSaving((void *)pDevice, pMgmt->wListenInterval);
+		vnt_enable_power_saving(pDevice, pMgmt->wListenInterval);
 	}
 
 	switch (wrq->flags & IW_POWER_MODE) {

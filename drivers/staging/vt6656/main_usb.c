@@ -287,11 +287,11 @@ static int device_init_registers(struct vnt_private *pDevice)
 	memcpy(pDevice->abySNAP_RFC1042, abySNAP_RFC1042, ETH_ALEN);
 	memcpy(pDevice->abySNAP_Bridgetunnel, abySNAP_Bridgetunnel, ETH_ALEN);
 
-	if (!FIRMWAREbCheckVersion(pDevice)) {
-		if (FIRMWAREbDownload(pDevice) == true) {
-			if (FIRMWAREbBrach2Sram(pDevice) == false) {
+	if (!vnt_check_firmware_version(pDevice)) {
+		if (vnt_download_firmware(pDevice) == true) {
+			if (vnt_firmware_branch_to_sram(pDevice) == false) {
 				DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO
-					" FIRMWAREbBrach2Sram fail\n");
+					" vnt_firmware_branch_to_sram fail\n");
 				return false;
 			}
 		} else {
@@ -500,7 +500,8 @@ static int device_init_registers(struct vnt_private *pDevice)
 	pMgmt->eScanType = WMAC_SCAN_PASSIVE;
 	pMgmt->uCurrChannel = pDevice->uChannel;
 	pMgmt->uIBSSChannel = pDevice->uChannel;
-	CARDbSetMediaChannel(pDevice, pMgmt->uCurrChannel);
+
+	vnt_set_channel(pDevice, pMgmt->uCurrChannel);
 
 	/* get permanent network address */
 	memcpy(pDevice->abyPermanentNetAddr, init_rsp->net_addr, 6);
@@ -516,15 +517,15 @@ static int device_init_registers(struct vnt_private *pDevice)
 	* set Short Slot Time, xIFS, and RSPINF
 	*/
 	if (pDevice->byBBType == BB_TYPE_11A) {
-		CARDbAddBasicRate(pDevice, RATE_6M);
+		vnt_add_basic_rate(pDevice, RATE_6M);
 		pDevice->bShortSlotTime = true;
 	} else {
-		CARDbAddBasicRate(pDevice, RATE_1M);
+		vnt_add_basic_rate(pDevice, RATE_1M);
 		pDevice->bShortSlotTime = false;
 	}
 
 	BBvSetShortSlotTime(pDevice);
-	CARDvSetBSSMode(pDevice);
+	vnt_set_bss_mode(pDevice);
 
 	pDevice->byBBVGACurrent = pDevice->abyBBVGA[0];
 	pDevice->byBBVGANew = pDevice->byBBVGACurrent;
@@ -543,9 +544,11 @@ static int device_init_registers(struct vnt_private *pDevice)
 
 		if ((byTmp & GPIO3_DATA) == 0) {
 			pDevice->bHWRadioOff = true;
-			MACvRegBitsOn(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
+			vnt_mac_reg_bits_on(pDevice, MAC_REG_GPIOCTL1,
+								GPIO3_INTMD);
 		} else {
-			MACvRegBitsOff(pDevice, MAC_REG_GPIOCTL1, GPIO3_INTMD);
+			vnt_mac_reg_bits_off(pDevice, MAC_REG_GPIOCTL1,
+								GPIO3_INTMD);
 			pDevice->bHWRadioOff = false;
 		}
 
@@ -555,13 +558,13 @@ static int device_init_registers(struct vnt_private *pDevice)
 
 	vnt_mac_set_led(pDevice, LEDSTS_STS, LEDSTS_SLOW);
 
-	MACvRegBitsOn(pDevice, MAC_REG_GPIOCTL0, 0x01);
+	vnt_mac_reg_bits_on(pDevice, MAC_REG_GPIOCTL0, 0x01);
 
 	if ((pDevice->bHWRadioOff == true) ||
 				(pDevice->bRadioControlOff == true)) {
-		CARDbRadioPowerOff(pDevice);
+		vnt_radio_power_off(pDevice);
 	} else {
-		CARDbRadioPowerOn(pDevice);
+		vnt_radio_power_on(pDevice);
 	}
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO"<----INIbInitAdapter Exit\n");
@@ -999,11 +1002,11 @@ static int device_close(struct net_device *dev)
         pDevice->eEncryptionStatus = Ndis802_11EncryptionDisabled;
 
 	for (uu = 0; uu < MAX_KEY_TABLE; uu++)
-                MACvDisableKeyEntry(pDevice,uu);
+		vnt_mac_disable_keyentry(pDevice, uu);
 
-    if ((pDevice->flags & DEVICE_FLAGS_UNPLUG) == false) {
-        MACbShutdown(pDevice);
-    }
+	if ((pDevice->flags & DEVICE_FLAGS_UNPLUG) == false)
+		vnt_mac_shutdown(pDevice);
+
     netif_stop_queue(pDevice->dev);
     MP_SET_FLAG(pDevice, fMP_DISCONNECTED);
     MP_CLEAR_FLAG(pDevice, fMP_POST_WRITES);
@@ -1283,7 +1286,7 @@ void vnt_configure_filter(struct vnt_private *priv)
 	} else if ((netdev_mc_count(dev) > priv->multicast_limit) ||
 			(dev->flags & IFF_ALLMULTI)) {
 		mc_filter = ~0x0;
-		MACvWriteMultiAddr(priv, mc_filter);
+		vnt_mac_set_filter(priv, mc_filter);
 
 		priv->byRxMode |= (RCR_MULTICAST|RCR_BROADCAST);
 	} else {
@@ -1293,7 +1296,7 @@ void vnt_configure_filter(struct vnt_private *priv)
 			mc_filter |= 1ULL << (bit_nr & 0x3f);
 		}
 
-		MACvWriteMultiAddr(priv, mc_filter);
+		vnt_mac_set_filter(priv, mc_filter);
 
 		priv->byRxMode &= ~(RCR_UNICAST);
 		priv->byRxMode |= (RCR_MULTICAST|RCR_BROADCAST);
