@@ -1388,7 +1388,8 @@ static void valleyview_update_wm(struct drm_crtc *crtc)
 		plane_sr = cursor_sr = 0;
 	}
 
-	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
+	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, "
+		      "B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
 		      planeb_wm, cursorb_wm,
 		      plane_sr, cursor_sr);
@@ -1444,7 +1445,8 @@ static void g4x_update_wm(struct drm_crtc *crtc)
 		plane_sr = cursor_sr = 0;
 	}
 
-	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
+	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, "
+		      "B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
 		      planeb_wm, cursorb_wm,
 		      plane_sr, cursor_sr);
