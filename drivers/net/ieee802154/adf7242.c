@@ -26,14 +26,14 @@
  * DEBUG LEVEL
  *     0       OFF
  *     1       INFO
- *     2       INFO + TRACE
+ *     2       INFO + TRACE 
  */
 
-#define ADF_DEBUG      0
-#define DBG(n, args...) do { if (ADF_DEBUG >= (n)) pr_debug(args); } while (0)
+#define ADF_DEBUG      2
+#define DBG(n, args...) do { if (ADF_DEBUG >= (n)) pr_err(args); } while (0)
 
 #define FIRMWARE       "adf7242_firmware.bin"
-#define MAX_POLL_LOOPS 10
+#define MAX_POLL_LOOPS 50
 
 /* All Registers */
 
@@ -580,14 +580,18 @@ static int adf7242_set_hw_addr_filt(struct ieee802154_dev *dev,
 	might_sleep();
 
 	if (changed & IEEE802515_AFILT_IEEEADDR_CHANGED) {
-		adf7242_write_reg(lp, REG_IEEE_ADDR_0, filt->ieee_addr[7]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_1, filt->ieee_addr[6]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_2, filt->ieee_addr[5]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_3, filt->ieee_addr[4]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_4, filt->ieee_addr[3]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_5, filt->ieee_addr[2]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_6, filt->ieee_addr[1]);
-		adf7242_write_reg(lp, REG_IEEE_ADDR_7, filt->ieee_addr[0]);
+		u8 addr[8];
+		memcpy(addr, &filt->ieee_addr, 8);
+
+
+		adf7242_write_reg(lp, REG_IEEE_ADDR_0, addr[7]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_1, addr[6]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_2, addr[5]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_3, addr[4]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_4, addr[3]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_5, addr[2]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_6, addr[1]);
+		adf7242_write_reg(lp, REG_IEEE_ADDR_7, addr[0]);
 	}
 
 	if (changed & IEEE802515_AFILT_SADDR_CHANGED) {
@@ -861,6 +865,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 
 	adf7242_cmd(lp, CMD_RC_PHY_RDY);
 
+	adf7242_channel(lp->dev, 0, 11);
 	DBG(2, "%s :Exit\n", __func__);
 
 	return 0;

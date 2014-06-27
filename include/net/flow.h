@@ -11,6 +11,8 @@
 #include <linux/in6.h>
 #include <linux/atomic.h>
 
+#define LOOPBACK_IFINDEX	1
+
 struct flowi_common {
 	int	flowic_oif;
 	int	flowic_iif;
