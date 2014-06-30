@@ -513,7 +513,9 @@ hash_delegation_locked(struct nfs4_delegation *dp, struct nfs4_file *fp)
 	lockdep_assert_held(&state_lock);
 
 	dp->dl_stid.sc_type = NFS4_DELEG_STID;
+	spin_lock(&fp->fi_lock);
 	list_add(&dp->dl_perfile, &fp->fi_delegations);
+	spin_unlock(&fp->fi_lock);
 	list_add(&dp->dl_perclnt, &dp->dl_stid.sc_client->cl_delegations);
 }
 
@@ -521,14 +523,18 @@ hash_delegation_locked(struct nfs4_delegation *dp, struct nfs4_file *fp)
 static void
 unhash_delegation(struct nfs4_delegation *dp)
 {
+	struct nfs4_file *fp = dp->dl_file;
+
 	spin_lock(&state_lock);
 	list_del_init(&dp->dl_perclnt);
-	list_del_init(&dp->dl_perfile);
 	list_del_init(&dp->dl_recall_lru);
+	spin_lock(&fp->fi_lock);
+	list_del_init(&dp->dl_perfile);
+	spin_unlock(&fp->fi_lock);
 	spin_unlock(&state_lock);
-	if (dp->dl_file) {
-		nfs4_put_deleg_lease(dp->dl_file);
-		put_nfs4_file(dp->dl_file);
+	if (fp) {
+		nfs4_put_deleg_lease(fp);
+		put_nfs4_file(fp);
 		dp->dl_file = NULL;
 	}
 }
@@ -2612,6 +2618,7 @@ static void nfsd4_init_file(struct nfs4_file *fp, struct inode *ino)
 	lockdep_assert_held(&state_lock);
 
 	atomic_set(&fp->fi_ref, 1);
+	spin_lock_init(&fp->fi_lock);
 	INIT_LIST_HEAD(&fp->fi_stateids);
 	INIT_LIST_HEAD(&fp->fi_delegations);
 	ihold(ino);
@@ -2857,26 +2864,32 @@ out:
 	return ret;
 }
 
-static void nfsd_break_one_deleg(struct nfs4_delegation *dp)
+void nfsd4_prepare_cb_recall(struct nfs4_delegation *dp)
 {
 	struct nfs4_client *clp = dp->dl_stid.sc_client;
 	struct nfsd_net *nn = net_generic(clp->net, nfsd_net_id);
 
-	lockdep_assert_held(&state_lock);
+	/*
+	 * We can't do this in nfsd_break_deleg_cb because it is
+	 * already holding inode->i_lock
+	 */
+	spin_lock(&state_lock);
+	if (list_empty(&dp->dl_recall_lru)) {
+		dp->dl_time = get_seconds();
+		list_add_tail(&dp->dl_recall_lru, &nn->del_recall_lru);
+	}
+	spin_unlock(&state_lock);
+}
+
+static void nfsd_break_one_deleg(struct nfs4_delegation *dp)
+{
 	/* We're assuming the state code never drops its reference
 	 * without first removing the lease.  Since we're in this lease
 	 * callback (and since the lease code is serialized by the kernel
 	 * lock) we know the server hasn't removed the lease yet, we know
 	 * it's safe to take a reference: */
 	atomic_inc(&dp->dl_count);
-
-	list_add_tail(&dp->dl_recall_lru, &nn->del_recall_lru);
-
-	/* Only place dl_time is set; protected by i_lock: */
-	dp->dl_time = get_seconds();
-
 	block_delegations(&dp->dl_fh);
-
 	nfsd4_cb_recall(dp);
 }
 
@@ -2901,11 +2914,11 @@ static void nfsd_break_deleg_cb(struct file_lock *fl)
 	 */
 	fl->fl_break_time = 0;
 
-	spin_lock(&state_lock);
 	fp->fi_had_conflict = true;
+	spin_lock(&fp->fi_lock);
 	list_for_each_entry(dp, &fp->fi_delegations, dl_perfile)
 		nfsd_break_one_deleg(dp);
-	spin_unlock(&state_lock);
+	spin_unlock(&fp->fi_lock);
 }
 
 static
