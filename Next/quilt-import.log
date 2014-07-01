@@ -1,0 +1,15 @@
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.16-rc3
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 4c834452aad01531db949414f94f817a86348d59
+HEAD is now at 4c834452aad0 Linux 3.16-rc3
+$ git am --patch-format=mbox ../quilt/rd-docs/docum_changes_cleanup_mcelog.patch
+Applying: The paragraph on mcelog currently describes kernel v2.6.31. In that
+$ git am --patch-format=mbox ../quilt/rd-docs/scr-kerndoc-handle-obj-like-macros.patch
+Applying: Object-like macros are different than function-like macros:
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + b5fa23d4481a...d5be754bfca4 master     -> rd-docs/master  (forced update)
