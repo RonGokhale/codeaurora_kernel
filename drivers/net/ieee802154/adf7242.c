@@ -240,15 +240,11 @@ static struct adf7242_platform_data adf7242_default_pdata = {
 struct adf7242_local {
 	struct spi_device *spi;
 	struct adf7242_platform_data *pdata;
-	struct work_struct irqwork;
 	struct completion tx_complete;
 	struct ieee802154_dev *dev;
 	struct mutex bmux;
 	struct spi_message stat_msg;
 	struct spi_transfer stat_xfer;
-	spinlock_t lock;
-	unsigned irq_disabled:1;	/* P: lock */
-	unsigned is_tx:1;	/* P: lock */
 	unsigned mode;
 	unsigned tx_irq;
 	int tx_stat;
@@ -748,14 +744,10 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 {
 	struct adf7242_local *lp = dev->priv;
 	int ret;
-	unsigned long flags;
 
 	DBG(2, "%s :Enter\n", __func__);
 
-	spin_lock_irqsave(&lp->lock, flags);
-	BUG_ON(lp->is_tx);
-	lp->is_tx = 1;
-	spin_unlock_irqrestore(&lp->lock, flags);
+	reinit_completion(&lp->tx_complete);
 
 	ret = adf7242_write_fbuf(lp, skb->data, skb->len);
 	if (ret)
@@ -771,9 +763,7 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 	if (ret)
 		goto err;
 
-	ret = wait_for_completion_interruptible_timeout(
-						&lp->tx_complete,
-						5 * HZ);
+	ret = wait_for_completion_interruptible_timeout(&lp->tx_complete, 3*HZ);
 	if (ret == -ERESTARTSYS)
 		goto err;
 	if (ret == 0) {
@@ -791,12 +781,7 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 
 	DBG(2, "%s :Exit\n", __func__);
 
-	return ret;
-
 err:
-	spin_lock_irqsave(&lp->lock, flags);
-	lp->is_tx = 0;
-	spin_unlock_irqrestore(&lp->lock, flags);
 	return ret;
 }
 
@@ -845,13 +830,11 @@ static struct ieee802154_ops adf7242_ops = {
 //	.set_txpower = adf7242_set_txpower,
 };
 
-static void adf7242_irqwork(struct work_struct *work)
+static irqreturn_t adf7242_isr(int irq, void *data)
 {
-	struct adf7242_local *lp =
-	    container_of(work, struct adf7242_local, irqwork);
+	struct adf7242_local *lp = data;
 	u8 irq1, auto_stat = 0, stat = 0;
 	int ret;
-	unsigned long flags;
 
 	DBG(2, "%s :Enter\n", __func__);
 
@@ -906,43 +889,10 @@ static void adf7242_irqwork(struct work_struct *work)
 			/* save CSMA-CA completion status */
 			lp->tx_stat = auto_stat;
 		}
-		spin_lock_irqsave(&lp->lock, flags);
-		if (lp->is_tx) {
-			lp->is_tx = 0;
-			complete(&lp->tx_complete);
-		}
-		spin_unlock_irqrestore(&lp->lock, flags);
 
-		/* in case we just received a frame we are already in PHY_RX */
-
-		if (!(irq1 & IRQ_RX_PKT_RCVD))
-			adf7242_cmd(lp, CMD_RC_RX);
+		complete(&lp->tx_complete);
+		adf7242_cmd(lp, CMD_RC_RX);
 	}
-
-	spin_lock_irqsave(&lp->lock, flags);
-	if (lp->irq_disabled) {
-		lp->irq_disabled = 0;
-		enable_irq(lp->spi->irq);
-	}
-	spin_unlock_irqrestore(&lp->lock, flags);
-
-	DBG(2, "%s :Exit\n", __func__);
-}
-
-static irqreturn_t adf7242_isr(int irq, void *data)
-{
-	struct adf7242_local *lp = data;
-
-	DBG(2, "%s :Enter\n", __func__);
-
-	spin_lock(&lp->lock);
-	if (!lp->irq_disabled) {
-		disable_irq_nosync(irq);
-		lp->irq_disabled = 1;
-	}
-	spin_unlock(&lp->lock);
-
-	schedule_work(&lp->irqwork);
 
 	DBG(2, "%s :Exit\n", __func__);
 
@@ -981,7 +931,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 		adf7242_write_reg(lp, REG_FFILT_CFG,
 				  ACCEPT_BEACON_FRAMES |
 				  ACCEPT_DATA_FRAMES |
-				  ACCEPT_ACK_FRAMES |
+				  /*ACCEPT_ACK_FRAMES |*/
 				  ACCEPT_MACCMD_FRAMES |
 				  (lp->mode & ADF_IEEE802154_PROMISCUOUS_MODE ?
 				   ACCEPT_ALL_ADDRESS : 0) |
@@ -1162,8 +1112,6 @@ static int adf7242_probe(struct spi_device *spi)
 		(lp->mode & ADF_IEEE802154_HW_AACK ? IEEE802154_HW_AACK : 0);
 
 	mutex_init(&lp->bmux);
-	INIT_WORK(&lp->irqwork, adf7242_irqwork);
-	spin_lock_init(&lp->lock);
 	init_completion(&lp->tx_complete);
 
 	/* Setup Status Message */
@@ -1181,14 +1129,16 @@ static int adf7242_probe(struct spi_device *spi)
 	if (ret)
 		goto err_hw_init;
 
-	ret = request_irq(spi->irq, adf7242_isr, IRQF_TRIGGER_HIGH,
-			  dev_name(&spi->dev), lp);
+	ret = devm_request_threaded_irq(&spi->dev, spi->irq, NULL,
+				adf7242_isr, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+				dev_name(&spi->dev), lp);
+
 	if (ret)
 		goto err_hw_init;
 
 	ret = ieee802154_register_device(lp->dev);
 	if (ret)
-		goto err_irq;
+		goto err_hw_init;
 
 	dev_set_drvdata(&spi->dev, lp);
 
@@ -1202,9 +1152,6 @@ static int adf7242_probe(struct spi_device *spi)
 
 out:
 	ieee802154_unregister_device(lp->dev);
-err_irq:
-	free_irq(spi->irq, lp);
-	flush_work(&lp->irqwork);
 err_hw_init:
 	mutex_destroy(&lp->bmux);
 	ieee802154_free_device(lp->dev);
@@ -1216,8 +1163,6 @@ static int adf7242_remove(struct spi_device *spi)
 	struct adf7242_local *lp = spi_get_drvdata(spi);
 
 	ieee802154_unregister_device(lp->dev);
-	free_irq(spi->irq, lp);
-	flush_work(&lp->irqwork);
 	mutex_destroy(&lp->bmux);
 	ieee802154_free_device(lp->dev);
 
