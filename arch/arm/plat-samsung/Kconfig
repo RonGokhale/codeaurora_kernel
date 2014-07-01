@@ -15,7 +15,7 @@ config PLAT_SAMSUNG
 
 config PLAT_S5P
 	bool
-	depends on (ARCH_S5P64X0 || ARCH_S5PC100 || ARCH_S5PV210)
+	depends on ARCH_S5PV210
 	default y
 	select ARCH_REQUIRE_GPIOLIB
 	select ARM_VIC
@@ -29,33 +29,21 @@ config PLAT_S5P
 
 config SAMSUNG_PM
 	bool
-	depends on PM && (PLAT_S3C24XX || ARCH_S3C64XX || ARCH_S5P64X0 || S5P_PM)
+	depends on PM && (PLAT_S3C24XX || ARCH_S3C64XX || S5P_PM)
 	default y
 	help
 	  Base platform power management code for samsung code
 
 if PLAT_SAMSUNG
+menu "Samsung Common options"
 
 # boot configurations
 
 comment "Boot options"
 
-config S3C_BOOT_ERROR_RESET
-	bool "S3C Reboot on decompression error"
-	help
-	  Say y here to use the watchdog to reset the system if the
-	  kernel decompressor detects an error during decompression.
-
-config S3C_BOOT_UART_FORCE_FIFO
-       bool "Force UART FIFO on during boot process"
-       default y
-       help
-         Say Y here to force the UART FIFOs on during the kernel
-	 uncompressor
-
-
 config S3C_LOWLEVEL_UART_PORT
 	int "S3C UART to use for low-level messages"
+	depends on ARCH_S3C64XX
 	default 0
 	help
 	  Choice of which UART port to use for the low-level messages,
@@ -90,14 +78,14 @@ config SAMSUNG_CLKSRC
 	  used by newer systems such as the S3C64XX.
 
 config S5P_CLOCK
-	def_bool (ARCH_S5P64X0 || ARCH_S5PC100 || ARCH_S5PV210)
+	def_bool ARCH_S5PV210
 	help
 	  Support common clock part for ARCH_S5P and ARCH_EXYNOS SoCs
 
 # options for IRQ support
 
 config S5P_IRQ
-	def_bool (ARCH_S5P64X0 || ARCH_S5PC100 || ARCH_S5PV210)
+	def_bool ARCH_S5PV210
 	help
 	  Support common interrupt part for ARCH_S5P SoCs
 
@@ -105,7 +93,6 @@ config S5P_EXT_INT
 	bool
 	help
 	  Use the external interrupts (other than GPIO interrupts.)
-	  Note: Do not choose this for S5P6440 and S5P6450.
 
 config S5P_GPIO_INT
 	bool
@@ -155,7 +142,7 @@ config S3C_GPIO_TRACK
 
 config S5P_DEV_UART
 	def_bool y
-	depends on (ARCH_S5P64X0 || ARCH_S5PC100 || ARCH_S5PV210)
+	depends on ARCH_S5PV210
 
 # ADC driver
 
@@ -407,16 +394,15 @@ config SAMSUNG_PM_GPIO
 	  Include legacy GPIO power management code for platforms not using
 	  pinctrl-samsung driver.
 
-endif
-
 config SAMSUNG_DMADEV
-	bool
-	select ARM_AMBA
+	bool "Use legacy Samsung DMA abstraction"
+	depends on CPU_S5PV210 || ARCH_S3C64XX
 	select DMADEVICES
-	select PL330_DMA if (ARCH_EXYNOS5 || ARCH_EXYNOS4 || CPU_S5PV210 || CPU_S5PC100 || \
-					CPU_S5P6450 || CPU_S5P6440)
+	default y
 	help
 	  Use DMA device engine for PL330 DMAC.
+
+endif
 
 config S5P_DEV_MFC
 	bool
@@ -487,7 +473,6 @@ config S5P_PM
 	bool
 	help
 	  Common code for power management support on S5P and newer SoCs
-	  Note: Do not select this for S5P6440 and S5P6450.
 
 config S5P_SLEEP
 	bool
@@ -503,4 +488,5 @@ config DEBUG_S3C_UART
 	default "2" if DEBUG_S3C_UART2
 	default "3" if DEBUG_S3C_UART3
 
+endmenu
 endif
