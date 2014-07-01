@@ -22,16 +22,6 @@
 #include <net/mac802154.h>
 #include <net/wpan-phy.h>
 
-/*
- * DEBUG LEVEL
- *     0       OFF
- *     1       INFO
- *     2       INFO + TRACE
- */
-
-#define ADF_DEBUG      0
-#define DBG(n, args...) do { if (ADF_DEBUG >= (n)) pr_err(args); } while (0)
-
 #define FIRMWARE       "adf7242_firmware.bin"
 #define MAX_POLL_LOOPS 50
 
@@ -257,8 +247,12 @@ struct adf7242_local {
 	 */
 
 	u8 buf[3] ____cacheline_aligned;
+	u8 buf_reg_tx[3];
+	u8 buf_read_tx[4];
+	u8 buf_read_rx[4];
 	u8 buf_stat_rx;
 	u8 buf_stat_tx;
+	u8 buf_cmd;
 
 };
 
@@ -268,9 +262,8 @@ static int adf7242_status(struct adf7242_local *lp, u8 * stat)
 
 	mutex_lock(&lp->bmux);
 	status = spi_sync(lp->spi, &lp->stat_msg);
-	mutex_unlock(&lp->bmux);
-
 	*stat = lp->buf_stat_rx;
+	mutex_unlock(&lp->bmux);
 
 	return status;
 }
@@ -280,14 +273,14 @@ static int adf7242_wait_ready(struct adf7242_local *lp)
 	u8 stat;
 	int cnt = 0;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	do {
 		adf7242_status(lp, &stat);
 		cnt++;
 	} while (!(stat & STAT_RC_READY) && (cnt < MAX_POLL_LOOPS));
 
-	DBG(2, "%s :Exit loops=%d\n", __func__, cnt);
+	dev_vdbg(&lp->spi->dev, "%s :Exit loops=%d\n", __func__, cnt);
 
 	return 0;
 }
@@ -297,7 +290,7 @@ static int adf7242_wait_status(struct adf7242_local *lp, int status)
 	u8 stat;
 	int cnt = 0;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	do {
 		adf7242_status(lp, &stat);
@@ -305,7 +298,7 @@ static int adf7242_wait_status(struct adf7242_local *lp, int status)
 		cnt++;
 	} while ((stat != status) && (cnt < MAX_POLL_LOOPS));
 
-	DBG(2, "%s :Exit loops=%d\n", __func__, cnt);
+	dev_vdbg(&lp->spi->dev, "%s :Exit loops=%d\n", __func__, cnt);
 
 	return 0;
 }
@@ -325,21 +318,22 @@ static int adf7242_write_fbuf(struct adf7242_local *lp, u8 * data, u8 len)
 		.tx_buf = data,
 	};
 
-	DBG(2, "%s :Enter\n", __func__);
-	adf7242_wait_ready(lp);
-
-	buf[0] = CMD_SPI_PKT_WR;
-	buf[1] = len + 2;
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	spi_message_init(&msg);
 	spi_message_add_tail(&xfer_head, &msg);
 	spi_message_add_tail(&xfer_buf, &msg);
 
+	adf7242_wait_ready(lp);
+
 	mutex_lock(&lp->bmux);
+	buf[0] = CMD_SPI_PKT_WR;
+	buf[1] = len + 2;
+
 	status = spi_sync(lp->spi, &msg);
 	mutex_unlock(&lp->bmux);
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 	return status;
 }
 
@@ -360,7 +354,11 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 		.rx_buf = data,
 	};
 
-	DBG(2, "%s :Enter\n", __func__);
+	spi_message_init(&msg);
+	spi_message_add_tail(&xfer_head, &msg);
+	spi_message_add_tail(&xfer_buf, &msg);
+
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 	adf7242_wait_ready(lp);
 
 	mutex_lock(&lp->bmux);
@@ -374,10 +372,6 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 		buf[2] = CMD_SPI_NOP;
 	}
 
-	spi_message_init(&msg);
-	spi_message_add_tail(&xfer_head, &msg);
-	spi_message_add_tail(&xfer_buf, &msg);
-
 	status = spi_sync(lp->spi, &msg);
 
 	if (!status && lqi) {
@@ -386,7 +380,7 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 	}
 
 	mutex_unlock(&lp->bmux);
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 	return status;
 }
 
@@ -394,22 +388,21 @@ static int adf7242_read_reg(struct adf7242_local *lp, u16 addr, u8 * data)
 {
 	int status;
 	struct spi_message msg;
-	u8 buf_tx[4], buf_rx[4];
 
 	struct spi_transfer xfer = {
 		.len = 4,
-		.tx_buf = buf_tx,
-		.rx_buf = buf_rx,
+		.tx_buf = lp->buf_read_tx,
+		.rx_buf = lp->buf_read_rx,
 	};
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 	adf7242_wait_ready(lp);
 
 	mutex_lock(&lp->bmux);
-	buf_tx[0] = CMD_SPI_MEM_RD(addr);
-	buf_tx[1] = addr;
-	buf_tx[2] = CMD_SPI_NOP;
-	buf_tx[3] = CMD_SPI_NOP;
+	lp->buf_read_tx[0] = CMD_SPI_MEM_RD(addr);
+	lp->buf_read_tx[1] = addr;
+	lp->buf_read_tx[2] = CMD_SPI_NOP;
+	lp->buf_read_tx[3] = CMD_SPI_NOP;
 
 	spi_message_init(&msg);
 	spi_message_add_tail(&xfer, &msg);
@@ -419,10 +412,11 @@ static int adf7242_read_reg(struct adf7242_local *lp, u16 addr, u8 * data)
 		status = msg.status;
 
 	if (!status)
-		*data = buf_rx[3];
+		*data = lp->buf_read_rx[3];
 
 	mutex_unlock(&lp->bmux);
-	DBG(2, "%s :Exit REG 0x%X, VAL 0x%X\n", __func__, addr, buf_rx[3]);
+	dev_vdbg(&lp->spi->dev, "%s :Exit REG 0x%X, VAL 0x%X\n", __func__,
+		 addr, *data);
 
 	return status;
 }
@@ -430,27 +424,20 @@ static int adf7242_read_reg(struct adf7242_local *lp, u16 addr, u8 * data)
 static int adf7242_write_reg(struct adf7242_local *lp, u16 addr, u8 data)
 {
 	int status;
-	struct spi_message msg;
-	u8 buf_tx[4];
 
-	struct spi_transfer xfer = {
-		.len = 3,
-		.tx_buf = buf_tx,
-	};
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
+
 	adf7242_wait_ready(lp);
 
-	buf_tx[0] = CMD_SPI_MEM_WR(addr);
-	buf_tx[1] = addr;
-	buf_tx[2] = data;
-
-	spi_message_init(&msg);
-	spi_message_add_tail(&xfer, &msg);
-
 	mutex_lock(&lp->bmux);
-	status = spi_sync(lp->spi, &msg);
+	lp->buf_reg_tx[0] = CMD_SPI_MEM_WR(addr);
+	lp->buf_reg_tx[1] = addr;
+	lp->buf_reg_tx[2] = data;
+	status = spi_write(lp->spi, lp->buf_reg_tx, 3);
 	mutex_unlock(&lp->bmux);
-	DBG(2, "%s :Exit REG 0x%X, VAL 0x%X\n", __func__, addr, data);
+
+	dev_vdbg(&lp->spi->dev, "%s :Exit REG 0x%X, VAL 0x%X\n",
+		 __func__, addr, data);
 
 	return status;
 }
@@ -458,25 +445,17 @@ static int adf7242_write_reg(struct adf7242_local *lp, u16 addr, u8 data)
 static int adf7242_cmd(struct adf7242_local *lp, u8 cmd)
 {
 	int status;
-	struct spi_message msg;
-	u8 buf_tx[1];
 
-	struct spi_transfer xfer = {
-		.len = 1,
-		.tx_buf = buf_tx,
-	};
+	dev_vdbg(&lp->spi->dev, "%s :Enter CMD=0x%X\n", __func__, cmd);
 
-	DBG(2, "%s :Enter CMD=0x%X\n", __func__, cmd);
 	adf7242_wait_ready(lp);
 
-	buf_tx[0] = cmd;
-	spi_message_init(&msg);
-	spi_message_add_tail(&xfer, &msg);
-
 	mutex_lock(&lp->bmux);
-	status = spi_sync(lp->spi, &msg);
+	lp->buf_cmd = cmd;
+	status = spi_write(lp->spi, &lp->buf_cmd, 1);
 	mutex_unlock(&lp->bmux);
-	DBG(2, "%s :Exit\n", __func__);
+
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return status;
 }
@@ -486,7 +465,7 @@ static int adf7242_upload_firmware(struct adf7242_local *lp, u8 * data, u16 len)
 	int status, i, page = 0;
 	struct spi_message msg;
 	struct spi_transfer xfer_buf = { };
-	u8 buf[2];
+	u8 *buf = lp->buf;
 
 	struct spi_transfer xfer_head = {
 		.len = 2,
@@ -551,7 +530,7 @@ adf7242_set_txpower(struct ieee802154_dev *dev, int db)
 	u8 pwr, bias_ctrl, dbias, tmp;
 	int ret;
 
-	DBG(2, "%s :Enter Power %d dB\n", __func__, db);
+	dev_vdbg(&lp->spi->dev, "%s :Enter Power %d dB\n", __func__, db);
 
 	if (db > 5 || db < -26)
 		return -EINVAL;
@@ -583,7 +562,7 @@ adf7242_set_txpower(struct ieee802154_dev *dev, int db)
 	tmp |= PA_PWR(pwr);
 	ret = adf7242_write_reg(lp, REG_EXTPA_MSC, tmp);
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 	return ret;
 }
 
@@ -593,7 +572,9 @@ adf7242_set_csma_params(struct ieee802154_dev *dev, u8 min_be, u8 max_be,
 {
 	struct adf7242_local *lp = dev->priv;
 	int ret;
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter min_be=%d max_be=%d retries=%d\n",
+		 __func__, min_be, max_be, retries);
+
 	if (min_be > max_be || max_be > 8 || retries > 5)
 		return -EINVAL;
 
@@ -604,7 +585,9 @@ adf7242_set_csma_params(struct ieee802154_dev *dev, u8 min_be, u8 max_be,
 		return ret;
 
 	lp->max_cca_retries = retries;
-	DBG(2, "%s :Exit\n", __func__);
+
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
+
 	return adf7242_write_reg(lp, REG_AUTO_TX2, CSMA_MAX_BE(max_be) |
 			CSMA_MIN_BE(min_be));
 }
@@ -614,7 +597,9 @@ adf7242_set_frame_retries(struct ieee802154_dev *dev, s8 retries)
 {
 	struct adf7242_local *lp = dev->priv;
 	int ret = 0;
-	DBG(2, "%s :Enter\n", __func__);
+
+	dev_vdbg(&lp->spi->dev, "%s :Enter Retries = %d\n", __func__, retries);
+
 	if (retries < -1 || retries > 15)
 		return -EINVAL;
 
@@ -624,16 +609,16 @@ adf7242_set_frame_retries(struct ieee802154_dev *dev, s8 retries)
 				  MAX_CCA_RETRIES(lp->max_cca_retries));
 
 	lp->max_frame_retries = retries;
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 	return ret;
 }
 
-static int adf7242_ed(struct ieee802154_dev *dev, u8 * level)
+static int adf7242_ed(struct ieee802154_dev *dev, u8 *level)
 {
 	struct adf7242_local *lp = dev->priv;
 	int ret;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 #if 0
 	adf7242_cmd(lp, CMD_RC_PHY_RDY);
 	adf7242_cmd(lp, CMD_RC_CCA);
@@ -643,7 +628,8 @@ static int adf7242_ed(struct ieee802154_dev *dev, u8 * level)
 #endif
 	ret = adf7242_read_reg(lp, REG_RRB, level);
 	adf7242_cmd(lp, CMD_RC_RX);
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit ret=%d level=%d\n",
+		 __func__, ret, *level);
 
 	return ret;
 }
@@ -653,9 +639,9 @@ static int adf7242_start(struct ieee802154_dev *dev)
 	struct adf7242_local *lp = dev->priv;
 	int ret;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 	ret = adf7242_cmd(lp, CMD_RC_RX);
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return ret;
 }
@@ -664,9 +650,9 @@ static void adf7242_stop(struct ieee802154_dev *dev)
 {
 	struct adf7242_local *lp = dev->priv;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 	adf7242_cmd(lp, CMD_RC_PHY_RDY);
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 }
 
 static int adf7242_channel(struct ieee802154_dev *dev, int page, int channel)
@@ -674,8 +660,8 @@ static int adf7242_channel(struct ieee802154_dev *dev, int page, int channel)
 	struct adf7242_local *lp = dev->priv;
 	unsigned long freq;
 
-	DBG(2, "%s :Enter\n", __func__);
-	DBG(1, "%s :Channel=%d\n", __func__, channel);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
+	dev_dbg(&lp->spi->dev, "%s :Channel=%d\n", __func__, channel);
 
 	might_sleep();
 
@@ -693,7 +679,7 @@ static int adf7242_channel(struct ieee802154_dev *dev, int page, int channel)
 	adf7242_cmd(lp, CMD_RC_RX);
 
 	dev->phy->current_channel = channel;
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return 0;
 }
@@ -705,8 +691,8 @@ static int adf7242_set_hw_addr_filt(struct ieee802154_dev *dev,
 	struct adf7242_local *lp = dev->priv;
 	u8 reg;
 
-	DBG(2, "%s :Enter\n", __func__);
-	DBG(1, "%s :Changed=0x%lX\n", __func__, changed);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
+	dev_dbg(&lp->spi->dev, "%s :Changed=0x%lX\n", __func__, changed);
 
 	might_sleep();
 
@@ -740,7 +726,7 @@ static int adf7242_set_hw_addr_filt(struct ieee802154_dev *dev,
 		adf7242_write_reg(lp, REG_AUTO_CFG, reg);
 	}
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 	return 0;
 }
 
@@ -749,7 +735,7 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 	struct adf7242_local *lp = dev->priv;
 	int ret;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	reinit_completion(&lp->tx_complete);
 
@@ -771,19 +757,21 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 	if (ret == -ERESTARTSYS)
 		goto err;
 	if (ret == 0) {
-		dev_warn(&lp->spi->dev, "Timeout waiting for TX interrupt\n");
+		dev_err(&lp->spi->dev, "Timeout waiting for TX interrupt\n");
 		ret = -ETIMEDOUT;
 		goto err;
 	}
 
 	if (lp->tx_stat != SUCCESS) {
-		dev_warn(&lp->spi->dev, "Error Sending. Retry count exceeded tx stat 0x%x\n", lp->tx_stat);
+		dev_warn(&lp->spi->dev,
+			 "Error xmit: Retry count exceeded Status=0x%x\n",
+			 lp->tx_stat);
 		ret = -ECOMM;
 	} else {
 		ret = 0;
 	}
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 err:
 	return ret;
@@ -796,7 +784,7 @@ static int adf7242_rx(struct adf7242_local *lp)
 	int ret;
 	struct sk_buff *skb;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	skb = alloc_skb(len, GFP_KERNEL);
 	if (!skb)
@@ -815,8 +803,9 @@ static int adf7242_rx(struct adf7242_local *lp)
 
 	ieee802154_rx_irqsafe(lp->dev, skb, lqi);
 
-	DBG(1, "%s: %d %d %x\n", __func__, ret, len, lqi);
-	DBG(2, "%s :Exit\n", __func__);
+	dev_dbg(&lp->spi->dev, "%s: ret=%d len=%d lqi=%d\n",
+		__func__, ret, len, lqi);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return 0;
 }
@@ -840,11 +829,11 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 	u8 irq1, auto_stat = 0, stat = 0;
 	int ret;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 	ret = adf7242_read_reg(lp, REG_IRQ1_SRC1, &irq1);
 
-	DBG(1, "%s IRQ1 = %X:\n%s%s%s%s%s%s%s%s\n", __func__, irq1,
+	dev_dbg(&lp->spi->dev, "%s IRQ1 = %X:\n%s%s%s%s%s%s%s%s\n", __func__, irq1,
 	    irq1 & IRQ_CCA_COMPLETE ? "IRQ_CCA_COMPLETE\n" : "",
 	    irq1 & IRQ_SFD_RX ? "IRQ_SFD_RX\n" : "",
 	    irq1 & IRQ_SFD_TX ? "IRQ_SFD_TX\n" : "",
@@ -856,7 +845,7 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 
 	adf7242_status(lp, &stat);
 
-	DBG(1, "%s STATUS = %X:\n%s\n%s%s%s%s%s\n", __func__, stat,
+	dev_dbg(&lp->spi->dev, "%s STATUS = %X:\n%s\n%s%s%s%s%s\n", __func__, stat,
 	    stat & STAT_RC_READY ? "RC_READY" : "RC_BUSY",
 	    (stat & 0xf) == RC_STATUS_IDLE ? "RC_STATUS_IDLE" : "",
 	    (stat & 0xf) == RC_STATUS_MEAS ? "RC_STATUS_MEAS" : "",
@@ -882,7 +871,7 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 			adf7242_read_reg(lp, REG_AUTO_STATUS, &auto_stat);
 			auto_stat &= AUTO_STATUS_MASK;
 
-			DBG(1, "%s AUTO_STATUS = %X:\n%s%s%s%s\n",
+			dev_dbg(&lp->spi->dev, "%s AUTO_STATUS = %X:\n%s%s%s%s\n",
 			    __func__, auto_stat,
 			    auto_stat == SUCCESS ? "SUCCESS" : "",
 			    auto_stat ==
@@ -898,7 +887,7 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 		adf7242_cmd(lp, CMD_RC_RX);
 	}
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return IRQ_HANDLED;
 }
@@ -908,7 +897,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 	int ret;
 	const struct firmware *fw;
 
-	DBG(2, "%s :Enter\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Enter\n", __func__);
 
 
 	adf7242_cmd(lp, CMD_RC_RESET);
@@ -976,7 +965,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 
 	adf7242_cmd(lp, CMD_RC_PHY_RDY);
 
-	DBG(2, "%s :Exit\n", __func__);
+	dev_vdbg(&lp->spi->dev, "%s :Exit\n", __func__);
 
 	return 0;
 }
