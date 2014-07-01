@@ -515,35 +515,34 @@ static int adf7242_upload_firmware(struct adf7242_local *lp, u8 * data, u16 len)
 	return status;
 }
 
-#if 0
 static int adf7242_verify_firmware(struct adf7242_local *lp,
 		const u8 *data, size_t len)
 {
-	int ret, i, j;
+	int i, j;
 	unsigned int page;
-	uint8_t buf[PRAM_PAGESIZE];
+
+	u8 *buf = kmalloc(PRAM_PAGESIZE, GFP_KERNEL);
+	if (buf == NULL)
+		return -ENOMEM;
 
 	for (page = 0, i = len; i >= 0; i -= PRAM_PAGESIZE, page++) {
+
 		size_t nb = (i >= PRAM_PAGESIZE)	 ? PRAM_PAGESIZE : i;
 		adf7242_write_reg(lp, REG_PRAMPG, page);
-
 		adf7242_read_fbuf(lp, buf, &nb, NULL);
 
 		for (j = 0; j < nb; j++) {
 			if (buf[j] != data[page * PRAM_PAGESIZE + j]) {
-				printk("ERROR: Expected 0x%02hhX, got 0x%02hhX\r\n",
-						data[page * PRAM_PAGESIZE + j],
-						buf[j]);
-//				fprintf(stderr, "ERROR: Firmware corrupted!\r\n");
-			} else
-				printk("match %d\n", j);
+				kfree(buf);
+				return -EIO;
+
+			}
 		}
 	}
+	kfree(buf);
 
 	return 0;
-
 }
-#endif
 
 static int
 adf7242_set_txpower(struct ieee802154_dev *dev, int db)
@@ -557,8 +556,7 @@ adf7242_set_txpower(struct ieee802154_dev *dev, int db)
 	if (db > 5 || db < -26)
 		return -EINVAL;
 
-	db += 29;
-	db /= 2;
+	db = DIV_ROUND_CLOSEST(db + 29, 2);
 
 	if (db > 15) {
 		dbias = 21;
@@ -833,7 +831,7 @@ static struct ieee802154_ops adf7242_ops = {
 	.stop = adf7242_stop,
 	.set_csma_params = adf7242_set_csma_params,
 	.set_frame_retries = adf7242_set_frame_retries,
-//	.set_txpower = adf7242_set_txpower,
+	.set_txpower = adf7242_set_txpower,
 };
 
 static irqreturn_t adf7242_isr(int irq, void *data)
@@ -924,12 +922,24 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 		ret = request_firmware(&fw, FIRMWARE, &lp->spi->dev);
 		if (ret) {
 			dev_err(&lp->spi->dev,
-				"request_firmware() failed with %i\n", ret);
+				"request_firmware() failed with %d\n", ret);
 			return ret;
 		}
 
-		adf7242_upload_firmware(lp, (u8 *) fw->data, fw->size);
-		//adf7242_verify_firmware(lp, (u8 *) fw->data, fw->size);
+		ret = adf7242_upload_firmware(lp, (u8 *) fw->data, fw->size);
+		if (ret) {
+			dev_err(&lp->spi->dev,
+				"upload firmware failed with %d\n", ret);
+			return ret;
+		}
+
+		ret = adf7242_verify_firmware(lp, (u8 *) fw->data, fw->size);
+		if (ret) {
+			dev_err(&lp->spi->dev,
+				"verify firmware failed with %d\n", ret);
+			return ret;
+		}
+
 		adf7242_cmd(lp, CMD_RC_PC_RESET);
 
 		release_firmware(fw);
@@ -937,7 +947,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 		adf7242_write_reg(lp, REG_FFILT_CFG,
 				  ACCEPT_BEACON_FRAMES |
 				  ACCEPT_DATA_FRAMES |
-				  /*ACCEPT_ACK_FRAMES |*/
+				  ACCEPT_ACK_FRAMES |
 				  ACCEPT_MACCMD_FRAMES |
 				  (lp->mode & ADF_IEEE802154_PROMISCUOUS_MODE ?
 				   ACCEPT_ALL_ADDRESS : 0) |
