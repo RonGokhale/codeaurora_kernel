@@ -104,6 +104,15 @@ enum {
 	HCI_RESET,
 };
 
+/* BR/EDR and/or LE controller flags: the flags defined here should represent
+ * states configured via debugfs for debugging and testing purposes only.
+ */
+enum {
+	HCI_DUT_MODE,
+	HCI_FORCE_SC,
+	HCI_FORCE_STATIC_ADDR,
+};
+
 /*
  * BR/EDR and/or LE controller flags: the flags defined here should represent
  * states from the controller.
@@ -115,10 +124,8 @@ enum {
 	HCI_MGMT,
 	HCI_PAIRABLE,
 	HCI_SERVICE_CACHE,
-	HCI_DEBUG_KEYS,
-	HCI_DUT_MODE,
-	HCI_FORCE_SC,
-	HCI_FORCE_STATIC_ADDR,
+	HCI_KEEP_DEBUG_KEYS,
+	HCI_USE_DEBUG_KEYS,
 	HCI_UNREGISTER,
 	HCI_USER_CHANNEL,
 
@@ -139,7 +146,6 @@ enum {
 	HCI_PERIODIC_INQ,
 	HCI_FAST_CONNECTABLE,
 	HCI_BREDR_ENABLED,
-	HCI_6LOWPAN_ENABLED,
 	HCI_LE_SCAN_INTERRUPTED,
 };
 
@@ -347,15 +353,6 @@ enum {
 #define HCI_LK_CHANGED_COMBINATION	0x06
 #define HCI_LK_UNAUTH_COMBINATION_P256	0x07
 #define HCI_LK_AUTH_COMBINATION_P256	0x08
-/* The spec doesn't define types for SMP keys, the _MASTER suffix is implied */
-#define HCI_SMP_STK			0x80
-#define HCI_SMP_STK_SLAVE		0x81
-#define HCI_SMP_LTK			0x82
-#define HCI_SMP_LTK_SLAVE		0x83
-
-/* Long Term Key types */
-#define HCI_LTK_UNAUTH			0x00
-#define HCI_LTK_AUTH			0x01
 
 /* ---- HCI Error Codes ---- */
 #define HCI_ERROR_AUTH_FAILURE		0x05
@@ -533,6 +530,11 @@ struct hci_cp_read_remote_ext_features {
 
 #define HCI_OP_READ_REMOTE_VERSION	0x041d
 struct hci_cp_read_remote_version {
+	__le16   handle;
+} __packed;
+
+#define HCI_OP_READ_CLOCK_OFFSET	0x041f
+struct hci_cp_read_clock_offset {
 	__le16   handle;
 } __packed;
 
@@ -1083,6 +1085,18 @@ struct hci_rp_read_rssi {
 	__u8     status;
 	__le16   handle;
 	__s8     rssi;
+} __packed;
+
+#define HCI_OP_READ_CLOCK		0x1407
+struct hci_cp_read_clock {
+	__le16   handle;
+	__u8     which;
+} __packed;
+struct hci_rp_read_clock {
+	__u8     status;
+	__le16   handle;
+	__le32   clock;
+	__le16   accuracy;
 } __packed;
 
 #define HCI_OP_READ_LOCAL_AMP_INFO	0x1409
@@ -1668,6 +1682,15 @@ struct hci_ev_le_conn_complete {
 	__le16   latency;
 	__le16   supervision_timeout;
 	__u8     clk_accurancy;
+} __packed;
+
+#define HCI_EV_LE_CONN_UPDATE_COMPLETE	0x03
+struct hci_ev_le_conn_update_complete {
+	__u8     status;
+	__le16   handle;
+	__le16   interval;
+	__le16   latency;
+	__le16   supervision_timeout;
 } __packed;
 
 #define HCI_EV_LE_LTK_REQ		0x05

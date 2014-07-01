@@ -203,10 +203,13 @@ struct hci_dev {
 	__u16		le_scan_window;
 	__u16		le_conn_min_interval;
 	__u16		le_conn_max_interval;
+	__u16		le_conn_latency;
+	__u16		le_supv_timeout;
 	__u16		discov_interleaved_timeout;
 	__u16		conn_info_min_age;
 	__u16		conn_info_max_age;
 	__u8		ssp_debug_mode;
+	__u32		clock;
 
 	__u16		devid_source;
 	__u16		devid_vendor;
@@ -273,7 +276,7 @@ struct hci_dev {
 
 	struct delayed_work	service_cache;
 
-	struct timer_list	cmd_timer;
+	struct delayed_work	cmd_timer;
 
 	struct work_struct	rx_work;
 	struct work_struct	cmd_work;
@@ -318,6 +321,7 @@ struct hci_dev {
 
 	struct rfkill		*rfkill;
 
+	unsigned long		dbg_flags;
 	unsigned long		dev_flags;
 
 	struct delayed_work	le_scan_disable;
@@ -366,7 +370,6 @@ struct hci_conn {
 	__u8		features[HCI_MAX_PAGES][8];
 	__u16		pkt_type;
 	__u16		link_policy;
-	__u32		link_mode;
 	__u8		key_type;
 	__u8		auth_type;
 	__u8		sec_level;
@@ -380,17 +383,22 @@ struct hci_conn {
 	__u16		setting;
 	__u16		le_conn_min_interval;
 	__u16		le_conn_max_interval;
+	__u16		le_conn_interval;
+	__u16		le_conn_latency;
+	__u16		le_supv_timeout;
 	__s8		rssi;
 	__s8		tx_power;
 	__s8		max_tx_power;
 	unsigned long	flags;
+
+	__u32		clock;
+	__u16		clock_accuracy;
 
 	unsigned long	conn_info_timestamp;
 
 	__u8		remote_cap;
 	__u8		remote_auth;
 	__u8		remote_id;
-	bool		flush_key;
 
 	unsigned int	sent;
 
@@ -407,7 +415,6 @@ struct hci_conn {
 	struct hci_dev	*hdev;
 	void		*l2cap_data;
 	void		*sco_data;
-	void		*smp_conn;
 	struct amp_mgr	*amp_mgr;
 
 	struct hci_conn	*link;
@@ -434,6 +441,8 @@ struct hci_conn_params {
 
 	u16 conn_min_interval;
 	u16 conn_max_interval;
+	u16 conn_latency;
+	u16 supervision_timeout;
 
 	enum {
 		HCI_AUTO_CONN_DISABLED,
@@ -520,7 +529,12 @@ enum {
 	HCI_CONN_AES_CCM,
 	HCI_CONN_POWER_SAVE,
 	HCI_CONN_REMOTE_OOB,
-	HCI_CONN_6LOWPAN,
+	HCI_CONN_FLUSH_KEY,
+	HCI_CONN_MASTER,
+	HCI_CONN_ENCRYPT,
+	HCI_CONN_AUTH,
+	HCI_CONN_SECURE,
+	HCI_CONN_FIPS,
 };
 
 static inline bool hci_conn_ssp_enabled(struct hci_conn *conn)
@@ -838,7 +852,8 @@ int hci_white_list_del(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 type);
 
 struct hci_conn_params *hci_conn_params_lookup(struct hci_dev *hdev,
 					       bdaddr_t *addr, u8 addr_type);
-int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
+int hci_conn_params_add(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
+int hci_conn_params_set(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type,
 			u8 auto_connect, u16 conn_min_interval,
 			u16 conn_max_interval);
 void hci_conn_params_del(struct hci_dev *hdev, bdaddr_t *addr, u8 addr_type);
@@ -856,8 +871,9 @@ void hci_uuids_clear(struct hci_dev *hdev);
 
 void hci_link_keys_clear(struct hci_dev *hdev);
 struct link_key *hci_find_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr);
-int hci_add_link_key(struct hci_dev *hdev, struct hci_conn *conn, int new_key,
-		     bdaddr_t *bdaddr, u8 *val, u8 type, u8 pin_len);
+struct link_key *hci_add_link_key(struct hci_dev *hdev, struct hci_conn *conn,
+				  bdaddr_t *bdaddr, u8 *val, u8 type,
+				  u8 pin_len, bool *persistent);
 struct smp_ltk *hci_find_ltk(struct hci_dev *hdev, __le16 ediv, __le64 rand,
 			     bool master);
 struct smp_ltk *hci_add_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr,
@@ -1021,7 +1037,7 @@ static inline void hci_proto_auth_cfm(struct hci_conn *conn, __u8 status)
 	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags))
 		return;
 
-	encrypt = (conn->link_mode & HCI_LM_ENCRYPT) ? 0x01 : 0x00;
+	encrypt = test_bit(HCI_CONN_ENCRYPT, &conn->flags) ? 0x01 : 0x00;
 	l2cap_security_cfm(conn, status, encrypt);
 
 	if (conn->security_cfm_cb)
@@ -1062,7 +1078,7 @@ static inline void hci_auth_cfm(struct hci_conn *conn, __u8 status)
 	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->flags))
 		return;
 
-	encrypt = (conn->link_mode & HCI_LM_ENCRYPT) ? 0x01 : 0x00;
+	encrypt = test_bit(HCI_CONN_ENCRYPT, &conn->flags) ? 0x01 : 0x00;
 
 	read_lock(&hci_cb_list_lock);
 	list_for_each_entry(cb, &hci_cb_list, list) {
@@ -1147,7 +1163,7 @@ static inline bool eir_has_data_type(u8 *data, size_t data_len, u8 type)
 
 static inline bool hci_bdaddr_is_rpa(bdaddr_t *bdaddr, u8 addr_type)
 {
-	if (addr_type != 0x01)
+	if (addr_type != ADDR_LE_DEV_RANDOM)
 		return false;
 
 	if ((bdaddr->b[5] & 0xc0) == 0x40)
@@ -1163,6 +1179,27 @@ static inline struct smp_irk *hci_get_irk(struct hci_dev *hdev,
 		return NULL;
 
 	return hci_find_irk_by_rpa(hdev, bdaddr);
+}
+
+static inline int hci_check_conn_params(u16 min, u16 max, u16 latency,
+					u16 to_multiplier)
+{
+	u16 max_latency;
+
+	if (min > max || min < 6 || max > 3200)
+		return -EINVAL;
+
+	if (to_multiplier < 10 || to_multiplier > 3200)
+		return -EINVAL;
+
+	if (max >= to_multiplier * 8)
+		return -EINVAL;
+
+	max_latency = (to_multiplier * 8 / max) - 1;
+	if (latency > 499 || latency > max_latency)
+		return -EINVAL;
+
+	return 0;
 }
 
 int hci_register_cb(struct hci_cb *hcb);

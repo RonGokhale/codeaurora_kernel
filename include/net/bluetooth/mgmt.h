@@ -424,6 +424,31 @@ struct mgmt_rp_get_conn_info {
 	__s8	max_tx_power;
 } __packed;
 
+#define MGMT_OP_GET_CLOCK_INFO		0x0032
+struct mgmt_cp_get_clock_info {
+	struct mgmt_addr_info addr;
+} __packed;
+#define MGMT_GET_CLOCK_INFO_SIZE	MGMT_ADDR_INFO_SIZE
+struct mgmt_rp_get_clock_info {
+	struct mgmt_addr_info addr;
+	__le32  local_clock;
+	__le32  piconet_clock;
+	__le16  accuracy;
+} __packed;
+
+#define MGMT_OP_ADD_DEVICE		0x0033
+struct mgmt_cp_add_device {
+	struct mgmt_addr_info addr;
+	__u8	action;
+} __packed;
+#define MGMT_ADD_DEVICE_SIZE		(MGMT_ADDR_INFO_SIZE + 1)
+
+#define MGMT_OP_REMOVE_DEVICE		0x0034
+struct mgmt_cp_remove_device {
+	struct mgmt_addr_info addr;
+} __packed;
+#define MGMT_REMOVE_DEVICE_SIZE		MGMT_ADDR_INFO_SIZE
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16	opcode;
@@ -577,4 +602,15 @@ struct mgmt_csrk_info {
 struct mgmt_ev_new_csrk {
 	__u8 store_hint;
 	struct mgmt_csrk_info key;
+} __packed;
+
+#define MGMT_EV_DEVICE_ADDED		0x001a
+struct mgmt_ev_device_added {
+	struct mgmt_addr_info addr;
+	__u8 action;
+} __packed;
+
+#define MGMT_EV_DEVICE_REMOVED		0x001b
+struct mgmt_ev_device_removed {
+	struct mgmt_addr_info addr;
 } __packed;

@@ -32,6 +32,7 @@
 
 #include "a2mp.h"
 #include "amp.h"
+#include "smp.h"
 
 /* Handle HCI Event packets */
 
@@ -102,9 +103,9 @@ static void hci_cc_role_discovery(struct hci_dev *hdev, struct sk_buff *skb)
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(rp->handle));
 	if (conn) {
 		if (rp->role)
-			conn->link_mode &= ~HCI_LM_MASTER;
+			clear_bit(HCI_CONN_MASTER, &conn->flags);
 		else
-			conn->link_mode |= HCI_LM_MASTER;
+			set_bit(HCI_CONN_MASTER, &conn->flags);
 	}
 
 	hci_dev_unlock(hdev);
@@ -718,6 +719,41 @@ static void hci_cc_read_data_block_size(struct hci_dev *hdev,
 
 	BT_DBG("%s blk mtu %d cnt %d len %d", hdev->name, hdev->block_mtu,
 	       hdev->block_cnt, hdev->block_len);
+}
+
+static void hci_cc_read_clock(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	struct hci_rp_read_clock *rp = (void *) skb->data;
+	struct hci_cp_read_clock *cp;
+	struct hci_conn *conn;
+
+	BT_DBG("%s", hdev->name);
+
+	if (skb->len < sizeof(*rp))
+		return;
+
+	if (rp->status)
+		return;
+
+	hci_dev_lock(hdev);
+
+	cp = hci_sent_cmd_data(hdev, HCI_OP_READ_CLOCK);
+	if (!cp)
+		goto unlock;
+
+	if (cp->which == 0x00) {
+		hdev->clock = le32_to_cpu(rp->clock);
+		goto unlock;
+	}
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(rp->handle));
+	if (conn) {
+		conn->clock = le32_to_cpu(rp->clock);
+		conn->clock_accuracy = le16_to_cpu(rp->accuracy);
+	}
+
+unlock:
+	hci_dev_unlock(hdev);
 }
 
 static void hci_cc_read_local_amp_info(struct hci_dev *hdev,
@@ -1345,7 +1381,7 @@ static void hci_cs_create_conn(struct hci_dev *hdev, __u8 status)
 			conn = hci_conn_add(hdev, ACL_LINK, &cp->bdaddr);
 			if (conn) {
 				conn->out = true;
-				conn->link_mode |= HCI_LM_MASTER;
+				set_bit(HCI_CONN_MASTER, &conn->flags);
 			} else
 				BT_ERR("No memory for new connection");
 		}
@@ -1988,10 +2024,10 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_conn_add_sysfs(conn);
 
 		if (test_bit(HCI_AUTH, &hdev->flags))
-			conn->link_mode |= HCI_LM_AUTH;
+			set_bit(HCI_CONN_AUTH, &conn->flags);
 
 		if (test_bit(HCI_ENCRYPT, &hdev->flags))
-			conn->link_mode |= HCI_LM_ENCRYPT;
+			set_bit(HCI_CONN_ENCRYPT, &conn->flags);
 
 		/* Get remote features */
 		if (conn->type == ACL_LINK) {
@@ -2158,7 +2194,8 @@ static void hci_disconn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	mgmt_device_disconnected(hdev, &conn->dst, conn->type, conn->dst_type,
 				reason, mgmt_connected);
 
-	if (conn->type == ACL_LINK && conn->flush_key)
+	if (conn->type == ACL_LINK &&
+	    test_bit(HCI_CONN_FLUSH_KEY, &conn->flags))
 		hci_remove_link_key(hdev, &conn->dst);
 
 	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
@@ -2218,7 +2255,7 @@ static void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		    test_bit(HCI_CONN_REAUTH_PEND, &conn->flags)) {
 			BT_INFO("re-auth of legacy device is not possible.");
 		} else {
-			conn->link_mode |= HCI_LM_AUTH;
+			set_bit(HCI_CONN_AUTH, &conn->flags);
 			conn->sec_level = conn->pending_sec_level;
 		}
 	} else {
@@ -2321,19 +2358,19 @@ static void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!ev->status) {
 		if (ev->encrypt) {
 			/* Encryption implies authentication */
-			conn->link_mode |= HCI_LM_AUTH;
-			conn->link_mode |= HCI_LM_ENCRYPT;
+			set_bit(HCI_CONN_AUTH, &conn->flags);
+			set_bit(HCI_CONN_ENCRYPT, &conn->flags);
 			conn->sec_level = conn->pending_sec_level;
 
 			/* P-256 authentication key implies FIPS */
 			if (conn->key_type == HCI_LK_AUTH_COMBINATION_P256)
-				conn->link_mode |= HCI_LM_FIPS;
+				set_bit(HCI_CONN_FIPS, &conn->flags);
 
 			if ((conn->type == ACL_LINK && ev->encrypt == 0x02) ||
 			    conn->type == LE_LINK)
 				set_bit(HCI_CONN_AES_CCM, &conn->flags);
 		} else {
-			conn->link_mode &= ~HCI_LM_ENCRYPT;
+			clear_bit(HCI_CONN_ENCRYPT, &conn->flags);
 			clear_bit(HCI_CONN_AES_CCM, &conn->flags);
 		}
 	}
@@ -2384,7 +2421,7 @@ static void hci_change_link_key_complete_evt(struct hci_dev *hdev,
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
 	if (conn) {
 		if (!ev->status)
-			conn->link_mode |= HCI_LM_SECURE;
+			set_bit(HCI_CONN_SECURE, &conn->flags);
 
 		clear_bit(HCI_CONN_AUTH_PEND, &conn->flags);
 
@@ -2595,6 +2632,10 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_cc_read_local_amp_info(hdev, skb);
 		break;
 
+	case HCI_OP_READ_CLOCK:
+		hci_cc_read_clock(hdev, skb);
+		break;
+
 	case HCI_OP_READ_LOCAL_AMP_ASSOC:
 		hci_cc_read_local_amp_assoc(hdev, skb);
 		break;
@@ -2709,7 +2750,7 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	if (opcode != HCI_OP_NOP)
-		del_timer(&hdev->cmd_timer);
+		cancel_delayed_work(&hdev->cmd_timer);
 
 	hci_req_cmd_complete(hdev, opcode, status);
 
@@ -2800,7 +2841,7 @@ static void hci_cmd_status_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 
 	if (opcode != HCI_OP_NOP)
-		del_timer(&hdev->cmd_timer);
+		cancel_delayed_work(&hdev->cmd_timer);
 
 	if (ev->status ||
 	    (hdev->sent_cmd && !bt_cb(hdev->sent_cmd)->req.event))
@@ -2826,9 +2867,9 @@ static void hci_role_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (conn) {
 		if (!ev->status) {
 			if (ev->role)
-				conn->link_mode &= ~HCI_LM_MASTER;
+				clear_bit(HCI_CONN_MASTER, &conn->flags);
 			else
-				conn->link_mode |= HCI_LM_MASTER;
+				set_bit(HCI_CONN_MASTER, &conn->flags);
 		}
 
 		clear_bit(HCI_CONN_RSWITCH_PEND, &conn->flags);
@@ -3065,12 +3106,6 @@ static void hci_link_key_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	BT_DBG("%s found key type %u for %pMR", hdev->name, key->type,
 	       &ev->bdaddr);
 
-	if (!test_bit(HCI_DEBUG_KEYS, &hdev->dev_flags) &&
-	    key->type == HCI_LK_DEBUG_COMBINATION) {
-		BT_DBG("%s ignoring debug key", hdev->name);
-		goto not_found;
-	}
-
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &ev->bdaddr);
 	if (conn) {
 		if ((key->type == HCI_LK_UNAUTH_COMBINATION_P192 ||
@@ -3110,6 +3145,8 @@ static void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_link_key_notify *ev = (void *) skb->data;
 	struct hci_conn *conn;
+	struct link_key *key;
+	bool persistent;
 	u8 pin_len = 0;
 
 	BT_DBG("%s", hdev->name);
@@ -3128,10 +3165,33 @@ static void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		hci_conn_drop(conn);
 	}
 
-	if (test_bit(HCI_MGMT, &hdev->dev_flags))
-		hci_add_link_key(hdev, conn, 1, &ev->bdaddr, ev->link_key,
-				 ev->key_type, pin_len);
+	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
+		goto unlock;
 
+	key = hci_add_link_key(hdev, conn, &ev->bdaddr, ev->link_key,
+			        ev->key_type, pin_len, &persistent);
+	if (!key)
+		goto unlock;
+
+	mgmt_new_link_key(hdev, key, persistent);
+
+	/* Keep debug keys around only if the HCI_KEEP_DEBUG_KEYS flag
+	 * is set. If it's not set simply remove the key from the kernel
+	 * list (we've still notified user space about it but with
+	 * store_hint being 0).
+	 */
+	if (key->type == HCI_LK_DEBUG_COMBINATION &&
+	    !test_bit(HCI_KEEP_DEBUG_KEYS, &hdev->dev_flags)) {
+		list_del(&key->list);
+		kfree(key);
+	} else if (conn) {
+		if (persistent)
+			clear_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
+		else
+			set_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
+	}
+
+unlock:
 	hci_dev_unlock(hdev);
 }
 
@@ -3986,7 +4046,7 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		if (ev->role == LE_CONN_ROLE_MASTER) {
 			conn->out = true;
-			conn->link_mode |= HCI_LM_MASTER;
+			set_bit(HCI_CONN_MASTER, &conn->flags);
 		}
 
 		/* If we didn't have a hci_conn object previously
@@ -4025,6 +4085,14 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		conn->init_addr_type = ev->bdaddr_type;
 		bacpy(&conn->init_addr, &ev->bdaddr);
+
+		/* For incoming connections, set the default minimum
+		 * and maximum connection interval. They will be used
+		 * to check if the parameters are in range and if not
+		 * trigger the connection update procedure.
+		 */
+		conn->le_conn_min_interval = hdev->le_conn_min_interval;
+		conn->le_conn_max_interval = hdev->le_conn_max_interval;
 	}
 
 	/* Lookup the identity address from the stored connection
@@ -4055,8 +4123,9 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	conn->handle = __le16_to_cpu(ev->handle);
 	conn->state = BT_CONNECTED;
 
-	if (test_bit(HCI_6LOWPAN_ENABLED, &hdev->dev_flags))
-		set_bit(HCI_CONN_6LOWPAN, &conn->flags);
+	conn->le_conn_interval = le16_to_cpu(ev->interval);
+	conn->le_conn_latency = le16_to_cpu(ev->latency);
+	conn->le_supv_timeout = le16_to_cpu(ev->supervision_timeout);
 
 	hci_conn_add_sysfs(conn);
 
@@ -4065,6 +4134,29 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_pend_le_conn_del(hdev, &conn->dst, conn->dst_type);
 
 unlock:
+	hci_dev_unlock(hdev);
+}
+
+static void hci_le_conn_update_complete_evt(struct hci_dev *hdev,
+					    struct sk_buff *skb)
+{
+	struct hci_ev_le_conn_update_complete *ev = (void *) skb->data;
+	struct hci_conn *conn;
+
+	BT_DBG("%s status 0x%2.2x", hdev->name, ev->status);
+
+	if (ev->status)
+		return;
+
+	hci_dev_lock(hdev);
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (conn) {
+		conn->le_conn_interval = le16_to_cpu(ev->interval);
+		conn->le_conn_latency = le16_to_cpu(ev->latency);
+		conn->le_supv_timeout = le16_to_cpu(ev->supervision_timeout);
+	}
+
 	hci_dev_unlock(hdev);
 }
 
@@ -4241,7 +4333,7 @@ static void hci_le_ltk_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	 * distribute the keys. Later, security can be re-established
 	 * using a distributed LTK.
 	 */
-	if (ltk->type == HCI_SMP_STK_SLAVE) {
+	if (ltk->type == SMP_STK) {
 		list_del(&ltk->list);
 		kfree(ltk);
 	}
@@ -4265,6 +4357,10 @@ static void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	switch (le_ev->subevent) {
 	case HCI_EV_LE_CONN_COMPLETE:
 		hci_le_conn_complete_evt(hdev, skb);
+		break;
+
+	case HCI_EV_LE_CONN_UPDATE_COMPLETE:
+		hci_le_conn_update_complete_evt(hdev, skb);
 		break;
 
 	case HCI_EV_LE_ADVERTISING_REPORT:
