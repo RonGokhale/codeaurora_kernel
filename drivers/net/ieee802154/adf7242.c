@@ -364,9 +364,15 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 	adf7242_wait_ready(lp);
 
 	mutex_lock(&lp->bmux);
-	buf[0] = lqi ? CMD_SPI_PKT_RD : CMD_SPI_PRAM_RD;
-	buf[1] = CMD_SPI_NOP;
-	buf[2] = 0;		/* PHR */
+	if (lqi) {
+		buf[0] = CMD_SPI_PKT_RD;
+		buf[1] = CMD_SPI_NOP;
+		buf[2] = 0;		/* PHR */
+	} else {
+		buf[0] = CMD_SPI_PRAM_RD;
+		buf[1] = 0;
+		buf[2] = CMD_SPI_NOP;
+	}
 
 	spi_message_init(&msg);
 	spi_message_add_tail(&xfer_head, &msg);
