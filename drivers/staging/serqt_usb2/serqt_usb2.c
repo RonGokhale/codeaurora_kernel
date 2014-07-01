@@ -257,6 +257,7 @@ static void process_modem_status(struct quatech_port *qt_port,
 static void process_rx_char(struct usb_serial_port *port, unsigned char data)
 {
 	struct urb *urb = port->read_urb;
+
 	if (urb->actual_length)
 		tty_insert_flip_char(&port->port, data, TTY_NORMAL);
 }
@@ -981,9 +982,8 @@ static void qt_block_until_empty(struct tty_struct *tty,
 		if (wait == 0) {
 			dev_dbg(&qt_port->port->dev, "%s - TIMEOUT", __func__);
 			return;
-		} else {
-			wait = 30;
 		}
+		wait = 30;
 	}
 }
 
@@ -1119,6 +1119,7 @@ static int qt_ioctl(struct tty_struct *tty,
 	struct usb_serial_port *port = tty->driver_data;
 	struct quatech_port *qt_port = qt_get_port_private(port);
 	unsigned int index;
+	char diff;
 
 	dev_dbg(&port->dev, "%s cmd 0x%04x\n", __func__, cmd);
 
@@ -1132,25 +1133,24 @@ static int qt_ioctl(struct tty_struct *tty,
 #endif
 			if (signal_pending(current))
 				return -ERESTARTSYS;
-			else {
-				char diff = qt_port->diff_status;
 
-				if (diff == 0)
-					return -EIO;	/* no change => error */
+			diff = qt_port->diff_status;
 
-				/* Consume all events */
-				qt_port->diff_status = 0;
+			if (diff == 0)
+				return -EIO;	/* no change => error */
 
-				if (((arg & TIOCM_RNG)
-				     && (diff & SERIAL_MSR_RI))
-				    || ((arg & TIOCM_DSR)
-					&& (diff & SERIAL_MSR_DSR))
-				    || ((arg & TIOCM_CD)
-					&& (diff & SERIAL_MSR_CD))
-				    || ((arg & TIOCM_CTS)
-					&& (diff & SERIAL_MSR_CTS))) {
-					return 0;
-				}
+			/* Consume all events */
+			qt_port->diff_status = 0;
+
+			if (((arg & TIOCM_RNG)
+			     && (diff & SERIAL_MSR_RI))
+			    || ((arg & TIOCM_DSR)
+				&& (diff & SERIAL_MSR_DSR))
+			    || ((arg & TIOCM_CD)
+				&& (diff & SERIAL_MSR_CD))
+			    || ((arg & TIOCM_CTS)
+				&& (diff & SERIAL_MSR_CTS))) {
+				return 0;
 			}
 		}
 		return 0;
@@ -1378,8 +1378,8 @@ static inline int qt_real_tiocmset(struct tty_struct *tty,
 	    box_set_register(port->serial, index, MODEM_CONTROL_REGISTER, mcr);
 	if (status < 0)
 		return -ESPIPE;
-	else
-		return 0;
+
+	return 0;
 }
 
 static int qt_tiocmget(struct tty_struct *tty)
