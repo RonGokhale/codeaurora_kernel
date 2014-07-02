@@ -3010,6 +3010,51 @@ static uint32_t mdp4_pp_block2qseed(uint32_t block)
 	return valid;
 }
 
+int mdp4_qseed0_access_cfg(struct msm_fb_data_type *mfd, struct mdp_qseed_cfg *config, uint32_t base)
+{
+	int i, ret = 0;
+
+	if ((config->table_num != 1) && (config->table_num != 2)) {
+		ret = -ENOTTY;
+		goto error;
+	}
+
+	if (((config->table_num == 1) && (config->len != QSEED_TABLE_1_COUNT))
+			|| ((config->table_num == 2) &&
+				(config->len != QSEED_TABLE_2_COUNT))) {
+		ret = -EINVAL;
+		goto error;
+	}
+	base += (config->table_num == 1) ? MDP4_QSEED_TABLE1_OFF :
+							MDP4_QSEED_TABLE2_OFF;
+
+	if ((mfd) && (config->ops & MDP_PP_OPS_WRITE)) {
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		for (i = 0; i < config->len; i++) {
+			if (!(base & 0x3FF))
+				wmb();
+			MDP_OUTP(base , mfd->qseedData[i]);
+			base += sizeof(uint32_t);
+		}
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+	} else if ((mfd)&& (config->ops & MDP_PP_OPS_READ)) {
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_ON, FALSE);
+		for (i = 0; i < config->len; i++) {
+			mfd->qseedData[i] = inpdw(base);
+			if (!(base & 0x3FF))
+				rmb();
+			base += sizeof(uint32_t);
+		}
+		mdp_pipe_ctrl(MDP_CMD_BLOCK, MDP_BLOCK_POWER_OFF, FALSE);
+		ret = copy_to_user(config->data, mfd->qseedData,
+						sizeof(uint32_t) * config->len);
+	}
+
+error:
+	return ret;
+}
+
+
 int mdp4_qseed_access_cfg(struct mdp_qseed_cfg *config, uint32_t base)
 {
 	int i, ret = 0;

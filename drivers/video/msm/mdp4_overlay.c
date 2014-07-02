@@ -43,6 +43,7 @@
 #include "mdp4.h"
 
 #define VERSION_KEY_MASK	0xFFFFFF00
+#define QSEED_TABLE_1_COUNT	2
 
 struct mdp4_overlay_ctrl {
 	struct mdp4_overlay_pipe plist[OVERLAY_PIPE_MAX];
@@ -997,9 +998,7 @@ void mdp4_overlay_vg_setup(struct mdp4_overlay_pipe *pipe)
 			}
 		}
 		if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_QSEED_CFG) {
-			mdp4_qseed_access_cfg(&pipe->pp_cfg.qseed_cfg[0],
-							(uint32_t) vg_base);
-			mdp4_qseed_access_cfg(&pipe->pp_cfg.qseed_cfg[1],
+			mdp4_qseed0_access_cfg(pipe->mfd, &pipe->pp_cfg.qseed_cfg[0],
 							(uint32_t) vg_base);
 		}
 		pipe->is_pp_dirty = false;
@@ -3595,6 +3594,7 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
 	int ret, mixer;
 	struct mdp4_overlay_pipe *pipe;
+	struct mdp_qseed_cfg *config;
 
 	if (mfd == NULL) {
 		pr_err("%s: mfd == NULL, -ENODEV\n", __func__);
@@ -3654,12 +3654,19 @@ int mdp4_overlay_set(struct fb_info *info, struct mdp_overlay *req)
 	mdp4_stat.overlay_set[pipe->mixer_num]++;
 
 	if (pipe->flags & MDP_OVERLAY_PP_CFG_EN) {
-		if (pipe->pipe_num <= OVERLAY_PIPE_VG2)
+		if (pipe->pipe_num <= OVERLAY_PIPE_VG2) {
 			memcpy(&pipe->pp_cfg, &req->overlay_pp_cfg,
 					sizeof(struct mdp_overlay_pp_params));
-		else
+			if (pipe->pp_cfg.config_ops & MDP_OVERLAY_PP_QSEED_CFG) {
+				config = &pipe->pp_cfg.qseed_cfg[0];
+				ret = copy_from_user(mfd->qseedData,config->data,
+					sizeof(uint32_t) * config->len);
+			}
+		}
+		else {
 			pr_debug("%s: RGB Pipes don't support CSC/QSEED\n",
 								__func__);
+		}
 		pipe->is_pp_dirty = true;
 	}
 

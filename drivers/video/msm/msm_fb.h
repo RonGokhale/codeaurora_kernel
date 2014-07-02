@@ -252,6 +252,7 @@ struct msm_fb_data_type {
 	struct mdp_table_entry cached_reg[MDP_MAX_CACHED_REG];
 	uint32 cached_reg_cnt;
 	uint32 cache_reg_en;
+	uint32_t qseedData[2];
 };
 struct msm_fb_backup_type {
 	struct fb_info info;
