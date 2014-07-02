@@ -39,6 +39,7 @@ struct ipv6_devconf {
 #endif
 	__s32		proxy_ndp;
 	__s32		accept_source_route;
+	__s32		accept_ra_from_local;
 #ifdef CONFIG_IPV6_OPTIMISTIC_DAD
 	__s32		optimistic_dad;
 #endif
@@ -254,16 +255,6 @@ struct tcp6_timewait_sock {
 static inline struct ipv6_pinfo * inet6_sk(const struct sock *__sk)
 {
 	return inet_sk(__sk)->pinet6;
-}
-
-static inline struct request_sock *inet6_reqsk_alloc(struct request_sock_ops *ops)
-{
-	struct request_sock *req = reqsk_alloc(ops);
-
-	if (req)
-		inet_rsk(req)->pktopts = NULL;
-
-	return req;
 }
 
 static inline struct raw6_sock *raw6_sk(const struct sock *sk)
