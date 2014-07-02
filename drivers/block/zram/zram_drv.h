@@ -43,7 +43,6 @@ static const size_t max_zpage_size = PAGE_SIZE / 4 * 3;
 /*-- End of configurable params */
 
 #define SECTOR_SHIFT		9
-#define SECTOR_SIZE		(1 << SECTOR_SHIFT)
 #define SECTORS_PER_PAGE_SHIFT	(PAGE_SHIFT - SECTOR_SHIFT)
 #define SECTORS_PER_PAGE	(1 << SECTORS_PER_PAGE_SHIFT)
 #define ZRAM_LOGICAL_BLOCK_SHIFT 12
@@ -62,7 +61,7 @@ enum zram_pageflags {
 /*-- Data structures */
 
 /* Allocated for each disk page */
-struct table {
+struct zram_table_entry {
 	unsigned long handle;
 	u16 size;	/* object size (excluding header) */
 	u8 flags;
@@ -82,7 +81,7 @@ struct zram_stats {
 
 struct zram_meta {
 	rwlock_t tb_lock;	/* protect table */
-	struct table *table;
+	struct zram_table_entry *table;
 	struct zs_pool *mem_pool;
 };
 
