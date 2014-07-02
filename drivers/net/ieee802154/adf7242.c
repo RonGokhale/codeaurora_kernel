@@ -280,6 +280,9 @@ static int adf7242_wait_ready(struct adf7242_local *lp)
 		cnt++;
 	} while (!(stat & STAT_RC_READY) && (cnt < MAX_POLL_LOOPS));
 
+	if (cnt >= MAX_POLL_LOOPS)
+		dev_warn(&lp->spi->dev, "%s Timeout (%d)\n", __func__, cnt);
+
 	dev_vdbg(&lp->spi->dev, "%s :Exit loops=%d\n", __func__, cnt);
 
 	return 0;
@@ -297,6 +300,9 @@ static int adf7242_wait_status(struct adf7242_local *lp, int status)
 		stat &= RC_STATUS_MASK;
 		cnt++;
 	} while ((stat != status) && (cnt < MAX_POLL_LOOPS));
+
+	if (cnt >= MAX_POLL_LOOPS)
+		dev_warn(&lp->spi->dev, "%s Timeout (%d)\n", __func__, cnt);
 
 	dev_vdbg(&lp->spi->dev, "%s :Exit loops=%d\n", __func__, cnt);
 
@@ -757,7 +763,7 @@ static int adf7242_xmit(struct ieee802154_dev *dev, struct sk_buff *skb)
 	if (ret == -ERESTARTSYS)
 		goto err;
 	if (ret == 0) {
-		dev_err(&lp->spi->dev, "Timeout waiting for TX interrupt\n");
+		dev_warn(&lp->spi->dev, "Timeout waiting for TX interrupt\n");
 		ret = -ETIMEDOUT;
 		goto err;
 	}
@@ -855,7 +861,9 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 
 	adf7242_write_reg(lp, REG_IRQ1_SRC1, irq1);
 
-	if (irq1 & IRQ_RX_PKT_RCVD) {
+	if ((irq1 & IRQ_RX_PKT_RCVD) &&
+		((lp->mode & ADF_IEEE802154_REPORT_ACK) ||
+		!(irq1 & lp->tx_irq))) {
 
 		/* Wait until ACK is processed */
 		if ((lp->mode & ADF_IEEE802154_HW_AACK) &&
@@ -936,11 +944,12 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 		adf7242_write_reg(lp, REG_FFILT_CFG,
 				  ACCEPT_BEACON_FRAMES |
 				  ACCEPT_DATA_FRAMES |
-				  ACCEPT_ACK_FRAMES |
 				  ACCEPT_MACCMD_FRAMES |
 				  (lp->mode & ADF_IEEE802154_PROMISCUOUS_MODE ?
 				   ACCEPT_ALL_ADDRESS : 0) |
-				  ACCEPT_RESERVED_FRAMES);
+				  (lp->mode & ADF_IEEE802154_REPORT_ACK ?
+				   ACCEPT_ACK_FRAMES : 0) |
+				   ACCEPT_RESERVED_FRAMES);
 
 		adf7242_set_csma_params(lp->dev, lp->pdata->min_csma_be,
 					lp->pdata->max_csma_be,
@@ -949,7 +958,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 
 		adf7242_write_reg(lp, REG_AUTO_CFG,
 				  (lp->mode & ADF_IEEE802154_HW_AACK ?
-				   RX_AUTO_ACK_EN : 0));
+				   RX_AUTO_ACK_EN | CSMA_CA_RX_TURNAROUND : 0));
 	}
 
 	adf7242_write_reg(lp, REG_PKT_CFG, lp->mode ? ADDON_EN : 0);
@@ -1033,6 +1042,10 @@ static struct adf7242_platform_data *adf7242_parse_dt(struct device *dev)
 	pdata->mode |=
 		of_property_read_bool(np, "adi,promiscuous-mode-enable") ?
 		ADF_IEEE802154_PROMISCUOUS_MODE : 0;
+
+	pdata->mode |=
+		of_property_read_bool(np, "adi,report-ack-frames-enable") ?
+		ADF_IEEE802154_REPORT_ACK : 0;
 
 	tmp = 4;
 	of_property_read_u32(np, "adi,max-frame-retries", &tmp);
@@ -1187,6 +1200,6 @@ static struct spi_driver adf7242_driver = {
 
 module_spi_driver(adf7242_driver);
 
-MODULE_AUTHOR("Michael Hennerich <hennerich@blackfin.uclinux.org>");
-MODULE_DESCRIPTION("ADF7242 Transceiver Driver");
+MODULE_AUTHOR("Michael Hennerich <michael.hennerich@analog.com>");
+MODULE_DESCRIPTION("ADF7242 IEEE802.15.4 Transceiver Driver");
 MODULE_LICENSE("GPL");

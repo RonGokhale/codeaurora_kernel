@@ -14,6 +14,7 @@ struct adf7242_platform_data {
 #define ADF_IEEE802154_HW_AACK         (1 << 1)
 #define ADF_IEEE802154_AUTO_CSMA_CA    (1 << 2)
 #define ADF_IEEE802154_PROMISCUOUS_MODE        (1 << 3)	/* no address filtering, turns off HW_AACK */
+#define ADF_IEEE802154_REPORT_ACK        (1 << 4)	/* Report Ack frames */
 
 	int mode;
 
