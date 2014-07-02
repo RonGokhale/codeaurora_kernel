@@ -43,6 +43,7 @@
 #define NFSDDBG_FACILITY                NFSDDBG_PROC
 
 static void nfsd4_mark_cb_fault(struct nfs4_client *, int reason);
+static void nfsd4_run_cb_null(struct work_struct *w);
 
 #define NFSPROC4_CB_NULL 0
 #define NFSPROC4_CB_COMPOUND 1
@@ -763,6 +764,8 @@ static void do_probe_callback(struct nfs4_client *clp)
 
 	cb->cb_ops = &nfsd4_cb_probe_ops;
 
+	INIT_WORK(&cb->cb_work, nfsd4_run_cb_null);
+
 	run_nfsd4_cb(cb);
 }
 
@@ -933,7 +936,7 @@ void nfsd4_shutdown_callback(struct nfs4_client *clp)
 	set_bit(NFSD4_CLIENT_CB_KILL, &clp->cl_flags);
 	/*
 	 * Note this won't actually result in a null callback;
-	 * instead, nfsd4_do_callback_rpc() will detect the killed
+	 * instead, nfsd4_run_cb_null() will detect the killed
 	 * client, destroy the rpc client, and stop:
 	 */
 	do_probe_callback(clp);
@@ -1011,9 +1014,8 @@ static void nfsd4_process_cb_update(struct nfsd4_callback *cb)
 		run_nfsd4_cb(cb);
 }
 
-static void nfsd4_do_callback_rpc(struct work_struct *w)
+static void nfsd4_run_callback_rpc(struct nfsd4_callback *cb)
 {
-	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback, cb_work);
 	struct nfs4_client *clp = cb->cb_clp;
 	struct rpc_clnt *clnt;
 
@@ -1031,9 +1033,20 @@ static void nfsd4_do_callback_rpc(struct work_struct *w)
 			cb->cb_ops, cb);
 }
 
-void nfsd4_init_callback(struct nfsd4_callback *cb)
+static void nfsd4_run_cb_null(struct work_struct *w)
 {
-	INIT_WORK(&cb->cb_work, nfsd4_do_callback_rpc);
+	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback,
+							cb_work);
+	nfsd4_run_callback_rpc(cb);
+}
+
+static void nfsd4_run_cb_recall(struct work_struct *w)
+{
+	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback,
+							cb_work);
+
+	nfsd4_prepare_cb_recall(cb->cb_op);
+	nfsd4_run_callback_rpc(cb);
 }
 
 void nfsd4_cb_recall(struct nfs4_delegation *dp)
@@ -1052,6 +1065,7 @@ void nfsd4_cb_recall(struct nfs4_delegation *dp)
 
 	INIT_LIST_HEAD(&cb->cb_per_client);
 	cb->cb_done = true;
+	INIT_WORK(&cb->cb_work, nfsd4_run_cb_recall);
 
 	run_nfsd4_cb(&dp->dl_recall);
 }

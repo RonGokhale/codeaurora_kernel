@@ -107,8 +107,8 @@ struct nfsd4_create {
 	u32		cr_type;            /* request */
 	union {                             /* request */
 		struct {
-			u32 namelen;
-			char *name;
+			u32 datalen;
+			char *data;
 		} link;   /* NF4LNK */
 		struct {
 			u32 specdata1;
@@ -121,8 +121,8 @@ struct nfsd4_create {
 	struct nfs4_acl *cr_acl;
 	struct xdr_netobj cr_label;
 };
-#define cr_linklen	u.link.namelen
-#define cr_linkname	u.link.name
+#define cr_datalen	u.link.datalen
+#define cr_data		u.link.data
 #define cr_specdata1	u.dev.specdata1
 #define cr_specdata2	u.dev.specdata2
 
@@ -478,6 +478,14 @@ struct nfsd4_op {
 
 bool nfsd4_cache_this_op(struct nfsd4_op *);
 
+/*
+ * Memory needed just for the duration of processing one compound:
+ */
+struct svcxdr_tmpbuf {
+	struct svcxdr_tmpbuf *next;
+	char buf[];
+};
+
 struct nfsd4_compoundargs {
 	/* scratch variables for XDR decode */
 	__be32 *			p;
@@ -486,11 +494,7 @@ struct nfsd4_compoundargs {
 	int				pagelen;
 	__be32				tmp[8];
 	__be32 *			tmpp;
-	struct tmpbuf {
-		struct tmpbuf *next;
-		void (*release)(const void *);
-		void *buf;
-	}				*to_free;
+	struct svcxdr_tmpbuf		*to_free;
 
 	struct svc_rqst			*rqstp;
 
