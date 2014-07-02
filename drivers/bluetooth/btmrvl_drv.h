@@ -68,6 +68,7 @@ struct btmrvl_adapter {
 	u8 hs_state;
 	u8 wakeup_tries;
 	wait_queue_head_t cmd_wait_q;
+	wait_queue_head_t event_hs_wait_q;
 	u8 cmd_complete;
 	bool is_suspended;
 };
@@ -89,6 +90,7 @@ struct btmrvl_private {
 #define MRVL_VENDOR_PKT			0xFE
 
 /* Vendor specific Bluetooth commands */
+#define BT_CMD_PSCAN_WIN_REPORT_ENABLE	0xFC03
 #define BT_CMD_AUTO_SLEEP_MODE		0xFC23
 #define BT_CMD_HOST_SLEEP_CONFIG	0xFC59
 #define BT_CMD_HOST_SLEEP_ENABLE	0xFC5A
