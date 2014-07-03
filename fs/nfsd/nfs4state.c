@@ -4602,7 +4602,7 @@ nfsd4_lock(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	}
 out:
 	if (status && new_state)
-		release_lockowner_if_empty(lock_sop);
+		release_lock_stateid(lock_stp);
 	nfsd4_bump_seqid(cstate, status);
 	if (!cstate->replay_owner)
 		nfs4_unlock_state();
