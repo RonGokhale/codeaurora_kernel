@@ -468,9 +468,9 @@ static int adf7242_cmd(struct adf7242_local *lp, u8 cmd)
 
 static int adf7242_upload_firmware(struct adf7242_local *lp, u8 * data, u16 len)
 {
-	int status, i, page = 0;
 	struct spi_message msg;
 	struct spi_transfer xfer_buf = { };
+	int status, i, page = 0;
 	u8 *buf = lp->buf;
 
 	struct spi_transfer xfer_head = {
@@ -481,15 +481,15 @@ static int adf7242_upload_firmware(struct adf7242_local *lp, u8 * data, u16 len)
 	buf[0] = CMD_SPI_PRAM_WR;
 	buf[1] = 0;
 
+	spi_message_init(&msg);
+	spi_message_add_tail(&xfer_head, &msg);
+	spi_message_add_tail(&xfer_buf, &msg);
+
 	for (i = len; i >= 0; i -= PRAM_PAGESIZE) {
 		adf7242_write_reg(lp, REG_PRAMPG, page);
 
-		xfer_buf.len = (i >= PRAM_PAGESIZE) ? PRAM_PAGESIZE : i,
-		    xfer_buf.tx_buf = &data[page * PRAM_PAGESIZE],
-
-		spi_message_init(&msg);
-		spi_message_add_tail(&xfer_head, &msg);
-		spi_message_add_tail(&xfer_buf, &msg);
+		xfer_buf.len = (i >= PRAM_PAGESIZE) ? PRAM_PAGESIZE : i;
+		xfer_buf.tx_buf = &data[page * PRAM_PAGESIZE];
 
 		mutex_lock(&lp->bmux);
 		status = spi_sync(lp->spi, &msg);
@@ -554,17 +554,17 @@ adf7242_set_txpower(struct ieee802154_dev *dev, int db)
 	pwr = clamp_t(u8, db, 3, 15);
 
 	adf7242_read_reg(lp, REG_PA_CFG, &tmp);
-	tmp &= ~PA_BRIDGE_DBIAS(0);
+	tmp &= ~PA_BRIDGE_DBIAS(~0);
 	tmp |= PA_BRIDGE_DBIAS(dbias);
 	adf7242_write_reg(lp, REG_PA_CFG, tmp);
 
 	adf7242_read_reg(lp, REG_PA_BIAS, &tmp);
-	tmp &= ~PA_BIAS_CTRL(0);
+	tmp &= ~PA_BIAS_CTRL(~0);
 	tmp |= PA_BIAS_CTRL(bias_ctrl);
 	adf7242_write_reg(lp, REG_PA_BIAS, tmp);
 
 	adf7242_read_reg(lp, REG_EXTPA_MSC, &tmp);
-	tmp &= ~PA_PWR(0);
+	tmp &= ~PA_PWR(~0);
 	tmp |= PA_PWR(pwr);
 	ret = adf7242_write_reg(lp, REG_EXTPA_MSC, tmp);
 
