@@ -188,7 +188,6 @@ struct msm_pcm_routing_bdai_data {
 	unsigned int  sample_rate;
 	unsigned int  channel;
 	unsigned int  format;
-	char *name;
 };
 
 struct msm_pcm_routing_fdai_data {
