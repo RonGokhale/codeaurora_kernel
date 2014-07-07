@@ -55,7 +55,6 @@ int mx25_clocks_init(void);
 int mx27_clocks_init(unsigned long fref);
 int mx31_clocks_init(unsigned long fref);
 int mx35_clocks_init(void);
-int mx25_clocks_init_dt(void);
 int mx31_clocks_init_dt(void);
 struct platform_device *mxc_register_gpio(char *name, int id,
 	resource_size_t iobase, resource_size_t iosize, int irq, int irq_high);
@@ -106,7 +105,7 @@ static inline void imx_scu_standby_enable(void) {}
 #endif
 void imx_src_init(void);
 void imx_gpc_init(void);
-void imx_gpc_pre_suspend(void);
+void imx_gpc_pre_suspend(bool arm_power_off);
 void imx_gpc_post_resume(void);
 void imx_gpc_mask_all(void);
 void imx_gpc_restore_all(void);
@@ -116,7 +115,7 @@ void imx_anatop_init(void);
 void imx_anatop_pre_suspend(void);
 void imx_anatop_post_resume(void);
 int imx6q_set_lpm(enum mxc_cpu_pwr_mode mode);
-void imx6q_set_int_mem_clk_lpm(void);
+void imx6q_set_int_mem_clk_lpm(bool enable);
 void imx6sl_set_wait_clk(bool enter);
 
 void imx_cpu_die(unsigned int cpu);

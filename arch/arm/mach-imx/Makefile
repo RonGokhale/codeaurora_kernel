@@ -31,15 +31,14 @@ ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_SOC_IMX5) += cpuidle-imx5.o
 obj-$(CONFIG_SOC_IMX6Q) += cpuidle-imx6q.o
 obj-$(CONFIG_SOC_IMX6SL) += cpuidle-imx6sl.o
+# i.MX6SX reuses i.MX6Q cpuidle driver
+obj-$(CONFIG_SOC_IMX6SX) += cpuidle-imx6q.o
 endif
 
 ifdef CONFIG_SND_IMX_SOC
 obj-y += ssi-fiq.o
 obj-y += ssi-fiq-ksym.o
 endif
-
-# Support for CMOS sensor interface
-obj-$(CONFIG_MX1_VIDEO) += mx1-camera-fiq.o mx1-camera-fiq-ksym.o
 
 # i.MX1 based machines
 obj-$(CONFIG_ARCH_MX1ADS) += mach-mx1ads.o
@@ -60,7 +59,6 @@ obj-$(CONFIG_MACH_MX27ADS) += mach-mx27ads.o
 obj-$(CONFIG_MACH_PCM038) += mach-pcm038.o
 obj-$(CONFIG_MACH_PCM970_BASEBOARD) += pcm970-baseboard.o
 obj-$(CONFIG_MACH_MX27_3DS) += mach-mx27_3ds.o
-obj-$(CONFIG_MACH_IMX27LITE) += mach-imx27lite.o
 obj-$(CONFIG_MACH_IMX27_VISSTRIM_M10) += mach-imx27_visstrim_m10.o
 obj-$(CONFIG_MACH_CPUIMX27) += mach-cpuimx27.o
 obj-$(CONFIG_MACH_EUKREA_MBIMX27_BASEBOARD) += eukrea_mbimx27-baseboard.o
