@@ -90,9 +90,6 @@ void __rcu_read_unlock(void)
 	} else {
 		barrier();  /* critical section before exit code. */
 		t->rcu_read_lock_nesting = INT_MIN;
-#ifdef CONFIG_PROVE_RCU_DELAY
-		udelay(10); /* Make preemption more probable. */
-#endif /* #ifdef CONFIG_PROVE_RCU_DELAY */
 		barrier();  /* assign before ->rcu_read_unlock_special load */
 		if (unlikely(ACCESS_ONCE(t->rcu_read_unlock_special)))
 			rcu_read_unlock_special(t);
@@ -165,6 +162,59 @@ int rcu_read_lock_bh_held(void)
 	return in_softirq() || irqs_disabled();
 }
 EXPORT_SYMBOL_GPL(rcu_read_lock_bh_held);
+
+static void rcu_lockdep_assert_watching(void)
+{
+	rcu_lockdep_assert(rcu_is_watching(), "RCU used illegally while idle");
+}
+
+static void rcu_acquire_map(struct lockdep_map *map, unsigned long ip)
+{
+	__rcu_lock_acquire(map, ip);
+	rcu_lockdep_assert_watching();
+}
+
+static void rcu_release_map(struct lockdep_map *map, unsigned long ip)
+{
+	rcu_lockdep_assert_watching();
+	__rcu_lock_release(map, ip);
+}
+
+void rcu_lock_acquire(void)
+{
+	rcu_acquire_map(&rcu_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_acquire);
+
+void rcu_lock_release(void)
+{
+	rcu_release_map(&rcu_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_release);
+
+void rcu_lock_acquire_bh(void)
+{
+	rcu_acquire_map(&rcu_bh_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_acquire_bh);
+
+void rcu_lock_release_bh(void)
+{
+	rcu_release_map(&rcu_bh_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_release_bh);
+
+void rcu_lock_acquire_sched(void)
+{
+	rcu_acquire_map(&rcu_sched_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_acquire_sched);
+
+void rcu_lock_release_sched(void)
+{
+	rcu_release_map(&rcu_sched_lock_map, _RET_IP_);
+}
+EXPORT_SYMBOL(rcu_lock_release_sched);
 
 #endif /* #ifdef CONFIG_DEBUG_LOCK_ALLOC */
 
