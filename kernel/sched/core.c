@@ -139,6 +139,8 @@ void update_rq_clock(struct rq *rq)
 		return;
 
 	delta = sched_clock_cpu(cpu_of(rq)) - rq->clock;
+	if (delta < 0)
+		return;
 	rq->clock += delta;
 	update_rq_clock_task(rq, delta);
 }
@@ -684,10 +686,16 @@ static void wake_up_idle_cpu(int cpu)
 
 static bool wake_up_full_nohz_cpu(int cpu)
 {
+	/*
+	 * We just need the target to call irq_exit() and re-evaluate
+	 * the next tick. The nohz full kick at least implies that.
+	 * If needed we can still optimize that later with an
+	 * empty IRQ.
+	 */
 	if (tick_nohz_full_cpu(cpu)) {
 		if (cpu != smp_processor_id() ||
 		    tick_nohz_tick_stopped())
-			smp_send_reschedule(cpu);
+			tick_nohz_full_kick_cpu(cpu);
 		return true;
 	}
 
@@ -730,18 +738,15 @@ static inline bool got_nohz_idle_kick(void)
 #ifdef CONFIG_NO_HZ_FULL
 bool sched_can_stop_tick(void)
 {
-       struct rq *rq;
+	/*
+	 * More than one running task need preemption.
+	 * nr_running update is assumed to be visible
+	 * after IPI is sent from wakers.
+	 */
+	if (this_rq()->nr_running > 1)
+		return false;
 
-       rq = this_rq();
-
-       /* Make sure rq->nr_running update is visible after the IPI */
-       smp_rmb();
-
-       /* More than one running task need preemption */
-       if (rq->nr_running > 1)
-               return false;
-
-       return true;
+	return true;
 }
 #endif /* CONFIG_NO_HZ_FULL */
 
@@ -1568,9 +1573,7 @@ void scheduler_ipi(void)
 	 */
 	preempt_fold_need_resched();
 
-	if (llist_empty(&this_rq()->wake_list)
-			&& !tick_nohz_full_cpu(smp_processor_id())
-			&& !got_nohz_idle_kick())
+	if (llist_empty(&this_rq()->wake_list) && !got_nohz_idle_kick())
 		return;
 
 	/*
@@ -1587,7 +1590,6 @@ void scheduler_ipi(void)
 	 * somewhat pessimize the simple resched case.
 	 */
 	irq_enter();
-	tick_nohz_full_check();
 	sched_ttwu_pending();
 
 	/*
@@ -2431,7 +2433,12 @@ static u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
 {
 	u64 ns = 0;
 
-	if (task_current(rq, p)) {
+	/*
+	 * Must be ->curr _and_ ->on_rq.  If dequeued, we would
+	 * project cycles that may never be accounted to this
+	 * thread, breaking clock_gettime().
+	 */
+	if (task_current(rq, p) && p->on_rq) {
 		update_rq_clock(rq);
 		ns = rq_clock_task(rq) - p->se.exec_start;
 		if ((s64)ns < 0)
@@ -2474,8 +2481,10 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 	 * If we race with it leaving cpu, we'll take a lock. So we're correct.
 	 * If we race with it entering cpu, unaccounted time is 0. This is
 	 * indistinguishable from the read occurring a few cycles earlier.
+	 * If we see ->on_cpu without ->on_rq, the task is leaving, and has
+	 * been accounted, so we're correct here as well.
 	 */
-	if (!p->on_cpu)
+	if (!p->on_cpu || !p->on_rq)
 		return p->se.sum_exec_runtime;
 #endif
 
@@ -4147,7 +4156,6 @@ static void __cond_resched(void)
 
 int __sched _cond_resched(void)
 {
-	rcu_cond_resched();
 	if (should_resched()) {
 		__cond_resched();
 		return 1;
@@ -4166,18 +4174,15 @@ EXPORT_SYMBOL(_cond_resched);
  */
 int __cond_resched_lock(spinlock_t *lock)
 {
-	bool need_rcu_resched = rcu_should_resched();
 	int resched = should_resched();
 	int ret = 0;
 
 	lockdep_assert_held(lock);
 
-	if (spin_needbreak(lock) || resched || need_rcu_resched) {
+	if (spin_needbreak(lock) || resched) {
 		spin_unlock(lock);
 		if (resched)
 			__cond_resched();
-		else if (unlikely(need_rcu_resched))
-			rcu_resched();
 		else
 			cpu_relax();
 		ret = 1;
@@ -4191,7 +4196,6 @@ int __sched __cond_resched_softirq(void)
 {
 	BUG_ON(!in_softirq());
 
-	rcu_cond_resched();  /* BH disabled OK, just recording QSes. */
 	if (should_resched()) {
 		local_bh_enable();
 		__cond_resched();
@@ -7808,6 +7812,11 @@ static int tg_set_cfs_bandwidth(struct task_group *tg, u64 period, u64 quota)
 	if (period > max_cfs_quota_period)
 		return -EINVAL;
 
+	/*
+	 * Prevent race between setting of cfs_rq->runtime_enabled and
+	 * unthrottle_offline_cfs_rqs().
+	 */
+	get_online_cpus();
 	mutex_lock(&cfs_constraints_mutex);
 	ret = __cfs_schedulable(tg, period, quota);
 	if (ret)
@@ -7833,7 +7842,7 @@ static int tg_set_cfs_bandwidth(struct task_group *tg, u64 period, u64 quota)
 	}
 	raw_spin_unlock_irq(&cfs_b->lock);
 
-	for_each_possible_cpu(i) {
+	for_each_online_cpu(i) {
 		struct cfs_rq *cfs_rq = tg->cfs_rq[i];
 		struct rq *rq = cfs_rq->rq;
 
@@ -7849,6 +7858,7 @@ static int tg_set_cfs_bandwidth(struct task_group *tg, u64 period, u64 quota)
 		cfs_bandwidth_usage_dec();
 out_unlock:
 	mutex_unlock(&cfs_constraints_mutex);
+	put_online_cpus();
 
 	return ret;
 }
