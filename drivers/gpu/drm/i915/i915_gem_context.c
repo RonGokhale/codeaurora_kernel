@@ -382,6 +382,9 @@ void i915_gem_context_reset(struct drm_device *dev)
 			dctx->obj->active = 0;
 		}
 
+		if (ring->last_context->obj && i == RCS)
+			i915_gem_object_ggtt_unpin(ring->last_context->obj);
+
 		i915_gem_context_unreference(ring->last_context);
 		i915_gem_context_reference(dctx);
 		ring->last_context = dctx;
@@ -606,7 +609,7 @@ static int do_switch(struct intel_engine_cs *ring,
 		BUG_ON(!i915_gem_obj_is_pinned(from->obj));
 	}
 
-	if (from == to && from->last_ring == ring && !to->remap_slice)
+	if (from == to && !to->remap_slice)
 		return 0;
 
 	/* Trying to pin first makes error handling easier. */
@@ -703,7 +706,6 @@ static int do_switch(struct intel_engine_cs *ring,
 done:
 	i915_gem_context_reference(to);
 	ring->last_context = to;
-	to->last_ring = ring;
 
 	if (uninitialized) {
 		ret = i915_gem_render_state_init(ring);

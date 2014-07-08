@@ -1316,8 +1316,6 @@ void intel_edp_panel_off(struct intel_dp *intel_dp)
 
 	DRM_DEBUG_KMS("Turn eDP power off\n");
 
-	edp_wait_backlight_off(intel_dp);
-
 	WARN(!intel_dp->want_panel_vdd, "Need VDD to turn off panel\n");
 
 	pp = ironlake_get_pp_control(intel_dp);
@@ -1353,6 +1351,9 @@ void intel_edp_backlight_on(struct intel_dp *intel_dp)
 		return;
 
 	DRM_DEBUG_KMS("\n");
+
+	intel_panel_enable_backlight(intel_dp->attached_connector);
+
 	/*
 	 * If we enable the backlight right away following a panel power
 	 * on, we may see slight flicker as the panel syncs with the eDP
@@ -1367,8 +1368,6 @@ void intel_edp_backlight_on(struct intel_dp *intel_dp)
 
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
-
-	intel_panel_enable_backlight(intel_dp->attached_connector);
 }
 
 void intel_edp_backlight_off(struct intel_dp *intel_dp)
@@ -1381,8 +1380,6 @@ void intel_edp_backlight_off(struct intel_dp *intel_dp)
 	if (!is_edp(intel_dp))
 		return;
 
-	intel_panel_disable_backlight(intel_dp->attached_connector);
-
 	DRM_DEBUG_KMS("\n");
 	pp = ironlake_get_pp_control(intel_dp);
 	pp &= ~EDP_BLC_ENABLE;
@@ -1392,6 +1389,10 @@ void intel_edp_backlight_off(struct intel_dp *intel_dp)
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
 	intel_dp->last_backlight_off = jiffies;
+
+	edp_wait_backlight_off(intel_dp);
+
+	intel_panel_disable_backlight(intel_dp->attached_connector);
 }
 
 static void ironlake_edp_pll_on(struct intel_dp *intel_dp)
@@ -1613,11 +1614,9 @@ static void intel_dp_get_config(struct intel_encoder *encoder,
 	}
 }
 
-static bool is_edp_psr(struct drm_device *dev)
+static bool is_edp_psr(struct intel_dp *intel_dp)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	return dev_priv->psr.sink_support;
+	return intel_dp->psr_dpcd[0] & DP_PSR_IS_SUPPORTED;
 }
 
 static bool intel_edp_is_psr_enabled(struct drm_device *dev)
@@ -1665,7 +1664,7 @@ static void intel_edp_psr_setup(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct edp_vsc_psr psr_vsc;
 
-	if (intel_dp->psr_setup_done)
+	if (dev_priv->psr.setup_done)
 		return;
 
 	/* Prepare VSC packet as per EDP 1.3 spec, Table 3.10 */
@@ -1680,21 +1679,26 @@ static void intel_edp_psr_setup(struct intel_dp *intel_dp)
 	I915_WRITE(EDP_PSR_DEBUG_CTL(dev), EDP_PSR_DEBUG_MASK_MEMUP |
 		   EDP_PSR_DEBUG_MASK_HPD | EDP_PSR_DEBUG_MASK_LPSP);
 
-	intel_dp->psr_setup_done = true;
+	dev_priv->psr.setup_done = true;
 }
 
 static void intel_edp_psr_enable_sink(struct intel_dp *intel_dp)
 {
-	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = dig_port->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t aux_clock_divider;
 	int precharge = 0x3;
 	int msg_size = 5;       /* Header(4) + Message(1) */
+	bool only_standby = false;
 
 	aux_clock_divider = intel_dp->get_aux_clock_divider(intel_dp, 0);
 
+	if (IS_BROADWELL(dev) && dig_port->port != PORT_A)
+		only_standby = true;
+
 	/* Enable PSR in sink */
-	if (intel_dp->psr_dpcd[1] & DP_PSR_NO_TRAIN_ON_EXIT)
+	if (intel_dp->psr_dpcd[1] & DP_PSR_NO_TRAIN_ON_EXIT || only_standby)
 		drm_dp_dpcd_writeb(&intel_dp->aux, DP_PSR_EN_CFG,
 				   DP_PSR_ENABLE & ~DP_PSR_MAIN_LINK_ACTIVE);
 	else
@@ -1713,18 +1717,24 @@ static void intel_edp_psr_enable_sink(struct intel_dp *intel_dp)
 
 static void intel_edp_psr_enable_source(struct intel_dp *intel_dp)
 {
-	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = dig_port->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t max_sleep_time = 0x1f;
 	uint32_t idle_frames = 1;
 	uint32_t val = 0x0;
 	const uint32_t link_entry_time = EDP_PSR_MIN_LINK_ENTRY_TIME_8_LINES;
+	bool only_standby = false;
 
-	if (intel_dp->psr_dpcd[1] & DP_PSR_NO_TRAIN_ON_EXIT) {
+	if (IS_BROADWELL(dev) && dig_port->port != PORT_A)
+		only_standby = true;
+
+	if (intel_dp->psr_dpcd[1] & DP_PSR_NO_TRAIN_ON_EXIT || only_standby) {
 		val |= EDP_PSR_LINK_STANDBY;
 		val |= EDP_PSR_TP2_TP3_TIME_0us;
 		val |= EDP_PSR_TP1_TIME_0us;
 		val |= EDP_PSR_SKIP_AUX_EXIT;
+		val |= IS_BROADWELL(dev) ? BDW_PSR_SINGLE_FRAME : 0;
 	} else
 		val |= EDP_PSR_LINK_DISABLE;
 
@@ -1752,8 +1762,8 @@ static bool intel_edp_psr_match_conditions(struct intel_dp *intel_dp)
 		return false;
 	}
 
-	if ((intel_encoder->type != INTEL_OUTPUT_EDP) ||
-	    (dig_port->port != PORT_A)) {
+	if (IS_HASWELL(dev) && (intel_encoder->type != INTEL_OUTPUT_EDP ||
+				dig_port->port != PORT_A)) {
 		DRM_DEBUG_KMS("HSW ties PSR to DDI A (eDP)\n");
 		return false;
 	}
@@ -1782,6 +1792,10 @@ static bool intel_edp_psr_match_conditions(struct intel_dp *intel_dp)
 		return false;
 	}
 
+	/* Below limitations aren't valid for Broadwell */
+	if (IS_BROADWELL(dev))
+		goto out;
+
 	if (I915_READ(SPRCTL(intel_crtc->pipe)) & SPRITE_ENABLE) {
 		DRM_DEBUG_KMS("PSR condition failed: Sprite is Enabled\n");
 		return false;
@@ -1798,34 +1812,48 @@ static bool intel_edp_psr_match_conditions(struct intel_dp *intel_dp)
 		return false;
 	}
 
+ out:
 	dev_priv->psr.source_ok = true;
 	return true;
 }
 
 static void intel_edp_psr_do_enable(struct intel_dp *intel_dp)
 {
-	struct drm_device *dev = intel_dp_to_dev(intel_dp);
+	struct intel_digital_port *intel_dig_port = dp_to_dig_port(intel_dp);
+	struct drm_device *dev = intel_dig_port->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	if (!intel_edp_psr_match_conditions(intel_dp) ||
-	    intel_edp_is_psr_enabled(dev))
+	if (intel_edp_is_psr_enabled(dev))
 		return;
-
-	/* Setup PSR once */
-	intel_edp_psr_setup(intel_dp);
 
 	/* Enable PSR on the panel */
 	intel_edp_psr_enable_sink(intel_dp);
 
 	/* Enable PSR on the host */
 	intel_edp_psr_enable_source(intel_dp);
+
+	dev_priv->psr.enabled = true;
+	dev_priv->psr.active = true;
 }
 
 void intel_edp_psr_enable(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 
-	if (intel_edp_psr_match_conditions(intel_dp) &&
-	    !intel_edp_is_psr_enabled(dev))
+	if (!HAS_PSR(dev)) {
+		DRM_DEBUG_KMS("PSR not supported on this platform\n");
+		return;
+	}
+
+	if (!is_edp_psr(intel_dp)) {
+		DRM_DEBUG_KMS("PSR not supported by this panel\n");
+		return;
+	}
+
+	/* Setup PSR once */
+	intel_edp_psr_setup(intel_dp);
+
+	if (intel_edp_psr_match_conditions(intel_dp))
 		intel_edp_psr_do_enable(intel_dp);
 }
 
@@ -1834,7 +1862,7 @@ void intel_edp_psr_disable(struct intel_dp *intel_dp)
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	if (!intel_edp_is_psr_enabled(dev))
+	if (!dev_priv->psr.enabled)
 		return;
 
 	I915_WRITE(EDP_PSR_CTL(dev),
@@ -1844,10 +1872,15 @@ void intel_edp_psr_disable(struct intel_dp *intel_dp)
 	if (_wait_for((I915_READ(EDP_PSR_STATUS_CTL(dev)) &
 		       EDP_PSR_STATUS_STATE_MASK) == 0, 2000, 10))
 		DRM_ERROR("Timed out waiting for PSR Idle State\n");
+
+	dev_priv->psr.enabled = false;
 }
 
-void intel_edp_psr_update(struct drm_device *dev)
+static void intel_edp_psr_work(struct work_struct *work)
 {
+	struct drm_i915_private *dev_priv =
+		container_of(work, typeof(*dev_priv), psr.work.work);
+	struct drm_device *dev = dev_priv->dev;
 	struct intel_encoder *encoder;
 	struct intel_dp *intel_dp = NULL;
 
@@ -1855,15 +1888,50 @@ void intel_edp_psr_update(struct drm_device *dev)
 		if (encoder->type == INTEL_OUTPUT_EDP) {
 			intel_dp = enc_to_intel_dp(&encoder->base);
 
-			if (!is_edp_psr(dev))
-				return;
-
 			if (!intel_edp_psr_match_conditions(intel_dp))
 				intel_edp_psr_disable(intel_dp);
 			else
-				if (!intel_edp_is_psr_enabled(dev))
-					intel_edp_psr_do_enable(intel_dp);
+				intel_edp_psr_do_enable(intel_dp);
 		}
+}
+
+static void intel_edp_psr_inactivate(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	dev_priv->psr.active = false;
+
+	I915_WRITE(EDP_PSR_CTL(dev), I915_READ(EDP_PSR_CTL(dev))
+		   & ~EDP_PSR_ENABLE);
+}
+
+void intel_edp_psr_exit(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!HAS_PSR(dev))
+		return;
+
+	if (!dev_priv->psr.setup_done)
+		return;
+
+	cancel_delayed_work_sync(&dev_priv->psr.work);
+
+	if (dev_priv->psr.active)
+		intel_edp_psr_inactivate(dev);
+
+	schedule_delayed_work(&dev_priv->psr.work,
+			      msecs_to_jiffies(100));
+}
+
+void intel_edp_psr_init(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (!HAS_PSR(dev))
+		return;
+
+	INIT_DELAYED_WORK(&dev_priv->psr.work, intel_edp_psr_work);
 }
 
 static void intel_disable_dp(struct intel_encoder *encoder)
@@ -2119,6 +2187,70 @@ static void chv_pre_enable_dp(struct intel_encoder *encoder)
 	vlv_wait_port_ready(dev_priv, dport);
 }
 
+static void chv_dp_pre_pll_enable(struct intel_encoder *encoder)
+{
+	struct intel_digital_port *dport = enc_to_dig_port(&encoder->base);
+	struct drm_device *dev = encoder->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc =
+		to_intel_crtc(encoder->base.crtc);
+	enum dpio_channel ch = vlv_dport_to_channel(dport);
+	enum pipe pipe = intel_crtc->pipe;
+	u32 val;
+
+	mutex_lock(&dev_priv->dpio_lock);
+
+	/* program left/right clock distribution */
+	if (pipe != PIPE_B) {
+		val = vlv_dpio_read(dev_priv, pipe, _CHV_CMN_DW5_CH0);
+		val &= ~(CHV_BUFLEFTENA1_MASK | CHV_BUFRIGHTENA1_MASK);
+		if (ch == DPIO_CH0)
+			val |= CHV_BUFLEFTENA1_FORCE;
+		if (ch == DPIO_CH1)
+			val |= CHV_BUFRIGHTENA1_FORCE;
+		vlv_dpio_write(dev_priv, pipe, _CHV_CMN_DW5_CH0, val);
+	} else {
+		val = vlv_dpio_read(dev_priv, pipe, _CHV_CMN_DW1_CH1);
+		val &= ~(CHV_BUFLEFTENA2_MASK | CHV_BUFRIGHTENA2_MASK);
+		if (ch == DPIO_CH0)
+			val |= CHV_BUFLEFTENA2_FORCE;
+		if (ch == DPIO_CH1)
+			val |= CHV_BUFRIGHTENA2_FORCE;
+		vlv_dpio_write(dev_priv, pipe, _CHV_CMN_DW1_CH1, val);
+	}
+
+	/* program clock channel usage */
+	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS01_DW8(ch));
+	val |= CHV_PCS_USEDCLKCHANNEL_OVRRIDE;
+	if (pipe != PIPE_B)
+		val &= ~CHV_PCS_USEDCLKCHANNEL;
+	else
+		val |= CHV_PCS_USEDCLKCHANNEL;
+	vlv_dpio_write(dev_priv, pipe, VLV_PCS01_DW8(ch), val);
+
+	val = vlv_dpio_read(dev_priv, pipe, VLV_PCS23_DW8(ch));
+	val |= CHV_PCS_USEDCLKCHANNEL_OVRRIDE;
+	if (pipe != PIPE_B)
+		val &= ~CHV_PCS_USEDCLKCHANNEL;
+	else
+		val |= CHV_PCS_USEDCLKCHANNEL;
+	vlv_dpio_write(dev_priv, pipe, VLV_PCS23_DW8(ch), val);
+
+	/*
+	 * This a a bit weird since generally CL
+	 * matches the pipe, but here we need to
+	 * pick the CL based on the port.
+	 */
+	val = vlv_dpio_read(dev_priv, pipe, CHV_CMN_DW19(ch));
+	if (pipe != PIPE_B)
+		val &= ~CHV_CMN_USEDCLKCHANNEL;
+	else
+		val |= CHV_CMN_USEDCLKCHANNEL;
+	vlv_dpio_write(dev_priv, pipe, CHV_CMN_DW19(ch), val);
+
+	mutex_unlock(&dev_priv->dpio_lock);
+}
+
 /*
  * Native read with retry for link status and receiver capability reads for
  * cases where the sink may still be asleep.
@@ -2156,18 +2288,14 @@ intel_dp_get_link_status(struct intel_dp *intel_dp, uint8_t link_status[DP_LINK_
 				       DP_LINK_STATUS_SIZE) == DP_LINK_STATUS_SIZE;
 }
 
-/*
- * These are source-specific values; current Intel hardware supports
- * a maximum voltage of 800mV and a maximum pre-emphasis of 6dB
- */
-
+/* These are source-specific values. */
 static uint8_t
 intel_dp_voltage_max(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 	enum port port = dp_to_dig_port(intel_dp)->port;
 
-	if (IS_VALLEYVIEW(dev) || IS_BROADWELL(dev))
+	if (IS_VALLEYVIEW(dev))
 		return DP_TRAIN_VOLTAGE_SWING_1200;
 	else if (IS_GEN7(dev) && port == PORT_A)
 		return DP_TRAIN_VOLTAGE_SWING_800;
@@ -2183,18 +2311,7 @@ intel_dp_pre_emphasis_max(struct intel_dp *intel_dp, uint8_t voltage_swing)
 	struct drm_device *dev = intel_dp_to_dev(intel_dp);
 	enum port port = dp_to_dig_port(intel_dp)->port;
 
-	if (IS_BROADWELL(dev)) {
-		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
-		case DP_TRAIN_VOLTAGE_SWING_400:
-		case DP_TRAIN_VOLTAGE_SWING_600:
-			return DP_TRAIN_PRE_EMPHASIS_6;
-		case DP_TRAIN_VOLTAGE_SWING_800:
-			return DP_TRAIN_PRE_EMPHASIS_3_5;
-		case DP_TRAIN_VOLTAGE_SWING_1200:
-		default:
-			return DP_TRAIN_PRE_EMPHASIS_0;
-		}
-	} else if (IS_HASWELL(dev)) {
+	if (IS_HASWELL(dev) || IS_BROADWELL(dev)) {
 		switch (voltage_swing & DP_TRAIN_VOLTAGE_SWING_MASK) {
 		case DP_TRAIN_VOLTAGE_SWING_400:
 			return DP_TRAIN_PRE_EMPHASIS_9_5;
@@ -2666,41 +2783,6 @@ intel_hsw_signal_levels(uint8_t train_set)
 	}
 }
 
-static uint32_t
-intel_bdw_signal_levels(uint8_t train_set)
-{
-	int signal_levels = train_set & (DP_TRAIN_VOLTAGE_SWING_MASK |
-					 DP_TRAIN_PRE_EMPHASIS_MASK);
-	switch (signal_levels) {
-	case DP_TRAIN_VOLTAGE_SWING_400 | DP_TRAIN_PRE_EMPHASIS_0:
-		return DDI_BUF_EMP_400MV_0DB_BDW;	/* Sel0 */
-	case DP_TRAIN_VOLTAGE_SWING_400 | DP_TRAIN_PRE_EMPHASIS_3_5:
-		return DDI_BUF_EMP_400MV_3_5DB_BDW;	/* Sel1 */
-	case DP_TRAIN_VOLTAGE_SWING_400 | DP_TRAIN_PRE_EMPHASIS_6:
-		return DDI_BUF_EMP_400MV_6DB_BDW;	/* Sel2 */
-
-	case DP_TRAIN_VOLTAGE_SWING_600 | DP_TRAIN_PRE_EMPHASIS_0:
-		return DDI_BUF_EMP_600MV_0DB_BDW;	/* Sel3 */
-	case DP_TRAIN_VOLTAGE_SWING_600 | DP_TRAIN_PRE_EMPHASIS_3_5:
-		return DDI_BUF_EMP_600MV_3_5DB_BDW;	/* Sel4 */
-	case DP_TRAIN_VOLTAGE_SWING_600 | DP_TRAIN_PRE_EMPHASIS_6:
-		return DDI_BUF_EMP_600MV_6DB_BDW;	/* Sel5 */
-
-	case DP_TRAIN_VOLTAGE_SWING_800 | DP_TRAIN_PRE_EMPHASIS_0:
-		return DDI_BUF_EMP_800MV_0DB_BDW;	/* Sel6 */
-	case DP_TRAIN_VOLTAGE_SWING_800 | DP_TRAIN_PRE_EMPHASIS_3_5:
-		return DDI_BUF_EMP_800MV_3_5DB_BDW;	/* Sel7 */
-
-	case DP_TRAIN_VOLTAGE_SWING_1200 | DP_TRAIN_PRE_EMPHASIS_0:
-		return DDI_BUF_EMP_1200MV_0DB_BDW;	/* Sel8 */
-
-	default:
-		DRM_DEBUG_KMS("Unsupported voltage swing/pre-emphasis level:"
-			      "0x%x\n", signal_levels);
-		return DDI_BUF_EMP_400MV_0DB_BDW;	/* Sel0 */
-	}
-}
-
 /* Properly updates "DP" with the correct signal levels. */
 static void
 intel_dp_set_signal_levels(struct intel_dp *intel_dp, uint32_t *DP)
@@ -2711,10 +2793,7 @@ intel_dp_set_signal_levels(struct intel_dp *intel_dp, uint32_t *DP)
 	uint32_t signal_levels, mask;
 	uint8_t train_set = intel_dp->train_set[0];
 
-	if (IS_BROADWELL(dev)) {
-		signal_levels = intel_bdw_signal_levels(train_set);
-		mask = DDI_BUF_EMP_MASK;
-	} else if (IS_HASWELL(dev)) {
+	if (IS_HASWELL(dev) || IS_BROADWELL(dev)) {
 		signal_levels = intel_hsw_signal_levels(train_set);
 		mask = DDI_BUF_EMP_MASK;
 	} else if (IS_CHERRYVIEW(dev)) {
@@ -3737,6 +3816,22 @@ intel_dp_hot_plug(struct intel_encoder *intel_encoder)
 	intel_dp_check_link_status(intel_dp);
 }
 
+bool
+intel_dp_hpd_pulse(struct intel_digital_port *intel_dig_port, bool long_hpd)
+{
+	struct intel_dp *intel_dp = &intel_dig_port->dp;
+
+	if (long_hpd)
+		return true;
+
+	/*
+	 * we'll check the link status via the normal hot plug path later -
+	 * but for short hpds we should check it now
+	 */
+	intel_dp_check_link_status(intel_dp);
+	return false;
+}
+
 /* Return which DP Port should be selected for Transcoder DP control */
 int
 intel_trans_dp_port_sel(struct drm_crtc *crtc)
@@ -4279,8 +4374,6 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 
 	intel_dp_aux_init(intel_dp, intel_connector);
 
-	intel_dp->psr_setup_done = false;
-
 	if (!intel_edp_init_connector(intel_dp, intel_connector, &power_seq)) {
 		drm_dp_aux_unregister(&intel_dp->aux);
 		if (is_edp(intel_dp)) {
@@ -4311,6 +4404,7 @@ intel_dp_init_connector(struct intel_digital_port *intel_dig_port,
 void
 intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 {
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_digital_port *intel_dig_port;
 	struct intel_encoder *intel_encoder;
 	struct drm_encoder *encoder;
@@ -4337,6 +4431,7 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_encoder->get_hw_state = intel_dp_get_hw_state;
 	intel_encoder->get_config = intel_dp_get_config;
 	if (IS_CHERRYVIEW(dev)) {
+		intel_encoder->pre_pll_enable = chv_dp_pre_pll_enable;
 		intel_encoder->pre_enable = chv_pre_enable_dp;
 		intel_encoder->enable = vlv_enable_dp;
 		intel_encoder->post_disable = chv_post_disable_dp;
@@ -4365,6 +4460,9 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	}
 	intel_encoder->cloneable = 0;
 	intel_encoder->hot_plug = intel_dp_hot_plug;
+
+	intel_dig_port->hpd_pulse = intel_dp_hpd_pulse;
+	dev_priv->hpd_irq_port[port] = intel_dig_port;
 
 	if (!intel_dp_init_connector(intel_dig_port, intel_connector)) {
 		drm_encoder_cleanup(encoder);

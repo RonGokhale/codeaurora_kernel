@@ -76,12 +76,12 @@ static const u32 bdw_ddi_translations_edp[] = {
 	0x00FFFFFF, 0x00000012,		/* eDP parameters */
 	0x00EBAFFF, 0x00020011,
 	0x00C71FFF, 0x0006000F,
+	0x00AAAFFF, 0x000E000A,
 	0x00FFFFFF, 0x00020011,
 	0x00DB6FFF, 0x0005000F,
 	0x00BEEFFF, 0x000A000C,
 	0x00FFFFFF, 0x0005000F,
 	0x00DB6FFF, 0x000A000C,
-	0x00FFFFFF, 0x000A000C,
 	0x00FFFFFF, 0x00140006		/* HDMI parameters 800mV 0dB*/
 };
 
@@ -89,12 +89,12 @@ static const u32 bdw_ddi_translations_dp[] = {
 	0x00FFFFFF, 0x0007000E,		/* DP parameters */
 	0x00D75FFF, 0x000E000A,
 	0x00BEFFFF, 0x00140006,
+	0x80B2CFFF, 0x001B0002,
 	0x00FFFFFF, 0x000E000A,
 	0x00D75FFF, 0x00180004,
 	0x80CB2FFF, 0x001B0002,
 	0x00F7DFFF, 0x00180004,
 	0x80D75FFF, 0x001B0002,
-	0x80FFFFFF, 0x001B0002,
 	0x00FFFFFF, 0x00140006		/* HDMI parameters 800mV 0dB*/
 };
 
@@ -995,7 +995,9 @@ void intel_ddi_enable_transcoder_func(struct drm_crtc *crtc)
 			 * eDP when not using the panel fitter, and when not
 			 * using motion blur mitigation (which we don't
 			 * support). */
-			if (IS_HASWELL(dev) && intel_crtc->config.pch_pfit.enabled)
+			if (IS_HASWELL(dev) &&
+			    (intel_crtc->config.pch_pfit.enabled ||
+			     intel_crtc->config.pch_pfit.force_thru))
 				temp |= TRANS_DDI_EDP_INPUT_A_ONOFF;
 			else
 				temp |= TRANS_DDI_EDP_INPUT_A_ON;
@@ -1704,6 +1706,9 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_encoder->crtc_mask =  (1 << 0) | (1 << 1) | (1 << 2);
 	intel_encoder->cloneable = 0;
 	intel_encoder->hot_plug = intel_ddi_hot_plug;
+
+	intel_dig_port->hpd_pulse = intel_dp_hpd_pulse;
+	dev_priv->hpd_irq_port[port] = intel_dig_port;
 
 	if (init_dp)
 		dp_connector = intel_ddi_init_dp_connector(intel_dig_port);
