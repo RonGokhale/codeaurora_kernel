@@ -45,11 +45,13 @@
 #include <linux/spi/flash.h>
 #include <linux/spi/rspi.h>
 #include <linux/spi/spi.h>
-#include <mach/r8a7791.h>
+
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
+
 #include "common.h"
 #include "irqs.h"
+#include "r8a7791.h"
 #include "rcar-gen2.h"
 
 /* DU */
@@ -526,5 +528,6 @@ DT_MACHINE_START(KOELSCH_DT, "koelsch")
 	.init_time	= rcar_gen2_timer_init,
 	.init_machine	= koelsch_init,
 	.init_late	= shmobile_init_late,
+	.reserve	= rcar_gen2_reserve,
 	.dt_compat	= koelsch_boards_compat_dt,
 MACHINE_END
