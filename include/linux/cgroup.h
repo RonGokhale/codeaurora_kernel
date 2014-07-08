@@ -203,7 +203,15 @@ struct cgroup {
 	struct kernfs_node *kn;		/* cgroup kernfs entry */
 	struct kernfs_node *populated_kn; /* kn for "cgroup.subtree_populated" */
 
-	/* the bitmask of subsystems enabled on the child cgroups */
+	/*
+	 * The bitmask of subsystems enabled on the child cgroups.
+	 * ->subtree_control is the one configured through
+	 * "cgroup.subtree_control" while ->child_subsys_mask is the
+	 * effective one which may have more subsystems enabled.
+	 * Controller knobs are made available iff it's enabled in
+	 * ->subtree_control.
+	 */
+	unsigned int subtree_control;
 	unsigned int child_subsys_mask;
 
 	/* Private pointers for each registered subsystem */
@@ -634,6 +642,7 @@ struct cgroup_subsys {
 	int (*css_online)(struct cgroup_subsys_state *css);
 	void (*css_offline)(struct cgroup_subsys_state *css);
 	void (*css_free)(struct cgroup_subsys_state *css);
+	void (*css_reset)(struct cgroup_subsys_state *css);
 
 	int (*can_attach)(struct cgroup_subsys_state *css,
 			  struct cgroup_taskset *tset);
@@ -684,6 +693,15 @@ struct cgroup_subsys {
 
 	/* base cftypes, automatically registered with subsys itself */
 	struct cftype *base_cftypes;
+
+	/*
+	 * A subsystem may depend on other subsystems.  When such subsystem
+	 * is enabled on a cgroup, the depended-upon subsystems are enabled
+	 * together if available.  Subsystems enabled due to dependency are
+	 * not visible to userland until explicitly enabled.  The following
+	 * specifies the mask of subsystems that this one depends on.
+	 */
+	unsigned int depends_on;
 };
 
 #define SUBSYS(_x) extern struct cgroup_subsys _x ## _cgrp_subsys;
