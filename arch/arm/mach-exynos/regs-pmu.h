@@ -15,7 +15,6 @@
 #include <mach/map.h>
 
 #define S5P_PMUREG(x)				(S5P_VA_PMU + (x))
-#define S5P_SYSREG(x)				(S3C_VA_SYS + (x))
 
 #define S5P_CENTRAL_SEQ_CONFIGURATION		S5P_PMUREG(0x0200)
 
@@ -117,6 +116,8 @@
 			(EXYNOS_ARM_COMMON_CONFIGURATION + (0x80 * (_nr)))
 #define EXYNOS_COMMON_STATUS(_nr)		\
 			(EXYNOS_COMMON_CONFIGURATION(_nr) + 0x4)
+#define EXYNOS_COMMON_OPTION(_nr)		\
+			(EXYNOS_COMMON_CONFIGURATION(_nr) + 0x8)
 
 #define S5P_PAD_RET_MAUDIO_OPTION		S5P_PMUREG(0x3028)
 #define S5P_PAD_RET_GPIO_OPTION			S5P_PMUREG(0x3108)
@@ -127,7 +128,6 @@
 #define S5P_PAD_RET_EBIB_OPTION			S5P_PMUREG(0x31A8)
 
 #define S5P_CORE_LOCAL_PWR_EN			0x3
-#define S5P_INT_LOCAL_PWR_EN			0x7
 
 /* Only for EXYNOS4210 */
 #define S5P_CMU_CLKSTOP_LCD1_LOWPWR	S5P_PMUREG(0x1154)
@@ -187,8 +187,6 @@
 #define S5P_DIS_IRQ_CENTRAL3			S5P_PMUREG(0x1038)
 
 /* For EXYNOS5 */
-
-#define EXYNOS5_SYS_I2C_CFG					S5P_SYSREG(0x0234)
 
 #define EXYNOS5_AUTO_WDTRESET_DISABLE				S5P_PMUREG(0x0408)
 #define EXYNOS5_MASK_WDTRESET_REQUEST				S5P_PMUREG(0x040C)
@@ -322,5 +320,14 @@
 #define EXYNOS5_OPTION_USE_RETENTION				(1 << 4)
 
 #define EXYNOS5420_SWRESET_KFC_SEL				0x3
+
+#include <asm/cputype.h>
+#define MAX_CPUS_IN_CLUSTER	4
+
+static inline unsigned int exynos_pmu_cpunr(unsigned int mpidr)
+{
+	return ((MPIDR_AFFINITY_LEVEL(mpidr, 1) * MAX_CPUS_IN_CLUSTER)
+		 + MPIDR_AFFINITY_LEVEL(mpidr, 0));
+}
 
 #endif /* __ASM_ARCH_REGS_PMU_H */
