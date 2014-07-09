@@ -355,6 +355,7 @@ static int audmapp_remove(struct platform_device *pdev)
 
 static const struct of_device_id audmapp_of_match[] = {
 	{ .compatible = "renesas,rcar-audmapp", },
+	{},
 };
 
 static struct platform_driver audmapp_driver = {
