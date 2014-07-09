@@ -1289,8 +1289,6 @@ static int cgroup_show_options(struct seq_file *seq,
 	for_each_subsys(ss, ssid)
 		if (root->subsys_mask & (1 << ssid))
 			seq_printf(seq, ",%s", ss->name);
-	if (root->flags & CGRP_ROOT_SANE_BEHAVIOR)
-		seq_puts(seq, ",sane_behavior");
 	if (root->flags & CGRP_ROOT_NOPREFIX)
 		seq_puts(seq, ",noprefix");
 	if (root->flags & CGRP_ROOT_XATTR)
@@ -1324,6 +1322,7 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	bool all_ss = false, one_ss = false;
 	unsigned int mask = -1U;
 	struct cgroup_subsys *ss;
+	int nr_opts = 0;
 	int i;
 
 #ifdef CONFIG_CPUSETS
@@ -1333,6 +1332,8 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	memset(opts, 0, sizeof(*opts));
 
 	while ((token = strsep(&o, ",")) != NULL) {
+		nr_opts++;
+
 		if (!*token)
 			return -EINVAL;
 		if (!strcmp(token, "none")) {
@@ -1417,35 +1418,31 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 			return -ENOENT;
 	}
 
-	/* Consistency checks */
-
 	if (opts->flags & CGRP_ROOT_SANE_BEHAVIOR) {
 		pr_warn("sane_behavior: this is still under development and its behaviors will change, proceed at your own risk\n");
-
-		if ((opts->flags & (CGRP_ROOT_NOPREFIX | CGRP_ROOT_XATTR)) ||
-		    opts->cpuset_clone_children || opts->release_agent ||
-		    opts->name) {
-			pr_err("sane_behavior: noprefix, xattr, clone_children, release_agent and name are not allowed\n");
+		if (nr_opts != 1) {
+			pr_err("sane_behavior: no other mount options allowed\n");
 			return -EINVAL;
 		}
-	} else {
-		/*
-		 * If the 'all' option was specified select all the
-		 * subsystems, otherwise if 'none', 'name=' and a subsystem
-		 * name options were not specified, let's default to 'all'
-		 */
-		if (all_ss || (!one_ss && !opts->none && !opts->name))
-			for_each_subsys(ss, i)
-				if (!ss->disabled)
-					opts->subsys_mask |= (1 << i);
-
-		/*
-		 * We either have to specify by name or by subsystems. (So
-		 * all empty hierarchies must have a name).
-		 */
-		if (!opts->subsys_mask && !opts->name)
-			return -EINVAL;
+		return 0;
 	}
+
+	/*
+	 * If the 'all' option was specified select all the subsystems,
+	 * otherwise if 'none', 'name=' and a subsystem name options were
+	 * not specified, let's default to 'all'
+	 */
+	if (all_ss || (!one_ss && !opts->none && !opts->name))
+		for_each_subsys(ss, i)
+			if (!ss->disabled)
+				opts->subsys_mask |= (1 << i);
+
+	/*
+	 * We either have to specify by name or by subsystems. (So all
+	 * empty hierarchies must have a name).
+	 */
+	if (!opts->subsys_mask && !opts->name)
+		return -EINVAL;
 
 	/*
 	 * Option noprefix was introduced just for backward compatibility
@@ -1454,7 +1451,6 @@ static int parse_cgroupfs_options(char *data, struct cgroup_sb_opts *opts)
 	 */
 	if ((opts->flags & CGRP_ROOT_NOPREFIX) && (opts->subsys_mask & mask))
 		return -EINVAL;
-
 
 	/* Can't specify "none" and some subsystems */
 	if (opts->subsys_mask && opts->none)
@@ -1470,8 +1466,8 @@ static int cgroup_remount(struct kernfs_root *kf_root, int *flags, char *data)
 	struct cgroup_sb_opts opts;
 	unsigned int added_mask, removed_mask;
 
-	if (root->flags & CGRP_ROOT_SANE_BEHAVIOR) {
-		pr_err("sane_behavior: remount is not allowed\n");
+	if (root == &cgrp_dfl_root) {
+		pr_err("remount is not allowed\n");
 		return -EINVAL;
 	}
 
@@ -1490,11 +1486,10 @@ static int cgroup_remount(struct kernfs_root *kf_root, int *flags, char *data)
 	removed_mask = root->subsys_mask & ~opts.subsys_mask;
 
 	/* Don't allow flags or name to change at remount */
-	if (((opts.flags ^ root->flags) & CGRP_ROOT_OPTION_MASK) ||
+	if ((opts.flags ^ root->flags) ||
 	    (opts.name && strcmp(opts.name, root->name))) {
 		pr_err("option or name mismatch, new: 0x%x \"%s\", old: 0x%x \"%s\"\n",
-		       opts.flags & CGRP_ROOT_OPTION_MASK, opts.name ?: "",
-		       root->flags & CGRP_ROOT_OPTION_MASK, root->name);
+		       opts.flags, opts.name ?: "", root->flags, root->name);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
@@ -1728,7 +1723,7 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		goto out_unlock;
 
 	/* look for a matching existing root */
-	if (!opts.subsys_mask && !opts.none && !opts.name) {
+	if (opts.flags & CGRP_ROOT_SANE_BEHAVIOR) {
 		cgrp_dfl_root_visible = true;
 		root = &cgrp_dfl_root;
 		cgroup_get(&root->cgrp);
@@ -1786,15 +1781,8 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 			goto out_unlock;
 		}
 
-		if ((root->flags ^ opts.flags) & CGRP_ROOT_OPTION_MASK) {
-			if ((root->flags | opts.flags) & CGRP_ROOT_SANE_BEHAVIOR) {
-				pr_err("sane_behavior: new mount options should match the existing superblock\n");
-				ret = -EINVAL;
-				goto out_unlock;
-			} else {
-				pr_warn("new mount options do not match the existing superblock, will be ignored\n");
-			}
-		}
+		if (root->flags ^ opts.flags)
+			pr_warn("new mount options do not match the existing superblock, will be ignored\n");
 
 		/*
 		 * We want to reuse @root whose lifetime is governed by its
@@ -2513,9 +2501,7 @@ static int cgroup_release_agent_show(struct seq_file *seq, void *v)
 
 static int cgroup_sane_behavior_show(struct seq_file *seq, void *v)
 {
-	struct cgroup *cgrp = seq_css(seq)->cgroup;
-
-	seq_printf(seq, "%d\n", cgroup_sane_behavior(cgrp));
+	seq_puts(seq, "0\n");
 	return 0;
 }
 
@@ -2988,9 +2974,9 @@ static int cgroup_rename(struct kernfs_node *kn, struct kernfs_node *new_parent,
 
 	/*
 	 * This isn't a proper migration and its usefulness is very
-	 * limited.  Disallow if sane_behavior.
+	 * limited.  Disallow on the default hierarchy.
 	 */
-	if (cgroup_sane_behavior(cgrp))
+	if (cgroup_on_dfl(cgrp))
 		return -EPERM;
 
 	/*
@@ -3076,7 +3062,7 @@ static int cgroup_addrm_files(struct cgroup *cgrp, struct cftype cfts[],
 		/* does cft->flags tell us to skip this file on @cgrp? */
 		if ((cft->flags & CFTYPE_ONLY_ON_DFL) && !cgroup_on_dfl(cgrp))
 			continue;
-		if ((cft->flags & CFTYPE_INSANE) && cgroup_sane_behavior(cgrp))
+		if ((cft->flags & CFTYPE_INSANE) && cgroup_on_dfl(cgrp))
 			continue;
 		if ((cft->flags & CFTYPE_NOT_ON_ROOT) && !cgroup_parent(cgrp))
 			continue;
@@ -3809,8 +3795,9 @@ after:
  *
  * All this extra complexity was caused by the original implementation
  * committing to an entirely unnecessary property.  In the long term, we
- * want to do away with it.  Explicitly scramble sort order if
- * sane_behavior so that no such expectation exists in the new interface.
+ * want to do away with it.  Explicitly scramble sort order if on the
+ * default hierarchy so that no such expectation exists in the new
+ * interface.
  *
  * Scrambling is done by swapping every two consecutive bits, which is
  * non-identity one-to-one mapping which disturbs sort order sufficiently.
@@ -3825,7 +3812,7 @@ static pid_t pid_fry(pid_t pid)
 
 static pid_t cgroup_pid_fry(struct cgroup *cgrp, pid_t pid)
 {
-	if (cgroup_sane_behavior(cgrp))
+	if (cgroup_on_dfl(cgrp))
 		return pid_fry(pid);
 	else
 		return pid;
@@ -3928,7 +3915,7 @@ static int pidlist_array_load(struct cgroup *cgrp, enum cgroup_filetype type,
 	css_task_iter_end(&it);
 	length = n;
 	/* now sort & (if procs) strip out duplicates */
-	if (cgroup_sane_behavior(cgrp))
+	if (cgroup_on_dfl(cgrp))
 		sort(array, length, sizeof(pid_t), fried_cmppid, NULL);
 	else
 		sort(array, length, sizeof(pid_t), cmppid, NULL);
@@ -4169,7 +4156,7 @@ static struct cftype cgroup_base_files[] = {
 	},
 	{
 		.name = "cgroup.sane_behavior",
-		.flags = CFTYPE_ONLY_ON_ROOT,
+		.flags = CFTYPE_INSANE | CFTYPE_ONLY_ON_ROOT,
 		.seq_show = cgroup_sane_behavior_show,
 	},
 	{
@@ -4853,8 +4840,7 @@ static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
  */
 int __init cgroup_init_early(void)
 {
-	static struct cgroup_sb_opts __initdata opts =
-		{ .flags = CGRP_ROOT_SANE_BEHAVIOR };
+	static struct cgroup_sb_opts __initdata opts;
 	struct cgroup_subsys *ss;
 	int i;
 
