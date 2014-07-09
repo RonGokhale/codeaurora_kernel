@@ -19,10 +19,12 @@
 #define pr_fmt(fmt) "mvebu-pmsu: " fmt
 
 #include <linux/cpu_pm.h>
+#include <linux/cpuidle.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/mbus.h>
+#include <linux/mvebu-v7-cpuidle.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/resource.h>
@@ -74,10 +76,6 @@ extern void ll_enable_coherency(void);
 extern void armada_370_xp_cpu_resume(void);
 
 static void *mvebu_cpu_resume;
-
-static struct platform_device mvebu_v7_cpuidle_device = {
-	.name = "cpuidle-mvebu-v7",
-};
 
 static struct of_device_id of_pmsu_table[] = {
 	{ .compatible = "marvell,armada-370-pmsu", },
@@ -325,17 +323,25 @@ static struct notifier_block mvebu_v7_cpu_pm_notifier = {
 	.notifier_call = mvebu_v7_cpu_pm_notify,
 };
 
-static int __init armada_xp_cpuidle_init(void)
+static struct mvebu_v7_cpuidle armada_xp_cpuidle = {
+	.type = CPUIDLE_ARMADA_XP,
+	.cpu_suspend = armada_370_xp_cpu_suspend,
+};
+
+static struct platform_device mvebu_v7_cpuidle_device = {
+	.name = "cpuidle-mvebu-v7",
+};
+
+static __init int armada_xp_cpuidle_init(void)
 {
 	struct device_node *np;
-
 	np = of_find_compatible_node(NULL, NULL, "marvell,coherency-fabric");
 	if (!np)
 		return -ENODEV;
 	of_node_put(np);
 
 	mvebu_cpu_resume = armada_370_xp_cpu_resume;
-	mvebu_v7_cpuidle_device.dev.platform_data = armada_370_xp_cpu_suspend;
+	mvebu_v7_cpuidle_device.dev.platform_data = &armada_xp_cpuidle;
 
 	return 0;
 }

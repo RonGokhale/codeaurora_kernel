@@ -16,15 +16,15 @@
 #include <linux/cpu_pm.h>
 #include <linux/cpuidle.h>
 #include <linux/module.h>
+#include <linux/mvebu-v7-cpuidle.h>
 #include <linux/of.h>
 #include <linux/suspend.h>
 #include <linux/platform_device.h>
 #include <asm/cpuidle.h>
 
-#define MVEBU_V7_MAX_STATES	3
 #define MVEBU_V7_FLAG_DEEP_IDLE	0x10000
 
-static int (*mvebu_v7_cpu_suspend)(int);
+static struct mvebu_v7_cpuidle *pcpuidle;
 
 static int mvebu_v7_enter_idle(struct cpuidle_device *dev,
 				struct cpuidle_driver *drv,
@@ -32,12 +32,13 @@ static int mvebu_v7_enter_idle(struct cpuidle_device *dev,
 {
 	int ret;
 	bool deepidle = false;
+
 	cpu_pm_enter();
 
 	if (drv->states[index].flags & MVEBU_V7_FLAG_DEEP_IDLE)
 		deepidle = true;
 
-	ret = mvebu_v7_cpu_suspend(deepidle);
+	ret = pcpuidle->cpu_suspend(deepidle);
 	if (ret)
 		return ret;
 
@@ -46,8 +47,8 @@ static int mvebu_v7_enter_idle(struct cpuidle_device *dev,
 	return index;
 }
 
-static struct cpuidle_driver mvebu_v7_idle_driver = {
-	.name			= "mvebu_v7_idle",
+static struct cpuidle_driver armadaxp_cpuidle_driver = {
+	.name			= "armada_xp_idle",
 	.states[0]		= ARM_CPUIDLE_WFI_STATE,
 	.states[1]		= {
 		.enter			= mvebu_v7_enter_idle,
@@ -55,7 +56,7 @@ static struct cpuidle_driver mvebu_v7_idle_driver = {
 		.power_usage		= 50,
 		.target_residency	= 100,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
-		.name			= "MV CPU IDLE",
+		.name			= "Idle",
 		.desc			= "CPU power down",
 	},
 	.states[2]		= {
@@ -63,19 +64,26 @@ static struct cpuidle_driver mvebu_v7_idle_driver = {
 		.exit_latency		= 100,
 		.power_usage		= 5,
 		.target_residency	= 1000,
-		.flags			= CPUIDLE_FLAG_TIME_VALID |
-						MVEBU_V7_FLAG_DEEP_IDLE,
-		.name			= "MV CPU DEEP IDLE",
+		.flags			= (CPUIDLE_FLAG_TIME_VALID |
+					   MVEBU_V7_FLAG_DEEP_IDLE),
+		.name			= "Deep idle",
 		.desc			= "CPU and L2 Fabric power down",
 	},
-	.state_count = MVEBU_V7_MAX_STATES,
+	.state_count = 3,
 };
 
 static int mvebu_v7_cpuidle_probe(struct platform_device *pdev)
 {
+	struct cpuidle_driver *drv;
 
-	mvebu_v7_cpu_suspend = (void *)(pdev->dev.platform_data);
-	return cpuidle_register(&mvebu_v7_idle_driver, NULL);
+	pcpuidle = pdev->dev.platform_data;
+
+	if (pcpuidle->type == CPUIDLE_ARMADA_XP)
+		drv = &armadaxp_cpuidle_driver;
+	else
+		return -EINVAL;
+
+	return cpuidle_register(drv, NULL);
 }
 
 static struct platform_driver mvebu_v7_cpuidle_plat_driver = {
