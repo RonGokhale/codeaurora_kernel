@@ -134,7 +134,7 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 			pr_debug("DTS_EAGLE_CORE callback size = %i\n",
 				 data->payload_size);
 			memcpy(generic_get_data->ints, data->payload,
-				data->payload_size);
+					data->payload_size);
 			q6core_lcl.bus_bw_resp_received = 1;
 			wake_up(&q6core_lcl.bus_bw_req_wait);
 			break;
@@ -161,10 +161,10 @@ int core_dts_eagle_set(int size, char *data)
 	struct adsp_dts_eagle *payload = NULL;
 	int rc = 0, size_aligned4byte;
 
-	pr_debug("DTS_EAGLE_CORE - %s\n", __func__);
+	pr_debug("DTS_EAGLE_CORE: %s\n", __func__);
 	if (size <= 0 || !data) {
-		pr_err("DTS_EAGLE_CORE - %s: invalid size %i or pointer %p.\n",
-			__func__, size, data);
+		pr_err("DTS_EAGLE_CORE: invalid size %i or pointer %p.\n",
+			size, data);
 		return -EINVAL;
 	}
 
@@ -174,8 +174,8 @@ int core_dts_eagle_set(int size, char *data)
 		payload = kzalloc(sizeof(struct adsp_dts_eagle) +
 				  size_aligned4byte, GFP_KERNEL);
 		if (!payload) {
-			pr_err("DTS_EAGLE_CORE - %s: out of memory (aligned size %i).\n",
-				__func__, size_aligned4byte);
+			pr_err("DTS_EAGLE_CORE: out of memory (aligned size %i).\n",
+				size_aligned4byte);
 			return -ENOMEM;
 		}
 		payload->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_EVENT,
@@ -192,9 +192,9 @@ int core_dts_eagle_set(int size, char *data)
 		payload->size = size;
 		memcpy(payload->data, data, size);
 		rc = apr_send_pkt(q6core_lcl.core_handle_q,
-				(uint32_t *)payload);
+						(uint32_t *)payload);
 		if (rc < 0) {
-			pr_err("DTS_EAGLE_CORE - %s: failed op[0x%x]rc[%d]\n",
+			pr_err("DTS_EAGLE_CORE: %s: failed op[0x%x]rc[%d]\n",
 				__func__, payload->hdr.opcode, rc);
 		}
 		kfree(payload);
@@ -207,10 +207,10 @@ int core_dts_eagle_get(int id, int size, char *data)
 	struct apr_hdr ah;
 	int rc = 0;
 
-	pr_debug("DTS_EAGLE_CORE - %s\n", __func__);
+	pr_debug("DTS_EAGLE_CORE: %s\n", __func__);
 	if (size <= 0 || !data) {
-		pr_err("DTS_EAGLE_CORE - %s: invalid size %i or pointer %p.\n",
-			__func__, size, data);
+		pr_err("DTS_EAGLE_CORE: invalid size %i or pointer %p.\n",
+			size, data);
 		return -EINVAL;
 	}
 	ocm_core_open();
@@ -227,15 +227,15 @@ int core_dts_eagle_get(int id, int size, char *data)
 		generic_get_data = kzalloc(sizeof(struct generic_get_data_)
 					   + size, GFP_KERNEL);
 		if (!generic_get_data) {
-			pr_err("DTS_EAGLE_CORE - %s: error allocating memory of size %i\n",
-				__func__, size);
+			pr_err("DTS_EAGLE_CORE: error allocating memory of size %i",
+				size);
 			return -ENOMEM;
 		}
 
 		rc = apr_send_pkt(q6core_lcl.core_handle_q,
-				(uint32_t *)&ah);
+						(uint32_t *)&ah);
 		if (rc < 0) {
-			pr_err("DTS_EAGLE_CORE - %s: failed op[0x%x]rc[%d]\n",
+			pr_err("DTS_EAGLE_CORE: %s: failed op[0x%x]rc[%d]\n",
 				__func__, ah.opcode, rc);
 			goto fail_cmd_2;
 		}
@@ -244,7 +244,7 @@ int core_dts_eagle_get(int id, int size, char *data)
 				(q6core_lcl.bus_bw_resp_received == 1),
 				msecs_to_jiffies(TIMEOUT_MS));
 		if (!rc) {
-			pr_err("DTS_EAGLE_CORE - %s: EAGLE get params timed out\n",
+			pr_err("DTS_EAGLE_ADM - %s: EAGLE get params timed out\n",
 				__func__);
 			rc = -EINVAL;
 			goto fail_cmd_2;
@@ -254,7 +254,7 @@ int core_dts_eagle_get(int id, int size, char *data)
 			memcpy(data, generic_get_data->ints, size);
 		} else {
 			rc = -EINVAL;
-			pr_err("DTS_EAGLE_CORE - %s: EAGLE get params problem getting data - check callback error value\n",
+			pr_err("DTS_EAGLE_ADM - %s: EAGLE get params problem getting data - check callback error value",
 				__func__);
 		}
 	}

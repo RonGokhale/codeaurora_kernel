@@ -2642,6 +2642,8 @@ struct asm_softvolume_params {
 
 #define ASM_MEDIA_FMT_MULTI_CHANNEL_PCM_V2 0x00010DA5
 
+#define ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX 0x00010DED
+
 #define ASM_MEDIA_FMT_EVRCB_FS 0x00010BEF
 
 #define ASM_MEDIA_FMT_EVRCWB_FS 0x00010BF0
@@ -6836,21 +6838,6 @@ struct srs_trumedia_params {
 	struct srs_trumedia_params_HL		hl;
 } __packed;
 /* SRS TruMedia end */
-
-/* DTS Eagle */
-#define AUDPROC_MODULE_ID_DTS_HPX_PREMIX 0x0001077C
-#define AUDPROC_MODULE_ID_DTS_HPX_POSTMIX 0x0001077B
-#define ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX 0x00010DED
-struct asm_dts_eagle_param {
-	struct apr_hdr	hdr;
-	struct asm_stream_cmd_set_pp_params_v2 param;
-	struct asm_stream_param_data_v2 data;
-} __packed;
-
-struct asm_dts_eagle_param_get {
-	struct apr_hdr	hdr;
-	struct asm_stream_cmd_get_pp_params_v2 param;
-} __packed;
 
 /* LSM Specific */
 #define VW_FEAT_DIM					(39)

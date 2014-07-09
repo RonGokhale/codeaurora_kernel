@@ -19,15 +19,15 @@ struct snd_pcm;
 struct audio_client;
 
 struct param_outband {
-	size_t       size;
-	void        *kvaddr;
-	phys_addr_t  paddr;
+	uint32_t        size;
+	uint32_t        kvaddr;
+	uint32_t        paddr;
 };
 
 #ifdef CONFIG_DTS_EAGLE
 void msm_dts_ion_memmap(struct param_outband *po);
 
-int msm_dts_eagle_handler_pre(struct audio_client *ac, long *arg);
+int msm_dts_eagle_handler_pre(struct audio_client *ac, void *arg);
 
 int msm_dts_eagle_set_volume(struct audio_client *ac, int lgain, int rgain);
 
@@ -50,7 +50,7 @@ static inline void msm_dts_ion_memmap(struct param_outband *po)
 	pr_debug("%s\n", __func__);
 }
 
-static inline int msm_dts_eagle_handler_pre(struct audio_client *ac, long *arg)
+static inline int msm_dts_eagle_handler_pre(struct audio_client *ac, void *arg)
 {
 	pr_debug("%s\n", __func__);
 	return -EFAULT;
@@ -62,7 +62,7 @@ static inline int msm_dts_eagle_set_volume(struct audio_client *ac,
 	return 0;
 }
 
-static inline int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
+static int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 {
 	return -EPERM;
 }

@@ -1817,7 +1817,7 @@ static int msm_compr_audio_effects_config_put(struct snd_kcontrol *kcontrol,
 		break;
 	case DTS_EAGLE_MODULE:
 		pr_debug("%s: DTS_EAGLE_MODULE\n", __func__);
-		msm_dts_eagle_handler_pre(prtd->audio_client, values);
+		msm_dts_eagle_handler_pre(prtd->audio_client, (void *)values);
 		break;
 	default:
 		pr_err("%s Invalid effects config module\n", __func__);
