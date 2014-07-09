@@ -8,6 +8,17 @@ union gic_base {
 	void __percpu * __iomem *percpu_base;
 };
 
+#ifdef CONFIG_ARM_GIC_V2M
+struct v2m_data {
+	spinlock_t msi_cnt_lock;
+	struct resource res;      /* GICv2m resource */
+	void __iomem *base;       /* GICv2m virt address */
+	unsigned int spi_start;   /* The SPI number that MSIs start */
+	unsigned int nr_spis;     /* The number of SPIs for MSIs */
+	unsigned long *bm;        /* MSI vector bitmap */
+};
+#endif
+
 struct gic_chip_data {
 	union gic_base dist_base;
 	union gic_base cpu_base;
@@ -20,11 +31,22 @@ struct gic_chip_data {
 #endif
 	struct irq_domain *domain;
 	unsigned int gic_irqs;
-	struct irq_chip *irq_chip;
 #ifdef CONFIG_GIC_NON_BANKED
 	void __iomem *(*get_base)(union gic_base *);
 #endif
+	struct irq_chip *irq_chip;
+	struct msi_chip msi_chip;
+#ifdef CONFIG_ARM_GIC_V2M
+	struct v2m_data v2m_data;
+#endif
 };
+
+#ifdef CONFIG_OF
+int _gic_of_init(struct device_node *node,
+		 struct device_node *parent,
+		 struct irq_chip *chip,
+		 struct gic_chip_data **gic) __init;
+#endif
 
 void gic_mask_irq(struct irq_data *d);
 void gic_unmask_irq(struct irq_data *d);
@@ -40,13 +62,6 @@ int gic_set_affinity(struct irq_data *d,
 
 #ifdef CONFIG_PM
 int gic_set_wake(struct irq_data *d, unsigned int on);
-#endif
-
-#ifdef CONFIG_OF
-int _gic_of_init(struct device_node *node,
-		 struct device_node *parent,
-		 struct irq_chip *chip,
-		 struct gic_chip_data **gic) __init;
 #endif
 
 #endif /* _IRQ_GIC_H_ */

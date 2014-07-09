@@ -111,15 +111,34 @@ static inline void gic_set_base_accessor(struct gic_chip_data *data,
 #define gic_set_base_accessor(d, f)
 #endif
 
+static inline
+struct gic_chip_data *irq_data_get_gic_chip_data(struct irq_data *d)
+{
+	struct gic_chip_data *gic_data;
+	struct msi_chip *mchip;
+
+	/*
+	 * For MSI, irq_data.chip_data points to struct msi_chip.
+	 * For non-MSI, irq_data.chip_data points to struct gic_chip_data.
+	 */
+	if (d->msi_desc) {
+		mchip = irq_data_get_irq_chip_data(d);
+		gic_data = container_of(mchip, struct gic_chip_data, msi_chip);
+	} else {
+		gic_data = irq_data_get_irq_chip_data(d);
+	}
+	return gic_data;
+}
+
 static inline void __iomem *gic_dist_base(struct irq_data *d)
 {
-	struct gic_chip_data *gic_data = irq_data_get_irq_chip_data(d);
+	struct gic_chip_data *gic_data = irq_data_get_gic_chip_data(d);
 	return gic_data_dist_base(gic_data);
 }
 
 static inline void __iomem *gic_cpu_base(struct irq_data *d)
 {
-	struct gic_chip_data *gic_data = irq_data_get_irq_chip_data(d);
+	struct gic_chip_data *gic_data = irq_data_get_gic_chip_data(d);
 	return gic_data_cpu_base(gic_data);
 }
 
