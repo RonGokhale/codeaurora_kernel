@@ -1,5 +1,5 @@
 /*
- * Marvell Armada 370 and Armada XP SoC cpuidle driver
+ * Marvell Armada 370, 38x and XP SoC cpuidle driver
  *
  * Copyright (C) 2014 Marvell
  *
@@ -88,6 +88,21 @@ static struct cpuidle_driver armada370_cpuidle_driver = {
 	.state_count = 2,
 };
 
+static struct cpuidle_driver armada38x_cpuidle_driver = {
+	.name			= "armada_38x_idle",
+	.states[0]		= ARM_CPUIDLE_WFI_STATE,
+	.states[1]		= {
+		.enter			= mvebu_v7_enter_idle,
+		.exit_latency		= 10,
+		.power_usage		= 5,
+		.target_residency	= 100,
+		.flags			= CPUIDLE_FLAG_TIME_VALID,
+		.name			= "Idle",
+		.desc			= "CPU and SCU power down",
+	},
+	.state_count = 2,
+};
+
 static int mvebu_v7_cpuidle_probe(struct platform_device *pdev)
 {
 	struct cpuidle_driver *drv;
@@ -98,6 +113,8 @@ static int mvebu_v7_cpuidle_probe(struct platform_device *pdev)
 		drv = &armadaxp_cpuidle_driver;
 	else if (pcpuidle->type == CPUIDLE_ARMADA_370)
 		drv = &armada370_cpuidle_driver;
+	else if (pcpuidle->type == CPUIDLE_ARMADA_38X)
+		drv = &armada38x_cpuidle_driver;
 	else
 		return -EINVAL;
 
