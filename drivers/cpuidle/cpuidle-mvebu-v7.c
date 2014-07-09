@@ -72,6 +72,22 @@ static struct cpuidle_driver armadaxp_cpuidle_driver = {
 	.state_count = 3,
 };
 
+static struct cpuidle_driver armada370_cpuidle_driver = {
+	.name			= "armada_370_idle",
+	.states[0]		= ARM_CPUIDLE_WFI_STATE,
+	.states[1]		= {
+		.enter			= mvebu_v7_enter_idle,
+		.exit_latency		= 100,
+		.power_usage		= 5,
+		.target_residency	= 1000,
+		.flags			= (CPUIDLE_FLAG_TIME_VALID |
+					   MVEBU_V7_FLAG_DEEP_IDLE),
+		.name			= "Deep Idle",
+		.desc			= "CPU and L2 Fabric power down",
+	},
+	.state_count = 2,
+};
+
 static int mvebu_v7_cpuidle_probe(struct platform_device *pdev)
 {
 	struct cpuidle_driver *drv;
@@ -80,6 +96,8 @@ static int mvebu_v7_cpuidle_probe(struct platform_device *pdev)
 
 	if (pcpuidle->type == CPUIDLE_ARMADA_XP)
 		drv = &armadaxp_cpuidle_driver;
+	else if (pcpuidle->type == CPUIDLE_ARMADA_370)
+		drv = &armada370_cpuidle_driver;
 	else
 		return -EINVAL;
 

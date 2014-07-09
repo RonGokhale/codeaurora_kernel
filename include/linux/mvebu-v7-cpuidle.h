@@ -16,6 +16,7 @@
 
 enum mvebu_v7_cpuidle_types {
 	CPUIDLE_ARMADA_XP,
+	CPUIDLE_ARMADA_370,
 };
 
 struct mvebu_v7_cpuidle {
