@@ -102,6 +102,7 @@ config DTS_EAGLE
 	 package that includes HeadphoneX. The configuration
 	 includes sending tuning parameters of various modules.
 
+
 config DTS_SRS_TM
 	bool "Enable DTS SRS"
 	depends on SND_SOC_MSM_QDSP6V2_INTF
