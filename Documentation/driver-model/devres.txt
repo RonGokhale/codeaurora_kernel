@@ -234,7 +234,10 @@ certainly invest a bit more effort into libata core layer).
   -----------------------------
 
 MEM
+  devm_kmalloc()
   devm_kzalloc()
+  devm_kmalloc_array()
+  devm_kcalloc()
   devm_kfree()
   devm_kmemdup()
   devm_get_free_pages()
@@ -278,7 +281,6 @@ IOMAP
   devm_ioremap_nocache()
   devm_iounmap()
   devm_ioremap_resource() : checks resource, requests memory region, ioremaps
-  devm_request_and_ioremap() : obsoleted by devm_ioremap_resource()
   pcim_iomap()
   pcim_iounmap()
   pcim_iomap_table()	: array of mapped addresses indexed by BAR
