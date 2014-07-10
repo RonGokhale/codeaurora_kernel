@@ -272,8 +272,7 @@ static loff_t f2fs_seek_block(struct file *file, loff_t offset, int whence)
 			}
 		}
 
-		end_offset = IS_INODE(dn.node_page) ?
-			ADDRS_PER_INODE(F2FS_I(inode)) : ADDRS_PER_BLOCK;
+		end_offset = ADDRS_PER_PAGE(dn.node_page, F2FS_I(inode));
 
 		/* find data/hole in dnode block */
 		for (; dn.ofs_in_node < end_offset;
@@ -380,13 +379,15 @@ static void truncate_partial_data_page(struct inode *inode, u64 from)
 		return;
 
 	lock_page(page);
-	if (unlikely(page->mapping != inode->i_mapping)) {
-		f2fs_put_page(page, 1);
-		return;
-	}
+	if (unlikely(!PageUptodate(page) ||
+			page->mapping != inode->i_mapping))
+		goto out;
+
 	f2fs_wait_on_page_writeback(page, DATA);
 	zero_user(page, offset, PAGE_CACHE_SIZE - offset);
 	set_page_dirty(page);
+
+out:
 	f2fs_put_page(page, 1);
 }
 
