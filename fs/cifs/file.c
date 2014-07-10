@@ -2908,7 +2908,7 @@ cifs_uncached_read_into_pages(struct TCP_Server_Info *server,
 		total_read += result;
 	}
 
-	return total_read > 0 && result != -EAGAIN ? total_read : result;
+	return total_read > 0 && result != -ECONNABORTED ? total_read : result;
 }
 
 static int
@@ -3358,7 +3358,7 @@ cifs_readpages_read_into_pages(struct TCP_Server_Info *server,
 		total_read += result;
 	}
 
-	return total_read > 0 && result != -EAGAIN ? total_read : result;
+	return total_read > 0 && result != -ECONNABORTED ? total_read : result;
 }
 
 static int
