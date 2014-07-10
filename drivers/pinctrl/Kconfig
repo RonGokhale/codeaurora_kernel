@@ -11,10 +11,10 @@ menu "Pin controllers"
 	depends on PINCTRL
 
 config PINMUX
-	bool "Support pin multiplexing controllers"
+	bool "Support pin multiplexing controllers" if COMPILE_TEST
 
 config PINCONF
-	bool "Support pin configuration controllers"
+	bool "Support pin configuration controllers" if COMPILE_TEST
 
 config GENERIC_PINCONF
 	bool
@@ -129,6 +129,13 @@ config PINCTRL_IMX1_CORE
 	bool
 	select PINMUX
 	select PINCONF
+
+config PINCTRL_IMX1
+	bool "IMX1 pinctrl driver"
+	depends on SOC_IMX1
+	select PINCTRL_IMX1_CORE
+	help
+	  Say Y here to enable the imx1 pinctrl driver
 
 config PINCTRL_IMX27
 	bool "IMX27 pinctrl driver"
