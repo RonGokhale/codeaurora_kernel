@@ -995,7 +995,9 @@ void intel_ddi_enable_transcoder_func(struct drm_crtc *crtc)
 			 * eDP when not using the panel fitter, and when not
 			 * using motion blur mitigation (which we don't
 			 * support). */
-			if (IS_HASWELL(dev) && intel_crtc->config.pch_pfit.enabled)
+			if (IS_HASWELL(dev) &&
+			    (intel_crtc->config.pch_pfit.enabled ||
+			     intel_crtc->config.pch_pfit.force_thru))
 				temp |= TRANS_DDI_EDP_INPUT_A_ONOFF;
 			else
 				temp |= TRANS_DDI_EDP_INPUT_A_ON;
@@ -1704,6 +1706,9 @@ void intel_ddi_init(struct drm_device *dev, enum port port)
 	intel_encoder->crtc_mask =  (1 << 0) | (1 << 1) | (1 << 2);
 	intel_encoder->cloneable = 0;
 	intel_encoder->hot_plug = intel_ddi_hot_plug;
+
+	intel_dig_port->hpd_pulse = intel_dp_hpd_pulse;
+	dev_priv->hpd_irq_port[port] = intel_dig_port;
 
 	if (init_dp)
 		dp_connector = intel_ddi_init_dp_connector(intel_dig_port);
