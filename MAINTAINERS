@@ -604,7 +604,7 @@ AMD MICROCODE UPDATE SUPPORT
 M:	Andreas Herrmann <herrmann.der.user@googlemail.com>
 L:	amd64-microcode@amd64.org
 S:	Maintained
-F:	arch/x86/kernel/microcode_amd.c
+F:	arch/x86/kernel/cpu/microcode/amd*
 
 AMD XGBE DRIVER
 M:	Tom Lendacky <thomas.lendacky@amd.com>
@@ -894,7 +894,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/baohua/linux.git
 S:	Maintained
 F:	arch/arm/mach-prima2/
-F:	drivers/clk/clk-prima2.c
+F:	drivers/clk/sirf/
 F:	drivers/clocksource/timer-prima2.c
 F:	drivers/clocksource/timer-marco.c
 N:	[^a-z]sirf
@@ -1161,8 +1161,7 @@ F:	drivers/mmc/host/msm_sdcc.h
 F:	drivers/tty/serial/msm_serial.h
 F:	drivers/tty/serial/msm_serial.c
 F:	drivers/*/pm8???-*
-F:	drivers/mfd/ssbi/
-F:	include/linux/mfd/pm8xxx/
+F:	drivers/mfd/ssbi.c
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/davidb/linux-msm.git
 S:	Maintained
 
@@ -1959,7 +1958,7 @@ F:	arch/arm/boot/dts/bcm113*
 F:	arch/arm/boot/dts/bcm216*
 F:	arch/arm/boot/dts/bcm281*
 F:	arch/arm/configs/bcm_defconfig
-F:	drivers/mmc/host/sdhci_bcm_kona.c
+F:	drivers/mmc/host/sdhci-bcm-kona.c
 F:	drivers/clocksource/bcm_kona_timer.c
 
 BROADCOM BCM2835 ARM ARCHICTURE
@@ -2301,12 +2300,6 @@ L:	netdev@vger.kernel.org
 S:	Maintained
 F:	drivers/net/ethernet/cirrus/ep93xx_eth.c
 
-CIRRUS LOGIC EP93XX OHCI USB HOST DRIVER
-M:	Lennert Buytenhek <kernel@wantstofly.org>
-L:	linux-usb@vger.kernel.org
-S:	Maintained
-F:	drivers/usb/host/ohci-ep93xx.c
-
 CIRRUS LOGIC AUDIO CODEC DRIVERS
 M:	Brian Austin <brian.austin@cirrus.com>
 M:	Paul Handrigan <Paul.Handrigan@cirrus.com>
@@ -2391,7 +2384,7 @@ W:	http://linux-cifs.samba.org/
 Q:	http://patchwork.ozlabs.org/project/linux-cifs-client/list/
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/sfrench/cifs-2.6.git
 S:	Supported
-F:	Documentation/filesystems/cifs.txt
+F:	Documentation/filesystems/cifs/
 F:	fs/cifs/
 
 COMPACTPCI HOTPLUG CORE
@@ -3020,7 +3013,6 @@ L:	dri-devel@lists.freedesktop.org
 T:	git git://people.freedesktop.org/~agd5f/linux
 S:	Supported
 F:	drivers/gpu/drm/radeon/
-F:	include/drm/radeon*
 F:	include/uapi/drm/radeon*
 
 DRM PANEL DRIVERS
@@ -3387,7 +3379,7 @@ M:	Matt Fleming <matt.fleming@intel.com>
 L:	linux-efi@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/mfleming/efi.git
 S:	Maintained
-F:	Documentation/x86/efi-stub.txt
+F:	Documentation/efi-stub.txt
 F:	arch/ia64/kernel/efi.c
 F:	arch/x86/boot/compressed/eboot.[ch]
 F:	arch/x86/include/asm/efi.h
@@ -4654,8 +4646,8 @@ F:	drivers/platform/x86/intel_menlow.c
 INTEL IA32 MICROCODE UPDATE SUPPORT
 M:	Tigran Aivazian <tigran@aivazian.fsnet.co.uk>
 S:	Maintained
-F:	arch/x86/kernel/microcode_core.c
-F:	arch/x86/kernel/microcode_intel.c
+F:	arch/x86/kernel/cpu/microcode/core*
+F:	arch/x86/kernel/cpu/microcode/intel*
 
 INTEL I/OAT DMA DRIVER
 M:	Dan Williams <dan.j.williams@intel.com>
@@ -5114,7 +5106,6 @@ L:	linux-nfs@vger.kernel.org
 W:	http://nfs.sourceforge.net/
 S:	Supported
 F:	fs/nfsd/
-F:	include/linux/nfsd/
 F:	include/uapi/linux/nfsd/
 F:	fs/lockd/
 F:	fs/nfs_common/
@@ -5833,7 +5824,6 @@ F:	drivers/clocksource/metag_generic.c
 F:	drivers/irqchip/irq-metag.c
 F:	drivers/irqchip/irq-metag-ext.c
 F:	drivers/tty/metag_da.c
-F:	fs/imgdafs/
 
 MICROBLAZE ARCHITECTURE
 M:	Michal Simek <monstr@monstr.eu>
@@ -6918,9 +6908,9 @@ M:	Jamie Iles <jamie@jamieiles.com>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://github.com/jamieiles/linux-2.6-ji.git
 S:	Supported
+F:	arch/arm/boot/dts/picoxcell*
 F:	arch/arm/mach-picoxcell/
-F:	drivers/*/picoxcell*
-F:	drivers/*/*/picoxcell*
+F:	drivers/crypto/picoxcell*
 
 PIN CONTROL SUBSYSTEM
 M:	Linus Walleij <linus.walleij@linaro.org>
@@ -7202,7 +7192,7 @@ PXA3xx NAND FLASH DRIVER
 M:	Ezequiel Garcia <ezequiel.garcia@free-electrons.com>
 L:	linux-mtd@lists.infradead.org
 S:	Maintained
-F:	drivers/mtd/nand/pxa3xx-nand.c
+F:	drivers/mtd/nand/pxa3xx_nand.c
 
 MMP SUPPORT
 M:	Eric Miao <eric.y.miao@gmail.com>
