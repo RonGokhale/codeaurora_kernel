@@ -44,6 +44,7 @@
 #include <asm/exception.h>
 #include <asm/smp_plat.h>
 
+#include "irq-gic-common.h"
 #include "irqchip.h"
 
 union gic_base {
@@ -186,12 +187,6 @@ static int gic_set_type(struct irq_data *d, unsigned int type)
 {
 	void __iomem *base = gic_dist_base(d);
 	unsigned int gicirq = gic_irq(d);
-	u32 enablemask = 1 << (gicirq % 32);
-	u32 enableoff = (gicirq / 32) * 4;
-	u32 confmask = 0x2 << ((gicirq % 16) * 2);
-	u32 confoff = (gicirq / 16) * 4;
-	bool enabled = false;
-	u32 val;
 
 	/* Interrupt configuration for SGIs can't be changed */
 	if (gicirq < 16)
@@ -205,25 +200,7 @@ static int gic_set_type(struct irq_data *d, unsigned int type)
 	if (gic_arch_extn.irq_set_type)
 		gic_arch_extn.irq_set_type(d, type);
 
-	val = readl_relaxed(base + GIC_DIST_CONFIG + confoff);
-	if (type == IRQ_TYPE_LEVEL_HIGH)
-		val &= ~confmask;
-	else if (type == IRQ_TYPE_EDGE_RISING)
-		val |= confmask;
-
-	/*
-	 * As recommended by the spec, disable the interrupt before changing
-	 * the configuration
-	 */
-	if (readl_relaxed(base + GIC_DIST_ENABLE_SET + enableoff) & enablemask) {
-		writel_relaxed(enablemask, base + GIC_DIST_ENABLE_CLEAR + enableoff);
-		enabled = true;
-	}
-
-	writel_relaxed(val, base + GIC_DIST_CONFIG + confoff);
-
-	if (enabled)
-		writel_relaxed(enablemask, base + GIC_DIST_ENABLE_SET + enableoff);
+	gic_configure_irq(gicirq, type, base, NULL);
 
 	raw_spin_unlock(&irq_controller_lock);
 
@@ -385,12 +362,6 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	writel_relaxed(0, base + GIC_DIST_CTRL);
 
 	/*
-	 * Set all global interrupts to be level triggered, active low.
-	 */
-	for (i = 32; i < gic_irqs; i += 16)
-		writel_relaxed(0, base + GIC_DIST_CONFIG + i * 4 / 16);
-
-	/*
 	 * Set all global interrupts to this CPU only.
 	 */
 	cpumask = gic_get_cpumask(gic);
@@ -399,18 +370,7 @@ static void __init gic_dist_init(struct gic_chip_data *gic)
 	for (i = 32; i < gic_irqs; i += 4)
 		writel_relaxed(cpumask, base + GIC_DIST_TARGET + i * 4 / 4);
 
-	/*
-	 * Set priority on all global interrupts.
-	 */
-	for (i = 32; i < gic_irqs; i += 4)
-		writel_relaxed(0xa0a0a0a0, base + GIC_DIST_PRI + i * 4 / 4);
-
-	/*
-	 * Disable all interrupts.  Leave the PPI and SGIs alone
-	 * as these enables are banked registers.
-	 */
-	for (i = 32; i < gic_irqs; i += 32)
-		writel_relaxed(0xffffffff, base + GIC_DIST_ENABLE_CLEAR + i * 4 / 32);
+	gic_dist_config(base, gic_irqs, NULL);
 
 	writel_relaxed(1, base + GIC_DIST_CTRL);
 }
@@ -437,18 +397,7 @@ static void gic_cpu_init(struct gic_chip_data *gic)
 		if (i != cpu)
 			gic_cpu_map[i] &= ~cpu_mask;
 
-	/*
-	 * Deal with the banked PPI and SGI interrupts - disable all
-	 * PPI interrupts, ensure all SGI interrupts are enabled.
-	 */
-	writel_relaxed(0xffff0000, dist_base + GIC_DIST_ENABLE_CLEAR);
-	writel_relaxed(0x0000ffff, dist_base + GIC_DIST_ENABLE_SET);
-
-	/*
-	 * Set priority on PPI and SGI interrupts
-	 */
-	for (i = 0; i < 32; i += 4)
-		writel_relaxed(0xa0a0a0a0, dist_base + GIC_DIST_PRI + i * 4 / 4);
+	gic_cpu_config(dist_base, NULL);
 
 	writel_relaxed(0xf0, base + GIC_CPU_PRIMASK);
 	writel_relaxed(1, base + GIC_CPU_CTRL);
@@ -1071,6 +1020,7 @@ gic_of_init(struct device_node *node, struct device_node *parent)
 }
 IRQCHIP_DECLARE(cortex_a15_gic, "arm,cortex-a15-gic", gic_of_init);
 IRQCHIP_DECLARE(cortex_a9_gic, "arm,cortex-a9-gic", gic_of_init);
+IRQCHIP_DECLARE(cortex_a7_gic, "arm,cortex-a7-gic", gic_of_init);
 IRQCHIP_DECLARE(msm_8660_qgic, "qcom,msm-8660-qgic", gic_of_init);
 IRQCHIP_DECLARE(msm_qgic2, "qcom,msm-qgic2", gic_of_init);
 
