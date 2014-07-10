@@ -76,7 +76,7 @@ pages that we hold a pointer to in the device driver. We also allocate a
 coherent transfer buffer of size STAGED_SZ (this must be a multiple of the
 bulk endpoint size so that the 1401 does not realise that we break large
 transfers down into smaller pieces). We use kmap_atomic() to get a kernel
-va for each page, as it is required, for copying; see CopyUserSpace().
+va for each page, as it is required, for copying; see ced_copy_user_space().
 
 All character and data transfers are done using asynchronous IO. All Urbs are
 tracked by anchoring them. Status and debug ioctls are implemented with the
@@ -245,13 +245,13 @@ static int ced_flush(struct file *file, fl_owner_t id)
 }
 
 /***************************************************************************
-** CanAcceptIoRequests
+** can_accept_io_requests
 ** If the device is removed, interface is set NULL. We also clear our pointer
 ** from the interface, so we should make sure that pdx is not NULL. This will
 ** not help with a device extension held by a file.
 ** return true if can accept new io requests, else false
 */
-static bool CanAcceptIoRequests(DEVICE_EXTENSION *pdx)
+static bool can_accept_io_requests(DEVICE_EXTENSION *pdx)
 {
 	return pdx && pdx->interface;	/*  Can we accept IO requests */
 }
@@ -333,11 +333,11 @@ static void ced_writechar_callback(struct urb *pUrb)
 }
 
 /****************************************************************************
-** SendChars
+** ced_send_chars
 ** Transmit the characters in the output buffer to the 1401. This may need
 ** breaking down into multiple transfers.
 ****************************************************************************/
-int SendChars(DEVICE_EXTENSION *pdx)
+int ced_send_chars(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = U14ERR_NOERROR;
 
@@ -345,7 +345,7 @@ int SendChars(DEVICE_EXTENSION *pdx)
 
 	if ((!pdx->bSendCharsPending) &&	/*  Not currently sending */
 	    (pdx->dwNumOutput > 0) &&	/*   has characters to output */
-	    (CanAcceptIoRequests(pdx)))	{ /*   and current activity is OK */
+	    (can_accept_io_requests(pdx)))	{ /*   and current activity is OK */
 		unsigned int dwCount = pdx->dwNumOutput;	/*  Get a copy of the character count */
 		pdx->bSendCharsPending = true;	/*  Set flag to lock out other threads */
 
@@ -424,7 +424,7 @@ int SendChars(DEVICE_EXTENSION *pdx)
 }
 
 /***************************************************************************
-** CopyUserSpace
+** ced_copy_user_space
 ** This moves memory between pinned down user space and the pCoherStagedIO
 ** memory buffer we use for transfers. Copy n bytes in the directions that
 ** is defined by pdx->StagedRead. The user space is determined by the area
@@ -437,7 +437,7 @@ int SendChars(DEVICE_EXTENSION *pdx)
 ** pdx  Is our device extension which holds all we know about the transfer.
 ** n    The number of bytes to move one way or the other.
 ***************************************************************************/
-static void CopyUserSpace(DEVICE_EXTENSION *pdx, int n)
+static void ced_copy_user_space(DEVICE_EXTENSION *pdx, int n)
 {
 	unsigned int nArea = pdx->StagedId;
 	if (nArea < MAX_TRANSAREAS) {
@@ -492,7 +492,7 @@ static void CopyUserSpace(DEVICE_EXTENSION *pdx, int n)
 }
 
 /*  Forward declarations for stuff used circularly */
-static int StageChunk(DEVICE_EXTENSION *pdx);
+static int ced_stage_chunk(DEVICE_EXTENSION *pdx);
 /***************************************************************************
 ** ReadWrite_Complete
 **
@@ -505,7 +505,7 @@ static void staged_callback(struct urb *pUrb)
 	bool bCancel = false;
 	bool bRestartCharInput;	/*  used at the end */
 
-	spin_lock(&pdx->stagedLock);	/*  stop ReadWriteMem() action while this routine is running */
+	spin_lock(&pdx->stagedLock);	/*  stop ced_read_write_mem() action while this routine is running */
 	pdx->bStagedUrbPending = false;	/*  clear the flag for staged IRP pending */
 
 	if (pUrb->status) {	/*  sync/async unlink faults aren't errors */
@@ -528,7 +528,7 @@ static void staged_callback(struct urb *pUrb)
 		dev_dbg(&pdx->interface->dev, "%s: %d chars xferred\n",
 			__func__, nGot);
 		if (pdx->StagedRead)	/*  if reading, save to user space */
-			CopyUserSpace(pdx, nGot);	/*  copy from buffer to user */
+			ced_copy_user_space(pdx, nGot);	/*  copy from buffer to user */
 		if (nGot == 0)
 			dev_dbg(&pdx->interface->dev, "%s: ZLP\n", __func__);
 	}
@@ -549,7 +549,7 @@ static void staged_callback(struct urb *pUrb)
 		/*  Here is where we sort out what to do with this transfer if using a circular buffer. We have */
 		/*   a completed transfer that can be assumed to fit into the transfer area. We should be able to */
 		/*   add this to the end of a growing block or to use it to start a new block unless the code */
-		/*   that calculates the offset to use (in ReadWriteMem) is totally duff. */
+		/*   that calculates the offset to use (in ced_read_write_mem) is totally duff. */
 		if ((pArea->bCircular) && (pArea->bCircToHost) && (!bCancel) &&	/*  Time to sort out circular buffer info? */
 		    (pdx->StagedRead)) {	/*  Only for tohost transfers for now */
 			if (pArea->aBlocks[1].dwSize > 0) {	/*  If block 1 is in use we must append to it */
@@ -648,7 +648,7 @@ static void staged_callback(struct urb *pUrb)
 			}
 		}
 
-		pdx->dwDMAFlag = MODE_CHAR;	/*  Switch back to char mode before ReadWriteMem call */
+		pdx->dwDMAFlag = MODE_CHAR;	/*  Switch back to char mode before ced_read_write_mem call */
 
 		if (!bCancel) {	/*  Don't look for waiting transfer if cancelled */
 			/*  If we have a transfer waiting, kick it off */
@@ -657,7 +657,7 @@ static void staged_callback(struct urb *pUrb)
 				dev_info(&pdx->interface->dev,
 					 "*** RWM_Complete *** pending transfer will now be set up!!!\n");
 				iReturn =
-				    ReadWriteMem(pdx, !pdx->rDMAInfo.bOutWard,
+				    ced_read_write_mem(pdx, !pdx->rDMAInfo.bOutWard,
 						 pdx->rDMAInfo.wIdent,
 						 pdx->rDMAInfo.dwOffset,
 						 pdx->rDMAInfo.dwSize);
@@ -670,7 +670,7 @@ static void staged_callback(struct urb *pUrb)
 		}
 
 	} else			/*  Here for more to do */
-		StageChunk(pdx);	/*  fire off the next bit */
+		ced_stage_chunk(pdx);	/*  fire off the next bit */
 
 	/*  While we hold the stagedLock, see if we should reallow character input ints */
 	/*  Don't allow if cancelled, or if a new block has started or if there is a waiting block. */
@@ -681,22 +681,22 @@ static void staged_callback(struct urb *pUrb)
 	spin_unlock(&pdx->stagedLock);	/*  Finally release the lock again */
 
 	/*  This is not correct as dwDMAFlag is protected by the staged lock, but it is treated */
-	/*  in Allowi as if it were protected by the char lock. In any case, most systems will */
+	/*  in ced_allowi as if it were protected by the char lock. In any case, most systems will */
 	/*  not be upset by char input during DMA... sigh. Needs sorting out. */
 	if (bRestartCharInput)	/*  may be out of date, but... */
-		Allowi(pdx);	/*  ...Allowi tests a lock too. */
+		ced_allowi(pdx);	/*  ...ced_allowi tests a lock too. */
 	dev_dbg(&pdx->interface->dev, "%s: done\n", __func__);
 }
 
 /****************************************************************************
-** StageChunk
+** ced_stage_chunk
 **
 ** Generates the next chunk of data making up a staged transfer.
 **
 ** The calling code must have acquired the staging spinlock before calling
 **  this function, and is responsible for releasing it. We are at callback level.
 ****************************************************************************/
-static int StageChunk(DEVICE_EXTENSION *pdx)
+static int ced_stage_chunk(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = U14ERR_NOERROR;
 	unsigned int ChunkSize;
@@ -706,7 +706,7 @@ static int StageChunk(DEVICE_EXTENSION *pdx)
 	if (nPipe < 0)		/*  and trap case that should never happen */
 		return U14ERR_FAIL;
 
-	if (!CanAcceptIoRequests(pdx)) {	/*  got sudden remove? */
+	if (!can_accept_io_requests(pdx)) {	/*  got sudden remove? */
 		dev_info(&pdx->interface->dev, "%s: sudden remove, giving up\n",
 			 __func__);
 		return U14ERR_FAIL;	/*  could do with a better error */
@@ -717,7 +717,7 @@ static int StageChunk(DEVICE_EXTENSION *pdx)
 		ChunkSize = STAGED_SZ;	/*   limit to max allowed */
 
 	if (!pdx->StagedRead)	/*  if writing... */
-		CopyUserSpace(pdx, ChunkSize);	/*  ...copy data into the buffer */
+		ced_copy_user_space(pdx, ChunkSize);	/*  ...copy data into the buffer */
 
 	usb_fill_bulk_urb(pdx->pStagedUrb, pdx->udev,
 			  pdx->StagedRead ? usb_rcvbulkpipe(pdx->udev,
@@ -742,7 +742,7 @@ static int StageChunk(DEVICE_EXTENSION *pdx)
 }
 
 /***************************************************************************
-** ReadWriteMem
+** ced_read_write_mem
 **
 ** This routine is used generally for block read and write operations.
 ** Breaks up a read or write in to specified sized chunks, as specified by pipe
@@ -758,12 +758,12 @@ static int StageChunk(DEVICE_EXTENSION *pdx)
 **             transfer.
 **    dwLen - the number of bytes to transfer.
 */
-int ReadWriteMem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
+int ced_read_write_mem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
 		 unsigned int dwOffs, unsigned int dwLen)
 {
 	TRANSAREA *pArea = &pdx->rTransDef[wIdent];	/*  Transfer area info */
 
-	if (!CanAcceptIoRequests(pdx)) {	/*  Are we in a state to accept new requests? */
+	if (!can_accept_io_requests(pdx)) {	/*  Are we in a state to accept new requests? */
 		dev_err(&pdx->interface->dev, "%s: can't accept requests\n",
 			__func__);
 		return U14ERR_FAIL;
@@ -838,20 +838,20 @@ int ReadWriteMem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
 	pdx->bXFerWaiting = false;	/*  Clearly not a transfer waiting now */
 
 /*     KeClearEvent(&pdx->StagingDoneEvent);           // Clear the transfer done event */
-	StageChunk(pdx);	/*  fire off the first chunk */
+	ced_stage_chunk(pdx);	/*  fire off the first chunk */
 
 	return U14ERR_NOERROR;
 }
 
 /****************************************************************************
 **
-** ReadChar
+** ced_read_char
 **
 ** Reads a character a buffer. If there is no more
 **  data we return FALSE. Used as part of decoding a DMA request.
 **
 ****************************************************************************/
-static bool ReadChar(unsigned char *pChar, char *pBuf, unsigned int *pdDone,
+static bool ced_read_char(unsigned char *pChar, char *pBuf, unsigned int *pdDone,
 		     unsigned int dGot)
 {
 	bool bRead = false;
@@ -870,16 +870,16 @@ static bool ReadChar(unsigned char *pChar, char *pBuf, unsigned int *pdDone,
 #ifdef NOTUSED
 /****************************************************************************
 **
-** ReadWord
+** ced_read_word
 **
-** Reads a word from the 1401, just uses ReadChar twice; passes on any error
+** Reads a word from the 1401, just uses ced_read_char twice; passes on any error
 **
 *****************************************************************************/
-static bool ReadWord(unsigned short *pWord, char *pBuf, unsigned int *pdDone,
+static bool ced_read_word(unsigned short *pWord, char *pBuf, unsigned int *pdDone,
 		     unsigned int dGot)
 {
-	if (ReadChar((unsigned char *)pWord, pBuf, pdDone, dGot))
-		return ReadChar(((unsigned char *)pWord) + 1, pBuf, pdDone,
+	if (ced_read_char((unsigned char *)pWord, pBuf, pdDone, dGot))
+		return ced_read_char(((unsigned char *)pWord) + 1, pBuf, pdDone,
 				dGot);
 	else
 		return false;
@@ -887,7 +887,7 @@ static bool ReadWord(unsigned short *pWord, char *pBuf, unsigned int *pdDone,
 #endif
 
 /****************************************************************************
-** ReadHuff
+** ced_read_huff
 **
 ** Reads a coded number in and returns it, Code is:
 ** If data is in range 0..127 we receive 1 byte. If data in range 128-16383
@@ -896,22 +896,22 @@ static bool ReadWord(unsigned short *pWord, char *pBuf, unsigned int *pdDone,
 ** to indicate three byte total.
 **
 *****************************************************************************/
-static bool ReadHuff(volatile unsigned int *pDWord, char *pBuf,
+static bool ced_read_huff(volatile unsigned int *pDWord, char *pBuf,
 		     unsigned int *pdDone, unsigned int dGot)
 {
-	unsigned char ucData;	/* for each read to ReadChar */
+	unsigned char ucData;	/* for each read to ced_read_char */
 	bool bReturn = true;	/* assume we will succeed */
 	unsigned int dwData = 0;	/* Accumulator for the data */
 
-	if (ReadChar(&ucData, pBuf, pdDone, dGot)) {
+	if (ced_read_char(&ucData, pBuf, pdDone, dGot)) {
 		dwData = ucData;	/* copy the data */
 		if ((dwData & 0x00000080) != 0) {	/* Bit set for more data ? */
 			dwData &= 0x0000007F;	/* Clear the relevant bit */
-			if (ReadChar(&ucData, pBuf, pdDone, dGot)) {
+			if (ced_read_char(&ucData, pBuf, pdDone, dGot)) {
 				dwData = (dwData << 8) | ucData;
 				if ((dwData & 0x00004000) != 0) {	/* three byte sequence ? */
 					dwData &= 0x00003FFF;	/* Clear the relevant bit */
-					if (ReadChar
+					if (ced_read_char
 					    (&ucData, pBuf, pdDone, dGot))
 						dwData = (dwData << 8) | ucData;
 					else
@@ -929,7 +929,7 @@ static bool ReadHuff(volatile unsigned int *pDWord, char *pBuf,
 
 /***************************************************************************
 **
-** ReadDMAInfo
+** ced_read_dma_info
 **
 ** Tries to read info about the dma request from the 1401 and decode it into
 ** the dma descriptor block. We have at this point had the escape character
@@ -941,7 +941,7 @@ static bool ReadHuff(volatile unsigned int *pDWord, char *pBuf,
 **  we start handling the data at offset zero.
 **
 *****************************************************************************/
-static bool ReadDMAInfo(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
+static bool ced_read_dma_info(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
 			char *pBuf, unsigned int dwCount)
 {
 	bool bResult = false;	/*  assume we won't succeed */
@@ -950,7 +950,7 @@ static bool ReadDMAInfo(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
 
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 
-	if (ReadChar(&ucData, pBuf, &dDone, dwCount)) {
+	if (ced_read_char(&ucData, pBuf, &dDone, dwCount)) {
 		unsigned char ucTransCode = (ucData & 0x0F);	/*  get code for transfer type */
 		unsigned short wIdent = ((ucData >> 4) & 0x07);	/*  and area identifier */
 
@@ -970,9 +970,9 @@ static bool ReadDMAInfo(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
 		case TM_EXTTO1401:
 			{
 				bResult =
-				    ReadHuff(&(pDmaDesc->dwOffset), pBuf,
+				    ced_read_huff(&(pDmaDesc->dwOffset), pBuf,
 					     &dDone, dwCount)
-				    && ReadHuff(&(pDmaDesc->dwSize), pBuf,
+				    && ced_read_huff(&(pDmaDesc->dwSize), pBuf,
 						&dDone, dwCount);
 				if (bResult) {
 					dev_dbg(&pdx->interface->dev,
@@ -1016,7 +1016,7 @@ static bool ReadDMAInfo(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
 
 /****************************************************************************
 **
-** Handle1401Esc
+** ced_handle_esc
 **
 ** Deals with an escape sequence coming from the 1401. This can either be
 **  a DMA transfer request of various types or a response to an escape sequence
@@ -1028,7 +1028,7 @@ static bool ReadDMAInfo(volatile DMADESC *pDmaDesc, DEVICE_EXTENSION *pdx,
 **           this is known to be at least 2 or we will not be called.
 **
 ****************************************************************************/
-static int Handle1401Esc(DEVICE_EXTENSION *pdx, char *pCh,
+static int ced_handle_esc(DEVICE_EXTENSION *pdx, char *pCh,
 			 unsigned int dwCount)
 {
 	int iReturn = U14ERR_FAIL;
@@ -1041,7 +1041,7 @@ static int Handle1401Esc(DEVICE_EXTENSION *pdx, char *pCh,
 	} else {
 		spin_lock(&pdx->stagedLock);	/*  Lock others out */
 
-		if (ReadDMAInfo(&pdx->rDMAInfo, pdx, pCh, dwCount)) {	/*  Get DMA parameters */
+		if (ced_read_dma_info(&pdx->rDMAInfo, pdx, pCh, dwCount)) {	/*  Get DMA parameters */
 			unsigned short wTransType = pdx->rDMAInfo.wTransType;	/*  check transfer type */
 
 			dev_dbg(&pdx->interface->dev,
@@ -1058,7 +1058,7 @@ static int Handle1401Esc(DEVICE_EXTENSION *pdx, char *pCh,
 				if ((wTransType == TM_EXTTOHOST)
 				    || (wTransType == TM_EXTTO1401)) {
 					iReturn =
-					    ReadWriteMem(pdx,
+					    ced_read_write_mem(pdx,
 							 !pdx->rDMAInfo.
 							 bOutWard,
 							 pdx->rDMAInfo.wIdent,
@@ -1066,7 +1066,7 @@ static int Handle1401Esc(DEVICE_EXTENSION *pdx, char *pCh,
 							 pdx->rDMAInfo.dwSize);
 					if (iReturn != U14ERR_NOERROR)
 						dev_err(&pdx->interface->dev,
-							"%s: ReadWriteMem() failed %d\n",
+							"%s: ced_read_write_mem() failed %d\n",
 							__func__, iReturn);
 				} else	/*  This covers non-linear transfer setup */
 					dev_err(&pdx->interface->dev,
@@ -1074,7 +1074,7 @@ static int Handle1401Esc(DEVICE_EXTENSION *pdx, char *pCh,
 						__func__, wTransType);
 			}
 		} else		/*  Failed to read parameters */
-			dev_err(&pdx->interface->dev, "%s: ReadDMAInfo() fail\n",
+			dev_err(&pdx->interface->dev, "%s: ced_read_dma_info() fail\n",
 				__func__);
 
 		spin_unlock(&pdx->stagedLock);	/*  OK here */
@@ -1116,7 +1116,7 @@ static void ced_readchar_callback(struct urb *pUrb)
 		pdx->bPipeError[nPipe] = 1;	/*  Flag an error for later */
 	} else {
 		if ((nGot > 1) && ((pdx->pCoherCharIn[0] & 0x7f) == 0x1b)) {	/*  Esc sequence? */
-			Handle1401Esc(pdx, &pdx->pCoherCharIn[1], nGot - 1);	/*  handle it */
+			ced_handle_esc(pdx, &pdx->pCoherCharIn[1], nGot - 1);	/*  handle it */
 			spin_lock(&pdx->charInLock);	/*  already at irq level */
 		} else {
 			spin_lock(&pdx->charInLock);	/*  already at irq level */
@@ -1148,17 +1148,17 @@ static void ced_readchar_callback(struct urb *pUrb)
 	pdx->bReadCharsPending = false;	/*  No longer have a pending read */
 	spin_unlock(&pdx->charInLock);	/*  already at irq level */
 
-	Allowi(pdx);	/*  see if we can do the next one */
+	ced_allowi(pdx);	/*  see if we can do the next one */
 }
 
 /****************************************************************************
-** Allowi
+** ced_allowi
 **
 ** This is used to make sure that there is always a pending input transfer so
 ** we can pick up any inward transfers. This can be called in multiple contexts
 ** so we use the irqsave version of the spinlock.
 ****************************************************************************/
-int Allowi(DEVICE_EXTENSION *pdx)
+int ced_allowi(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = U14ERR_NOERROR;
 	unsigned long flags;
@@ -1173,7 +1173,7 @@ int Allowi(DEVICE_EXTENSION *pdx)
 	    (pdx->dwNumInput < (INBUF_SZ / 2)) &&	/*   and there is some space */
 	    (pdx->dwDMAFlag == MODE_CHAR) &&	/*   not doing any DMA */
 	    (!pdx->bXFerWaiting) &&	/*   no xfer waiting to start */
-	    (CanAcceptIoRequests(pdx)))	{ /*   and activity is generally OK */
+	    (can_accept_io_requests(pdx)))	{ /*   and activity is generally OK */
 				/*   then off we go */
 		unsigned int nMax = INBUF_SZ - pdx->dwNumInput;	/*  max we could read */
 		int nPipe = pdx->nPipes == 4 ? 1 : 0;	/*  The pipe number to use */
@@ -1215,7 +1215,7 @@ static long ced_ioctl(struct file *file, unsigned int cmd, unsigned long ulArg)
 {
 	int err = 0;
 	DEVICE_EXTENSION *pdx = file->private_data;
-	if (!CanAcceptIoRequests(pdx))	/*  check we still exist */
+	if (!can_accept_io_requests(pdx))	/*  check we still exist */
 		return -ENODEV;
 
 	/*  Check that access is allowed, where is is needed. Anything that would have an indeterminate */
@@ -1229,38 +1229,38 @@ static long ced_ioctl(struct file *file, unsigned int cmd, unsigned long ulArg)
 
 	switch (_IOC_NR(cmd)) {
 	case _IOC_NR(IOCTL_CED_SENDSTRING(0)):
-		return SendString(pdx, (const char __user *)ulArg,
+		return ced_send_string(pdx, (const char __user *)ulArg,
 				  _IOC_SIZE(cmd));
 
 	case _IOC_NR(IOCTL_CED_RESET1401):
-		return Reset1401(pdx);
+		return ced_reset(pdx);
 
 	case _IOC_NR(IOCTL_CED_GETCHAR):
-		return GetChar(pdx);
+		return ced_get_char(pdx);
 
 	case _IOC_NR(IOCTL_CED_SENDCHAR):
-		return SendChar(pdx, (char)ulArg);
+		return ced_send_char(pdx, (char)ulArg);
 
 	case _IOC_NR(IOCTL_CED_STAT1401):
-		return Stat1401(pdx);
+		return ced_stat_1401(pdx);
 
 	case _IOC_NR(IOCTL_CED_LINECOUNT):
-		return LineCount(pdx);
+		return ced_line_count(pdx);
 
 	case _IOC_NR(IOCTL_CED_GETSTRING(0)):
-		return GetString(pdx, (char __user *)ulArg, _IOC_SIZE(cmd));
+		return ced_get_string(pdx, (char __user *)ulArg, _IOC_SIZE(cmd));
 
 	case _IOC_NR(IOCTL_CED_SETTRANSFER):
-		return SetTransfer(pdx, (struct transfer_area_desc __user *) ulArg);
+		return ced_set_transfer(pdx, (struct transfer_area_desc __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_UNSETTRANSFER):
-		return UnsetTransfer(pdx, (int)ulArg);
+		return ced_unset_transfer(pdx, (int)ulArg);
 
 	case _IOC_NR(IOCTL_CED_SETEVENT):
-		return SetEvent(pdx, (struct transfer_event __user *) ulArg);
+		return ced_set_event(pdx, (struct transfer_event __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_GETOUTBUFSPACE):
-		return GetOutBufSpace(pdx);
+		return ced_get_out_buf_space(pdx);
 
 	case _IOC_NR(IOCTL_CED_GETBASEADDRESS):
 		return -1;
@@ -1269,66 +1269,66 @@ static long ced_ioctl(struct file *file, unsigned int cmd, unsigned long ulArg)
 		return (2 << 24) | (DRIVERMAJREV << 16) | DRIVERMINREV;	/*  USB | MAJOR | MINOR */
 
 	case _IOC_NR(IOCTL_CED_GETTRANSFER):
-		return GetTransfer(pdx, (TGET_TX_BLOCK __user *) ulArg);
+		return ced_get_transfer(pdx, (TGET_TX_BLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_KILLIO1401):
-		return KillIO1401(pdx);
+		return ced_kill_io(pdx);
 
 	case _IOC_NR(IOCTL_CED_STATEOF1401):
-		return StateOf1401(pdx);
+		return ced_state_of_1401(pdx);
 
 	case _IOC_NR(IOCTL_CED_GRAB1401):
 	case _IOC_NR(IOCTL_CED_FREE1401):
 		return U14ERR_NOERROR;
 
 	case _IOC_NR(IOCTL_CED_STARTSELFTEST):
-		return StartSelfTest(pdx);
+		return ced_start_self_test(pdx);
 
 	case _IOC_NR(IOCTL_CED_CHECKSELFTEST):
-		return CheckSelfTest(pdx, (TGET_SELFTEST __user *) ulArg);
+		return ced_check_self_test(pdx, (TGET_SELFTEST __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_TYPEOF1401):
-		return TypeOf1401(pdx);
+		return ced_type_of_1401(pdx);
 
 	case _IOC_NR(IOCTL_CED_TRANSFERFLAGS):
-		return TransferFlags(pdx);
+		return ced_transfer_flags(pdx);
 
 	case _IOC_NR(IOCTL_CED_DBGPEEK):
-		return DbgPeek(pdx, (TDBGBLOCK __user *) ulArg);
+		return ced_dbg_peek(pdx, (TDBGBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_DBGPOKE):
-		return DbgPoke(pdx, (TDBGBLOCK __user *) ulArg);
+		return ced_dbg_poke(pdx, (TDBGBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_DBGRAMPDATA):
-		return DbgRampData(pdx, (TDBGBLOCK __user *) ulArg);
+		return ced_dbg_ramp_data(pdx, (TDBGBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_DBGRAMPADDR):
-		return DbgRampAddr(pdx, (TDBGBLOCK __user *) ulArg);
+		return ced_dbg_ramp_addr(pdx, (TDBGBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_DBGGETDATA):
-		return DbgGetData(pdx, (TDBGBLOCK __user *) ulArg);
+		return ced_dbg_get_data(pdx, (TDBGBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_DBGSTOPLOOP):
-		return DbgStopLoop(pdx);
+		return ced_dbg_stop_loop(pdx);
 
 	case _IOC_NR(IOCTL_CED_FULLRESET):
 		pdx->bForceReset = true;	/*  Set a flag for a full reset */
 		break;
 
 	case _IOC_NR(IOCTL_CED_SETCIRCULAR):
-		return SetCircular(pdx, (struct transfer_area_desc __user *) ulArg);
+		return ced_set_circular(pdx, (struct transfer_area_desc __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_GETCIRCBLOCK):
-		return GetCircBlock(pdx, (TCIRCBLOCK __user *) ulArg);
+		return ced_get_circ_block(pdx, (TCIRCBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_FREECIRCBLOCK):
-		return FreeCircBlock(pdx, (TCIRCBLOCK __user *) ulArg);
+		return ced_free_circ_block(pdx, (TCIRCBLOCK __user *) ulArg);
 
 	case _IOC_NR(IOCTL_CED_WAITEVENT):
-		return WaitEvent(pdx, (int)(ulArg & 0xff), (int)(ulArg >> 8));
+		return ced_wait_event(pdx, (int)(ulArg & 0xff), (int)(ulArg >> 8));
 
 	case _IOC_NR(IOCTL_CED_TESTEVENT):
-		return TestEvent(pdx, (int)ulArg);
+		return ced_test_event(pdx, (int)ulArg);
 
 	default:
 		return U14ERR_NO_SUCH_FN;
@@ -1492,7 +1492,7 @@ static void ced_disconnect(struct usb_interface *interface)
 	mutex_lock(&pdx->io_mutex);	/*  stop more I/O starting while... */
 	ced_draw_down(pdx);	/*  ...wait for then kill any io */
 	for (i = 0; i < MAX_TRANSAREAS; ++i) {
-		int iErr = ClearArea(pdx, i);	/*  ...release any used memory */
+		int iErr = ced_clear_area(pdx, i);	/*  ...release any used memory */
 		if (iErr == U14ERR_UNLOCKFAIL)
 			dev_err(&pdx->interface->dev, "%s: Area %d was in used\n",
 				__func__, i);

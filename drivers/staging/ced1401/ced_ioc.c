@@ -32,11 +32,11 @@
 #include "usb1401.h"
 
 /****************************************************************************
-** FlushOutBuff
+** ced_flush_out_buff
 **
 ** Empties the Output buffer and sets int lines. Used from user level only
 ****************************************************************************/
-static void FlushOutBuff(DEVICE_EXTENSION *pdx)
+static void ced_flush_out_buff(DEVICE_EXTENSION *pdx)
 {
 	dev_dbg(&pdx->interface->dev, "%s: currentState=%d\n",
 		__func__, pdx->sCurrentState);
@@ -53,11 +53,11 @@ static void FlushOutBuff(DEVICE_EXTENSION *pdx)
 
 /****************************************************************************
 **
-** FlushInBuff
+** ced_flush_in_buff
 **
 ** Empties the input buffer and sets int lines
 ****************************************************************************/
-static void FlushInBuff(DEVICE_EXTENSION *pdx)
+static void ced_flush_in_buff(DEVICE_EXTENSION *pdx)
 {
 	dev_dbg(&pdx->interface->dev, "%s: currentState=%d\n",
 		__func__, pdx->sCurrentState);
@@ -73,12 +73,12 @@ static void FlushInBuff(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** PutChars
+** ced_put_chars
 **
 ** Utility routine to copy chars into the output buffer and fire them off.
 ** called from user mode, holds charOutLock.
 ****************************************************************************/
-static int PutChars(DEVICE_EXTENSION *pdx, const char *pCh,
+static int ced_put_chars(DEVICE_EXTENSION *pdx, const char *pCh,
 		    unsigned int uCount)
 {
 	int iReturn;
@@ -92,7 +92,7 @@ static int PutChars(DEVICE_EXTENSION *pdx, const char *pCh,
 		}
 		pdx->dwNumOutput += uCount;
 		spin_unlock_irq(&pdx->charOutLock);
-		iReturn = SendChars(pdx);	/*  ...give a chance to transmit data */
+		iReturn = ced_send_chars(pdx);	/*  ...give a chance to transmit data */
 	} else {
 		iReturn = U14ERR_NOOUT;	/*  no room at the out (ha-ha) */
 		spin_unlock_irq(&pdx->charOutLock);
@@ -105,7 +105,7 @@ static int PutChars(DEVICE_EXTENSION *pdx, const char *pCh,
 ** trigger an output transfer if this is appropriate. User mode.
 ** Holds the io_mutex
 *****************************************************************************/
-int SendString(DEVICE_EXTENSION *pdx, const char __user *pData,
+int ced_send_string(DEVICE_EXTENSION *pdx, const char __user *pData,
 	       unsigned int n)
 {
 	int iReturn = U14ERR_NOERROR;	/*  assume all will be well */
@@ -120,34 +120,34 @@ int SendString(DEVICE_EXTENSION *pdx, const char __user *pData,
 	if (n > 0) {		/*  do nothing if nowt to do! */
 		dev_dbg(&pdx->interface->dev, "%s: n=%d>%s<\n",
 			__func__, n, buffer);
-		iReturn = PutChars(pdx, buffer, n);
+		iReturn = ced_put_chars(pdx, buffer, n);
 	}
 
-	Allowi(pdx);		/*  make sure we have input int */
+	ced_allowi(pdx);		/*  make sure we have input int */
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** SendChar
+** ced_send_char
 **
 ** Sends a single character to the 1401. User mode, holds io_mutex.
 ****************************************************************************/
-int SendChar(DEVICE_EXTENSION *pdx, char c)
+int ced_send_char(DEVICE_EXTENSION *pdx, char c)
 {
 	int iReturn;
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	iReturn = PutChars(pdx, &c, 1);
-	dev_dbg(&pdx->interface->dev, "SendChar >%c< (0x%02x)\n", c, c);
-	Allowi(pdx);	/*  Make sure char reads are running */
+	iReturn = ced_put_chars(pdx, &c, 1);
+	dev_dbg(&pdx->interface->dev, "ced_send_char >%c< (0x%02x)\n", c, c);
+	ced_allowi(pdx);	/*  Make sure char reads are running */
 	mutex_unlock(&pdx->io_mutex);
 	return iReturn;
 }
 
 /***************************************************************************
 **
-** Get1401State
+** ced_get_state
 **
 **  Retrieves state information from the 1401, adjusts the 1401 state held
 **  in the device extension to indicate the current 1401 type.
@@ -171,7 +171,7 @@ int SendChar(DEVICE_EXTENSION *pdx, char c)
 **
 ** return error code (U14ERR_NOERROR for OK)
 */
-int Get1401State(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error)
+int ced_get_state(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error)
 {
 	int nGot;
 	dev_dbg(&pdx->interface->dev, "%s: entry\n", __func__);
@@ -214,11 +214,11 @@ int Get1401State(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error)
 }
 
 /****************************************************************************
-** ReadWrite_Cancel
+** ced_read_write_cancel
 **
 ** Kills off staged read\write request from the USB if one is pending.
 ****************************************************************************/
-int ReadWrite_Cancel(DEVICE_EXTENSION *pdx)
+int ced_read_write_cancel(DEVICE_EXTENSION *pdx)
 {
 	dev_dbg(&pdx->interface->dev, "%s: entry %d\n",
 		__func__, pdx->bStagedUrbPending);
@@ -231,7 +231,7 @@ int ReadWrite_Cancel(DEVICE_EXTENSION *pdx)
 
 	if (pdx->bStagedUrbPending) {	/*  anything to be cancelled? May need more... */
 		dev_info(&pdx->interface - dev,
-			 "ReadWrite_Cancel about to cancel Urb\n");
+			 "ced_read_write_cancel about to cancel Urb\n");
 		/* Clear the staging done flag */
 		/* KeClearEvent(&pdx->StagingDoneEvent); */
 		USB_ASSERT(pdx->pStagedIrp != NULL);
@@ -255,7 +255,7 @@ int ReadWrite_Cancel(DEVICE_EXTENSION *pdx)
 			ntStatus = U14ERR_FAIL;
 		}
 		USB_KdPrint(DBGLVL_DEFAULT,
-			    ("ReadWrite_Cancel ntStatus = 0x%x decimal %d\n",
+			    ("ced_read_write_cancel ntStatus = 0x%x decimal %d\n",
 			     ntStatus, ntStatus));
 	} else
 		spin_unlock_irq(&pdx->stagedLock);
@@ -269,13 +269,13 @@ int ReadWrite_Cancel(DEVICE_EXTENSION *pdx)
 }
 
 /***************************************************************************
-** InSelfTest - utility to check in self test. Return 1 for ST, 0 for not or
+** ced_in_self_test - utility to check in self test. Return 1 for ST, 0 for not or
 ** a -ve error code if we failed for some reason.
 ***************************************************************************/
-static int InSelfTest(DEVICE_EXTENSION *pdx, unsigned int *pState)
+static int ced_in_self_test(DEVICE_EXTENSION *pdx, unsigned int *pState)
 {
 	unsigned int state, error;
-	int iReturn = Get1401State(pdx, &state, &error);	/*  see if in self-test */
+	int iReturn = ced_get_state(pdx, &state, &error);	/*  see if in self-test */
 	if (iReturn == U14ERR_NOERROR)	/*  if all still OK */
 		iReturn = (state == (unsigned int)-1) ||	/*  TX problem or... */
 		    ((state & 0xff) == 0x80);	/*  ...self test */
@@ -284,7 +284,7 @@ static int InSelfTest(DEVICE_EXTENSION *pdx, unsigned int *pState)
 }
 
 /***************************************************************************
-** Is1401 - ALWAYS CALLED HOLDING THE io_mutex
+** ced_is_1401 - ALWAYS CALLED HOLDING THE io_mutex
 **
 ** Tests for the current state of the 1401. Sets sCurrentState:
 **
@@ -301,14 +301,14 @@ static int InSelfTest(DEVICE_EXTENSION *pdx, unsigned int *pState)
 **
 **  Returns TRUE if a 1401 detected and OK, else FALSE
 ****************************************************************************/
-bool Is1401(DEVICE_EXTENSION *pdx)
+static bool ced_is_1401(DEVICE_EXTENSION *pdx)
 {
 	int iReturn;
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 
 	ced_draw_down(pdx);	/*  wait for, then kill outstanding Urbs */
-	FlushInBuff(pdx);	/*  Clear out input buffer & pipe */
-	FlushOutBuff(pdx);	/*  Clear output buffer & pipe */
+	ced_flush_in_buff(pdx);	/*  Clear out input buffer & pipe */
+	ced_flush_out_buff(pdx);	/*  Clear output buffer & pipe */
 
 	/*  The next call returns 0 if OK, but has returned 1 in the past, meaning that */
 	/*  usb_unlock_device() is needed... now it always is */
@@ -326,12 +326,12 @@ bool Is1401(DEVICE_EXTENSION *pdx)
 	pdx->dwDMAFlag = MODE_CHAR;	/*  Clear DMA mode flag regardless! */
 	if (iReturn == 0) {	/*  if all is OK still */
 		unsigned int state;
-		iReturn = InSelfTest(pdx, &state);	/*  see if likely in self test */
+		iReturn = ced_in_self_test(pdx, &state);	/*  see if likely in self test */
 		if (iReturn > 0) {	/*  do we need to wait for self-test? */
 			unsigned long ulTimeOut = jiffies + 30 * HZ;	/*  when to give up */
 			while ((iReturn > 0) && time_before(jiffies, ulTimeOut)) {
 				schedule();	/*  let other stuff run */
-				iReturn = InSelfTest(pdx, &state);	/*  see if done yet */
+				iReturn = ced_in_self_test(pdx, &state);	/*  see if done yet */
 			}
 		}
 
@@ -345,7 +345,7 @@ bool Is1401(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** QuickCheck  - ALWAYS CALLED HOLDING THE io_mutex
+** ced_quick_check  - ALWAYS CALLED HOLDING THE io_mutex
 ** This is used to test for a 1401. It will try to do a quick check if all is
 **  OK, that is the 1401 was OK the last time it was asked, and there is no DMA
 **  in progress, and if the bTestBuff flag is set, the character buffers must be
@@ -353,12 +353,12 @@ bool Is1401(DEVICE_EXTENSION *pdx)
 **  all is OK.
 **
 ** If any of the above conditions are not met, or if the state or type of the
-**  1401 has changed since the previous test, the full Is1401 test is done, but
+**  1401 has changed since the previous test, the full ced_is_1401 test is done, but
 **  only if bCanReset is also TRUE.
 **
 ** The return value is TRUE if a useable 1401 is found, FALSE if not
 */
-bool QuickCheck(DEVICE_EXTENSION *pdx, bool bTestBuff, bool bCanReset)
+static bool ced_quick_check(DEVICE_EXTENSION *pdx, bool bTestBuff, bool bCanReset)
 {
 	bool bRet = false;	/*  assume it will fail and we will reset */
 	bool bShortTest;
@@ -382,52 +382,52 @@ bool QuickCheck(DEVICE_EXTENSION *pdx, bool bTestBuff, bool bCanReset)
 	if (bShortTest || !bCanReset) {	/*  Still OK to try the short test? */
 				/*  Always test if no reset - we want state update */
 		unsigned int state, error;
-		dev_dbg(&pdx->interface->dev, "%s: Get1401State\n", __func__);
-		if (Get1401State(pdx, &state, &error) == U14ERR_NOERROR) {	/*  Check on the 1401 state */
+		dev_dbg(&pdx->interface->dev, "%s: ced_get_state\n", __func__);
+		if (ced_get_state(pdx, &state, &error) == U14ERR_NOERROR) {	/*  Check on the 1401 state */
 			if ((state & 0xFF) == 0)	/*  If call worked, check the status value */
 				bRet = true;	/*  If that was zero, all is OK, no reset needed */
 		}
 	}
 
 	if (!bRet && bCanReset)	{ /*  If all not OK, then */
-		dev_info(&pdx->interface->dev, "%s: Is1401 %d %d %d %d\n",
+		dev_info(&pdx->interface->dev, "%s: ced_is_1401 %d %d %d %d\n",
 			 __func__, bShortTest, pdx->sCurrentState, bTestBuff,
 			 pdx->bForceReset);
-		bRet = Is1401(pdx);	/*   do full test */
+		bRet = ced_is_1401(pdx);	/*   do full test */
 	}
 
 	return bRet;
 }
 
 /****************************************************************************
-** Reset1401
+** ced_reset
 **
 ** Resets the 1401 and empties the i/o buffers
 *****************************************************************************/
-int Reset1401(DEVICE_EXTENSION *pdx)
+int ced_reset(DEVICE_EXTENSION *pdx)
 {
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	dev_dbg(&pdx->interface->dev, "%s: About to call QuickCheck\n",
+	dev_dbg(&pdx->interface->dev, "%s: About to call ced_quick_check\n",
 		__func__);
-	QuickCheck(pdx, true, true);	/*  Check 1401, reset if not OK */
+	ced_quick_check(pdx, true, true);	/*  Check 1401, reset if not OK */
 	mutex_unlock(&pdx->io_mutex);
 	return U14ERR_NOERROR;
 }
 
 /****************************************************************************
-** GetChar
+** ced_get_char
 **
 ** Gets a single character from the 1401
 ****************************************************************************/
-int GetChar(DEVICE_EXTENSION *pdx)
+int ced_get_char(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = U14ERR_NOIN;	/*  assume we will get  nothing */
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
 
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 
-	Allowi(pdx);	/*  Make sure char reads are running */
-	SendChars(pdx);	/*  and send any buffered chars */
+	ced_allowi(pdx);	/*  Make sure char reads are running */
+	ced_send_chars(pdx);	/*  and send any buffered chars */
 
 	spin_lock_irq(&pdx->charInLock);
 	if (pdx->dwNumInput > 0) {	/*  worth looking */
@@ -439,14 +439,14 @@ int GetChar(DEVICE_EXTENSION *pdx)
 		iReturn = U14ERR_NOIN;	/*  no input data to read */
 	spin_unlock_irq(&pdx->charInLock);
 
-	Allowi(pdx);	/*  Make sure char reads are running */
+	ced_allowi(pdx);	/*  Make sure char reads are running */
 
 	mutex_unlock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
 	return iReturn;
 }
 
 /****************************************************************************
-** GetString
+** ced_get_string
 **
 ** Gets a string from the 1401. Returns chars up to the next CR or when
 ** there are no more to read or nowhere to put them. CR is translated to
@@ -456,7 +456,7 @@ int GetChar(DEVICE_EXTENSION *pdx)
 ** returns the count of characters (including the terminator, or 0 if none
 ** or a negative error code.
 ****************************************************************************/
-int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n)
+int ced_get_string(DEVICE_EXTENSION *pdx, char __user *pUser, int n)
 {
 	int nAvailable;		/*  character in the buffer */
 	int iReturn = U14ERR_NOIN;
@@ -464,8 +464,8 @@ int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n)
 		return -ENOMEM;
 
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	Allowi(pdx);	/*  Make sure char reads are running */
-	SendChars(pdx);		/*  and send any buffered chars */
+	ced_allowi(pdx);	/*  Make sure char reads are running */
+	ced_send_chars(pdx);		/*  and send any buffered chars */
 
 	spin_lock_irq(&pdx->charInLock);
 	nAvailable = pdx->dwNumInput;	/*  characters available now */
@@ -507,7 +507,7 @@ int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n)
 	} else
 		spin_unlock_irq(&pdx->charInLock);
 
-	Allowi(pdx);	/*  Make sure char reads are running */
+	ced_allowi(pdx);	/*  Make sure char reads are running */
 	mutex_unlock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
 
 	return iReturn;
@@ -516,31 +516,31 @@ int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n)
 /*******************************************************************************
 ** Get count of characters in the inout buffer.
 *******************************************************************************/
-int Stat1401(DEVICE_EXTENSION *pdx)
+int ced_stat_1401(DEVICE_EXTENSION *pdx)
 {
 	int iReturn;
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	Allowi(pdx);		/*  make sure we allow pending chars */
-	SendChars(pdx);		/*  in both directions */
+	ced_allowi(pdx);		/*  make sure we allow pending chars */
+	ced_send_chars(pdx);		/*  in both directions */
 	iReturn = pdx->dwNumInput;	/*  no lock as single read */
 	mutex_unlock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
 	return iReturn;
 }
 
 /****************************************************************************
-** LineCount
+** ced_line_count
 **
 ** Returns the number of newline chars in the buffer. There is no need for
 ** any fancy interlocks as we only read the interrupt routine data, and the
 ** system is arranged so nothing can be destroyed.
 ****************************************************************************/
-int LineCount(DEVICE_EXTENSION *pdx)
+int ced_line_count(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = 0;	/*  will be count of line ends */
 
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	Allowi(pdx);		/*  Make sure char reads are running */
-	SendChars(pdx);		/*  and send any buffered chars */
+	ced_allowi(pdx);		/*  Make sure char reads are running */
+	ced_send_chars(pdx);		/*  and send any buffered chars */
 	spin_lock_irq(&pdx->charInLock);	/*  Get protection */
 
 	if (pdx->dwNumInput > 0) {	/*  worth looking? */
@@ -562,15 +562,15 @@ int LineCount(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** GetOutBufSpace
+** ced_get_out_buf_space
 **
 ** Gets the space in the output buffer. Called from user code.
 *****************************************************************************/
-int GetOutBufSpace(DEVICE_EXTENSION *pdx)
+int ced_get_out_buf_space(DEVICE_EXTENSION *pdx)
 {
 	int iReturn;
 	mutex_lock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
-	SendChars(pdx);		/*  send any buffered chars */
+	ced_send_chars(pdx);		/*  send any buffered chars */
 	iReturn = (int)(OUTBUF_SZ - pdx->dwNumOutput);	/*  no lock needed for single read */
 	dev_dbg(&pdx->interface->dev, "%s: %d\n", __func__, iReturn);
 	mutex_unlock(&pdx->io_mutex);	/*  Protect disconnect from new i/o */
@@ -579,12 +579,12 @@ int GetOutBufSpace(DEVICE_EXTENSION *pdx)
 
 /****************************************************************************
 **
-** ClearArea
+** ced_clear_area
 **
 ** Clears up a transfer area. This is always called in the context of a user
 ** request, never from a call-back.
 ****************************************************************************/
-int ClearArea(DEVICE_EXTENSION *pdx, int nArea)
+int ced_clear_area(DEVICE_EXTENSION *pdx, int nArea)
 {
 	int iReturn = U14ERR_NOERROR;
 
@@ -655,12 +655,12 @@ int ClearArea(DEVICE_EXTENSION *pdx, int nArea)
 }
 
 /****************************************************************************
-** SetArea
+** ced_set_area
 **
 ** Sets up a transfer area - the functional part. Called by both
-** SetTransfer and SetCircular.
+** ced_set_transfer and ced_set_circular.
 ****************************************************************************/
-static int SetArea(DEVICE_EXTENSION *pdx, int nArea, char __user *puBuf,
+static int ced_set_area(DEVICE_EXTENSION *pdx, int nArea, char __user *puBuf,
 		   unsigned int dwLength, bool bCircular, bool bCircToHost)
 {
 	/*  Start by working out the page aligned start of the area and the size */
@@ -674,7 +674,7 @@ static int SetArea(DEVICE_EXTENSION *pdx, int nArea, char __user *puBuf,
 	struct page **pPages = NULL;	/*  space for page tables */
 	int nPages = 0;		/*  and number of pages */
 
-	int iReturn = ClearArea(pdx, nArea);	/*  see if OK to use this area */
+	int iReturn = ced_clear_area(pdx, nArea);	/*  see if OK to use this area */
 	if ((iReturn != U14ERR_NOTSET) &&	/*  if not area unused and... */
 	    (iReturn != U14ERR_NOERROR))	/*  ...not all OK, then... */
 		return iReturn;	/*  ...we cannot use this area */
@@ -730,13 +730,13 @@ error:
 }
 
 /****************************************************************************
-** SetTransfer
+** ced_set_transfer
 **
 ** Sets up a transfer area record. If the area is already set, we attempt to
 ** unset it. Unsetting will fail if the area is booked, and a transfer to that
 ** area is in progress. Otherwise, we will release the area and re-assign it.
 ****************************************************************************/
-int SetTransfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
+int ced_set_transfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 {
 	int iReturn;
 	struct transfer_area_desc td;
@@ -751,7 +751,7 @@ int SetTransfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 	/*  pointer. The pointer is always passed as a 64-bit object so that we don't have problems using */
 	/*  a 32-bit program on a 64-bit system. unsigned long is 64-bits on a 64-bit system. */
 	iReturn =
-	    SetArea(pdx, td.wAreaNum,
+	    ced_set_area(pdx, td.wAreaNum,
 		    (char __user *)((unsigned long)td.lpvBuff), td.dwLength,
 		    false, false);
 	mutex_unlock(&pdx->io_mutex);
@@ -762,24 +762,24 @@ int SetTransfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 ** UnSetTransfer
 ** Erases a transfer area record
 ****************************************************************************/
-int UnsetTransfer(DEVICE_EXTENSION *pdx, int nArea)
+int ced_unset_transfer(DEVICE_EXTENSION *pdx, int nArea)
 {
 	int iReturn;
 	mutex_lock(&pdx->io_mutex);
-	iReturn = ClearArea(pdx, nArea);
+	iReturn = ced_clear_area(pdx, nArea);
 	mutex_unlock(&pdx->io_mutex);
 	return iReturn;
 }
 
 /****************************************************************************
-** SetEvent
+** ced_set_event
 ** Creates an event that we can test for based on a transfer to/from an area.
 ** The area must be setup for a transfer. We attempt to simulate the Windows
 ** driver behavior for events (as we don't actually use them), which is to
 ** pretend that whatever the user asked for was achieved, so we return 1 if
 ** try to create one, and 0 if they ask to remove (assuming all else was OK).
 ****************************************************************************/
-int SetEvent(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE)
+int ced_set_event(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE)
 {
 	int iReturn = U14ERR_NOERROR;
 	struct transfer_event te;
@@ -809,12 +809,12 @@ int SetEvent(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE)
 }
 
 /****************************************************************************
-** WaitEvent
+** ced_wait_event
 ** Sleep the process with a timeout waiting for an event. Returns the number
 ** of times that a block met the event condition since we last cleared it or
 ** 0 if timed out, or -ve error (bad area or not set, or signal).
 ****************************************************************************/
-int WaitEvent(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut)
+int ced_wait_event(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut)
 {
 	int iReturn;
 	if ((unsigned)nArea >= MAX_TRANSAREAS)
@@ -856,12 +856,12 @@ int WaitEvent(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut)
 }
 
 /****************************************************************************
-** TestEvent
-** Test the event to see if a WaitEvent would return immediately. Returns the
+** ced_test_event
+** Test the event to see if a ced_wait_event would return immediately. Returns the
 ** number of times a block completed since the last call, or 0 if none or a
 ** negative error.
 ****************************************************************************/
-int TestEvent(DEVICE_EXTENSION *pdx, int nArea)
+int ced_test_event(DEVICE_EXTENSION *pdx, int nArea)
 {
 	int iReturn;
 	if ((unsigned)nArea >= MAX_TRANSAREAS)
@@ -879,10 +879,10 @@ int TestEvent(DEVICE_EXTENSION *pdx, int nArea)
 }
 
 /****************************************************************************
-** GetTransferInfo
+** ced_get_transferInfo
 ** Puts the current state of the 1401 in a TGET_TX_BLOCK.
 *****************************************************************************/
-int GetTransfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pTX)
+int ced_get_transfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pTX)
 {
 	int iReturn = U14ERR_NOERROR;
 	unsigned int dwIdent;
@@ -917,43 +917,31 @@ int GetTransfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pTX)
 }
 
 /****************************************************************************
-** KillIO1401
+** ced_kill_io
 **
 ** Empties the host i/o buffers
 ****************************************************************************/
-int KillIO1401(DEVICE_EXTENSION *pdx)
+int ced_kill_io(DEVICE_EXTENSION *pdx)
 {
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 	mutex_lock(&pdx->io_mutex);
-	FlushOutBuff(pdx);
-	FlushInBuff(pdx);
+	ced_flush_out_buff(pdx);
+	ced_flush_in_buff(pdx);
 	mutex_unlock(&pdx->io_mutex);
 	return U14ERR_NOERROR;
 }
 
 /****************************************************************************
-** BlkTransState
-** Returns a 0 or a 1 for whether DMA is happening. No point holding a mutex
-** for this as it only does one read.
-*****************************************************************************/
-int BlkTransState(DEVICE_EXTENSION *pdx)
-{
-	int iReturn = pdx->dwDMAFlag != MODE_CHAR;
-	dev_dbg(&pdx->interface->dev, "%s: %d\n", __func__, iReturn);
-	return iReturn;
-}
-
-/****************************************************************************
-** StateOf1401
+** ced_state_of_1401
 **
 ** Puts the current state of the 1401 in the Irp return buffer.
 *****************************************************************************/
-int StateOf1401(DEVICE_EXTENSION *pdx)
+int ced_state_of_1401(DEVICE_EXTENSION *pdx)
 {
 	int iReturn;
 	mutex_lock(&pdx->io_mutex);
 
-	QuickCheck(pdx, false, false);	/*  get state up to date, no reset */
+	ced_quick_check(pdx, false, false);	/*  get state up to date, no reset */
 	iReturn = pdx->sCurrentState;
 
 	mutex_unlock(&pdx->io_mutex);
@@ -963,22 +951,22 @@ int StateOf1401(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** StartSelfTest
+** ced_start_self_test
 **
 ** Initiates a self-test cycle. The assumption is that we have no interrupts
 ** active, so we should make sure that this is the case.
 *****************************************************************************/
-int StartSelfTest(DEVICE_EXTENSION *pdx)
+int ced_start_self_test(DEVICE_EXTENSION *pdx)
 {
 	int nGot;
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 
 	ced_draw_down(pdx);	/*  wait for, then kill outstanding Urbs */
-	FlushInBuff(pdx);	/*  Clear out input buffer & pipe */
-	FlushOutBuff(pdx);	/*  Clear output buffer & pipe */
+	ced_flush_in_buff(pdx);	/*  Clear out input buffer & pipe */
+	ced_flush_out_buff(pdx);	/*  Clear output buffer & pipe */
 	/* so things stay tidy */
-	/* ReadWrite_Cancel(pDeviceObject); */
+	/* ced_read_write_cancel(pDeviceObject); */
 	pdx->dwDMAFlag = MODE_CHAR;	/* Clear DMA mode flags here */
 
 	nGot = usb_control_msg(pdx->udev, usb_rcvctrlpipe(pdx->udev, 0),
@@ -993,11 +981,11 @@ int StartSelfTest(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** CheckSelfTest
+** ced_check_self_test
 **
 ** Check progress of a self-test cycle
 ****************************************************************************/
-int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST)
+int ced_check_self_test(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST)
 {
 	unsigned int state, error;
 	int iReturn;
@@ -1007,23 +995,23 @@ int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST)
 	mutex_lock(&pdx->io_mutex);
 
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
-	iReturn = Get1401State(pdx, &state, &error);
+	iReturn = ced_get_state(pdx, &state, &error);
 	if (iReturn == U14ERR_NOERROR)	/*  Only accept zero if it happens twice */
-		iReturn = Get1401State(pdx, &state, &error);
+		iReturn = ced_get_state(pdx, &state, &error);
 
 	if (iReturn != U14ERR_NOERROR) {	/*  Self-test can cause comms errors */
 				/*  so we assume still testing */
 		dev_err(&pdx->interface->dev,
-			"%s: Get1401State=%d, assuming still testing\n",
+			"%s: ced_get_state=%d, assuming still testing\n",
 			__func__, iReturn);
 		state = 0x80;	/*  Force still-testing, no error */
 		error = 0;
 		iReturn = U14ERR_NOERROR;
 	}
 
-	if ((state == -1) && (error == -1)) {	/*  If Get1401State had problems */
+	if ((state == -1) && (error == -1)) {	/*  If ced_get_state had problems */
 		dev_err(&pdx->interface->dev,
-			"%s: Get1401State failed, assuming still testing\n",
+			"%s: ced_get_state failed, assuming still testing\n",
 			__func__);
 		state = 0x80;	/*  Force still-testing, no error */
 		error = 0;
@@ -1054,9 +1042,9 @@ int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST)
 	if (gst.code < 0) {	/*  If we have a problem or finished */
 				/*  If using the 2890 we should reset properly */
 		if ((pdx->nPipes == 4) && (pdx->s1401Type <= TYPEPOWER))
-			Is1401(pdx);	/*  Get 1401 reset and OK */
+			ced_is_1401(pdx);	/*  Get 1401 reset and OK */
 		else
-			QuickCheck(pdx, true, true);	/*  Otherwise check without reset unless problems */
+			ced_quick_check(pdx, true, true);	/*  Otherwise check without reset unless problems */
 	}
 	mutex_unlock(&pdx->io_mutex);
 
@@ -1067,11 +1055,11 @@ int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST)
 }
 
 /****************************************************************************
-** TypeOf1401
+** ced_type_of_1401
 **
 ** Returns code for standard, plus, micro1401, power1401 or none
 ****************************************************************************/
-int TypeOf1401(DEVICE_EXTENSION *pdx)
+int ced_type_of_1401(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = TYPEUNKNOWN;
 	mutex_lock(&pdx->io_mutex);
@@ -1100,11 +1088,11 @@ int TypeOf1401(DEVICE_EXTENSION *pdx)
 }
 
 /****************************************************************************
-** TransferFlags
+** ced_transfer_flags
 **
 ** Returns flags on block transfer abilities
 ****************************************************************************/
-int TransferFlags(DEVICE_EXTENSION *pdx)
+int ced_transfer_flags(DEVICE_EXTENSION *pdx)
 {
 	int iReturn = U14TF_MULTIA | U14TF_DIAG |	/*  we always have multiple DMA area */
 	    U14TF_NOTIFY | U14TF_CIRCTH;	/*  diagnostics, notify and circular */
@@ -1118,11 +1106,11 @@ int TransferFlags(DEVICE_EXTENSION *pdx)
 }
 
 /***************************************************************************
-** DbgCmd1401
+** ced_dbg_cmd
 ** Issues a debug\diagnostic command to the 1401 along with a 32-bit datum
 ** This is a utility command used for dbg operations.
 */
-static int DbgCmd1401(DEVICE_EXTENSION *pdx, unsigned char cmd,
+static int ced_dbg_cmd(DEVICE_EXTENSION *pdx, unsigned char cmd,
 		      unsigned int data)
 {
 	int iReturn;
@@ -1140,11 +1128,11 @@ static int DbgCmd1401(DEVICE_EXTENSION *pdx, unsigned char cmd,
 }
 
 /****************************************************************************
-** DbgPeek
+** ced_dbg_peek
 **
 ** Execute the diagnostic peek operation. Uses address, width and repeats.
 ****************************************************************************/
-int DbgPeek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
+int ced_dbg_peek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 {
 	int iReturn;
 	TDBGBLOCK db;
@@ -1155,25 +1143,25 @@ int DbgPeek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s: @ %08x\n", __func__, db.iAddr);
 
-	iReturn = DbgCmd1401(pdx, DB_SETADD, db.iAddr);
+	iReturn = ced_dbg_cmd(pdx, DB_SETADD, db.iAddr);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_WIDTH, db.iWidth);
+		iReturn = ced_dbg_cmd(pdx, DB_WIDTH, db.iWidth);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_REPEATS, db.iRepeats);
+		iReturn = ced_dbg_cmd(pdx, DB_REPEATS, db.iRepeats);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_PEEK, 0);
+		iReturn = ced_dbg_cmd(pdx, DB_PEEK, 0);
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** DbgPoke
+** ced_dbg_poke
 **
 ** Execute the diagnostic poke operation. Parameters are in the CSBLOCK struct
 ** in order address, size, repeats and value to poke.
 ****************************************************************************/
-int DbgPoke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
+int ced_dbg_poke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 {
 	int iReturn;
 	TDBGBLOCK db;
@@ -1184,25 +1172,25 @@ int DbgPoke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s: @ %08x\n", __func__, db.iAddr);
 
-	iReturn = DbgCmd1401(pdx, DB_SETADD, db.iAddr);
+	iReturn = ced_dbg_cmd(pdx, DB_SETADD, db.iAddr);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_WIDTH, db.iWidth);
+		iReturn = ced_dbg_cmd(pdx, DB_WIDTH, db.iWidth);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_REPEATS, db.iRepeats);
+		iReturn = ced_dbg_cmd(pdx, DB_REPEATS, db.iRepeats);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_POKE, db.iData);
+		iReturn = ced_dbg_cmd(pdx, DB_POKE, db.iData);
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** DbgRampData
+** ced_dbg_ramp_data
 **
 ** Execute the diagnostic ramp data operation. Parameters are in the CSBLOCK struct
 ** in order address, default, enable mask, size and repeats.
 ****************************************************************************/
-int DbgRampData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
+int ced_dbg_ramp_data(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 {
 	int iReturn;
 	TDBGBLOCK db;
@@ -1213,28 +1201,28 @@ int DbgRampData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s: @ %08x\n", __func__, db.iAddr);
 
-	iReturn = DbgCmd1401(pdx, DB_SETADD, db.iAddr);
+	iReturn = ced_dbg_cmd(pdx, DB_SETADD, db.iAddr);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_SETDEF, db.iDefault);
+		iReturn = ced_dbg_cmd(pdx, DB_SETDEF, db.iDefault);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_SETMASK, db.iMask);
+		iReturn = ced_dbg_cmd(pdx, DB_SETMASK, db.iMask);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_WIDTH, db.iWidth);
+		iReturn = ced_dbg_cmd(pdx, DB_WIDTH, db.iWidth);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_REPEATS, db.iRepeats);
+		iReturn = ced_dbg_cmd(pdx, DB_REPEATS, db.iRepeats);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_RAMPD, 0);
+		iReturn = ced_dbg_cmd(pdx, DB_RAMPD, 0);
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** DbgRampAddr
+** ced_dbg_ramp_addr
 **
 ** Execute the diagnostic ramp address operation
 ****************************************************************************/
-int DbgRampAddr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
+int ced_dbg_ramp_addr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 {
 	int iReturn;
 	TDBGBLOCK db;
@@ -1245,26 +1233,26 @@ int DbgRampAddr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
 
-	iReturn = DbgCmd1401(pdx, DB_SETDEF, db.iDefault);
+	iReturn = ced_dbg_cmd(pdx, DB_SETDEF, db.iDefault);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_SETMASK, db.iMask);
+		iReturn = ced_dbg_cmd(pdx, DB_SETMASK, db.iMask);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_WIDTH, db.iWidth);
+		iReturn = ced_dbg_cmd(pdx, DB_WIDTH, db.iWidth);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_REPEATS, db.iRepeats);
+		iReturn = ced_dbg_cmd(pdx, DB_REPEATS, db.iRepeats);
 	if (iReturn == U14ERR_NOERROR)
-		iReturn = DbgCmd1401(pdx, DB_RAMPA, 0);
+		iReturn = ced_dbg_cmd(pdx, DB_RAMPA, 0);
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** DbgGetData
+** ced_dbg_get_data
 **
 ** Retrieve the data resulting from the last debug Peek operation
 ****************************************************************************/
-int DbgGetData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
+int ced_dbg_get_data(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 {
 	int iReturn;
 	TDBGBLOCK db;
@@ -1292,33 +1280,33 @@ int DbgGetData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB)
 }
 
 /****************************************************************************
-** DbgStopLoop
+** ced_dbg_stop_loop
 **
-** Stop any never-ending debug loop, we just call Get1401State for USB
+** Stop any never-ending debug loop, we just call ced_get_state for USB
 **
 ****************************************************************************/
-int DbgStopLoop(DEVICE_EXTENSION *pdx)
+int ced_dbg_stop_loop(DEVICE_EXTENSION *pdx)
 {
 	int iReturn;
 	unsigned int uState, uErr;
 
 	mutex_lock(&pdx->io_mutex);
 	dev_dbg(&pdx->interface->dev, "%s\n", __func__);
-	iReturn = Get1401State(pdx, &uState, &uErr);
+	iReturn = ced_get_state(pdx, &uState, &uErr);
 	mutex_unlock(&pdx->io_mutex);
 
 	return iReturn;
 }
 
 /****************************************************************************
-** SetCircular
+** ced_set_circular
 **
 ** Sets up a transfer area record for circular transfers. If the area is
 ** already set, we attempt to unset it. Unsetting will fail if the area is
 ** booked and a transfer to that area is in progress. Otherwise, we will
 ** release the area and re-assign it.
 ****************************************************************************/
-int SetCircular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
+int ced_set_circular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 {
 	int iReturn;
 	bool bToHost;
@@ -1336,7 +1324,7 @@ int SetCircular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 	/*  pointer. The pointer is always passed as a 64-bit object so that we don't have problems using */
 	/*  a 32-bit program on a 64-bit system. unsigned long is 64-bits on a 64-bit system. */
 	iReturn =
-	    SetArea(pdx, td.wAreaNum,
+	    ced_set_area(pdx, td.wAreaNum,
 		    (char __user *)((unsigned long)td.lpvBuff), td.dwLength,
 		    true, bToHost);
 	mutex_unlock(&pdx->io_mutex);
@@ -1344,11 +1332,11 @@ int SetCircular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD)
 }
 
 /****************************************************************************
-** GetCircBlock
+** ced_get_circ_block
 **
 ** Return the next available block of circularly-transferred data.
 ****************************************************************************/
-int GetCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
+int ced_get_circ_block(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
 {
 	int iReturn = U14ERR_NOERROR;
 	unsigned int nArea;
@@ -1393,11 +1381,11 @@ int GetCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
 }
 
 /****************************************************************************
-** FreeCircBlock
+** ced_free_circ_block
 **
 ** Frees a block of circularly-transferred data and returns the next one.
 ****************************************************************************/
-int FreeCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
+int ced_free_circ_block(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
 {
 	int iReturn = U14ERR_NOERROR;
 	unsigned int nArea, uStart, uSize;
@@ -1470,7 +1458,7 @@ int FreeCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB)
 			/*  If we have one, kick off pending transfer */
 			if (bWaiting) {	/*  Got a block xfer waiting? */
 				int RWMStat =
-				    ReadWriteMem(pdx, !pdx->rDMAInfo.bOutWard,
+				    ced_read_write_mem(pdx, !pdx->rDMAInfo.bOutWard,
 						 pdx->rDMAInfo.wIdent,
 						 pdx->rDMAInfo.dwOffset,
 						 pdx->rDMAInfo.dwSize);

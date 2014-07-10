@@ -92,16 +92,17 @@
 #define CR_CHAR          0x0D           /* The carriage return character */
 #define CR_CHAR_80       0x8d           /*  and with bit 7 set */
 
-/*  A structure holding information about a block of memory for use in circular transfers */
-typedef struct circBlk {
-	volatile UINT dwOffset;             /* Offset within area of block start */
-	volatile UINT dwSize;               /* Size of the block, in bytes (0 = unused) */
-} CIRCBLK;
+/* A structure holding information about a block */
+/* of memory for use in circular transfers       */
+struct circ_blk {
+	volatile UINT dwOffset;   /* Offset within area of block start */
+	volatile UINT dwSize;     /* Size of the block, in bytes (0 = unused) */
+};
 
 /*  A structure holding all of the information about a transfer area - an area of */
 /*   memory set up for use either as a source or destination in DMA transfers. */
 typedef struct transarea {
-	void	*lpvBuff;                /*  User address of xfer area saved for completeness */
+	void __user *lpvBuff;                /*  User address of xfer area saved for completeness */
 	UINT        dwBaseOffset;           /*  offset to start of xfer area in first page */
 	UINT        dwLength;               /*  Length of xfer area, in bytes */
 	struct page **pPages;               /*  Points at array of locked down pages */
@@ -113,7 +114,7 @@ typedef struct transarea {
 	int         iWakeUp;                /*  Set 1 on event, cleared by TestEvent() */
 	UINT        dwEventSt;              /*  Defines section within xfer area for... */
 	UINT        dwEventSz;              /*  ...notification by the event SZ is 0 if unset */
-	CIRCBLK     aBlocks[2];             /*  Info on a pair of circular blocks */
+	struct circ_blk aBlocks[2];         /*  Info on a pair of circular blocks */
 	wait_queue_head_t wqEvent;          /*  The wait queue for events in this area MUST BE LAST */
 } TRANSAREA;
 
@@ -201,46 +202,43 @@ typedef struct _DEVICE_EXTENSION {
 
 /*  Definitions of routimes used between compilation object files */
 /*  in usb1401.c */
-extern int Allowi(DEVICE_EXTENSION *pdx);
-extern int SendChars(DEVICE_EXTENSION *pdx);
+extern int ced_allowi(DEVICE_EXTENSION *pdx);
+extern int ced_send_chars(DEVICE_EXTENSION *pdx);
 extern void ced_draw_down(DEVICE_EXTENSION *pdx);
-extern int ReadWriteMem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
+extern int ced_read_write_mem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
 				unsigned int dwOffs, unsigned int dwLen);
 
 /*  in ced_ioc.c */
-extern int ClearArea(DEVICE_EXTENSION *pdx, int nArea);
-extern int SendString(DEVICE_EXTENSION *pdx, const char __user *pData, unsigned int n);
-extern int SendChar(DEVICE_EXTENSION *pdx, char c);
-extern int Get1401State(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error);
-extern int ReadWrite_Cancel(DEVICE_EXTENSION *pdx);
-extern bool Is1401(DEVICE_EXTENSION *pdx);
-extern bool QuickCheck(DEVICE_EXTENSION *pdx, bool bTestBuff, bool bCanReset);
-extern int Reset1401(DEVICE_EXTENSION *pdx);
-extern int GetChar(DEVICE_EXTENSION *pdx);
-extern int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n);
-extern int SetTransfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
-extern int UnsetTransfer(DEVICE_EXTENSION *pdx, int nArea);
-extern int SetEvent(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE);
-extern int Stat1401(DEVICE_EXTENSION *pdx);
-extern int LineCount(DEVICE_EXTENSION *pdx);
-extern int GetOutBufSpace(DEVICE_EXTENSION *pdx);
-extern int GetTransfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pGTB);
-extern int KillIO1401(DEVICE_EXTENSION *pdx);
-extern int BlkTransState(DEVICE_EXTENSION *pdx);
-extern int StateOf1401(DEVICE_EXTENSION *pdx);
-extern int StartSelfTest(DEVICE_EXTENSION *pdx);
-extern int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST);
-extern int TypeOf1401(DEVICE_EXTENSION *pdx);
-extern int TransferFlags(DEVICE_EXTENSION *pdx);
-extern int DbgPeek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgPoke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgRampData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgRampAddr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgGetData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgStopLoop(DEVICE_EXTENSION *pdx);
-extern int SetCircular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
-extern int GetCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
-extern int FreeCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
-extern int WaitEvent(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut);
-extern int TestEvent(DEVICE_EXTENSION *pdx, int nArea);
+extern int ced_clear_area(DEVICE_EXTENSION *pdx, int nArea);
+extern int ced_send_string(DEVICE_EXTENSION *pdx, const char __user *pData, unsigned int n);
+extern int ced_send_char(DEVICE_EXTENSION *pdx, char c);
+extern int ced_get_state(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error);
+extern int ced_read_write_cancel(DEVICE_EXTENSION *pdx);
+extern int ced_reset(DEVICE_EXTENSION *pdx);
+extern int ced_get_char(DEVICE_EXTENSION *pdx);
+extern int ced_get_string(DEVICE_EXTENSION *pdx, char __user *pUser, int n);
+extern int ced_set_transfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
+extern int ced_unset_transfer(DEVICE_EXTENSION *pdx, int nArea);
+extern int ced_set_event(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE);
+extern int ced_stat_1401(DEVICE_EXTENSION *pdx);
+extern int ced_line_count(DEVICE_EXTENSION *pdx);
+extern int ced_get_out_buf_space(DEVICE_EXTENSION *pdx);
+extern int ced_get_transfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pGTB);
+extern int ced_kill_io(DEVICE_EXTENSION *pdx);
+extern int ced_state_of_1401(DEVICE_EXTENSION *pdx);
+extern int ced_start_self_test(DEVICE_EXTENSION *pdx);
+extern int ced_check_self_test(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST);
+extern int ced_type_of_1401(DEVICE_EXTENSION *pdx);
+extern int ced_transfer_flags(DEVICE_EXTENSION *pdx);
+extern int ced_dbg_peek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
+extern int ced_dbg_poke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
+extern int ced_dbg_ramp_data(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
+extern int ced_dbg_ramp_addr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
+extern int ced_dbg_get_data(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
+extern int ced_dbg_stop_loop(DEVICE_EXTENSION *pdx);
+extern int ced_set_circular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
+extern int ced_get_circ_block(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
+extern int ced_free_circ_block(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
+extern int ced_wait_event(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut);
+extern int ced_test_event(DEVICE_EXTENSION *pdx, int nArea);
 #endif
