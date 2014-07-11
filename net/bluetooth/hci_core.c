@@ -2435,6 +2435,16 @@ int hci_dev_open(__u16 dev)
 	 */
 	flush_workqueue(hdev->req_workqueue);
 
+	/* For controllers not using the management interface and that
+	 * are brought up using legacy ioctl, set the HCI_PAIRABLE bit
+	 * so that pairing works for them. Once the management interface
+	 * is in use this bit will be cleared again and userspace has
+	 * to explicitly enable it.
+	 */
+	if (!test_bit(HCI_USER_CHANNEL, &hdev->dev_flags) &&
+	    !test_bit(HCI_MGMT, &hdev->dev_flags))
+		set_bit(HCI_PAIRABLE, &hdev->dev_flags);
+
 	err = hci_dev_do_open(hdev);
 
 done:
@@ -2655,6 +2665,42 @@ done:
 	return ret;
 }
 
+static void hci_update_scan_state(struct hci_dev *hdev, u8 scan)
+{
+	bool conn_changed, discov_changed;
+
+	BT_DBG("%s scan 0x%02x", hdev->name, scan);
+
+	if ((scan & SCAN_PAGE))
+		conn_changed = !test_and_set_bit(HCI_CONNECTABLE,
+						 &hdev->dev_flags);
+	else
+		conn_changed = test_and_clear_bit(HCI_CONNECTABLE,
+						  &hdev->dev_flags);
+
+	if ((scan & SCAN_INQUIRY)) {
+		discov_changed = !test_and_set_bit(HCI_DISCOVERABLE,
+						   &hdev->dev_flags);
+	} else {
+		clear_bit(HCI_LIMITED_DISCOVERABLE, &hdev->dev_flags);
+		discov_changed = test_and_clear_bit(HCI_DISCOVERABLE,
+						    &hdev->dev_flags);
+	}
+
+	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
+		return;
+
+	if (conn_changed || discov_changed) {
+		/* In case this was disabled through mgmt */
+		set_bit(HCI_BREDR_ENABLED, &hdev->dev_flags);
+
+		if (test_bit(HCI_LE_ENABLED, &hdev->dev_flags))
+			mgmt_update_adv_data(hdev);
+
+		mgmt_new_settings(hdev);
+	}
+}
+
 int hci_dev_cmd(unsigned int cmd, void __user *arg)
 {
 	struct hci_dev *hdev;
@@ -2716,22 +2762,11 @@ int hci_dev_cmd(unsigned int cmd, void __user *arg)
 		err = hci_req_sync(hdev, hci_scan_req, dr.dev_opt,
 				   HCI_INIT_TIMEOUT);
 
-		/* Ensure that the connectable state gets correctly
-		 * notified if the whitelist is in use.
+		/* Ensure that the connectable and discoverable states
+		 * get correctly modified as this was a non-mgmt change.
 		 */
-		if (!err && !list_empty(&hdev->whitelist)) {
-			bool changed;
-
-			if ((dr.dev_opt & SCAN_PAGE))
-				changed = !test_and_set_bit(HCI_CONNECTABLE,
-							    &hdev->dev_flags);
-			else
-				changed = test_and_set_bit(HCI_CONNECTABLE,
-							   &hdev->dev_flags);
-
-			if (changed)
-				mgmt_new_settings(hdev);
-		}
+		if (!err)
+			hci_update_scan_state(hdev, dr.dev_opt);
 		break;
 
 	case HCISETLINKPOL:
@@ -2792,14 +2827,17 @@ int hci_get_dev_list(void __user *arg)
 
 	read_lock(&hci_dev_list_lock);
 	list_for_each_entry(hdev, &hci_dev_list, list) {
-		if (test_and_clear_bit(HCI_AUTO_OFF, &hdev->dev_flags))
-			cancel_delayed_work(&hdev->power_off);
+		unsigned long flags = hdev->flags;
 
-		if (!test_bit(HCI_MGMT, &hdev->dev_flags))
-			set_bit(HCI_PAIRABLE, &hdev->dev_flags);
+		/* When the auto-off is configured it means the transport
+		 * is running, but in that case still indicate that the
+		 * device is actually down.
+		 */
+		if (test_bit(HCI_AUTO_OFF, &hdev->dev_flags))
+			flags &= ~BIT(HCI_UP);
 
 		(dr + n)->dev_id  = hdev->id;
-		(dr + n)->dev_opt = hdev->flags;
+		(dr + n)->dev_opt = flags;
 
 		if (++n >= dev_num)
 			break;
@@ -2819,6 +2857,7 @@ int hci_get_dev_info(void __user *arg)
 {
 	struct hci_dev *hdev;
 	struct hci_dev_info di;
+	unsigned long flags;
 	int err = 0;
 
 	if (copy_from_user(&di, arg, sizeof(di)))
@@ -2828,16 +2867,19 @@ int hci_get_dev_info(void __user *arg)
 	if (!hdev)
 		return -ENODEV;
 
-	if (test_and_clear_bit(HCI_AUTO_OFF, &hdev->dev_flags))
-		cancel_delayed_work_sync(&hdev->power_off);
-
-	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
-		set_bit(HCI_PAIRABLE, &hdev->dev_flags);
+	/* When the auto-off is configured it means the transport
+	 * is running, but in that case still indicate that the
+	 * device is actually down.
+	 */
+	if (test_bit(HCI_AUTO_OFF, &hdev->dev_flags))
+		flags = hdev->flags & ~BIT(HCI_UP);
+	else
+		flags = hdev->flags;
 
 	strcpy(di.name, hdev->name);
 	di.bdaddr   = hdev->bdaddr;
 	di.type     = (hdev->bus & 0x0f) | ((hdev->dev_type & 0x03) << 4);
-	di.flags    = hdev->flags;
+	di.flags    = flags;
 	di.pkt_type = hdev->pkt_type;
 	if (lmp_bredr_capable(hdev)) {
 		di.acl_mtu  = hdev->acl_mtu;
