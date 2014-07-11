@@ -646,6 +646,12 @@ int kvm_vcpu_ioctl_get_one_reg(struct kvm_vcpu *vcpu, struct kvm_one_reg *reg)
 		case KVM_REG_PPC_BESCR:
 			val = get_reg_val(reg->id, vcpu->arch.bescr);
 			break;
+		case KVM_REG_PPC_VTB:
+			val = get_reg_val(reg->id, vcpu->arch.vtb);
+			break;
+		case KVM_REG_PPC_IC:
+			val = get_reg_val(reg->id, vcpu->arch.ic);
+			break;
 		default:
 			r = -EINVAL;
 			break;
@@ -749,6 +755,12 @@ int kvm_vcpu_ioctl_set_one_reg(struct kvm_vcpu *vcpu, struct kvm_one_reg *reg)
 			break;
 		case KVM_REG_PPC_BESCR:
 			vcpu->arch.bescr = set_reg_val(reg->id, val);
+			break;
+		case KVM_REG_PPC_VTB:
+			vcpu->arch.vtb = set_reg_val(reg->id, val);
+			break;
+		case KVM_REG_PPC_IC:
+			vcpu->arch.ic = set_reg_val(reg->id, val);
 			break;
 		default:
 			r = -EINVAL;
@@ -911,6 +923,11 @@ int kvmppc_core_check_processor_compat(void)
 	 * or PR module
 	 */
 	return 0;
+}
+
+int kvmppc_book3s_hcall_implemented(struct kvm *kvm, unsigned long hcall)
+{
+	return kvm->arch.kvm_ops->hcall_implemented(hcall);
 }
 
 static int kvmppc_book3s_init(void)
