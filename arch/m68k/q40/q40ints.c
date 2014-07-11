@@ -49,7 +49,7 @@ static unsigned int q40_irq_startup(struct irq_data *data)
 	case 1: case 2: case 8: case 9:
 	case 11: case 12: case 13:
 		printk("%s: ISA IRQ %d not implemented by HW\n", __func__, irq);
-		/* FIXME return -ENXIO; */
+		return -ENXIO;
 	}
 	return 0;
 }
