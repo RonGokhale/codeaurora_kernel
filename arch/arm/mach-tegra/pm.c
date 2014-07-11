@@ -37,7 +37,6 @@
 
 #include "flowctrl.h"
 #include "iomap.h"
-#include "pmc.h"
 #include "pm.h"
 #include "reset.h"
 #include "sleep.h"
@@ -166,9 +165,29 @@ static int tegra_sleep_cpu(unsigned long v2p)
 	return 0;
 }
 
+static void tegra_pm_set(enum tegra_suspend_mode mode)
+{
+	u32 value;
+
+	switch (tegra_get_chip_id()) {
+	case TEGRA20:
+	case TEGRA30:
+		break;
+	default:
+		/* Turn off CRAIL */
+		value = flowctrl_read_cpu_csr(0);
+		value &= ~FLOW_CTRL_CSR_ENABLE_EXT_MASK;
+		value |= FLOW_CTRL_CSR_ENABLE_EXT_CRAIL;
+		flowctrl_write_cpu_csr(0, value);
+		break;
+	}
+
+	tegra_pmc_enter_suspend_mode(mode);
+}
+
 void tegra_idle_lp2_last(void)
 {
-	tegra_pmc_pm_set(TEGRA_SUSPEND_LP2);
+	tegra_pm_set(TEGRA_SUSPEND_LP2);
 
 	cpu_cluster_pm_enter();
 	suspend_cpu_complex();
@@ -267,8 +286,6 @@ static bool tegra_sleep_core_init(void)
 
 static void tegra_suspend_enter_lp1(void)
 {
-	tegra_pmc_suspend();
-
 	/* copy the reset vector & SDRAM shutdown code into IRAM */
 	memcpy(iram_save_addr, IO_ADDRESS(TEGRA_IRAM_LPx_RESUME_AREA),
 		iram_save_size);
@@ -280,8 +297,6 @@ static void tegra_suspend_enter_lp1(void)
 
 static void tegra_suspend_exit_lp1(void)
 {
-	tegra_pmc_resume();
-
 	/* restore IRAM */
 	memcpy(IO_ADDRESS(TEGRA_IRAM_LPx_RESUME_AREA), iram_save_addr,
 		iram_save_size);
@@ -306,7 +321,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 
 	pr_info("Entering suspend state %s\n", lp_state[mode]);
 
-	tegra_pmc_pm_set(mode);
+	tegra_pm_set(mode);
 
 	local_fiq_disable();
 
@@ -354,7 +369,6 @@ void __init tegra_init_suspend(void)
 		return;
 
 	tegra_tear_down_cpu_init();
-	tegra_pmc_suspend_init();
 
 	if (mode >= TEGRA_SUSPEND_LP1) {
 		if (!tegra_lp1_iram_hook() || !tegra_sleep_core_init()) {

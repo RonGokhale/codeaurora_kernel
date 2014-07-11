@@ -30,7 +30,6 @@
 #include "common.h"
 #include "flowctrl.h"
 #include "iomap.h"
-#include "pmc.h"
 #include "reset.h"
 
 static cpumask_t tegra_cpu_init_mask;
