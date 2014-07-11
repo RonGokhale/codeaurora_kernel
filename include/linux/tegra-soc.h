@@ -17,6 +17,16 @@
 #ifndef __LINUX_TEGRA_SOC_H_
 #define __LINUX_TEGRA_SOC_H_
 
+#define TEGRA20		0x20
+#define TEGRA30		0x30
+#define TEGRA114	0x35
+#define TEGRA124	0x40
+
+#ifndef __ASSEMBLY__
+
 u32 tegra_read_chipid(void);
+u8 tegra_get_chip_id(void);
+
+#endif /* __ASSEMBLY__ */
 
 #endif /* __LINUX_TEGRA_SOC_H_ */

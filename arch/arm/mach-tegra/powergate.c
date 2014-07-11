@@ -30,8 +30,8 @@
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/tegra-powergate.h>
+#include <linux/tegra-soc.h>
 
-#include "fuse.h"
 #include "iomap.h"
 
 #define DPD_SAMPLE		0x020
@@ -157,7 +157,7 @@ int tegra_powergate_remove_clamping(int id)
 	 * The Tegra124 GPU has a separate register (with different semantics)
 	 * to remove clamps.
 	 */
-	if (tegra_chip_id == TEGRA124) {
+	if (tegra_get_chip_id() == TEGRA124) {
 		if (id == TEGRA_POWERGATE_3D) {
 			pmc_write(0, GPU_RG_CNTRL);
 			return 0;
@@ -227,7 +227,7 @@ int tegra_cpu_powergate_id(int cpuid)
 
 int __init tegra_powergate_init(void)
 {
-	switch (tegra_chip_id) {
+	switch (tegra_get_chip_id()) {
 	case TEGRA20:
 		tegra_num_powerdomains = 7;
 		break;
@@ -368,7 +368,7 @@ int __init tegra_powergate_debugfs_init(void)
 {
 	struct dentry *d;
 
-	switch (tegra_chip_id) {
+	switch (tegra_get_chip_id()) {
 	case TEGRA20:
 		powergate_name = powergate_name_t20;
 		break;
