@@ -1366,7 +1366,7 @@ static void obj_request_img_data_set(struct rbd_obj_request *obj_request)
 		struct rbd_device *rbd_dev;
 
 		rbd_dev = obj_request->img_request->rbd_dev;
-		rbd_warn(rbd_dev, "obj_request %p already marked img_data\n",
+		rbd_warn(rbd_dev, "obj_request %p already marked img_data",
 			obj_request);
 	}
 }
@@ -1384,7 +1384,7 @@ static void obj_request_done_set(struct rbd_obj_request *obj_request)
 
 		if (obj_request_img_data_test(obj_request))
 			rbd_dev = obj_request->img_request->rbd_dev;
-		rbd_warn(rbd_dev, "obj_request %p already marked done\n",
+		rbd_warn(rbd_dev, "obj_request %p already marked done",
 			obj_request);
 	}
 }
@@ -1775,7 +1775,7 @@ static void rbd_osd_req_callback(struct ceph_osd_request *osd_req,
 		rbd_osd_trivial_callback(obj_request);
 		break;
 	default:
-		rbd_warn(NULL, "%s: unsupported op %hu\n",
+		rbd_warn(NULL, "%s: unsupported op %hu",
 			obj_request->object_name, (unsigned short) opcode);
 		break;
 	}
@@ -2010,7 +2010,7 @@ static void rbd_dev_parent_put(struct rbd_device *rbd_dev)
 	if (!counter)
 		rbd_dev_unparent(rbd_dev);
 	else
-		rbd_warn(rbd_dev, "parent reference underflow\n");
+		rbd_warn(rbd_dev, "parent reference underflow");
 }
 
 /*
@@ -2040,7 +2040,7 @@ static bool rbd_dev_parent_get(struct rbd_device *rbd_dev)
 	/* Image was flattened, but parent is not yet torn down */
 
 	if (counter < 0)
-		rbd_warn(rbd_dev, "parent reference overflow\n");
+		rbd_warn(rbd_dev, "parent reference overflow");
 
 	return false;
 }
@@ -2173,11 +2173,11 @@ static bool rbd_img_obj_end_request(struct rbd_obj_request *obj_request)
 	if (result) {
 		struct rbd_device *rbd_dev = img_request->rbd_dev;
 
-		rbd_warn(rbd_dev, "%s %llx at %llx (%llx)\n",
+		rbd_warn(rbd_dev, "%s %llx at %llx (%llx)",
 			img_request_write_test(img_request) ? "write" : "read",
 			obj_request->length, obj_request->img_offset,
 			obj_request->offset);
-		rbd_warn(rbd_dev, "  result %d xferred %x\n",
+		rbd_warn(rbd_dev, "  result %d xferred %x",
 			result, xferred);
 		if (!img_request->result)
 			img_request->result = result;
@@ -2967,11 +2967,11 @@ static void rbd_watch_cb(u64 ver, u64 notify_id, u8 opcode, void *data)
 	 */
 	ret = rbd_dev_refresh(rbd_dev);
 	if (ret)
-		rbd_warn(rbd_dev, "refresh failed: %d\n", ret);
+		rbd_warn(rbd_dev, "refresh failed: %d", ret);
 
 	ret = rbd_obj_notify_ack_sync(rbd_dev, notify_id);
 	if (ret)
-		rbd_warn(rbd_dev, "notify_ack ret %d\n", ret);
+		rbd_warn(rbd_dev, "notify_ack ret %d", ret);
 }
 
 /*
@@ -3236,14 +3236,14 @@ static void rbd_request_fn(struct request_queue *q)
 
 		result = -EINVAL;
 		if (offset && length > U64_MAX - offset + 1) {
-			rbd_warn(rbd_dev, "bad request range (%llu~%llu)\n",
+			rbd_warn(rbd_dev, "bad request range (%llu~%llu)",
 				offset, length);
 			goto end_request;	/* Shouldn't happen */
 		}
 
 		result = -EIO;
 		if (offset + length > rbd_dev->mapping.size) {
-			rbd_warn(rbd_dev, "beyond EOD (%llu~%llu > %llu)\n",
+			rbd_warn(rbd_dev, "beyond EOD (%llu~%llu > %llu)",
 				offset, length, rbd_dev->mapping.size);
 			goto end_request;
 		}
@@ -3265,7 +3265,7 @@ static void rbd_request_fn(struct request_queue *q)
 end_request:
 		spin_lock_irq(q->queue_lock);
 		if (result < 0) {
-			rbd_warn(rbd_dev, "%s %llx at %llx result %d\n",
+			rbd_warn(rbd_dev, "%s %llx at %llx result %d",
 				write_request ? "write" : "read",
 				length, offset, result);
 
@@ -4058,7 +4058,7 @@ static int rbd_dev_v2_parent_info(struct rbd_device *rbd_dev)
 
 	ret = -EIO;
 	if (pool_id > (u64)U32_MAX) {
-		rbd_warn(NULL, "parent pool id too large (%llu > %u)\n",
+		rbd_warn(NULL, "parent pool id too large (%llu > %u)",
 			(unsigned long long)pool_id, U32_MAX);
 		goto out_err;
 	}
@@ -4111,8 +4111,7 @@ static int rbd_dev_v2_parent_info(struct rbd_device *rbd_dev)
 			 * overlap is zero we just pretend there was
 			 * no parent image.
 			 */
-			rbd_warn(rbd_dev, "ignoring parent of "
-						"clone with overlap 0\n");
+			rbd_warn(rbd_dev, "ignoring parent with overlap 0");
 		}
 	}
 out:
@@ -5243,7 +5242,7 @@ static ssize_t do_rbd_add(struct bus_type *bus,
 	/* The ceph file layout needs to fit pool id in 32 bits */
 
 	if (spec->pool_id > (u64)U32_MAX) {
-		rbd_warn(NULL, "pool id too large (%llu > %u)\n",
+		rbd_warn(NULL, "pool id too large (%llu > %u)",
 				(unsigned long long)spec->pool_id, U32_MAX);
 		rc = -EIO;
 		goto err_out_client;
