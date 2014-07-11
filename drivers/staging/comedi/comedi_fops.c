@@ -968,9 +968,6 @@ static int do_bufinfo_ioctl(struct comedi_device *dev,
 
 	s = &dev->subdevices[bi.subdevice];
 
-	if (s->lock && s->lock != file)
-		return -EACCES;
-
 	async = s->async;
 
 	if (!async) {
@@ -997,7 +994,7 @@ static int do_bufinfo_ioctl(struct comedi_device *dev,
 		comedi_buf_read_free(s, bi.bytes_read);
 
 		if (comedi_is_subdevice_idle(s) &&
-		    async->buf_write_count == async->buf_read_count) {
+		    comedi_buf_n_bytes_ready(s) == 0) {
 			do_become_nonbusy(dev, s);
 		}
 	}
@@ -1295,7 +1292,7 @@ static int do_insnlist_ioctl(struct comedi_device *dev,
 	if (copy_from_user(&insnlist, arg, sizeof(insnlist)))
 		return -EFAULT;
 
-	data = kmalloc(sizeof(unsigned int) * MAX_SAMPLES, GFP_KERNEL);
+	data = kmalloc_array(MAX_SAMPLES, sizeof(unsigned int), GFP_KERNEL);
 	if (!data) {
 		ret = -ENOMEM;
 		goto error;
@@ -1376,7 +1373,7 @@ static int do_insn_ioctl(struct comedi_device *dev,
 	unsigned int *data = NULL;
 	int ret = 0;
 
-	data = kmalloc(sizeof(unsigned int) * MAX_SAMPLES, GFP_KERNEL);
+	data = kmalloc_array(MAX_SAMPLES, sizeof(unsigned int), GFP_KERNEL);
 	if (!data) {
 		ret = -ENOMEM;
 		goto error;
@@ -1744,9 +1741,6 @@ static int do_cancel_ioctl(struct comedi_device *dev, unsigned int arg,
 	if (s->async == NULL)
 		return -EINVAL;
 
-	if (s->lock && s->lock != file)
-		return -EACCES;
-
 	if (!s->busy)
 		return 0;
 
@@ -1780,9 +1774,6 @@ static int do_poll_ioctl(struct comedi_device *dev, unsigned int arg,
 	if (arg >= dev->n_subdevices)
 		return -EINVAL;
 	s = &dev->subdevices[arg];
-
-	if (s->lock && s->lock != file)
-		return -EACCES;
 
 	if (!s->busy)
 		return 0;
@@ -2303,8 +2294,7 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 		new_s = comedi_read_subdevice(dev, minor);
 		if (dev->attached && old_detach_count == dev->detach_count &&
 		    s == new_s && new_s->async == async) {
-			if (become_nonbusy ||
-			    async->buf_read_count - async->buf_write_count == 0)
+			if (become_nonbusy || comedi_buf_n_bytes_ready(s) == 0)
 				do_become_nonbusy(dev, s);
 		}
 		mutex_unlock(&dev->mutex);
@@ -2597,7 +2587,14 @@ static int __init comedi_init(void)
 		return -EIO;
 	cdev_init(&comedi_cdev, &comedi_fops);
 	comedi_cdev.owner = THIS_MODULE;
-	kobject_set_name(&comedi_cdev.kobj, "comedi");
+
+	retval = kobject_set_name(&comedi_cdev.kobj, "comedi");
+	if (retval) {
+		unregister_chrdev_region(MKDEV(COMEDI_MAJOR, 0),
+					 COMEDI_NUM_MINORS);
+		return retval;
+	}
+
 	if (cdev_add(&comedi_cdev, MKDEV(COMEDI_MAJOR, 0), COMEDI_NUM_MINORS)) {
 		unregister_chrdev_region(MKDEV(COMEDI_MAJOR, 0),
 					 COMEDI_NUM_MINORS);

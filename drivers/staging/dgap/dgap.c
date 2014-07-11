@@ -70,14 +70,14 @@ MODULE_SUPPORTED_DEVICE("dgap");
 
 static int dgap_start(void);
 static void dgap_init_globals(void);
-static int dgap_found_board(struct pci_dev *pdev, int id);
+static struct board_t *dgap_found_board(struct pci_dev *pdev, int id,
+					int boardnum);
 static void dgap_cleanup_board(struct board_t *brd);
 static void dgap_poll_handler(ulong dummy);
-static int dgap_init_pci(void);
 static int dgap_init_one(struct pci_dev *pdev, const struct pci_device_id *ent);
 static void dgap_remove_one(struct pci_dev *dev);
-static int dgap_probe1(struct pci_dev *pdev, int card_type);
 static int dgap_do_remap(struct board_t *brd);
+static void dgap_release_remap(struct board_t *brd);
 static irqreturn_t dgap_intr(int irq, void *voidbrd);
 
 static int dgap_tty_open(struct tty_struct *tty, struct file *file);
@@ -123,8 +123,10 @@ static int dgap_tty_put_char(struct tty_struct *tty, unsigned char c);
 static void dgap_tty_send_xchar(struct tty_struct *tty, char ch);
 
 static int dgap_tty_register(struct board_t *brd);
+static void dgap_tty_unregister(struct board_t *brd);
 static int dgap_tty_init(struct board_t *);
-static void dgap_tty_uninit(struct board_t *);
+static void dgap_tty_free(struct board_t *);
+static void dgap_cleanup_tty(struct board_t *);
 static void dgap_carrier(struct channel_t *ch);
 static void dgap_input(struct channel_t *ch);
 
@@ -175,7 +177,7 @@ static void dgap_remove_tty_sysfs(struct device *c);
 /*
  * Function prototypes from dgap_parse.h
  */
-static int dgap_parsefile(char **in, int remove);
+static int dgap_parsefile(char **in);
 static struct cnode *dgap_find_config(int type, int bus, int slot);
 static uint dgap_config_get_num_prts(struct board_t *bd);
 static char *dgap_create_config_string(struct board_t *bd, char *string);
@@ -188,15 +190,18 @@ static void dgap_do_fep_load(struct board_t *brd, const u8 *ufep, int len);
 #ifdef DIGI_CONCENTRATORS_SUPPORTED
 static void dgap_do_conc_load(struct board_t *brd, u8 *uaddr, int len);
 #endif
-static int dgap_after_config_loaded(int board);
-static int dgap_finalize_board_init(struct board_t *brd);
+static int dgap_alloc_flipbuf(struct board_t *brd);
+static void dgap_free_flipbuf(struct board_t *brd);
+static int dgap_request_irq(struct board_t *brd);
+static void dgap_free_irq(struct board_t *brd);
 
 static void dgap_get_vpd(struct board_t *brd);
 static void dgap_do_reset_board(struct board_t *brd);
 static int dgap_test_bios(struct board_t *brd);
 static int dgap_test_fep(struct board_t *brd);
 static int dgap_tty_register_ports(struct board_t *brd);
-static int dgap_firmware_load(struct pci_dev *pdev, int card_type);
+static int dgap_firmware_load(struct pci_dev *pdev, int card_type,
+			      struct board_t *brd);
 
 static void dgap_cleanup_module(void);
 
@@ -212,9 +217,7 @@ static const struct file_operations dgap_board_fops = {
 static uint dgap_numboards;
 static struct board_t *dgap_board[MAXBOARDS];
 static ulong dgap_poll_counter;
-static char *dgap_config_buf;
 static int dgap_driver_state = DRIVER_INITIALIZED;
-static wait_queue_head_t dgap_dl_wait;
 static int dgap_poll_tick = 20;	/* Poll interval - 20 ms */
 
 static struct class *dgap_class;
@@ -474,7 +477,7 @@ static int dgap_init_module(void)
 	if (rc)
 		return rc;
 
-	rc = dgap_init_pci();
+	rc = pci_register_driver(&dgap_driver);
 	if (rc)
 		goto err_cleanup;
 
@@ -558,17 +561,10 @@ failed_class:
 	return rc;
 }
 
-/*
- * Register pci driver, and return how many boards we have.
- */
-static int dgap_init_pci(void)
-{
-	return pci_register_driver(&dgap_driver);
-}
-
 static int dgap_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int rc;
+	struct board_t *brd;
 
 	if (dgap_numboards >= MAXBOARDS)
 		return -EPERM;
@@ -577,17 +573,57 @@ static int dgap_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (rc)
 		return -EIO;
 
-	rc = dgap_probe1(pdev, ent->driver_data);
+	brd = dgap_found_board(pdev, ent->driver_data, dgap_numboards);
+	if (IS_ERR(brd))
+		return PTR_ERR(brd);
+
+	rc = dgap_firmware_load(pdev, ent->driver_data, brd);
 	if (rc)
-		return rc;
+		goto cleanup_brd;
 
-	dgap_numboards++;
-	return dgap_firmware_load(pdev, ent->driver_data);
-}
+	rc = dgap_alloc_flipbuf(brd);
+	if (rc)
+		goto cleanup_brd;
 
-static int dgap_probe1(struct pci_dev *pdev, int card_type)
-{
-	return dgap_found_board(pdev, card_type);
+	rc = dgap_tty_register(brd);
+	if (rc)
+		goto free_flipbuf;
+
+	rc = dgap_request_irq(brd);
+	if (rc)
+		goto unregister_tty;
+
+	/*
+	 * Do tty device initialization.
+	 */
+	rc = dgap_tty_init(brd);
+	if (rc < 0)
+		goto free_irq;
+
+	rc = dgap_tty_register_ports(brd);
+	if (rc)
+		goto tty_free;
+
+	brd->state = BOARD_READY;
+	brd->dpastatus = BD_RUNNING;
+
+	dgap_board[dgap_numboards++] = brd;
+
+	return 0;
+
+tty_free:
+	dgap_tty_free(brd);
+free_irq:
+	dgap_free_irq(brd);
+unregister_tty:
+	dgap_tty_unregister(brd);
+free_flipbuf:
+	dgap_free_flipbuf(brd);
+cleanup_brd:
+	dgap_release_remap(brd);
+	kfree(brd);
+
+	return rc;
 }
 
 static void dgap_remove_one(struct pci_dev *dev)
@@ -620,7 +656,7 @@ static void dgap_cleanup_module(void)
 
 	for (i = 0; i < dgap_numboards; ++i) {
 		dgap_remove_ports_sysfiles(dgap_board[i]);
-		dgap_tty_uninit(dgap_board[i]);
+		dgap_cleanup_tty(dgap_board[i]);
 		dgap_cleanup_board(dgap_board[i]);
 	}
 
@@ -640,8 +676,7 @@ static void dgap_cleanup_board(struct board_t *brd)
 	if (!brd || brd->magic != DGAP_BOARD_MAGIC)
 		return;
 
-	if (brd->intr_used && brd->irq)
-		free_irq(brd->irq, brd);
+	dgap_free_irq(brd);
 
 	tasklet_kill(&brd->helper_tasklet);
 
@@ -674,23 +709,22 @@ static void dgap_cleanup_board(struct board_t *brd)
  *
  * A board has been found, init it.
  */
-static int dgap_found_board(struct pci_dev *pdev, int id)
+static struct board_t *dgap_found_board(struct pci_dev *pdev, int id,
+					int boardnum)
 {
 	struct board_t *brd;
 	unsigned int pci_irq;
 	int i;
+	int ret;
 
 	/* get the board structure and prep it */
 	brd = kzalloc(sizeof(struct board_t), GFP_KERNEL);
 	if (!brd)
-		return -ENOMEM;
-
-	dgap_board[dgap_numboards] = brd;
+		return ERR_PTR(-ENOMEM);
 
 	/* store the info for the board we've found */
 	brd->magic = DGAP_BOARD_MAGIC;
-	brd->boardnum = dgap_numboards;
-	brd->firstminor = 0;
+	brd->boardnum = boardnum;
 	brd->vendor = dgap_pci_tbl[id].vendor;
 	brd->device = dgap_pci_tbl[id].device;
 	brd->pdev = pdev;
@@ -734,8 +768,10 @@ static int dgap_found_board(struct pci_dev *pdev, int id)
 		brd->membase_end = pci_resource_end(pdev, 0);
 	}
 
-	if (!brd->membase)
-		return -ENODEV;
+	if (!brd->membase) {
+		ret = -ENODEV;
+		goto free_brd;
+	}
 
 	if (brd->membase & 1)
 		brd->membase &= ~3;
@@ -776,18 +812,23 @@ static int dgap_found_board(struct pci_dev *pdev, int id)
 	tasklet_init(&brd->helper_tasklet, dgap_poll_tasklet,
 			(unsigned long) brd);
 
-	i = dgap_do_remap(brd);
-	if (i)
-		brd->state = BOARD_FAILED;
+	ret = dgap_do_remap(brd);
+	if (ret)
+		goto free_brd;
 
 	pr_info("dgap: board %d: %s (rev %d), irq %ld\n",
-		dgap_numboards, brd->name, brd->rev, brd->irq);
+		boardnum, brd->name, brd->rev, brd->irq);
 
-	return 0;
+	return brd;
+
+free_brd:
+	kfree(brd);
+
+	return ERR_PTR(ret);
 }
 
 
-static int dgap_finalize_board_init(struct board_t *brd)
+static int dgap_request_irq(struct board_t *brd)
 {
 	int rc;
 
@@ -814,17 +855,24 @@ static int dgap_finalize_board_init(struct board_t *brd)
 	return 0;
 }
 
-static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
+static void dgap_free_irq(struct board_t *brd)
 {
-	struct board_t *brd = dgap_board[dgap_numboards - 1];
+	if (brd->intr_used && brd->irq)
+		free_irq(brd->irq, brd);
+}
+
+static int dgap_firmware_load(struct pci_dev *pdev, int card_type,
+			      struct board_t *brd)
+{
 	const struct firmware *fw;
 	char *tmp_ptr;
 	int ret;
+	char *dgap_config_buf;
 
 	dgap_get_vpd(brd);
 	dgap_do_reset_board(brd);
 
-	if ((fw_info[card_type].conf_name) && !dgap_config_buf) {
+	if (fw_info[card_type].conf_name) {
 		ret = request_firmware(&fw, fw_info[card_type].conf_name,
 					 &pdev->dev);
 		if (ret) {
@@ -849,16 +897,13 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 		 */
 		tmp_ptr = dgap_config_buf;
 
-		if (dgap_parsefile(&tmp_ptr, TRUE) != 0) {
+		if (dgap_parsefile(&tmp_ptr) != 0) {
 			kfree(dgap_config_buf);
 			return -EINVAL;
 		}
 		kfree(dgap_config_buf);
 	}
 
-	ret = dgap_after_config_loaded(brd->boardnum);
-	if (ret)
-		return ret;
 	/*
 	 * Match this board to a config the user created for us.
 	 */
@@ -879,14 +924,6 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 		pr_err("dgap: No valid configuration found\n");
 		return -EINVAL;
 	}
-
-	ret = dgap_tty_register(brd);
-	if (ret)
-		return ret;
-
-	ret = dgap_finalize_board_init(brd);
-	if (ret)
-		return ret;
 
 	if (fw_info[card_type].bios_name) {
 		ret = request_firmware(&fw, fw_info[card_type].bios_name,
@@ -950,21 +987,6 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type)
 		release_firmware(fw);
 	}
 #endif
-	/*
-	 * Do tty device initialization.
-	 */
-	ret = dgap_tty_init(brd);
-	if (ret < 0) {
-		dgap_tty_uninit(brd);
-		return ret;
-	}
-
-	ret = dgap_tty_register_ports(brd);
-	if (ret)
-		return ret;
-
-	brd->state = BOARD_READY;
-	brd->dpastatus = BD_RUNNING;
 
 	return 0;
 }
@@ -1004,6 +1026,12 @@ static int dgap_do_remap(struct board_t *brd)
 	return 0;
 }
 
+static void dgap_release_remap(struct board_t *brd)
+{
+	release_mem_region(brd->membase, 0x200000);
+	release_mem_region(brd->membase + PCI_IO_OFFSET, 0x200000);
+	iounmap(brd->re_map_membase);
+}
 /*****************************************************************************
 *
 * Function:
@@ -1171,8 +1199,6 @@ static void dgap_init_globals(void)
 		dgap_board[i] = NULL;
 
 	init_timer(&dgap_poll_timer);
-
-	init_waitqueue_head(&dgap_dl_wait);
 }
 
 /************************************************************************
@@ -1311,6 +1337,14 @@ free_serial_drv:
 	return rc;
 }
 
+static void dgap_tty_unregister(struct board_t *brd)
+{
+	tty_unregister_driver(brd->print_driver);
+	tty_unregister_driver(brd->serial_driver);
+	put_tty_driver(brd->print_driver);
+	put_tty_driver(brd->serial_driver);
+}
+
 /*
  * dgap_tty_init()
  *
@@ -1327,9 +1361,7 @@ static int dgap_tty_init(struct board_t *brd)
 	struct channel_t *ch;
 	struct bs_t __iomem *bs;
 	struct cm_t __iomem *cm;
-
-	if (!brd)
-		return -EIO;
+	int ret;
 
 	/*
 	 * Initialize board structure elements.
@@ -1376,11 +1408,11 @@ static int dgap_tty_init(struct board_t *brd)
 	 * when the driver was first loaded.
 	 */
 	for (i = 0; i < brd->nasync; i++) {
+		brd->channels[i] =
+			kzalloc(sizeof(struct channel_t), GFP_KERNEL);
 		if (!brd->channels[i]) {
-			brd->channels[i] =
-				kzalloc(sizeof(struct channel_t), GFP_KERNEL);
-			if (!brd->channels[i])
-				return -ENOMEM;
+			ret = -ENOMEM;
+			goto free_chan;
 		}
 	}
 
@@ -1394,9 +1426,6 @@ static int dgap_tty_init(struct board_t *brd)
 
 	/* Set up channel variables */
 	for (i = 0; i < brd->nasync; i++, ch = brd->channels[i], bs++) {
-
-		if (!brd->channels[i])
-			continue;
 
 		spin_lock_init(&ch->ch_lock);
 
@@ -1480,15 +1509,34 @@ static int dgap_tty_init(struct board_t *brd)
 	}
 
 	return 0;
+
+free_chan:
+	while (--i >= 0) {
+		kfree(brd->channels[i]);
+		brd->channels[i] = NULL;
+	}
+	return ret;
 }
 
 /*
- * dgap_tty_uninit()
+ * dgap_tty_free()
+ *
+ * Free the channles which are allocated in dgap_tty_init().
+ */
+static void dgap_tty_free(struct board_t *brd)
+{
+	int i;
+
+	for (i = 0; i < brd->nasync; i++)
+		kfree(brd->channels[i]);
+}
+/*
+ * dgap_cleanup_tty()
  *
  * Uninitialize the TTY portion of this driver.  Free all memory and
  * resources.
  */
-static void dgap_tty_uninit(struct board_t *brd)
+static void dgap_cleanup_tty(struct board_t *brd)
 {
 	struct device *dev;
 	int i;
@@ -2459,22 +2507,9 @@ static int dgap_wait_for_drain(struct tty_struct *tty)
  * returns the new bytes_available.  This only affects printer
  * output.
  */
-static int dgap_maxcps_room(struct tty_struct *tty, int bytes_available)
+static int dgap_maxcps_room(struct channel_t *ch, struct un_t *un,
+			    int bytes_available)
 {
-	struct channel_t *ch;
-	struct un_t *un;
-
-	if (!tty)
-		return bytes_available;
-
-	un = tty->driver_data;
-	if (!un || un->magic != DGAP_UNIT_MAGIC)
-		return bytes_available;
-
-	ch = un->un_ch;
-	if (!ch || ch->magic != DGAP_CHANNEL_MAGIC)
-		return bytes_available;
-
 	/*
 	 * If its not the Transparent print device, return
 	 * the full data amount.
@@ -2576,7 +2611,7 @@ static int dgap_tty_write_room(struct tty_struct *tty)
 		ret += ch->ch_tsize;
 
 	/* Limit printer to maxcps */
-	ret = dgap_maxcps_room(tty, ret);
+	ret = dgap_maxcps_room(ch, un, ret);
 
 	/*
 	 * If we are printer device, leave space for
@@ -2681,7 +2716,7 @@ static int dgap_tty_write(struct tty_struct *tty, const unsigned char *buf,
 	 * Limit printer output to maxcps overall, with bursts allowed
 	 * up to bufsize characters.
 	 */
-	bufcount = dgap_maxcps_room(tty, bufcount);
+	bufcount = dgap_maxcps_room(ch, un, bufcount);
 
 	/*
 	 * Take minimum of what the user wants to send, and the
@@ -3014,8 +3049,6 @@ static void dgap_tty_send_xchar(struct tty_struct *tty, char c)
 
 	spin_unlock_irqrestore(&ch->ch_lock, lock_flags2);
 	spin_unlock_irqrestore(&bd->bd_lock, lock_flags);
-
-	return;
 }
 
 /*
@@ -4107,27 +4140,28 @@ static int dgap_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 	}
 }
 
-static int dgap_after_config_loaded(int board)
+static int dgap_alloc_flipbuf(struct board_t *brd)
 {
-	/*
-	 * Initialize KME waitqueues...
-	 */
-	init_waitqueue_head(&(dgap_board[board]->kme_wait));
-
 	/*
 	 * allocate flip buffer for board.
 	 */
-	dgap_board[board]->flipbuf = kmalloc(MYFLIPLEN, GFP_KERNEL);
-	if (!dgap_board[board]->flipbuf)
+	brd->flipbuf = kmalloc(MYFLIPLEN, GFP_KERNEL);
+	if (!brd->flipbuf)
 		return -ENOMEM;
 
-	dgap_board[board]->flipflagbuf = kmalloc(MYFLIPLEN, GFP_KERNEL);
-	if (!dgap_board[board]->flipflagbuf) {
-		kfree(dgap_board[board]->flipbuf);
+	brd->flipflagbuf = kmalloc(MYFLIPLEN, GFP_KERNEL);
+	if (!brd->flipflagbuf) {
+		kfree(brd->flipbuf);
 		return -ENOMEM;
 	}
 
 	return 0;
+}
+
+static void dgap_free_flipbuf(struct board_t *brd)
+{
+	kfree(brd->flipbuf);
+	kfree(brd->flipflagbuf);
 }
 
 /*
@@ -4137,6 +4171,7 @@ static int dgap_tty_register_ports(struct board_t *brd)
 {
 	struct channel_t *ch;
 	int i;
+	int ret;
 
 	brd->serial_ports = kcalloc(brd->nasync, sizeof(*brd->serial_ports),
 					GFP_KERNEL);
@@ -4146,8 +4181,8 @@ static int dgap_tty_register_ports(struct board_t *brd)
 	brd->printer_ports = kcalloc(brd->nasync, sizeof(*brd->printer_ports),
 					GFP_KERNEL);
 	if (!brd->printer_ports) {
-		kfree(brd->serial_ports);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto free_serial_ports;
 	}
 
 	for (i = 0; i < brd->nasync; i++) {
@@ -4161,15 +4196,25 @@ static int dgap_tty_register_ports(struct board_t *brd)
 		struct device *classp;
 
 		classp = tty_port_register_device(&brd->serial_ports[i],
-					brd->serial_driver,
-					brd->firstminor + i, NULL);
+						  brd->serial_driver,
+						  i, NULL);
+
+		if (IS_ERR(classp)) {
+			ret = PTR_ERR(classp);
+			goto unregister_ttys;
+		}
 
 		dgap_create_tty_sysfs(&ch->ch_tun, classp);
 		ch->ch_tun.un_sysfs = classp;
 
 		classp = tty_port_register_device(&brd->printer_ports[i],
-					brd->print_driver,
-					brd->firstminor + i, NULL);
+						  brd->print_driver,
+						  i, NULL);
+
+		if (IS_ERR(classp)) {
+			ret = PTR_ERR(classp);
+			goto unregister_ttys;
+		}
 
 		dgap_create_tty_sysfs(&ch->ch_pun, classp);
 		ch->ch_pun.un_sysfs = classp;
@@ -4177,6 +4222,35 @@ static int dgap_tty_register_ports(struct board_t *brd)
 	dgap_create_ports_sysfiles(brd);
 
 	return 0;
+
+unregister_ttys:
+	while (i >= 0) {
+		ch = brd->channels[i];
+		if (ch->ch_tun.un_sysfs) {
+			dgap_remove_tty_sysfs(ch->ch_tun.un_sysfs);
+			tty_unregister_device(brd->serial_driver, i);
+		}
+
+		if (ch->ch_pun.un_sysfs) {
+			dgap_remove_tty_sysfs(ch->ch_pun.un_sysfs);
+			tty_unregister_device(brd->print_driver, i);
+		}
+		i--;
+	}
+
+	for (i = 0; i < brd->nasync; i++) {
+		tty_port_destroy(&brd->serial_ports[i]);
+		tty_port_destroy(&brd->printer_ports[i]);
+	}
+
+	kfree(brd->printer_ports);
+	brd->printer_ports = NULL;
+
+free_serial_ports:
+	kfree(brd->serial_ports);
+	brd->serial_ports = NULL;
+
+	return ret;
 }
 
 /*
@@ -5281,6 +5355,7 @@ static int dgap_param(struct tty_struct *tty)
 	 */
 	if (bd->bd_flags & BD_FEP5PLUS) {
 		u16 hflow2 = 0;
+
 		if (ch->ch_digi.digi_flags & DIGI_RTS_TOGGLE)
 			hflow2 |= (D_RTS(ch));
 		if (ch->ch_digi.digi_flags & DIGI_DTR_TOGGLE)
@@ -5690,6 +5765,7 @@ static int dgap_create_driver_sysfiles(struct pci_driver *dgap_driver)
 static void dgap_remove_driver_sysfiles(struct pci_driver *dgap_driver)
 {
 	struct device_driver *driverfs = &dgap_driver->driver;
+
 	driver_remove_file(driverfs, &driver_attr_version);
 	driver_remove_file(driverfs, &driver_attr_boards);
 	driver_remove_file(driverfs, &driver_attr_maxboards);
@@ -6283,6 +6359,7 @@ static ssize_t dgap_tty_name_show(struct device *d,
 
 		if (cptr->type == TNODE && found == TRUE) {
 			char *ptr1;
+
 			if (strstr(cptr->u.ttyname, "tty")) {
 				ptr1 = cptr->u.ttyname;
 				ptr1 += 3;
@@ -6381,7 +6458,7 @@ static void dgap_remove_tty_sysfs(struct device *c)
 /*
  * Parse a configuration file read into memory as a string.
  */
-static int dgap_parsefile(char **in, int remove)
+static int dgap_parsefile(char **in)
 {
 	struct cnode *p, *brd, *line, *conc;
 	int rc;
@@ -7229,11 +7306,9 @@ static struct cnode *dgap_newnode(int t)
 {
 	struct cnode *n;
 
-	n = kmalloc(sizeof(struct cnode), GFP_KERNEL);
-	if (n) {
-		memset((char *)n, 0, sizeof(struct cnode));
+	n = kzalloc(sizeof(struct cnode), GFP_KERNEL);
+	if (n)
 		n->type = t;
-	}
 	return n;
 }
 

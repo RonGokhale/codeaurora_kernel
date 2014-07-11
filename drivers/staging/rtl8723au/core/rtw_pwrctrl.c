@@ -114,7 +114,6 @@ int ips_leave23a(struct rtw_adapter * padapter)
 
 static bool rtw_pwr_unassociated_idle(struct rtw_adapter *adapter)
 {
-	struct rtw_adapter *buddy = adapter->pbuddy_adapter;
 	struct mlme_priv *pmlmepriv = &adapter->mlmepriv;
 	struct xmit_priv *pxmit_priv = &adapter->xmitpriv;
 
@@ -128,21 +127,6 @@ static bool rtw_pwr_unassociated_idle(struct rtw_adapter *adapter)
 	    check_fwstate(pmlmepriv, WIFI_AP_STATE) ||
 	    check_fwstate(pmlmepriv, WIFI_ADHOC_MASTER_STATE|WIFI_ADHOC_STATE)){
 		goto exit;
-	}
-
-	/* consider buddy, if exist */
-	if (buddy) {
-		struct mlme_priv *b_pmlmepriv = &buddy->mlmepriv;
-
-		if (check_fwstate(b_pmlmepriv,
-				  WIFI_ASOC_STATE|WIFI_SITE_MONITOR) ||
-		    check_fwstate(b_pmlmepriv,
-				  WIFI_UNDER_LINKING|WIFI_UNDER_WPS) ||
-		    check_fwstate(b_pmlmepriv, WIFI_AP_STATE) ||
-		    check_fwstate(b_pmlmepriv,
-				  WIFI_ADHOC_MASTER_STATE|WIFI_ADHOC_STATE)) {
-			goto exit;
-		}
 	}
 
 	if (pxmit_priv->free_xmitbuf_cnt != NR_XMITBUFF ||
@@ -181,7 +165,6 @@ void rtw_ps_processor23a(struct rtw_adapter*padapter)
 		if (rfpwrstate!= pwrpriv->rf_pwrstate) {
 			if (rfpwrstate == rf_off) {
 				pwrpriv->change_rfpwrstate = rf_off;
-				pwrpriv->brfoffbyhw = true;
 				padapter->bCardDisableWOHSM = true;
 				rtw_hw_suspend23a(padapter);
 			} else {
@@ -631,19 +614,16 @@ int rtw_pm_set_ips23a(struct rtw_adapter *padapter, u8 mode)
 {
 	struct pwrctrl_priv *pwrctrlpriv = &padapter->pwrctrlpriv;
 
-	if (mode == IPS_NORMAL || mode == IPS_LEVEL_2) {
-		rtw_ips_mode_req(pwrctrlpriv, mode);
-		DBG_8723A("%s %s\n", __func__,
-			  mode == IPS_NORMAL?"IPS_NORMAL":"IPS_LEVEL_2");
-		return 0;
-	} else if (mode == IPS_NONE) {
-		rtw_ips_mode_req(pwrctrlpriv, mode);
+	if (mode != IPS_NORMAL && mode != IPS_LEVEL_2 && mode != IPS_NONE)
+		return -EINVAL;
+
+	pwrctrlpriv->ips_mode_req = mode;
+	if (mode == IPS_NONE) {
 		DBG_8723A("%s %s\n", __func__, "IPS_NONE");
 		if (padapter->bSurpriseRemoved == 0 &&
 		    rtw_pwr_wakeup(padapter) == _FAIL)
 			return -EFAULT;
-	} else
-		return -EINVAL;
+	}
 
 	return 0;
 }
