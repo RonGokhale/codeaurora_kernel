@@ -1,0 +1,14 @@
+Analog Devices ADAU7002 Stereo PDM-to-I2S/TDM Converter
+
+Required properties:
+
+ - compatible: Should contain "adi,adau7002"
+ - IOVDD-supply: Phandle and specifier for the power supply providing IOVDD as
+   covered in Documentation/devicetree/bindings/regulator/regulator.txt
+
+Examples:
+
+	adau7002 {
+		compatible = "adi,adau7002";
+		IOVDD-supply = <&supply>;
+	};
