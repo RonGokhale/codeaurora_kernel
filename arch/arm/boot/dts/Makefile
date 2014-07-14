@@ -90,9 +90,9 @@ dtb-$(CONFIG_ARCH_INTEGRATOR) += integratorap.dtb \
 dtb-$(CONFIG_ARCH_KEYSTONE) += k2hk-evm.dtb \
 	k2l-evm.dtb \
 	k2e-evm.dtb
-kirkwood := \
-	kirkwood-b3.dtb \
+dtb-$(CONFIG_MACH_KIRKWOOD) += kirkwood-b3.dtb \
 	kirkwood-cloudbox.dtb \
+	kirkwood-d2net.dtb \
 	kirkwood-db-88f6281.dtb \
 	kirkwood-db-88f6282.dtb \
 	kirkwood-dns320.dtb \
@@ -123,6 +123,8 @@ kirkwood := \
 	kirkwood-lsxhl.dtb \
 	kirkwood-mplcec4.dtb \
 	kirkwood-mv88f6281gtw-ge.dtb \
+	kirkwood-net2big.dtb \
+	kirkwood-net5big.dtb \
 	kirkwood-netgear_readynas_duo_v2.dtb \
 	kirkwood-netgear_readynas_nv+_v2.dtb \
 	kirkwood-ns2.dtb \
@@ -150,8 +152,6 @@ kirkwood := \
 	kirkwood-ts219-6282.dtb \
 	kirkwood-ts419-6281.dtb \
 	kirkwood-ts419-6282.dtb
-dtb-$(CONFIG_ARCH_KIRKWOOD) += $(kirkwood)
-dtb-$(CONFIG_MACH_KIRKWOOD) += $(kirkwood)
 dtb-$(CONFIG_ARCH_LPC32XX) += ea3250.dtb phy3250.dtb
 dtb-$(CONFIG_ARCH_MARCO) += marco-evb.dtb
 dtb-$(CONFIG_ARCH_MOXART) += moxart-uc7112lx.dtb
@@ -457,6 +457,7 @@ dtb-$(CONFIG_MACH_ARMADA_XP) += \
 	armada-xp-openblocks-ax3-4.dtb
 dtb-$(CONFIG_MACH_DOVE) += dove-cm-a510.dtb \
 	dove-cubox.dtb \
+	dove-cubox-es.dtb \
 	dove-d2plug.dtb \
 	dove-d3plug.dtb \
 	dove-dove-db.dtb
