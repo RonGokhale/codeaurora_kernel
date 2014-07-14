@@ -328,6 +328,67 @@ static inline char *alloc_elfnotes_buf(size_t notes_sz)
  * virtually contiguous user-space in ELF layout.
  */
 #ifdef CONFIG_MMU
+/*
+ * remap_oldmem_pfn_checked - do remap_oldmem_pfn replacing all pages reported
+ * as not being ram with the zero page.
+ *
+ * @vma: vm_area_struct describing requested mapping
+ * @vma_addr: start remapping from
+ * @pfn: page frame number to start remapping to
+ * @size: remapping size
+ *
+ * Returns the remapped length. If no errors were hit during the remapping it
+ * should be equal to size.
+ */
+static u64 remap_oldmem_pfn_checked(struct vm_area_struct *vma,
+				    unsigned long vma_addr, unsigned long pfn,
+				    unsigned long size)
+{
+	size_t map_size;
+	unsigned long pos_start, pos_end, pos;
+	unsigned long zeropage_pfn = my_zero_pfn(0);
+	u64 len = 0;
+
+	pos_start = pfn;
+	pos_end = pfn + (size >> PAGE_SHIFT);
+
+	for (pos = pos_start; pos < pos_end; ++pos) {
+		if (!pfn_is_ram(pos)) {
+			/* We hit a page which is not ram. Remap the continuous
+			 * region between pos_start and pos-1 and replace
+			 * the non-ram page at pos with the zero page.
+			 */
+			if (pos > pos_start) {
+				/* Remap continuous region */
+				map_size = (pos - pos_start) << PAGE_SHIFT;
+				if (remap_oldmem_pfn_range(vma, vma_addr + len,
+							   pos_start, map_size,
+							   vma->vm_page_prot))
+					return len;
+				len += map_size;
+			}
+			/* Remap the zero page */
+			if (remap_oldmem_pfn_range(vma, vma_addr + len,
+						   zeropage_pfn,
+						   PAGE_SIZE,
+						   vma->vm_page_prot))
+				return len;
+			len += PAGE_SIZE;
+			pos_start = pos + 1;
+		}
+	}
+	if (pos > pos_start) {
+		/* Remap the rest */
+		map_size = (pos - pos_start) << PAGE_SHIFT;
+		if (remap_oldmem_pfn_range(vma, vma_addr + len, pos_start,
+					   map_size,
+					   vma->vm_page_prot))
+			return len;
+		len += map_size;
+	}
+	return len;
+}
+
 static int mmap_vmcore(struct file *file, struct vm_area_struct *vma)
 {
 	size_t size = vma->vm_end - vma->vm_start;
@@ -387,13 +448,31 @@ static int mmap_vmcore(struct file *file, struct vm_area_struct *vma)
 
 			tsz = min_t(size_t, m->offset + m->size - start, size);
 			paddr = m->paddr + start - m->offset;
-			if (remap_oldmem_pfn_range(vma, vma->vm_start + len,
-						   paddr >> PAGE_SHIFT, tsz,
-						   vma->vm_page_prot))
-				goto fail;
+
+			/* Check if oldmem_pfn_is_ram was registered to avoid
+			   looping over all pages without a reason. */
+			if (oldmem_pfn_is_ram) {
+				u64 original_len;
+				unsigned long pfn, vma_addr;
+
+				pfn = paddr >> PAGE_SHIFT;
+				vma_addr = vma->vm_start + len;
+				original_len = len;
+				len += remap_oldmem_pfn_checked(vma, vma_addr,
+								pfn, tsz);
+				if (len != original_len + tsz)
+					goto fail;
+			} else {
+				if (remap_oldmem_pfn_range(vma,
+							   vma->vm_start + len,
+							   paddr >> PAGE_SHIFT,
+							   tsz,
+							   vma->vm_page_prot))
+					goto fail;
+				len += tsz;
+			}
 			size -= tsz;
 			start += tsz;
-			len += tsz;
 
 			if (size == 0)
 				return 0;
