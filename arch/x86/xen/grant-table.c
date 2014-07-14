@@ -42,6 +42,7 @@
 #include <xen/interface/xen.h>
 #include <xen/page.h>
 #include <xen/grant_table.h>
+#include <xen/xen.h>
 
 #include <asm/pgtable.h>
 
@@ -112,7 +113,6 @@ int arch_gnttab_init(unsigned long nr_shared)
 #ifdef CONFIG_XEN_PVH
 #include <xen/balloon.h>
 #include <xen/events.h>
-#include <xen/xen.h>
 #include <linux/slab.h>
 static int __init xlated_setup_gnttab_pages(void)
 {
