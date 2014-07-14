@@ -36,11 +36,11 @@
 
 #define DEBUG_SUBSYSTEM S_LOV
 
-#include <linux/libcfs/libcfs.h>
+#include "../../include/linux/libcfs/libcfs.h"
 
-#include <obd_class.h>
-#include <lustre/lustre_idl.h>
-
+#include "../include/obd_class.h"
+#include "../include/obd_ost.h"
+#include "../include/lustre/lustre_idl.h"
 #include "lov_internal.h"
 
 static void lov_init_set(struct lov_request_set *set)
@@ -194,13 +194,9 @@ out:
 	return rc;
 }
 
-extern void osc_update_enqueue(struct lustre_handle *lov_lockhp,
-			       struct lov_oinfo *loi, int flags,
-			       struct ost_lvb *lvb, __u32 mode, int rc);
-
 static int lov_update_enqueue_lov(struct obd_export *exp,
 				  struct lustre_handle *lov_lockhp,
-				  struct lov_oinfo *loi, int flags, int idx,
+				  struct lov_oinfo *loi, __u64 flags, int idx,
 				  struct ost_id *oi, int rc)
 {
 	struct lov_obd *lov = &exp->exp_obd->u.lov;
@@ -443,7 +439,7 @@ out_set:
 	return rc;
 }
 
-int lov_fini_match_set(struct lov_request_set *set, __u32 mode, int flags)
+int lov_fini_match_set(struct lov_request_set *set, __u32 mode, __u64 flags)
 {
 	int rc = 0;
 
@@ -1080,7 +1076,7 @@ int lov_prep_setattr_set(struct obd_export *exp, struct obd_info *oinfo,
 			if (off < 0 && req->rq_oi.oi_oa->o_size)
 				req->rq_oi.oi_oa->o_size--;
 
-			CDEBUG(D_INODE, "stripe %d has size "LPU64"/"LPU64"\n",
+			CDEBUG(D_INODE, "stripe %d has size %llu/%llu\n",
 			       i, req->rq_oi.oi_oa->o_size,
 			       oinfo->oi_oa->o_size);
 		}
