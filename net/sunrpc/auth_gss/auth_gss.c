@@ -262,9 +262,22 @@ gss_fill_context(const void *p, const void *end, struct gss_cl_ctx *ctx, struct 
 		p = ERR_PTR(ret);
 		goto err;
 	}
-	dprintk("RPC:       %s Success. gc_expiry %lu now %lu timeout %u\n",
-		__func__, ctx->gc_expiry, now, timeout);
-	return q;
+
+	/* is there any trailing data? */
+	if (q == end) {
+		p = q;
+		goto done;
+	}
+
+	/* pull in acceptor name (if there is one) */
+	p = simple_get_netobj(q, end, &ctx->gc_acceptor);
+	if (IS_ERR(p))
+		goto err;
+done:
+	dprintk("RPC:       %s Success. gc_expiry %lu now %lu timeout %u acceptor %.*s\n",
+		__func__, ctx->gc_expiry, now, timeout, ctx->gc_acceptor.len,
+		ctx->gc_acceptor.data);
+	return p;
 err:
 	dprintk("RPC:       %s returns error %ld\n", __func__, -PTR_ERR(p));
 	return p;
@@ -1225,6 +1238,7 @@ gss_do_free_ctx(struct gss_cl_ctx *ctx)
 
 	gss_delete_sec_context(&ctx->gc_gss_ctx);
 	kfree(ctx->gc_wire_ctx.data);
+	kfree(ctx->gc_acceptor.data);
 	kfree(ctx);
 }
 
@@ -1330,6 +1344,26 @@ gss_cred_init(struct rpc_auth *auth, struct rpc_cred *cred)
 		err = gss_create_upcall(gss_auth, gss_cred);
 	} while (err == -EAGAIN);
 	return err;
+}
+
+static char *
+gss_stringify_acceptor(struct rpc_cred *cred)
+{
+	char *string;
+	struct gss_cred *gss_cred = container_of(cred, struct gss_cred, gc_base);
+	struct xdr_netobj *acceptor = &gss_cred->gc_ctx->gc_acceptor;
+
+	/* no point if there's no string */
+	if (!acceptor->len)
+		return NULL;
+
+	string = kmalloc(acceptor->len + 1, GFP_KERNEL);
+	if (!string)
+		return string;
+
+	memcpy(string, acceptor->data, acceptor->len);
+	string[acceptor->len] = '\0';
+	return string;
 }
 
 /*
@@ -1909,29 +1943,31 @@ static const struct rpc_authops authgss_ops = {
 };
 
 static const struct rpc_credops gss_credops = {
-	.cr_name	= "AUTH_GSS",
-	.crdestroy	= gss_destroy_cred,
-	.cr_init	= gss_cred_init,
-	.crbind		= rpcauth_generic_bind_cred,
-	.crmatch	= gss_match,
-	.crmarshal	= gss_marshal,
-	.crrefresh	= gss_refresh,
-	.crvalidate	= gss_validate,
-	.crwrap_req	= gss_wrap_req,
-	.crunwrap_resp	= gss_unwrap_resp,
-	.crkey_timeout	= gss_key_timeout,
+	.cr_name		= "AUTH_GSS",
+	.crdestroy		= gss_destroy_cred,
+	.cr_init		= gss_cred_init,
+	.crbind			= rpcauth_generic_bind_cred,
+	.crmatch		= gss_match,
+	.crmarshal		= gss_marshal,
+	.crrefresh		= gss_refresh,
+	.crvalidate		= gss_validate,
+	.crwrap_req		= gss_wrap_req,
+	.crunwrap_resp		= gss_unwrap_resp,
+	.crkey_timeout		= gss_key_timeout,
+	.crstringify_acceptor	= gss_stringify_acceptor,
 };
 
 static const struct rpc_credops gss_nullops = {
-	.cr_name	= "AUTH_GSS",
-	.crdestroy	= gss_destroy_nullcred,
-	.crbind		= rpcauth_generic_bind_cred,
-	.crmatch	= gss_match,
-	.crmarshal	= gss_marshal,
-	.crrefresh	= gss_refresh_null,
-	.crvalidate	= gss_validate,
-	.crwrap_req	= gss_wrap_req,
-	.crunwrap_resp	= gss_unwrap_resp,
+	.cr_name		= "AUTH_GSS",
+	.crdestroy		= gss_destroy_nullcred,
+	.crbind			= rpcauth_generic_bind_cred,
+	.crmatch		= gss_match,
+	.crmarshal		= gss_marshal,
+	.crrefresh		= gss_refresh_null,
+	.crvalidate		= gss_validate,
+	.crwrap_req		= gss_wrap_req,
+	.crunwrap_resp		= gss_unwrap_resp,
+	.crstringify_acceptor	= gss_stringify_acceptor,
 };
 
 static const struct rpc_pipe_ops gss_upcall_ops_v0 = {
