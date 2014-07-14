@@ -895,7 +895,7 @@ wd33c93_intr(struct Scsi_Host *instance)
 
 		/* construct an IDENTIFY message with correct disconnect bit */
 
-		hostdata->outgoing_msg[0] = (0x80 | 0x00 | cmd->device->lun);
+		hostdata->outgoing_msg[0] = IDENTIFY(0, cmd->device->lun);
 		if (cmd->SCp.phase)
 			hostdata->outgoing_msg[0] |= 0x40;
 
@@ -2169,7 +2169,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		seq_printf(m, "\nconnected:     ");
 		if (hd->connected) {
 			cmd = (struct scsi_cmnd *) hd->connected;
-			seq_printf(m, " %d:%d(%02x)",
+			seq_printf(m, " %d:%llu(%02x)",
 				cmd->device->id, cmd->device->lun, cmd->cmnd[0]);
 		}
 	}
@@ -2177,7 +2177,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		seq_printf(m, "\ninput_Q:       ");
 		cmd = (struct scsi_cmnd *) hd->input_Q;
 		while (cmd) {
-			seq_printf(m, " %d:%d(%02x)",
+			seq_printf(m, " %d:%llu(%02x)",
 				cmd->device->id, cmd->device->lun, cmd->cmnd[0]);
 			cmd = (struct scsi_cmnd *) cmd->host_scribble;
 		}
@@ -2186,7 +2186,7 @@ wd33c93_show_info(struct seq_file *m, struct Scsi_Host *instance)
 		seq_printf(m, "\ndisconnected_Q:");
 		cmd = (struct scsi_cmnd *) hd->disconnected_Q;
 		while (cmd) {
-			seq_printf(m, " %d:%d(%02x)",
+			seq_printf(m, " %d:%llu(%02x)",
 				cmd->device->id, cmd->device->lun, cmd->cmnd[0]);
 			cmd = (struct scsi_cmnd *) cmd->host_scribble;
 		}

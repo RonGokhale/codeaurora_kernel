@@ -235,7 +235,8 @@ fail:
  * Description: allocate a struct scsi_cmd from host's slab, recycling from the
  *              host's free_list if necessary.
  */
-struct scsi_cmnd *__scsi_get_command(struct Scsi_Host *shost, gfp_t gfp_mask)
+static struct scsi_cmnd *
+__scsi_get_command(struct Scsi_Host *shost, gfp_t gfp_mask)
 {
 	struct scsi_cmnd *cmd = scsi_host_alloc_command(shost, gfp_mask);
 
@@ -265,7 +266,6 @@ struct scsi_cmnd *__scsi_get_command(struct Scsi_Host *shost, gfp_t gfp_mask)
 
 	return cmd;
 }
-EXPORT_SYMBOL_GPL(__scsi_get_command);
 
 /**
  * scsi_get_command - Allocate and setup a scsi command block
@@ -291,14 +291,13 @@ struct scsi_cmnd *scsi_get_command(struct scsi_device *dev, gfp_t gfp_mask)
 	cmd->jiffies_at_alloc = jiffies;
 	return cmd;
 }
-EXPORT_SYMBOL(scsi_get_command);
 
 /**
  * __scsi_put_command - Free a struct scsi_cmnd
  * @shost: dev->host
  * @cmd: Command to free
  */
-void __scsi_put_command(struct Scsi_Host *shost, struct scsi_cmnd *cmd)
+static void __scsi_put_command(struct Scsi_Host *shost, struct scsi_cmnd *cmd)
 {
 	unsigned long flags;
 
@@ -314,7 +313,6 @@ void __scsi_put_command(struct Scsi_Host *shost, struct scsi_cmnd *cmd)
 	if (likely(cmd != NULL))
 		scsi_host_free_command(shost, cmd);
 }
-EXPORT_SYMBOL(__scsi_put_command);
 
 /**
  * scsi_put_command - Free a scsi command block
@@ -334,11 +332,10 @@ void scsi_put_command(struct scsi_cmnd *cmd)
 	list_del_init(&cmd->list);
 	spin_unlock_irqrestore(&cmd->device->list_lock, flags);
 
-	cancel_delayed_work(&cmd->abort_work);
+	BUG_ON(delayed_work_pending(&cmd->abort_work));
 
 	__scsi_put_command(cmd->device->host, cmd);
 }
-EXPORT_SYMBOL(scsi_put_command);
 
 static struct scsi_host_cmd_pool *
 scsi_find_host_cmd_pool(struct Scsi_Host *shost)
@@ -655,7 +652,7 @@ int scsi_dispatch_cmd(struct scsi_cmnd *cmd)
 
 	/* Check to see if the scsi lld made this device blocked. */
 	if (unlikely(scsi_device_blocked(cmd->device))) {
-		/* 
+		/*
 		 * in blocked state, the command is just put back on
 		 * the device queue.  The suspend state has already
 		 * blocked the queue so future requests should not
@@ -665,7 +662,8 @@ int scsi_dispatch_cmd(struct scsi_cmnd *cmd)
 
 		scsi_queue_insert(cmd, SCSI_MLQUEUE_DEVICE_BUSY);
 
-		SCSI_LOG_MLQUEUE(3, printk("queuecommand : device blocked \n"));
+		SCSI_LOG_MLQUEUE(3, scmd_printk(KERN_INFO, cmd,
+			"queuecommand : device blocked\n"));
 
 		/*
 		 * NOTE: rtn is still zero here because we don't need the
@@ -674,7 +672,7 @@ int scsi_dispatch_cmd(struct scsi_cmnd *cmd)
 		goto out;
 	}
 
-	/* 
+	/*
 	 * If SCSI-2 or lower, store the LUN value in cmnd.
 	 */
 	if (cmd->device->scsi_level <= SCSI_2 &&
@@ -690,8 +688,8 @@ int scsi_dispatch_cmd(struct scsi_cmnd *cmd)
 	 * length exceeds what the host adapter can handle.
 	 */
 	if (cmd->cmd_len > cmd->device->host->max_cmd_len) {
-		SCSI_LOG_MLQUEUE(3,
-			printk("queuecommand : command too long. "
+		SCSI_LOG_MLQUEUE(3, scmd_printk(KERN_INFO, cmd,
+			       "queuecommand : command too long. "
 			       "cdb_size=%d host->max_cmd_len=%d\n",
 			       cmd->cmd_len, cmd->device->host->max_cmd_len));
 		cmd->result = (DID_ABORT << 16);
@@ -715,14 +713,13 @@ int scsi_dispatch_cmd(struct scsi_cmnd *cmd)
 		    rtn != SCSI_MLQUEUE_TARGET_BUSY)
 			rtn = SCSI_MLQUEUE_HOST_BUSY;
 
-		scsi_queue_insert(cmd, rtn);
+		SCSI_LOG_MLQUEUE(3, scmd_printk(KERN_INFO, cmd,
+			"queuecommand : request rejected\n"));
 
-		SCSI_LOG_MLQUEUE(3,
-		    printk("queuecommand : request rejected\n"));
+		scsi_queue_insert(cmd, rtn);
 	}
 
  out:
-	SCSI_LOG_MLQUEUE(3, printk("leaving scsi_dispatch_cmnd()\n"));
 	return rtn;
 }
 
@@ -801,7 +798,6 @@ void scsi_finish_command(struct scsi_cmnd *cmd)
 	}
 	scsi_io_completion(cmd, good_bytes);
 }
-EXPORT_SYMBOL(scsi_finish_command);
 
 /**
  * scsi_adjust_queue_depth - Let low level drivers change a device's queue depth
@@ -850,6 +846,10 @@ void scsi_adjust_queue_depth(struct scsi_device *sdev, int tagged, int tags)
 
 	sdev->queue_depth = tags;
 	switch (tagged) {
+		case 0:
+			sdev->ordered_tags = 0;
+			sdev->simple_tags = 0;
+			break;
 		case MSG_ORDERED_TAG:
 			sdev->ordered_tags = 1;
 			sdev->simple_tags = 1;
@@ -859,13 +859,11 @@ void scsi_adjust_queue_depth(struct scsi_device *sdev, int tagged, int tags)
 			sdev->simple_tags = 1;
 			break;
 		default:
+			sdev->ordered_tags = 0;
+			sdev->simple_tags = 0;
 			sdev_printk(KERN_WARNING, sdev,
 				    "scsi_adjust_queue_depth, bad queue type, "
 				    "disabled\n");
-		case 0:
-			sdev->ordered_tags = sdev->simple_tags = 0;
-			sdev->queue_depth = tags;
-			break;
 	}
  out:
 	spin_unlock_irqrestore(sdev->request_queue->queue_lock, flags);
@@ -1291,7 +1289,7 @@ EXPORT_SYMBOL(__starget_for_each_device);
  * really want to use scsi_device_lookup_by_target instead.
  **/
 struct scsi_device *__scsi_device_lookup_by_target(struct scsi_target *starget,
-						   uint lun)
+						   u64 lun)
 {
 	struct scsi_device *sdev;
 
@@ -1316,7 +1314,7 @@ EXPORT_SYMBOL(__scsi_device_lookup_by_target);
  * needs to be released with scsi_device_put once you're done with it.
  **/
 struct scsi_device *scsi_device_lookup_by_target(struct scsi_target *starget,
-						 uint lun)
+						 u64 lun)
 {
 	struct scsi_device *sdev;
 	struct Scsi_Host *shost = dev_to_shost(starget->dev.parent);
@@ -1349,7 +1347,7 @@ EXPORT_SYMBOL(scsi_device_lookup_by_target);
  * really want to use scsi_device_lookup instead.
  **/
 struct scsi_device *__scsi_device_lookup(struct Scsi_Host *shost,
-		uint channel, uint id, uint lun)
+		uint channel, uint id, u64 lun)
 {
 	struct scsi_device *sdev;
 
@@ -1375,7 +1373,7 @@ EXPORT_SYMBOL(__scsi_device_lookup);
  * needs to be released with scsi_device_put once you're done with it.
  **/
 struct scsi_device *scsi_device_lookup(struct Scsi_Host *shost,
-		uint channel, uint id, uint lun)
+		uint channel, uint id, u64 lun)
 {
 	struct scsi_device *sdev;
 	unsigned long flags;
