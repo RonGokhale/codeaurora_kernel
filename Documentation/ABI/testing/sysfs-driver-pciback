@@ -1,0 +1,26 @@
+What:           /sys/bus/pci/drivers/pciback/quirks
+Date:           Oct 2011
+KernelVersion:  3.1
+Contact:        xen-devel@lists.xenproject.org
+Description:
+                If the permissive attribute is set, then writing a string in
+                the format of DDDD:BB:DD.F-REG:SIZE:MASK will allow the guest
+                to write and read from the PCI device. That is Domain:Bus:
+                Device.Function-Register:Size:Mask (Domain is optional).
+                For example:
+                #echo 00:19.0-E0:2:FF > /sys/bus/pci/drivers/pciback/quirks
+                will allow the guest to read and write to the configuration
+                register 0x0E.
+
+What:           /sys/bus/pci/drivers/pciback/irq_handlers
+Date:           Oct 2011
+KernelVersion:  3.1
+Contact:        xen-devel@lists.xenproject.org
+Description:
+                A list of all of the PCI devices owned by Xen PCI back and
+                whether Xen PCI backend will acknowledge the interrupts received
+                and the amount of interrupts received. Xen PCI back acknowledges
+                said interrupts only when they are level, shared with another
+                guest, whether it will acknowledge interrupts, and enabled by
+                the guest.
+
