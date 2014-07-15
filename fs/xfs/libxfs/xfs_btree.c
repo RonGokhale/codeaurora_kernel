@@ -33,6 +33,7 @@
 #include "xfs_error.h"
 #include "xfs_trace.h"
 #include "xfs_cksum.h"
+#include "xfs_alloc.h"
 
 /*
  * Cursor allocation zone.
@@ -91,7 +92,7 @@ xfs_btree_check_lblock(
 		if (bp)
 			trace_xfs_btree_corrupt(bp, _RET_IP_);
 		XFS_ERROR_REPORT(__func__, XFS_ERRLEVEL_LOW, mp);
-		return XFS_ERROR(EFSCORRUPTED);
+		return -EFSCORRUPTED;
 	}
 	return 0;
 }
@@ -139,7 +140,7 @@ xfs_btree_check_sblock(
 		if (bp)
 			trace_xfs_btree_corrupt(bp, _RET_IP_);
 		XFS_ERROR_REPORT(__func__, XFS_ERRLEVEL_LOW, mp);
-		return XFS_ERROR(EFSCORRUPTED);
+		return -EFSCORRUPTED;
 	}
 	return 0;
 }
@@ -1139,7 +1140,7 @@ xfs_btree_get_buf_block(
 				 mp->m_bsize, flags);
 
 	if (!*bpp)
-		return ENOMEM;
+		return -ENOMEM;
 
 	(*bpp)->b_ops = cur->bc_ops->buf_ops;
 	*block = XFS_BUF_TO_BLOCK(*bpp);
@@ -1497,7 +1498,7 @@ xfs_btree_increment(
 		if (cur->bc_flags & XFS_BTREE_ROOT_IN_INODE)
 			goto out0;
 		ASSERT(0);
-		error = EFSCORRUPTED;
+		error = -EFSCORRUPTED;
 		goto error0;
 	}
 	ASSERT(lev < cur->bc_nlevels);
@@ -1596,7 +1597,7 @@ xfs_btree_decrement(
 		if (cur->bc_flags & XFS_BTREE_ROOT_IN_INODE)
 			goto out0;
 		ASSERT(0);
-		error = EFSCORRUPTED;
+		error = -EFSCORRUPTED;
 		goto error0;
 	}
 	ASSERT(lev < cur->bc_nlevels);
@@ -2323,7 +2324,7 @@ error1:
  * record (to be inserted into parent).
  */
 STATIC int					/* error */
-xfs_btree_split(
+__xfs_btree_split(
 	struct xfs_btree_cur	*cur,
 	int			level,
 	union xfs_btree_ptr	*ptrp,
@@ -2502,6 +2503,85 @@ error0:
 	XFS_BTREE_TRACE_CURSOR(cur, XBT_ERROR);
 	return error;
 }
+
+struct xfs_btree_split_args {
+	struct xfs_btree_cur	*cur;
+	int			level;
+	union xfs_btree_ptr	*ptrp;
+	union xfs_btree_key	*key;
+	struct xfs_btree_cur	**curp;
+	int			*stat;		/* success/failure */
+	int			result;
+	bool			kswapd;	/* allocation in kswapd context */
+	struct completion	*done;
+	struct work_struct	work;
+};
+
+/*
+ * Stack switching interfaces for allocation
+ */
+static void
+xfs_btree_split_worker(
+	struct work_struct	*work)
+{
+	struct xfs_btree_split_args	*args = container_of(work,
+						struct xfs_btree_split_args, work);
+	unsigned long		pflags;
+	unsigned long		new_pflags = PF_FSTRANS;
+
+	/*
+	 * we are in a transaction context here, but may also be doing work
+	 * in kswapd context, and hence we may need to inherit that state
+	 * temporarily to ensure that we don't block waiting for memory reclaim
+	 * in any way.
+	 */
+	if (args->kswapd)
+		new_pflags |= PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD;
+
+	current_set_flags_nested(&pflags, new_pflags);
+
+	args->result = __xfs_btree_split(args->cur, args->level, args->ptrp,
+					 args->key, args->curp, args->stat);
+	complete(args->done);
+
+	current_restore_flags_nested(&pflags, new_pflags);
+}
+
+/*
+ * BMBT split requests often come in with little stack to work on. Push
+ * them off to a worker thread so there is lots of stack to use. For the other
+ * btree types, just call directly to avoid the context switch overhead here.
+ */
+STATIC int					/* error */
+xfs_btree_split(
+	struct xfs_btree_cur	*cur,
+	int			level,
+	union xfs_btree_ptr	*ptrp,
+	union xfs_btree_key	*key,
+	struct xfs_btree_cur	**curp,
+	int			*stat)		/* success/failure */
+{
+	struct xfs_btree_split_args	args;
+	DECLARE_COMPLETION_ONSTACK(done);
+
+	if (cur->bc_btnum != XFS_BTNUM_BMAP)
+		return __xfs_btree_split(cur, level, ptrp, key, curp, stat);
+
+	args.cur = cur;
+	args.level = level;
+	args.ptrp = ptrp;
+	args.key = key;
+	args.curp = curp;
+	args.stat = stat;
+	args.done = &done;
+	args.kswapd = current_is_kswapd();
+	INIT_WORK_ONSTACK(&args.work, xfs_btree_split_worker);
+	queue_work(xfs_alloc_wq, &args.work);
+	wait_for_completion(&done);
+	destroy_work_on_stack(&args.work);
+	return args.result;
+}
+
 
 /*
  * Copy the old inode root contents into a real block and make the
@@ -3938,7 +4018,7 @@ xfs_btree_block_change_owner(
 	/* now read rh sibling block for next iteration */
 	xfs_btree_get_sibling(cur, block, &rptr, XFS_BB_RIGHTSIB);
 	if (xfs_btree_ptr_is_null(cur, &rptr))
-		return ENOENT;
+		return -ENOENT;
 
 	return xfs_btree_lookup_get_block(cur, level, &rptr, &block);
 }
@@ -3981,7 +4061,7 @@ xfs_btree_change_owner(
 							     buffer_list);
 		} while (!error);
 
-		if (error != ENOENT)
+		if (error != -ENOENT)
 			return error;
 	}
 
