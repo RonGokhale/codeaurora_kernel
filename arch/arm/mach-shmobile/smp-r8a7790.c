@@ -17,10 +17,12 @@
 #include <linux/init.h>
 #include <linux/smp.h>
 #include <linux/io.h>
+
 #include <asm/smp_plat.h>
-#include <mach/r8a7790.h>
+
 #include "common.h"
 #include "pm-rcar.h"
+#include "r8a7790.h"
 
 static struct rcar_sysc_ch r8a7790_ca15_scu = {
 	.chan_offs = 0x180, /* PWRSR5 .. PWRER5 */

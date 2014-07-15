@@ -13,9 +13,9 @@
 #include <linux/kernel.h>
 #include <linux/smp.h>
 #include <asm/io.h>
-#include <mach/r8a7790.h>
 #include "common.h"
 #include "pm-rcar.h"
+#include "r8a7790.h"
 
 /* RST */
 #define RST		0xe6160000
