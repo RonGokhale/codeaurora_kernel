@@ -23,12 +23,14 @@
 #include <linux/kernel.h>
 #include <linux/of_platform.h>
 #include <linux/platform_data/rcar-du.h>
-#include <mach/clock.h>
-#include <mach/common.h>
-#include <mach/irqs.h>
-#include <mach/rcar-gen2.h>
-#include <mach/r8a7791.h>
+
 #include <asm/mach/arch.h>
+
+#include "clock.h"
+#include "common.h"
+#include "irqs.h"
+#include "r8a7791.h"
+#include "rcar-gen2.h"
 
 /* DU */
 static struct rcar_du_encoder_data koelsch_du_encoders[] = {
