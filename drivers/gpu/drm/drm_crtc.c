@@ -3454,19 +3454,28 @@ EXPORT_SYMBOL(drm_property_create_enum);
 struct drm_property *drm_property_create_bitmask(struct drm_device *dev,
 					 int flags, const char *name,
 					 const struct drm_prop_enum_list *props,
-					 int num_values)
+					 int num_props,
+					 uint64_t supported_bits)
 {
 	struct drm_property *property;
-	int i, ret;
+	int i, ret, index = 0;
+	int num_values = hweight64(supported_bits);
 
 	flags |= DRM_MODE_PROP_BITMASK;
 
 	property = drm_property_create(dev, flags, name, num_values);
 	if (!property)
 		return NULL;
+	for (i = 0; i < num_props; i++) {
+		if (!(supported_bits & (1ULL << props[i].type)))
+			continue;
 
-	for (i = 0; i < num_values; i++) {
-		ret = drm_property_add_enum(property, i,
+		if (WARN_ON(index >= num_values)) {
+			drm_property_destroy(dev, property);
+			return NULL;
+		}
+
+		ret = drm_property_add_enum(property, index++,
 				      props[i].type,
 				      props[i].name);
 		if (ret) {
@@ -4915,6 +4924,36 @@ int drm_format_vert_chroma_subsampling(uint32_t format)
 EXPORT_SYMBOL(drm_format_vert_chroma_subsampling);
 
 /**
+ * drm_rotation_simplify() - Try to simplify the rotation
+ * @rotation: Rotation to be simplified
+ * @supported_rotations: Supported rotations
+ *
+ * Attempt to simplify the rotation to a form that is supported.
+ * Eg. if the hardware supports everything except DRM_REFLECT_X
+ * one could call this function like this:
+ *
+ * drm_rotation_simplify(rotation, BIT(DRM_ROTATE_0) |
+ *                       BIT(DRM_ROTATE_90) | BIT(DRM_ROTATE_180) |
+ *                       BIT(DRM_ROTATE_270) | BIT(DRM_REFLECT_Y));
+ *
+ * to eliminate the DRM_ROTATE_X flag. Depending on what kind of
+ * transforms the hardware supports, this function may not
+ * be able to produce a supported transform, so the caller should
+ * check the result afterwards.
+ */
+unsigned int drm_rotation_simplify(unsigned int rotation,
+				   unsigned int supported_rotations)
+{
+	if (rotation & ~supported_rotations) {
+		rotation ^= BIT(DRM_REFLECT_X) | BIT(DRM_REFLECT_Y);
+		rotation = (rotation & ~0xf) | BIT((ffs(rotation & 0xf) + 1) % 4);
+	}
+
+	return rotation;
+}
+EXPORT_SYMBOL(drm_rotation_simplify);
+
+/**
  * drm_mode_config_init - initialize DRM mode_configuration structure
  * @dev: DRM device
  *
@@ -5032,3 +5071,21 @@ void drm_mode_config_cleanup(struct drm_device *dev)
 	drm_modeset_lock_fini(&dev->mode_config.connection_mutex);
 }
 EXPORT_SYMBOL(drm_mode_config_cleanup);
+
+struct drm_property *drm_mode_create_rotation_property(struct drm_device *dev,
+						       unsigned int supported_rotations)
+{
+	static const struct drm_prop_enum_list props[] = {
+		{ DRM_ROTATE_0,   "rotate-0" },
+		{ DRM_ROTATE_90,  "rotate-90" },
+		{ DRM_ROTATE_180, "rotate-180" },
+		{ DRM_ROTATE_270, "rotate-270" },
+		{ DRM_REFLECT_X,  "reflect-x" },
+		{ DRM_REFLECT_Y,  "reflect-y" },
+	};
+
+	return drm_property_create_bitmask(dev, 0, "rotation",
+					   props, ARRAY_SIZE(props),
+					   supported_rotations);
+}
+EXPORT_SYMBOL(drm_mode_create_rotation_property);

@@ -93,8 +93,7 @@ static void i8xx_enable_fbc(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb = crtc->primary->fb;
-	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
-	struct drm_i915_gem_object *obj = intel_fb->obj;
+	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int cfb_pitch;
 	int i;
@@ -150,8 +149,7 @@ static void g4x_enable_fbc(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb = crtc->primary->fb;
-	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
-	struct drm_i915_gem_object *obj = intel_fb->obj;
+	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	u32 dpfc_ctl;
 
@@ -222,16 +220,26 @@ static void ironlake_enable_fbc(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb = crtc->primary->fb;
-	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
-	struct drm_i915_gem_object *obj = intel_fb->obj;
+	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	u32 dpfc_ctl;
 
 	dpfc_ctl = DPFC_CTL_PLANE(intel_crtc->plane);
 	if (drm_format_plane_cpp(fb->pixel_format, 0) == 2)
+		dev_priv->fbc.threshold++;
+
+	switch (dev_priv->fbc.threshold) {
+	case 4:
+	case 3:
+		dpfc_ctl |= DPFC_CTL_LIMIT_4X;
+		break;
+	case 2:
 		dpfc_ctl |= DPFC_CTL_LIMIT_2X;
-	else
+		break;
+	case 1:
 		dpfc_ctl |= DPFC_CTL_LIMIT_1X;
+		break;
+	}
 	dpfc_ctl |= DPFC_CTL_FENCE_EN;
 	if (IS_GEN5(dev))
 		dpfc_ctl |= obj->fence_reg;
@@ -278,16 +286,27 @@ static void gen7_enable_fbc(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_framebuffer *fb = crtc->primary->fb;
-	struct intel_framebuffer *intel_fb = to_intel_framebuffer(fb);
-	struct drm_i915_gem_object *obj = intel_fb->obj;
+	struct drm_i915_gem_object *obj = intel_fb_obj(fb);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	u32 dpfc_ctl;
 
 	dpfc_ctl = IVB_DPFC_CTL_PLANE(intel_crtc->plane);
 	if (drm_format_plane_cpp(fb->pixel_format, 0) == 2)
+		dev_priv->fbc.threshold++;
+
+	switch (dev_priv->fbc.threshold) {
+	case 4:
+	case 3:
+		dpfc_ctl |= DPFC_CTL_LIMIT_4X;
+		break;
+	case 2:
 		dpfc_ctl |= DPFC_CTL_LIMIT_2X;
-	else
+		break;
+	case 1:
 		dpfc_ctl |= DPFC_CTL_LIMIT_1X;
+		break;
+	}
+
 	dpfc_ctl |= IVB_DPFC_CTL_FENCE_EN;
 
 	I915_WRITE(ILK_DPFC_CONTROL, dpfc_ctl | DPFC_CTL_EN);
@@ -462,7 +481,6 @@ void intel_update_fbc(struct drm_device *dev)
 	struct drm_crtc *crtc = NULL, *tmp_crtc;
 	struct intel_crtc *intel_crtc;
 	struct drm_framebuffer *fb;
-	struct intel_framebuffer *intel_fb;
 	struct drm_i915_gem_object *obj;
 	const struct drm_display_mode *adjusted_mode;
 	unsigned int max_width, max_height;
@@ -507,8 +525,7 @@ void intel_update_fbc(struct drm_device *dev)
 
 	intel_crtc = to_intel_crtc(crtc);
 	fb = crtc->primary->fb;
-	intel_fb = to_intel_framebuffer(fb);
-	obj = intel_fb->obj;
+	obj = intel_fb_obj(fb);
 	adjusted_mode = &intel_crtc->config.adjusted_mode;
 
 	if (i915.enable_fbc < 0) {
@@ -566,7 +583,8 @@ void intel_update_fbc(struct drm_device *dev)
 	if (in_dbg_master())
 		goto out_disable;
 
-	if (i915_gem_stolen_setup_compression(dev, intel_fb->obj->base.size)) {
+	if (i915_gem_stolen_setup_compression(dev, obj->base.size,
+					      drm_format_plane_cpp(fb->pixel_format, 0))) {
 		if (set_no_fbc_reason(dev_priv, FBC_STOLEN_TOO_SMALL))
 			DRM_DEBUG_KMS("framebuffer too large, disabling compression\n");
 		goto out_disable;
@@ -792,12 +810,33 @@ static const struct cxsr_latency *intel_get_cxsr_latency(int is_desktop,
 	return NULL;
 }
 
-static void pineview_disable_cxsr(struct drm_device *dev)
+void intel_set_memory_cxsr(struct drm_i915_private *dev_priv, bool enable)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_device *dev = dev_priv->dev;
+	u32 val;
 
-	/* deactivate cxsr */
-	I915_WRITE(DSPFW3, I915_READ(DSPFW3) & ~PINEVIEW_SELF_REFRESH_EN);
+	if (IS_VALLEYVIEW(dev)) {
+		I915_WRITE(FW_BLC_SELF_VLV, enable ? FW_CSPWRDWNEN : 0);
+	} else if (IS_G4X(dev) || IS_CRESTLINE(dev)) {
+		I915_WRITE(FW_BLC_SELF, enable ? FW_BLC_SELF_EN : 0);
+	} else if (IS_PINEVIEW(dev)) {
+		val = I915_READ(DSPFW3) & ~PINEVIEW_SELF_REFRESH_EN;
+		val |= enable ? PINEVIEW_SELF_REFRESH_EN : 0;
+		I915_WRITE(DSPFW3, val);
+	} else if (IS_I945G(dev) || IS_I945GM(dev)) {
+		val = enable ? _MASKED_BIT_ENABLE(FW_BLC_SELF_EN) :
+			       _MASKED_BIT_DISABLE(FW_BLC_SELF_EN);
+		I915_WRITE(FW_BLC_SELF, val);
+	} else if (IS_I915GM(dev)) {
+		val = enable ? _MASKED_BIT_ENABLE(INSTPM_SELF_EN) :
+			       _MASKED_BIT_DISABLE(INSTPM_SELF_EN);
+		I915_WRITE(INSTPM, val);
+	} else {
+		return;
+	}
+
+	DRM_DEBUG_KMS("memory self-refresh is %s\n",
+		      enable ? "enabled" : "disabled");
 }
 
 /*
@@ -1036,7 +1075,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 					 dev_priv->fsb_freq, dev_priv->mem_freq);
 	if (!latency) {
 		DRM_DEBUG_KMS("Unknown FSB/MEM found, disable CxSR\n");
-		pineview_disable_cxsr(dev);
+		intel_set_memory_cxsr(dev_priv, false);
 		return;
 	}
 
@@ -1087,13 +1126,9 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 		I915_WRITE(DSPFW3, reg);
 		DRM_DEBUG_KMS("DSPFW3 register is %x\n", reg);
 
-		/* activate cxsr */
-		I915_WRITE(DSPFW3,
-			   I915_READ(DSPFW3) | PINEVIEW_SELF_REFRESH_EN);
-		DRM_DEBUG_KMS("Self-refresh is enabled\n");
+		intel_set_memory_cxsr(dev_priv, true);
 	} else {
-		pineview_disable_cxsr(dev);
-		DRM_DEBUG_KMS("Self-refresh is disabled\n");
+		intel_set_memory_cxsr(dev_priv, false);
 	}
 }
 
@@ -1319,6 +1354,7 @@ static void valleyview_update_wm(struct drm_crtc *crtc)
 	int plane_sr, cursor_sr;
 	int ignore_plane_sr, ignore_cursor_sr;
 	unsigned int enabled = 0;
+	bool cxsr_enabled;
 
 	vlv_update_drain_latency(dev);
 
@@ -1345,10 +1381,10 @@ static void valleyview_update_wm(struct drm_crtc *crtc)
 			     &valleyview_wm_info,
 			     &valleyview_cursor_wm_info,
 			     &ignore_plane_sr, &cursor_sr)) {
-		I915_WRITE(FW_BLC_SELF_VLV, FW_CSPWRDWNEN);
+		cxsr_enabled = true;
 	} else {
-		I915_WRITE(FW_BLC_SELF_VLV,
-			   I915_READ(FW_BLC_SELF_VLV) & ~FW_CSPWRDWNEN);
+		cxsr_enabled = false;
+		intel_set_memory_cxsr(dev_priv, false);
 		plane_sr = cursor_sr = 0;
 	}
 
@@ -1368,6 +1404,9 @@ static void valleyview_update_wm(struct drm_crtc *crtc)
 	I915_WRITE(DSPFW3,
 		   (I915_READ(DSPFW3) & ~DSPFW_CURSOR_SR_MASK) |
 		   (cursor_sr << DSPFW_CURSOR_SR_SHIFT));
+
+	if (cxsr_enabled)
+		intel_set_memory_cxsr(dev_priv, true);
 }
 
 static void g4x_update_wm(struct drm_crtc *crtc)
@@ -1378,6 +1417,7 @@ static void g4x_update_wm(struct drm_crtc *crtc)
 	int planea_wm, planeb_wm, cursora_wm, cursorb_wm;
 	int plane_sr, cursor_sr;
 	unsigned int enabled = 0;
+	bool cxsr_enabled;
 
 	if (g4x_compute_wm0(dev, PIPE_A,
 			    &g4x_wm_info, latency_ns,
@@ -1397,10 +1437,10 @@ static void g4x_update_wm(struct drm_crtc *crtc)
 			     &g4x_wm_info,
 			     &g4x_cursor_wm_info,
 			     &plane_sr, &cursor_sr)) {
-		I915_WRITE(FW_BLC_SELF, FW_BLC_SELF_EN);
+		cxsr_enabled = true;
 	} else {
-		I915_WRITE(FW_BLC_SELF,
-			   I915_READ(FW_BLC_SELF) & ~FW_BLC_SELF_EN);
+		cxsr_enabled = false;
+		intel_set_memory_cxsr(dev_priv, false);
 		plane_sr = cursor_sr = 0;
 	}
 
@@ -1421,6 +1461,9 @@ static void g4x_update_wm(struct drm_crtc *crtc)
 	I915_WRITE(DSPFW3,
 		   (I915_READ(DSPFW3) & ~(DSPFW_HPLL_SR_EN | DSPFW_CURSOR_SR_MASK)) |
 		   (cursor_sr << DSPFW_CURSOR_SR_SHIFT));
+
+	if (cxsr_enabled)
+		intel_set_memory_cxsr(dev_priv, true);
 }
 
 static void i965_update_wm(struct drm_crtc *unused_crtc)
@@ -1430,6 +1473,7 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 	struct drm_crtc *crtc;
 	int srwm = 1;
 	int cursor_sr = 16;
+	bool cxsr_enabled;
 
 	/* Calc sr entries for one plane configs */
 	crtc = single_enabled_crtc(dev);
@@ -1471,13 +1515,11 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 		DRM_DEBUG_KMS("self-refresh watermark: display plane %d "
 			      "cursor %d\n", srwm, cursor_sr);
 
-		if (IS_CRESTLINE(dev))
-			I915_WRITE(FW_BLC_SELF, FW_BLC_SELF_EN);
+		cxsr_enabled = true;
 	} else {
+		cxsr_enabled = false;
 		/* Turn off self refresh if both pipes are enabled */
-		if (IS_CRESTLINE(dev))
-			I915_WRITE(FW_BLC_SELF, I915_READ(FW_BLC_SELF)
-				   & ~FW_BLC_SELF_EN);
+		intel_set_memory_cxsr(dev_priv, false);
 	}
 
 	DRM_DEBUG_KMS("Setting FIFO watermarks - A: 8, B: 8, C: 8, SR %d\n",
@@ -1489,6 +1531,9 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 	I915_WRITE(DSPFW2, (8 << 8) | (8 << 0));
 	/* update cursor SR watermark */
 	I915_WRITE(DSPFW3, (cursor_sr << DSPFW_CURSOR_SR_SHIFT));
+
+	if (cxsr_enabled)
+		intel_set_memory_cxsr(dev_priv, true);
 }
 
 static void i9xx_update_wm(struct drm_crtc *unused_crtc)
@@ -1548,12 +1593,12 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 	DRM_DEBUG_KMS("FIFO watermarks - A: %d, B: %d\n", planea_wm, planeb_wm);
 
 	if (IS_I915GM(dev) && enabled) {
-		struct intel_framebuffer *fb;
+		struct drm_i915_gem_object *obj;
 
-		fb = to_intel_framebuffer(enabled->primary->fb);
+		obj = intel_fb_obj(enabled->primary->fb);
 
 		/* self-refresh seems busted with untiled */
-		if (fb->obj->tiling_mode == I915_TILING_NONE)
+		if (obj->tiling_mode == I915_TILING_NONE)
 			enabled = NULL;
 	}
 
@@ -1563,10 +1608,7 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 	cwm = 2;
 
 	/* Play safe and disable self-refresh before adjusting watermarks. */
-	if (IS_I945G(dev) || IS_I945GM(dev))
-		I915_WRITE(FW_BLC_SELF, FW_BLC_SELF_EN_MASK | 0);
-	else if (IS_I915GM(dev))
-		I915_WRITE(INSTPM, _MASKED_BIT_DISABLE(INSTPM_SELF_EN));
+	intel_set_memory_cxsr(dev_priv, false);
 
 	/* Calc sr entries for one plane configs */
 	if (HAS_FW_BLC(dev) && enabled) {
@@ -1612,17 +1654,8 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 	I915_WRITE(FW_BLC, fwater_lo);
 	I915_WRITE(FW_BLC2, fwater_hi);
 
-	if (HAS_FW_BLC(dev)) {
-		if (enabled) {
-			if (IS_I945G(dev) || IS_I945GM(dev))
-				I915_WRITE(FW_BLC_SELF,
-					   FW_BLC_SELF_EN_MASK | FW_BLC_SELF_EN);
-			else if (IS_I915GM(dev))
-				I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_SELF_EN));
-			DRM_DEBUG_KMS("memory self refresh enabled\n");
-		} else
-			DRM_DEBUG_KMS("memory self refresh disabled\n");
-	}
+	if (enabled)
+		intel_set_memory_cxsr(dev_priv, true);
 }
 
 static void i845_update_wm(struct drm_crtc *unused_crtc)
@@ -3150,6 +3183,9 @@ static u32 gen6_rps_pm_mask(struct drm_i915_private *dev_priv, u8 val)
 	if (val < dev_priv->rps.max_freq_softlimit)
 		mask |= GEN6_PM_RP_UP_THRESHOLD;
 
+	mask |= dev_priv->pm_rps_events & (GEN6_PM_RP_DOWN_EI_EXPIRED | GEN6_PM_RP_UP_EI_EXPIRED);
+	mask &= dev_priv->pm_rps_events;
+
 	/* IVB and SNB hard hangs on looping batchbuffer
 	 * if GEN6_PM_UP_EI_EXPIRED is masked.
 	 */
@@ -3356,6 +3392,8 @@ static void cherryview_disable_rps(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
+
+	gen8_disable_rps_interrupts(dev);
 }
 
 static void valleyview_disable_rps(struct drm_device *dev)
@@ -3493,15 +3531,23 @@ static void gen8_enable_rps(struct drm_device *dev)
 	for_each_ring(ring, dev_priv, unused)
 		I915_WRITE(RING_MAX_IDLE(ring->mmio_base), 10);
 	I915_WRITE(GEN6_RC_SLEEP, 0);
-	I915_WRITE(GEN6_RC6_THRESHOLD, 50000); /* 50/125ms per EI */
+	if (IS_BROADWELL(dev))
+		I915_WRITE(GEN6_RC6_THRESHOLD, 625); /* 800us/1.28 for TO */
+	else
+		I915_WRITE(GEN6_RC6_THRESHOLD, 50000); /* 50/125ms per EI */
 
 	/* 3: Enable RC6 */
 	if (intel_enable_rc6(dev) & INTEL_RC6_ENABLE)
 		rc6_mask = GEN6_RC_CTL_RC6_ENABLE;
 	intel_print_rc6_info(dev, rc6_mask);
-	I915_WRITE(GEN6_RC_CONTROL, GEN6_RC_CTL_HW_ENABLE |
-				    GEN6_RC_CTL_EI_MODE(1) |
-				    rc6_mask);
+	if (IS_BROADWELL(dev))
+		I915_WRITE(GEN6_RC_CONTROL, GEN6_RC_CTL_HW_ENABLE |
+				GEN7_RC_CTL_TO_MODE |
+				rc6_mask);
+	else
+		I915_WRITE(GEN6_RC_CONTROL, GEN6_RC_CTL_HW_ENABLE |
+				GEN6_RC_CTL_EI_MODE(1) |
+				rc6_mask);
 
 	/* 4 Program defaults and thresholds for RPS*/
 	I915_WRITE(GEN6_RPNSWREQ,
@@ -3737,7 +3783,7 @@ void gen6_update_ring_freq(struct drm_device *dev)
 	mutex_unlock(&dev_priv->rps.hw_lock);
 }
 
-int cherryview_rps_max_freq(struct drm_i915_private *dev_priv)
+static int cherryview_rps_max_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rp0;
 
@@ -3757,7 +3803,17 @@ static int cherryview_rps_rpe_freq(struct drm_i915_private *dev_priv)
 	return rpe;
 }
 
-int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
+static int cherryview_rps_guar_freq(struct drm_i915_private *dev_priv)
+{
+	u32 val, rp1;
+
+	val = vlv_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS);
+	rp1 = (val >> PUNIT_GPU_STATUS_MAX_FREQ_SHIFT) & PUNIT_GPU_STATUS_MAX_FREQ_MASK;
+
+	return rp1;
+}
+
+static int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rpn;
 
@@ -3766,7 +3822,18 @@ int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
 	return rpn;
 }
 
-int valleyview_rps_max_freq(struct drm_i915_private *dev_priv)
+static int valleyview_rps_guar_freq(struct drm_i915_private *dev_priv)
+{
+	u32 val, rp1;
+
+	val = vlv_nc_read(dev_priv, IOSF_NC_FB_GFX_FREQ_FUSE);
+
+	rp1 = (val & FB_GFX_FGUARANTEED_FREQ_FUSE_MASK) >> FB_GFX_FGUARANTEED_FREQ_FUSE_SHIFT;
+
+	return rp1;
+}
+
+static int valleyview_rps_max_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rp0;
 
@@ -3791,7 +3858,7 @@ static int valleyview_rps_rpe_freq(struct drm_i915_private *dev_priv)
 	return rpe;
 }
 
-int valleyview_rps_min_freq(struct drm_i915_private *dev_priv)
+static int valleyview_rps_min_freq(struct drm_i915_private *dev_priv)
 {
 	return vlv_punit_read(dev_priv, PUNIT_REG_GPU_LFM) & 0xff;
 }
@@ -3908,6 +3975,11 @@ static void valleyview_init_gt_powersave(struct drm_device *dev)
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
 			 dev_priv->rps.efficient_freq);
 
+	dev_priv->rps.rp1_freq = valleyview_rps_guar_freq(dev_priv);
+	DRM_DEBUG_DRIVER("RP1(Guar Freq) GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv, dev_priv->rps.rp1_freq),
+			 dev_priv->rps.rp1_freq);
+
 	dev_priv->rps.min_freq = valleyview_rps_min_freq(dev_priv);
 	DRM_DEBUG_DRIVER("min GPU freq: %d MHz (%u)\n",
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.min_freq),
@@ -3941,6 +4013,11 @@ static void cherryview_init_gt_powersave(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("RPe GPU freq: %d MHz (%u)\n",
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
 			 dev_priv->rps.efficient_freq);
+
+	dev_priv->rps.rp1_freq = cherryview_rps_guar_freq(dev_priv);
+	DRM_DEBUG_DRIVER("RP1(Guar) GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv, dev_priv->rps.rp1_freq),
+			 dev_priv->rps.rp1_freq);
 
 	dev_priv->rps.min_freq = cherryview_rps_min_freq(dev_priv);
 	DRM_DEBUG_DRIVER("min GPU freq: %d MHz (%u)\n",
@@ -4049,6 +4126,8 @@ static void cherryview_enable_rps(struct drm_device *dev)
 
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.efficient_freq);
 
+	gen8_enable_rps_interrupts(dev);
+
 	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
 
@@ -4078,6 +4157,7 @@ static void valleyview_enable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RP_DOWN_EI, 350000);
 
 	I915_WRITE(GEN6_RP_IDLE_HYSTERSIS, 10);
+	I915_WRITE(GEN6_RP_DOWN_TIMEOUT, 0xf4240);
 
 	I915_WRITE(GEN6_RP_CONTROL,
 		   GEN6_RP_MEDIA_TURBO |
@@ -4098,9 +4178,11 @@ static void valleyview_enable_rps(struct drm_device *dev)
 
 	/* allows RC6 residency counter to work */
 	I915_WRITE(VLV_COUNTER_CONTROL,
-		   _MASKED_BIT_ENABLE(VLV_COUNT_RANGE_HIGH |
+		   _MASKED_BIT_ENABLE(VLV_MEDIA_RC0_COUNT_EN |
+				      VLV_RENDER_RC0_COUNT_EN |
 				      VLV_MEDIA_RC6_COUNT_EN |
 				      VLV_RENDER_RC6_COUNT_EN));
+
 	if (intel_enable_rc6(dev) & INTEL_RC6_ENABLE)
 		rc6_mode = GEN7_RC_CTL_TO_MODE | VLV_RC_CTL_CTX_RST_PARALLEL;
 
@@ -5328,7 +5410,7 @@ static void gen8_init_clock_gating(struct drm_device *dev)
 	I915_WRITE(GAMTARBMODE, _MASKED_BIT_ENABLE(ARB_MODE_BWGTLB_DISABLE));
 
 	I915_WRITE(_3D_CHICKEN3,
-		   _3D_CHICKEN_SDE_LIMIT_FIFO_POLY_DEPTH(2));
+		   _MASKED_BIT_ENABLE(_3D_CHICKEN_SDE_LIMIT_FIFO_POLY_DEPTH(2)));
 
 	I915_WRITE(COMMON_SLICE_CHICKEN2,
 		   _MASKED_BIT_ENABLE(GEN8_CSC2_SBE_VUE_CACHE_CONSERVATIVE));
@@ -5563,10 +5645,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 	}
 	DRM_DEBUG_DRIVER("DDR speed: %d MHz", dev_priv->mem_freq);
 
-	dev_priv->vlv_cdclk_freq = valleyview_cur_cdclk(dev_priv);
-	DRM_DEBUG_DRIVER("Current CD clock rate: %d MHz",
-			 dev_priv->vlv_cdclk_freq);
-
 	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
 
 	/* WaDisableEarlyCull:vlv */
@@ -5641,6 +5719,35 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 static void cherryview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+
+	mutex_lock(&dev_priv->rps.hw_lock);
+	val = vlv_punit_read(dev_priv, CCK_FUSE_REG);
+	mutex_unlock(&dev_priv->rps.hw_lock);
+	switch ((val >> 2) & 0x7) {
+	case 0:
+	case 1:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_200;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 2:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_267;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 3:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_333;
+			dev_priv->mem_freq = 2000;
+			break;
+	case 4:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_320;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 5:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_400;
+			dev_priv->mem_freq = 1600;
+			break;
+	}
+	DRM_DEBUG_DRIVER("DDR speed: %d MHz", dev_priv->mem_freq);
 
 	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
 
@@ -5982,34 +6089,13 @@ static bool i9xx_always_on_power_well_enabled(struct drm_i915_private *dev_priv,
 	return true;
 }
 
-void __vlv_set_power_well(struct drm_i915_private *dev_priv,
-			  enum punit_power_well power_well_id, bool enable)
+static void vlv_set_power_well(struct drm_i915_private *dev_priv,
+			       struct i915_power_well *power_well, bool enable)
 {
-	struct drm_device *dev = dev_priv->dev;
+	enum punit_power_well power_well_id = power_well->data;
 	u32 mask;
 	u32 state;
 	u32 ctrl;
-	enum pipe pipe;
-
-	if (power_well_id == PUNIT_POWER_WELL_DPIO_CMN_BC) {
-		if (enable) {
-			/*
-			 * Enable the CRI clock source so we can get at the
-			 * display and the reference clock for VGA
-			 * hotplug / manual detection.
-			 */
-			I915_WRITE(DPLL(PIPE_B), I915_READ(DPLL(PIPE_B)) |
-				   DPLL_REFA_CLK_ENABLE_VLV |
-				   DPLL_INTEGRATED_CRI_CLK_VLV);
-			udelay(1); /* >10ns for cmnreset, >0ns for sidereset */
-		} else {
-			for_each_pipe(pipe)
-				assert_pll_disabled(dev_priv, pipe);
-			/* Assert common reset */
-			I915_WRITE(DPIO_CTL, I915_READ(DPIO_CTL) &
-				   ~DPIO_CMNRST);
-		}
-	}
 
 	mask = PUNIT_PWRGT_MASK(power_well_id);
 	state = enable ? PUNIT_PWRGT_PWR_ON(power_well_id) :
@@ -6037,28 +6123,6 @@ void __vlv_set_power_well(struct drm_i915_private *dev_priv,
 
 out:
 	mutex_unlock(&dev_priv->rps.hw_lock);
-
-	/*
-	 * From VLV2A0_DP_eDP_DPIO_driver_vbios_notes_10.docx -
-	 *  6.	De-assert cmn_reset/side_reset. Same as VLV X0.
-	 *   a.	GUnit 0x2110 bit[0] set to 1 (def 0)
-	 *   b.	The other bits such as sfr settings / modesel may all
-	 *	be set to 0.
-	 *
-	 * This should only be done on init and resume from S3 with
-	 * both PLLs disabled, or we risk losing DPIO and PLL
-	 * synchronization.
-	 */
-	if (power_well_id == PUNIT_POWER_WELL_DPIO_CMN_BC && enable)
-		I915_WRITE(DPIO_CTL, I915_READ(DPIO_CTL) | DPIO_CMNRST);
-}
-
-static void vlv_set_power_well(struct drm_i915_private *dev_priv,
-			       struct i915_power_well *power_well, bool enable)
-{
-	enum punit_power_well power_well_id = power_well->data;
-
-	__vlv_set_power_well(dev_priv, power_well_id, enable);
 }
 
 static void vlv_power_well_sync_hw(struct drm_i915_private *dev_priv,
@@ -6146,6 +6210,53 @@ static void vlv_display_power_well_disable(struct drm_i915_private *dev_priv,
 	spin_lock_irq(&dev_priv->irq_lock);
 	valleyview_disable_display_irqs(dev_priv);
 	spin_unlock_irq(&dev_priv->irq_lock);
+
+	vlv_set_power_well(dev_priv, power_well, false);
+}
+
+static void vlv_dpio_cmn_power_well_enable(struct drm_i915_private *dev_priv,
+					   struct i915_power_well *power_well)
+{
+	WARN_ON_ONCE(power_well->data != PUNIT_POWER_WELL_DPIO_CMN_BC);
+
+	/*
+	 * Enable the CRI clock source so we can get at the
+	 * display and the reference clock for VGA
+	 * hotplug / manual detection.
+	 */
+	I915_WRITE(DPLL(PIPE_B), I915_READ(DPLL(PIPE_B)) |
+		   DPLL_REFA_CLK_ENABLE_VLV | DPLL_INTEGRATED_CRI_CLK_VLV);
+	udelay(1); /* >10ns for cmnreset, >0ns for sidereset */
+
+	vlv_set_power_well(dev_priv, power_well, true);
+
+	/*
+	 * From VLV2A0_DP_eDP_DPIO_driver_vbios_notes_10.docx -
+	 *  6.	De-assert cmn_reset/side_reset. Same as VLV X0.
+	 *   a.	GUnit 0x2110 bit[0] set to 1 (def 0)
+	 *   b.	The other bits such as sfr settings / modesel may all
+	 *	be set to 0.
+	 *
+	 * This should only be done on init and resume from S3 with
+	 * both PLLs disabled, or we risk losing DPIO and PLL
+	 * synchronization.
+	 */
+	I915_WRITE(DPIO_CTL, I915_READ(DPIO_CTL) | DPIO_CMNRST);
+}
+
+static void vlv_dpio_cmn_power_well_disable(struct drm_i915_private *dev_priv,
+					    struct i915_power_well *power_well)
+{
+	struct drm_device *dev = dev_priv->dev;
+	enum pipe pipe;
+
+	WARN_ON_ONCE(power_well->data != PUNIT_POWER_WELL_DPIO_CMN_BC);
+
+	for_each_pipe(pipe)
+		assert_pll_disabled(dev_priv, pipe);
+
+	/* Assert common reset */
+	I915_WRITE(DPIO_CTL, I915_READ(DPIO_CTL) & ~DPIO_CMNRST);
 
 	vlv_set_power_well(dev_priv, power_well, false);
 }
@@ -6299,6 +6410,7 @@ EXPORT_SYMBOL_GPL(i915_get_cdclk_freq);
 	BIT(POWER_DOMAIN_PORT_DDI_D_2_LANES) |		\
 	BIT(POWER_DOMAIN_PORT_DDI_D_4_LANES) |		\
 	BIT(POWER_DOMAIN_PORT_CRT) |			\
+	BIT(POWER_DOMAIN_PLLS) |			\
 	BIT(POWER_DOMAIN_INIT))
 #define HSW_DISPLAY_POWER_DOMAINS (				\
 	(POWER_DOMAIN_MASK & ~HSW_ALWAYS_ON_POWER_DOMAINS) |	\
@@ -6398,6 +6510,13 @@ static const struct i915_power_well_ops vlv_display_power_well_ops = {
 	.is_enabled = vlv_power_well_enabled,
 };
 
+static const struct i915_power_well_ops vlv_dpio_cmn_power_well_ops = {
+	.sync_hw = vlv_power_well_sync_hw,
+	.enable = vlv_dpio_cmn_power_well_enable,
+	.disable = vlv_dpio_cmn_power_well_disable,
+	.is_enabled = vlv_power_well_enabled,
+};
+
 static const struct i915_power_well_ops vlv_dpio_power_well_ops = {
 	.sync_hw = vlv_power_well_sync_hw,
 	.enable = vlv_power_well_enable,
@@ -6458,9 +6577,24 @@ static struct i915_power_well vlv_power_wells[] = {
 		.name = "dpio-common",
 		.domains = VLV_DPIO_CMN_BC_POWER_DOMAINS,
 		.data = PUNIT_POWER_WELL_DPIO_CMN_BC,
-		.ops = &vlv_dpio_power_well_ops,
+		.ops = &vlv_dpio_cmn_power_well_ops,
 	},
 };
+
+static struct i915_power_well *lookup_power_well(struct drm_i915_private *dev_priv,
+						 enum punit_power_well power_well_id)
+{
+	struct i915_power_domains *power_domains = &dev_priv->power_domains;
+	struct i915_power_well *power_well;
+	int i;
+
+	for_each_power_well(i, power_well, POWER_DOMAIN_MASK, power_domains) {
+		if (power_well->data == power_well_id)
+			return power_well;
+	}
+
+	return NULL;
+}
 
 #define set_power_wells(power_domains, __power_wells) ({		\
 	(power_domains)->power_wells = (__power_wells);			\
@@ -6512,11 +6646,50 @@ static void intel_power_domains_resume(struct drm_i915_private *dev_priv)
 	mutex_unlock(&power_domains->lock);
 }
 
+static void vlv_cmnlane_wa(struct drm_i915_private *dev_priv)
+{
+	struct i915_power_well *cmn =
+		lookup_power_well(dev_priv, PUNIT_POWER_WELL_DPIO_CMN_BC);
+	struct i915_power_well *disp2d =
+		lookup_power_well(dev_priv, PUNIT_POWER_WELL_DISP2D);
+
+	/* nothing to do if common lane is already off */
+	if (!cmn->ops->is_enabled(dev_priv, cmn))
+		return;
+
+	/* If the display might be already active skip this */
+	if (disp2d->ops->is_enabled(dev_priv, disp2d) &&
+	    I915_READ(DPIO_CTL) & DPIO_CMNRST)
+		return;
+
+	DRM_DEBUG_KMS("toggling display PHY side reset\n");
+
+	/* cmnlane needs DPLL registers */
+	disp2d->ops->enable(dev_priv, disp2d);
+
+	/*
+	 * From VLV2A0_DP_eDP_HDMI_DPIO_driver_vbios_notes_11.docx:
+	 * Need to assert and de-assert PHY SB reset by gating the
+	 * common lane power, then un-gating it.
+	 * Simply ungating isn't enough to reset the PHY enough to get
+	 * ports and lanes running.
+	 */
+	cmn->ops->disable(dev_priv, cmn);
+}
+
 void intel_power_domains_init_hw(struct drm_i915_private *dev_priv)
 {
+	struct drm_device *dev = dev_priv->dev;
 	struct i915_power_domains *power_domains = &dev_priv->power_domains;
 
 	power_domains->initializing = true;
+
+	if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev)) {
+		mutex_lock(&power_domains->lock);
+		vlv_cmnlane_wa(dev_priv);
+		mutex_unlock(&power_domains->lock);
+	}
+
 	/* For now, we need the power well to be always enabled. */
 	intel_display_set_init_power(dev_priv, true);
 	intel_power_domains_resume(dev_priv);
@@ -6689,7 +6862,7 @@ void intel_init_pm(struct drm_device *dev)
 				 (dev_priv->is_ddr3 == 1) ? "3" : "2",
 				 dev_priv->fsb_freq, dev_priv->mem_freq);
 			/* Disable CxSR and never update its watermark again */
-			pineview_disable_cxsr(dev);
+			intel_set_memory_cxsr(dev_priv, false);
 			dev_priv->display.update_wm = NULL;
 		} else
 			dev_priv->display.update_wm = pineview_update_wm;
@@ -6772,7 +6945,7 @@ int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u8 mbox, u32 val)
 	return 0;
 }
 
-int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+static int byt_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
 	int div;
 
@@ -6794,7 +6967,7 @@ int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
 	return DIV_ROUND_CLOSEST(dev_priv->mem_freq * (val + 6 - 0xbd), 4 * div);
 }
 
-int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+static int byt_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
 	int mul;
 
@@ -6814,6 +6987,80 @@ int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 	}
 
 	return DIV_ROUND_CLOSEST(4 * mul * val, dev_priv->mem_freq) + 0xbd - 6;
+}
+
+static int chv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+{
+	int div, freq;
+
+	switch (dev_priv->rps.cz_freq) {
+	case 200:
+		div = 5;
+		break;
+	case 267:
+		div = 6;
+		break;
+	case 320:
+	case 333:
+	case 400:
+		div = 8;
+		break;
+	default:
+		return -1;
+	}
+
+	freq = (DIV_ROUND_CLOSEST((dev_priv->rps.cz_freq * val), 2 * div) / 2);
+
+	return freq;
+}
+
+static int chv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+{
+	int mul, opcode;
+
+	switch (dev_priv->rps.cz_freq) {
+	case 200:
+		mul = 5;
+		break;
+	case 267:
+		mul = 6;
+		break;
+	case 320:
+	case 333:
+	case 400:
+		mul = 8;
+		break;
+	default:
+		return -1;
+	}
+
+	opcode = (DIV_ROUND_CLOSEST((val * 2 * mul), dev_priv->rps.cz_freq) * 2);
+
+	return opcode;
+}
+
+int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+{
+	int ret = -1;
+
+	if (IS_CHERRYVIEW(dev_priv->dev))
+		ret = chv_gpu_freq(dev_priv, val);
+	else if (IS_VALLEYVIEW(dev_priv->dev))
+		ret = byt_gpu_freq(dev_priv, val);
+
+	return ret;
+}
+
+int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+{
+	int ret = -1;
+
+	if (IS_CHERRYVIEW(dev_priv->dev))
+		ret = chv_freq_opcode(dev_priv, val);
+	else if (IS_VALLEYVIEW(dev_priv->dev))
+		ret = byt_freq_opcode(dev_priv, val);
+
+	return ret;
 }
 
 void intel_pm_setup(struct drm_device *dev)
