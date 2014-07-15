@@ -2054,7 +2054,7 @@ struct cgroup_subsys cpuset_cgrp_subsys = {
 	.cancel_attach	= cpuset_cancel_attach,
 	.attach		= cpuset_attach,
 	.bind		= cpuset_bind,
-	.base_cftypes	= files,
+	.legacy_cftypes	= files,
 	.early_init	= 1,
 };
 

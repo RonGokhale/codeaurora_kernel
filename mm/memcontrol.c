@@ -6003,7 +6003,6 @@ static struct cftype mem_cgroup_files[] = {
 	},
 	{
 		.name = "use_hierarchy",
-		.flags = CFTYPE_INSANE,
 		.write_u64 = mem_cgroup_hierarchy_write,
 		.read_u64 = mem_cgroup_hierarchy_read,
 	},
@@ -7048,7 +7047,7 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.attach = mem_cgroup_move_task,
 	.bind = mem_cgroup_bind,
-	.base_cftypes = mem_cgroup_files,
+	.legacy_cftypes = mem_cgroup_files,
 	.early_init = 0,
 };
 
@@ -7065,7 +7064,8 @@ __setup("swapaccount=", enable_swap_account);
 
 static void __init memsw_file_init(void)
 {
-	WARN_ON(cgroup_add_cftypes(&memory_cgrp_subsys, memsw_cgroup_files));
+	WARN_ON(cgroup_add_legacy_cftypes(&memory_cgrp_subsys,
+					  memsw_cgroup_files));
 }
 
 static void __init enable_swap_cgroup(void)
