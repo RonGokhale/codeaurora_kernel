@@ -608,6 +608,18 @@ config SENSORS_JC42
 	  This driver can also be built as a module.  If so, the module
 	  will be called jc42.
 
+config SENSORS_POWR1220
+	tristate "Lattice POWR1220 Power Monitoring"
+	depends on I2C
+	default n
+	help
+	  If you say yes here you get access to the hardware monitoring
+	  functions of the Lattice POWR1220 isp Power Supply Monitoring,
+	  Sequencing and Margining Controller.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called powr1220.
+
 config SENSORS_LINEAGE
 	tristate "Lineage Compact Power Line Power Entry Module"
 	depends on I2C
@@ -882,8 +894,8 @@ config SENSORS_LM75
 		- NXP's LM75A
 		- ST Microelectronics STDS75
 		- TelCom (now Microchip) TCN75
-		- Texas Instruments TMP100, TMP101, TMP105, TMP75, TMP175,
-		  TMP275
+		- Texas Instruments TMP100, TMP101, TMP105, TMP112, TMP75,
+		  TMP175, TMP275
 
 	  This driver supports driver model based binding through board
 	  specific I2C device tables.
@@ -1061,7 +1073,7 @@ config SENSORS_NTC_THERMISTOR
 
 	  Currently, this driver supports
 	  NCP15WB473, NCP18WB473, NCP21WB473, NCP03WB473, and NCP15WL333
-	  from Murata.
+	  from Murata and B57330V2103 from EPCOS.
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called ntc-thermistor.
@@ -1393,6 +1405,17 @@ config SENSORS_TMP102
 	  This driver can also be built as a module.  If so, the module
 	  will be called tmp102.
 
+config SENSORS_TMP103
+	tristate "Texas Instruments TMP103"
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  If you say yes here you get support for Texas Instruments TMP103
+	  sensor chips.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called tmp103.
+
 config SENSORS_TMP401
 	tristate "Texas Instruments TMP401 and compatibles"
 	depends on I2C
@@ -1408,7 +1431,7 @@ config SENSORS_TMP421
 	depends on I2C
 	help
 	  If you say yes here you get support for Texas Instruments TMP421,
-	  TMP422 and TMP423 temperature sensor chips.
+	  TMP422, TMP423, TMP441, and TMP442 temperature sensor chips.
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called tmp421.
