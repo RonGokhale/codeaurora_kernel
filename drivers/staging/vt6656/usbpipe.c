@@ -230,9 +230,6 @@ int PIPEnsBulkInUsbRead(struct vnt_private *priv, struct vnt_rcb *rcb)
 	int status = 0;
 	struct urb *urb;
 
-	if (priv->Flags & fMP_DISCONNECTED)
-		return STATUS_FAILURE;
-
 	urb = rcb->pUrb;
 	if (rcb->skb == NULL) {
 		dev_dbg(&priv->usb->dev, "rcb->skb is null\n");
@@ -242,7 +239,7 @@ int PIPEnsBulkInUsbRead(struct vnt_private *priv, struct vnt_rcb *rcb)
 	usb_fill_bulk_urb(urb,
 		priv->usb,
 		usb_rcvbulkpipe(priv->usb, 2),
-		(void *) (rcb->skb->data),
+		skb_put(rcb->skb, skb_tailroom(rcb->skb)),
 		MAX_TOTAL_SIZE_WITH_ALL_HEADERS,
 		s_nsBulkInUsbIoCompleteRead,
 		rcb);
@@ -279,7 +276,6 @@ static void s_nsBulkInUsbIoCompleteRead(struct urb *urb)
 	struct vnt_rcb *rcb = urb->context;
 	struct vnt_private *priv = rcb->pDevice;
 	unsigned long flags;
-	int re_alloc_skb = false;
 
 	switch (urb->status) {
 	case 0:
@@ -297,22 +293,31 @@ static void s_nsBulkInUsbIoCompleteRead(struct urb *urb)
 	if (urb->actual_length) {
 		spin_lock_irqsave(&priv->lock, flags);
 
-		if (RXbBulkInProcessData(priv, rcb, urb->actual_length) == true)
-			re_alloc_skb = true;
+		if (vnt_rx_data(priv, rcb, urb->actual_length)) {
+			rcb->skb = dev_alloc_skb(priv->rx_buf_sz);
+			if (!rcb->skb) {
+				dev_dbg(&priv->usb->dev,
+					"Failed to re-alloc rx skb\n");
+
+				rcb->bBoolInUse = false;
+				spin_unlock_irqrestore(&priv->lock, flags);
+				return;
+			}
+		} else {
+			skb_push(rcb->skb, skb_headroom(rcb->skb));
+			skb_trim(rcb->skb, 0);
+		}
+
+		urb->transfer_buffer = skb_put(rcb->skb,
+						skb_tailroom(rcb->skb));
 
 		spin_unlock_irqrestore(&priv->lock, flags);
 	}
 
-	rcb->Ref--;
-	if (rcb->Ref == 0) {
-		dev_dbg(&priv->usb->dev,
-				"RxvFreeNormal %d\n", priv->NumRecvFreeList);
+	if (usb_submit_urb(urb, GFP_ATOMIC)) {
+		dev_dbg(&priv->usb->dev, "Failed to re submit rx skb\n");
 
-		spin_lock_irqsave(&priv->lock, flags);
-
-		RXvFreeRCB(rcb, re_alloc_skb);
-
-		spin_unlock_irqrestore(&priv->lock, flags);
+		rcb->bBoolInUse = false;
 	}
 
 	return;
@@ -337,8 +342,6 @@ int PIPEnsSendBulkOut(struct vnt_private *priv,
 {
 	int status;
 	struct urb *urb;
-
-	priv->bPWBitOn = false;
 
 	if (!(MP_IS_READY(priv) && priv->Flags & fMP_POST_WRITES)) {
 		context->in_use = false;
@@ -398,7 +401,6 @@ static void s_nsBulkOutIoCompleteWrite(struct urb *urb)
 {
 	struct vnt_usb_send_context *context = urb->context;
 	struct vnt_private *priv = context->priv;
-	u8 context_type = context->type;
 
 	switch (urb->status) {
 	case 0:
@@ -415,26 +417,15 @@ static void s_nsBulkOutIoCompleteWrite(struct urb *urb)
 		break;
 	}
 
-	if (!netif_device_present(priv->dev))
-		return;
+	if (context->type == CONTEXT_DATA_PACKET)
+		ieee80211_wake_queues(priv->hw);
 
-	if (CONTEXT_DATA_PACKET == context_type) {
-		if (context->skb != NULL) {
-			dev_kfree_skb_irq(context->skb);
-			context->skb = NULL;
-			dev_dbg(&priv->usb->dev,
-					"tx  %d bytes\n", context->buf_len);
-		}
+	if (urb->status || context->type == CONTEXT_BEACON_PACKET) {
+		if (context->skb)
+			ieee80211_free_txskb(priv->hw, context->skb);
 
-		priv->dev->trans_start = jiffies;
+		context->in_use = false;
 	}
-
-	if (priv->bLinkPass == true) {
-		if (netif_queue_stopped(priv->dev))
-			netif_wake_queue(priv->dev);
-	}
-
-	context->in_use = false;
 
 	return;
 }
