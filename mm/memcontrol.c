@@ -6407,6 +6407,29 @@ static void mem_cgroup_css_free(struct cgroup_subsys_state *css)
 	__mem_cgroup_free(memcg);
 }
 
+/**
+ * mem_cgroup_css_reset - reset the states of a mem_cgroup
+ * @css: the target css
+ *
+ * Reset the states of the mem_cgroup associated with @css.  This is
+ * invoked when the userland requests disabling on the default hierarchy
+ * but the memcg is pinned through dependency.  The memcg should stop
+ * applying policies and should revert to the vanilla state as it may be
+ * made visible again.
+ *
+ * The current implementation only resets the essential configurations.
+ * This needs to be expanded to cover all the visible parts.
+ */
+static void mem_cgroup_css_reset(struct cgroup_subsys_state *css)
+{
+	struct mem_cgroup *memcg = mem_cgroup_from_css(css);
+
+	mem_cgroup_resize_limit(memcg, ULLONG_MAX);
+	mem_cgroup_resize_memsw_limit(memcg, ULLONG_MAX);
+	memcg_update_kmem_limit(memcg, ULLONG_MAX);
+	res_counter_set_soft_limit(&memcg->res, ULLONG_MAX);
+}
+
 #ifdef CONFIG_MMU
 /* Handlers for move charge at task migration. */
 #define PRECHARGE_COUNT_AT_ONCE	256
@@ -7001,16 +7024,17 @@ static void mem_cgroup_move_task(struct cgroup_subsys_state *css,
 
 /*
  * Cgroup retains root cgroups across [un]mount cycles making it necessary
- * to verify sane_behavior flag on each mount attempt.
+ * to verify whether we're attached to the default hierarchy on each mount
+ * attempt.
  */
 static void mem_cgroup_bind(struct cgroup_subsys_state *root_css)
 {
 	/*
-	 * use_hierarchy is forced with sane_behavior.  cgroup core
+	 * use_hierarchy is forced on the default hierarchy.  cgroup core
 	 * guarantees that @root doesn't have any children, so turning it
 	 * on for the root memcg is enough.
 	 */
-	if (cgroup_sane_behavior(root_css->cgroup))
+	if (cgroup_on_dfl(root_css->cgroup))
 		mem_cgroup_from_css(root_css)->use_hierarchy = true;
 }
 
@@ -7019,6 +7043,7 @@ struct cgroup_subsys memory_cgrp_subsys = {
 	.css_online = mem_cgroup_css_online,
 	.css_offline = mem_cgroup_css_offline,
 	.css_free = mem_cgroup_css_free,
+	.css_reset = mem_cgroup_css_reset,
 	.can_attach = mem_cgroup_can_attach,
 	.cancel_attach = mem_cgroup_cancel_attach,
 	.attach = mem_cgroup_move_task,
