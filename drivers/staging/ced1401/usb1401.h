@@ -92,100 +92,111 @@
 #define CR_CHAR          0x0D           /* The carriage return character */
 #define CR_CHAR_80       0x8d           /*  and with bit 7 set */
 
-/*  A structure holding information about a block of memory for use in circular transfers */
-typedef struct circBlk {
-	volatile UINT dwOffset;             /* Offset within area of block start */
-	volatile UINT dwSize;               /* Size of the block, in bytes (0 = unused) */
-} CIRCBLK;
+/* A structure holding information about a block */
+/* of memory for use in circular transfers       */
+struct circ_blk {
+	volatile UINT offset;   /* Offset within area of block start */
+	volatile UINT size;     /* Size of the block, in bytes (0 = unused) */
+};
 
-/*  A structure holding all of the information about a transfer area - an area of */
-/*   memory set up for use either as a source or destination in DMA transfers. */
-typedef struct transarea {
-	void	*lpvBuff;                /*  User address of xfer area saved for completeness */
-	UINT        dwBaseOffset;           /*  offset to start of xfer area in first page */
-	UINT        dwLength;               /*  Length of xfer area, in bytes */
-	struct page **pPages;               /*  Points at array of locked down pages */
-	int         nPages;                 /*  number of pages that are locked down */
-	bool        bUsed;                  /*  Is this structure in use? */
-	bool        bCircular;              /*  Is this area for circular transfers? */
-	bool        bCircToHost;            /*  Flag for direction of circular transfer */
-	bool        bEventToHost;           /*  Set event on transfer to host? */
-	int         iWakeUp;                /*  Set 1 on event, cleared by TestEvent() */
-	UINT        dwEventSt;              /*  Defines section within xfer area for... */
-	UINT        dwEventSz;              /*  ...notification by the event SZ is 0 if unset */
-	CIRCBLK     aBlocks[2];             /*  Info on a pair of circular blocks */
-	wait_queue_head_t wqEvent;          /*  The wait queue for events in this area MUST BE LAST */
-} TRANSAREA;
+/* A structure holding all of the information about a transfer area - an area */
+/* of memory set up for use either as a source or destination in DMA          */
+/* transfers.                                                                 */
+struct transarea {
+	/* User address of xfer area saved for completeness */
+	void __user *buff;
 
-/*  The DMADESC structure is used to hold information on the transfer in progress. It */
-/*  is set up by ReadDMAInfo, using information sent by the 1401 in an escape sequence. */
-typedef struct dmadesc {
-	unsigned short wTransType;          /* transfer type as TM_xxx above        */
-	unsigned short wIdent;              /* identifier word                      */
-	unsigned int   dwSize;              /* bytes to transfer                    */
-	unsigned int   dwOffset;            /* offset into transfer area for trans  */
-	bool           bOutWard;            /* true when data is going TO 1401      */
-} DMADESC;
+	/* offset to start of xfer area in first page */
+	UINT        base_offset;
 
-#define INBUF_SZ         256            /* input buffer size */
-#define OUTBUF_SZ        256            /* output buffer size */
-#define STAGED_SZ 0x10000               /*  size of coherent buffer for staged transfers */
+	UINT        length;        /* Length of xfer area, in bytes */
+	struct page **pages;       /* Points at array of locked down pages */
+	int         n_pages;       /* number of pages that are locked down */
+	bool        used;          /* Is this structure in use? */
+	bool        circular;      /* Is this area for circular transfers? */
+	bool        circ_to_host;  /* Flag for direction of circular transfer */
+	bool        event_to_host; /*  Set event on transfer to host? */
+	int         wake_up;       /* Set 1 on event, cleared by TestEvent() */
+	UINT        event_st;      /* Defines section within xfer area for... */
+	UINT        event_sz;   /* notification by the event SZ is 0 if unset */
+	struct circ_blk blocks[2]; /* Info on a pair of circular blocks */
 
-/*  Structure to hold all of our device specific stuff. We are making this as similar as we */
-/*  can to the Windows driver to help in our understanding of what is going on. */
-typedef struct _DEVICE_EXTENSION {
-	char inputBuffer[INBUF_SZ];         /* The two buffers */
-	char outputBuffer[OUTBUF_SZ];       /* accessed by the host functions */
-	volatile unsigned int dwNumInput;   /* num of chars in input buffer   */
-	volatile unsigned int dwInBuffGet;  /* where to get from input buffer */
-	volatile unsigned int dwInBuffPut;  /* where to put into input buffer */
-	volatile unsigned int dwNumOutput;  /* num of chars in output buffer  */
-	volatile unsigned int dwOutBuffGet; /* where to get from output buffer*/
-	volatile unsigned int dwOutBuffPut; /* where to put into output buffer*/
+	wait_queue_head_t event; /* The wait queue for events in this */
+				 /* area MUST BE LAST */
+};
 
-	volatile bool bSendCharsPending;    /* Flag to indicate sendchar active */
-	volatile bool bReadCharsPending;    /* Flag to indicate a read is primed */
-	char *pCoherCharOut;                /* special aligned buffer for chars to 1401 */
-	struct urb *pUrbCharOut;            /* urb used for chars to 1401 */
-	char *pCoherCharIn;                 /* special aligned buffer for chars to host */
-	struct urb *pUrbCharIn;             /* urb used for chars to host */
+/* The dmadesc structure is used to hold information on the transfer in       */
+/* progress. It is set up by ReadDMAInfo, using information sent by the 1401  */
+/* in an escape sequence.                                                     */
+struct dmadesc {
+	unsigned short trans_type;    /* transfer type as TM_xxx above        */
+	unsigned short ident;         /* identifier word                      */
+	unsigned int   size;          /* bytes to transfer                    */
+	unsigned int   offset;        /* offset into transfer area for trans  */
+	bool           outward;       /* true when data is going TO 1401      */
+};
 
-	spinlock_t charOutLock;             /* to protect the outputBuffer and outputting */
-	spinlock_t charInLock;              /* to protect the inputBuffer and char reads */
-	__u8 bInterval;                     /* Interrupt end point interval */
+#define INBUF_SZ  256         /* input buffer size */
+#define OUTBUF_SZ 256         /* output buffer size */
+#define STAGED_SZ 0x10000     /* size of coherent buffer for staged transfers */
 
-	volatile unsigned int dwDMAFlag;    /* state of DMA */
-	TRANSAREA rTransDef[MAX_TRANSAREAS];/* transfer area info */
-	volatile DMADESC rDMAInfo;          /*  info on current DMA transfer */
-	volatile bool bXFerWaiting;         /*  Flag set if DMA transfer stalled */
-	volatile bool bInDrawDown;          /*  Flag that we want to halt transfers */
+/* Structure to hold all of our device specific stuff. We are making this as  */
+/* similar as we can to the Windows driver to help in our understanding of    */
+/* what is going on.                                                          */
+struct ced_data {
+	char input_buffer[INBUF_SZ];        /* The two buffers */
+	char output_buffer[OUTBUF_SZ];      /* accessed by the host functions */
+	volatile unsigned int num_input;    /* num of chars in input buffer   */
+	volatile unsigned int in_buff_get;  /* where to get from input buffer */
+	volatile unsigned int in_buff_put;  /* where to put into input buffer */
+	volatile unsigned int num_output;   /* num of chars in output buffer  */
+	volatile unsigned int out_buff_get; /* where to get from output buffer*/
+	volatile unsigned int out_buff_put; /* where to put into output buffer*/
 
-	/*  Parameters relating to a block read\write that is in progress. Some of these values */
-	/*   are equivalent to values in rDMAInfo. The values here are those in use, while those */
-	/*   in rDMAInfo are those received from the 1401 via an escape sequence. If another */
-	/*   escape sequence arrives before the previous xfer ends, rDMAInfo values are updated while these */
-	/*   are used to finish off the current transfer. */
-	volatile short StagedId;            /*  The transfer area id for this transfer */
-	volatile bool StagedRead;           /*  Flag TRUE for read from 1401, FALSE for write */
-	volatile unsigned int StagedLength; /*  Total length of this transfer */
-	volatile unsigned int StagedOffset; /*  Offset within memory area for transfer start */
-	volatile unsigned int StagedDone;   /*  Bytes transferred so far */
-	volatile bool bStagedUrbPending;    /*  Flag to indicate active */
-	char *pCoherStagedIO;               /*  buffer used for block transfers */
-	struct urb *pStagedUrb;             /*  The URB to use */
-	spinlock_t stagedLock;              /*  protects ReadWriteMem() and circular buffer stuff */
+	volatile bool send_chars_pending; /* Flag to indicate sendchar active */
+	volatile bool read_chars_pending; /* Flag to indicate a read is primed*/
+	char *coher_char_out;     /* special aligned buffer for chars to 1401 */
+	struct urb *urb_char_out;           /* urb used for chars to 1401 */
+	char *coher_char_in;      /* special aligned buffer for chars to host */
+	struct urb *urb_char_in;            /* urb used for chars to host */
 
-	short s1401Type;                    /*  type of 1401 attached */
-	short sCurrentState;                /*  current error state */
-	bool bIsUSB2;                       /*  type of the interface we connect to */
-	bool bForceReset;                   /*  Flag to make sure we get a real reset */
-	__u32 statBuf[2];                   /*  buffer for 1401 state info */
+	spinlock_t char_out_lock; /* protect the output_buffer and outputting */
+	spinlock_t char_in_lock;  /* protect the input_buffer and char reads  */
+	__u8 interval;                     /* Interrupt end point interval */
 
-	unsigned long ulSelfTestTime;       /*  used to timeout self test */
+	volatile unsigned int dma_flag;     /* state of DMA */
+	struct transarea trans_def[MAX_TRANSAREAS];  /* transfer area info */
+	volatile struct dmadesc dma_info;   /*  info on current DMA transfer */
+	volatile bool xfer_waiting;      /*  Flag set if DMA transfer stalled */
+	volatile bool in_draw_down;   /*  Flag that we want to halt transfers */
 
-	int nPipes;                         /*  Should be 3 or 4 depending on 1401 usb chip */
-	int bPipeError[4];                  /*  set non-zero if an error on one of the pipe */
-	__u8 epAddr[4];                     /*  addresses of the 3/4 end points */
+	/* Parameters relating to a block read\write that is in progress. Some of these values */
+	/* are equivalent to values in dma_info. The values here are those in use, while those */
+	/* in dma_info are those received from the 1401 via an escape sequence. If another */
+	/* escape sequence arrives before the previous xfer ends, dma_info values are updated while these */
+	/* are used to finish off the current transfer. */
+	volatile short staged_id;  /*  The transfer area id for this transfer */
+	volatile bool staged_read; /*  Flag TRUE for read from 1401, FALSE for write */
+	volatile unsigned int staged_length; /* Total length of this transfer */
+	volatile unsigned int staged_offset; /*  Offset within memory area for transfer start */
+	volatile unsigned int staged_done;   /*  Bytes transferred so far */
+	volatile bool staged_urb_pending;    /*  Flag to indicate active */
+	char *coher_staged_io;            /*  buffer used for block transfers */
+	struct urb *staged_urb;             /*  The URB to use */
+	spinlock_t staged_lock;             /* protects ReadWriteMem() and    */
+					    /* circular buffer stuff          */
+
+	short type;                         /*  type of 1401 attached */
+	short current_state;                /*  current error state */
+	bool is_usb2;                 /*  type of the interface we connect to */
+	bool force_reset;           /*  Flag to make sure we get a real reset */
+	__u32 stat_buf[2];                  /*  buffer for 1401 state info */
+
+	unsigned long self_test_time;       /*  used to timeout self test */
+
+	int n_pipes;           /* Should be 3 or 4 depending on 1401 usb chip */
+	int pipe_error[4];     /* set non-zero if an error on one of the pipe */
+	__u8 ep_addr[4];                   /* addresses of the 3/4 end points */
 
 	struct usb_device *udev;            /*  the usb device for this device */
 	struct usb_interface *interface;    /*  the interface for this device, NULL if removed */
@@ -196,51 +207,54 @@ typedef struct _DEVICE_EXTENSION {
 	int    open_count;                  /*  count the number of openers */
 	spinlock_t err_lock;                /*  lock for errors */
 	struct kref kref;
-} DEVICE_EXTENSION, *PDEVICE_EXTENSION;
-#define to_DEVICE_EXTENSION(d) container_of(d, DEVICE_EXTENSION, kref)
+};
+
+#define to_ced_data(d) container_of(d, struct ced_data, kref)
 
 /*  Definitions of routimes used between compilation object files */
 /*  in usb1401.c */
-extern int Allowi(DEVICE_EXTENSION *pdx);
-extern int SendChars(DEVICE_EXTENSION *pdx);
-extern void ced_draw_down(DEVICE_EXTENSION *pdx);
-extern int ReadWriteMem(DEVICE_EXTENSION *pdx, bool Read, unsigned short wIdent,
-				unsigned int dwOffs, unsigned int dwLen);
+extern int ced_allowi(struct ced_data *ced);
+extern int ced_send_chars(struct ced_data *ced);
+extern void ced_draw_down(struct ced_data *ced);
+extern int ced_read_write_mem(struct ced_data *ced, bool read,
+			      unsigned short ident, unsigned int offs,
+			      unsigned int len);
 
 /*  in ced_ioc.c */
-extern int ClearArea(DEVICE_EXTENSION *pdx, int nArea);
-extern int SendString(DEVICE_EXTENSION *pdx, const char __user *pData, unsigned int n);
-extern int SendChar(DEVICE_EXTENSION *pdx, char c);
-extern int Get1401State(DEVICE_EXTENSION *pdx, __u32 *state, __u32 *error);
-extern int ReadWrite_Cancel(DEVICE_EXTENSION *pdx);
-extern bool Is1401(DEVICE_EXTENSION *pdx);
-extern bool QuickCheck(DEVICE_EXTENSION *pdx, bool bTestBuff, bool bCanReset);
-extern int Reset1401(DEVICE_EXTENSION *pdx);
-extern int GetChar(DEVICE_EXTENSION *pdx);
-extern int GetString(DEVICE_EXTENSION *pdx, char __user *pUser, int n);
-extern int SetTransfer(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
-extern int UnsetTransfer(DEVICE_EXTENSION *pdx, int nArea);
-extern int SetEvent(DEVICE_EXTENSION *pdx, struct transfer_event __user *pTE);
-extern int Stat1401(DEVICE_EXTENSION *pdx);
-extern int LineCount(DEVICE_EXTENSION *pdx);
-extern int GetOutBufSpace(DEVICE_EXTENSION *pdx);
-extern int GetTransfer(DEVICE_EXTENSION *pdx, TGET_TX_BLOCK __user *pGTB);
-extern int KillIO1401(DEVICE_EXTENSION *pdx);
-extern int BlkTransState(DEVICE_EXTENSION *pdx);
-extern int StateOf1401(DEVICE_EXTENSION *pdx);
-extern int StartSelfTest(DEVICE_EXTENSION *pdx);
-extern int CheckSelfTest(DEVICE_EXTENSION *pdx, TGET_SELFTEST __user *pGST);
-extern int TypeOf1401(DEVICE_EXTENSION *pdx);
-extern int TransferFlags(DEVICE_EXTENSION *pdx);
-extern int DbgPeek(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgPoke(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgRampData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgRampAddr(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgGetData(DEVICE_EXTENSION *pdx, TDBGBLOCK __user *pDB);
-extern int DbgStopLoop(DEVICE_EXTENSION *pdx);
-extern int SetCircular(DEVICE_EXTENSION *pdx, struct transfer_area_desc __user *pTD);
-extern int GetCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
-extern int FreeCircBlock(DEVICE_EXTENSION *pdx, TCIRCBLOCK __user *pCB);
-extern int WaitEvent(DEVICE_EXTENSION *pdx, int nArea, int msTimeOut);
-extern int TestEvent(DEVICE_EXTENSION *pdx, int nArea);
+extern int ced_clear_area(struct ced_data *ced, int area);
+extern int ced_send_string(struct ced_data *ced, const char __user *data, unsigned int n);
+extern int ced_send_char(struct ced_data *ced, char c);
+extern int ced_get_state(struct ced_data *ced, __u32 *state, __u32 *error);
+extern int ced_read_write_cancel(struct ced_data *ced);
+extern int ced_reset(struct ced_data *ced);
+extern int ced_get_char(struct ced_data *ced);
+extern int ced_get_string(struct ced_data *ced, char __user *user, int n);
+extern int ced_set_transfer(struct ced_data *ced,
+			    struct transfer_area_desc __user *utd);
+extern int ced_unset_transfer(struct ced_data *ced, int area);
+extern int ced_set_event(struct ced_data *ced,
+			 struct transfer_event __user *ute);
+extern int ced_stat_1401(struct ced_data *ced);
+extern int ced_line_count(struct ced_data *ced);
+extern int ced_get_out_buf_space(struct ced_data *ced);
+extern int ced_get_transfer(struct ced_data *ced, TGET_TX_BLOCK __user *utx);
+extern int ced_kill_io(struct ced_data *ced);
+extern int ced_state_of_1401(struct ced_data *ced);
+extern int ced_start_self_test(struct ced_data *ced);
+extern int ced_check_self_test(struct ced_data *ced,
+			       TGET_SELFTEST __user *ugst);
+extern int ced_type_of_1401(struct ced_data *ced);
+extern int ced_transfer_flags(struct ced_data *ced);
+extern int ced_dbg_peek(struct ced_data *ced, TDBGBLOCK __user *udb);
+extern int ced_dbg_poke(struct ced_data *ced, TDBGBLOCK __user *udb);
+extern int ced_dbg_ramp_data(struct ced_data *ced, TDBGBLOCK __user *udb);
+extern int ced_dbg_ramp_addr(struct ced_data *ced, TDBGBLOCK __user *udb);
+extern int ced_dbg_get_data(struct ced_data *ced, TDBGBLOCK __user *udb);
+extern int ced_dbg_stop_loop(struct ced_data *ced);
+extern int ced_set_circular(struct ced_data *ced,
+			    struct transfer_area_desc __user *utd);
+extern int ced_get_circ_block(struct ced_data *ced, TCIRCBLOCK __user *ucb);
+extern int ced_free_circ_block(struct ced_data *ced, TCIRCBLOCK __user *ucb);
+extern int ced_wait_event(struct ced_data *ced, int area, int time_out);
+extern int ced_test_event(struct ced_data *ced, int area);
 #endif

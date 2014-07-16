@@ -718,9 +718,9 @@ static int rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	/*  Add for tx power by rate fine tune. We need to call the function after BB config. */
 	/*  Because the tx power by rate table is inited in BB config. */
 
-	status = PHY_RFConfig8723A(Adapter);
+	status = PHY_RF6052_Config8723A(Adapter);
 	if (status == _FAIL) {
-		DBG_8723A("PHY_RFConfig8723A fault !!\n");
+		DBG_8723A("PHY_RF6052_Config8723A failed!!\n");
 		goto exit;
 	}
 
@@ -1532,9 +1532,9 @@ void rtl8723a_update_ramask(struct rtw_adapter *padapter,
 		mask = update_supported_rate23a(cur_network->SupportedRates,
 					     supportRateNum);
 		mask |= (pmlmeinfo->HT_enable) ?
-			update_MSC_rate23a(&pmlmeinfo->HT_caps) : 0;
+			update_MSC_rate23a(&pmlmeinfo->ht_cap) : 0;
 
-		if (support_short_GI23a(padapter, &pmlmeinfo->HT_caps))
+		if (support_short_GI23a(padapter, &pmlmeinfo->ht_cap))
 			shortGIrate = true;
 		break;
 
