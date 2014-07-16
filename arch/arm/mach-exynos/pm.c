@@ -28,13 +28,13 @@
 #include <asm/suspend.h>
 
 #include <plat/pm-common.h>
-#include <plat/pll.h>
 #include <plat/regs-srom.h>
 
 #include <mach/map.h>
 
 #include "common.h"
 #include "regs-pmu.h"
+#include "regs-sys.h"
 
 /**
  * struct exynos_wkup_irq - Exynos GIC to PMU IRQ mapping
