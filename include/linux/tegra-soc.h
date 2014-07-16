@@ -27,6 +27,8 @@
 
 #ifndef __ASSEMBLY__
 
+bool soc_is_tegra(void);
+
 u32 tegra_read_chipid(void);
 u8 tegra_get_chip_id(void);
 
