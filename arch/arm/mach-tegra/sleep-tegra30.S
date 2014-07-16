@@ -15,15 +15,15 @@
  */
 
 #include <linux/linkage.h>
+#include <linux/tegra-soc.h>
 
-#include <asm/assembler.h>
 #include <asm/asm-offsets.h>
+#include <asm/assembler.h>
 #include <asm/cache.h>
 
-#include "irammap.h"
-#include "fuse.h"
-#include "sleep.h"
 #include "flowctrl.h"
+#include "irammap.h"
+#include "sleep.h"
 
 #define EMC_CFG				0xc
 #define EMC_ADR_CFG			0x10
