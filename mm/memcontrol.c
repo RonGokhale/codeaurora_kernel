@@ -5266,7 +5266,6 @@ static struct cftype mem_cgroup_files[] = {
 	},
 	{
 		.name = "force_empty",
-		.flags = CFTYPE_INSANE,
 		.write = mem_cgroup_force_empty_write,
 	},
 	{
