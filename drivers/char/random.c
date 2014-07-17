@@ -258,6 +258,8 @@
 #include <linux/kmemcheck.h>
 #include <linux/workqueue.h>
 #include <linux/irq.h>
+#include <linux/syscalls.h>
+#include <linux/completion.h>
 
 #include <asm/processor.h>
 #include <asm/uaccess.h>
@@ -469,6 +471,8 @@ static struct entropy_store nonblocking_pool = {
 					push_to_pool),
 };
 
+static DECLARE_COMPLETION(urandom_initialized);
+
 static __u32 const twist_table[8] = {
 	0x00000000, 0x3b6e20c8, 0x76dc4190, 0x4db26158,
 	0xedb88320, 0xd6d6a3e8, 0x9b64c2b0, 0xa00ae278 };
@@ -657,6 +661,7 @@ retry:
 		r->entropy_total = 0;
 		if (r == &nonblocking_pool) {
 			prandom_reseed_late();
+			complete_all(&urandom_initialized);
 			pr_notice("random: %s pool is initialized\n", r->name);
 		}
 	}
@@ -1355,7 +1360,7 @@ static int arch_random_refill(void)
 }
 
 static ssize_t
-random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+_random_read(int nonblock, char __user *buf, size_t nbytes)
 {
 	ssize_t n;
 
@@ -1379,7 +1384,7 @@ random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 		if (arch_random_refill())
 			continue;
 
-		if (file->f_flags & O_NONBLOCK)
+		if (nonblock)
 			return -EAGAIN;
 
 		wait_event_interruptible(random_read_wait,
@@ -1388,6 +1393,12 @@ random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 		if (signal_pending(current))
 			return -ERESTARTSYS;
 	}
+}
+
+static ssize_t
+random_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+{
+	return _random_read(file->f_flags & O_NONBLOCK, buf, nbytes);
 }
 
 static ssize_t
@@ -1532,6 +1543,30 @@ const struct file_operations urandom_fops = {
 	.fasync = random_fasync,
 	.llseek = noop_llseek,
 };
+
+SYSCALL_DEFINE3(getrandom, char __user *, buf, size_t, count,
+		unsigned int, flags)
+{
+	int r;
+
+	if (flags & ~(GRND_NONBLOCK|GRND_RANDOM))
+		return -EINVAL;
+
+	if (count > INT_MAX)
+		count = INT_MAX;
+
+	if (flags & GRND_RANDOM)
+		return _random_read(flags & GRND_NONBLOCK, buf, count);
+	if (flags & GRND_NONBLOCK) {
+		if (!completion_done(&urandom_initialized))
+			return -EAGAIN;
+	} else {
+		r = wait_for_completion_interruptible(&urandom_initialized);
+		if (r)
+			return r;
+	}
+	return urandom_read(NULL, buf, count, NULL);
+}
 
 /***************************************************************
  * Random UUID interface
