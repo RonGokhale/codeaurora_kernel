@@ -310,10 +310,7 @@ enum clock_config_register_bits {
 /* ioconfigreg */
 static inline unsigned ioconfig_bitshift(unsigned pfi_channel)
 {
-	if (pfi_channel % 2)
-		return 0;
-	else
-		return 8;
+	return (pfi_channel % 2) ? 0 : 8;
 }
 
 static inline unsigned pfi_output_select_mask(unsigned pfi_channel)
@@ -619,10 +616,8 @@ static inline unsigned ni_660x_read_register(struct comedi_device *dev,
 	switch (registerData[reg].size) {
 	case DATA_2B:
 		return readw(read_address);
-		break;
 	case DATA_4B:
 		return readl(read_address);
-		break;
 	default:
 		BUG();
 		break;
@@ -1170,13 +1165,13 @@ static int ni_660x_auto_attach(struct comedi_device *dev,
 	for (i = 0; i < board->n_chips; ++i)
 		set_tio_counterswap(dev, i);
 
-	ret = request_irq(mite_irq(devpriv->mite), ni_660x_interrupt,
+	ret = request_irq(pcidev->irq, ni_660x_interrupt,
 			  IRQF_SHARED, "ni_660x", dev);
 	if (ret < 0) {
 		dev_warn(dev->class_dev, " irq not available\n");
 		return ret;
 	}
-	dev->irq = mite_irq(devpriv->mite);
+	dev->irq = pcidev->irq;
 	global_interrupt_config_bits = Global_Int_Enable_Bit;
 	if (board->n_chips > 1)
 		global_interrupt_config_bits |= Cascade_Int_Enable_Bit;
@@ -1195,11 +1190,8 @@ static void ni_660x_detach(struct comedi_device *dev)
 	if (devpriv) {
 		if (devpriv->counter_dev)
 			ni_gpct_device_destroy(devpriv->counter_dev);
-		if (devpriv->mite) {
-			ni_660x_free_mite_rings(dev);
-			mite_unsetup(devpriv->mite);
-			mite_free(devpriv->mite);
-		}
+		ni_660x_free_mite_rings(dev);
+		mite_detach(devpriv->mite);
 	}
 	comedi_pci_disable(dev);
 }

@@ -200,9 +200,6 @@ int dgnc_tty_register(struct dgnc_board *brd)
 
 	DPR_INIT(("tty_register start\n"));
 
-	memset(&brd->SerialDriver, 0, sizeof(brd->SerialDriver));
-	memset(&brd->PrintDriver, 0, sizeof(brd->PrintDriver));
-
 	brd->SerialDriver.magic = TTY_DRIVER_MAGIC;
 
 	snprintf(brd->SerialName, MAXTTYNAMELEN, "tty_dgnc_%d_", brd->boardnum);
@@ -417,10 +414,8 @@ int dgnc_tty_init(struct dgnc_board *brd)
  */
 void dgnc_tty_post_uninit(void)
 {
-	if (dgnc_TmpWriteBuf) {
-		kfree(dgnc_TmpWriteBuf);
-		dgnc_TmpWriteBuf = NULL;
-	}
+	kfree(dgnc_TmpWriteBuf);
+	dgnc_TmpWriteBuf = NULL;
 }
 
 
@@ -456,14 +451,10 @@ void dgnc_tty_uninit(struct dgnc_board *brd)
 		brd->dgnc_Major_TransparentPrint_Registered = FALSE;
 	}
 
-	if (brd->SerialDriver.ttys) {
-		kfree(brd->SerialDriver.ttys);
-		brd->SerialDriver.ttys = NULL;
-	}
-	if (brd->PrintDriver.ttys) {
-		kfree(brd->PrintDriver.ttys);
-		brd->PrintDriver.ttys = NULL;
-	}
+	kfree(brd->SerialDriver.ttys);
+	brd->SerialDriver.ttys = NULL;
+	kfree(brd->PrintDriver.ttys);
+	brd->PrintDriver.ttys = NULL;
 }
 
 
@@ -1642,10 +1633,10 @@ static void dgnc_tty_close(struct tty_struct *tty, struct file *file)
 		un->un_open_count = 1;
 	}
 
-	if (--un->un_open_count < 0) {
+	if (un->un_open_count)
+		un->un_open_count--;
+	else
 		APR(("bad serial port open count of %d\n", un->un_open_count));
-		un->un_open_count = 0;
-	}
 
 	ch->ch_open_count--;
 
@@ -3436,11 +3427,4 @@ static int dgnc_tty_ioctl(struct tty_struct *tty, unsigned int cmd,
 
 		return -ENOIOCTLCMD;
 	}
-
-	DGNC_UNLOCK(ch->ch_lock, lock_flags);
-
-	DPR_IOCTL(("dgnc_tty_ioctl end - cmd %s (%x), arg %lx\n",
-		dgnc_ioctl_name(cmd), cmd, arg));
-
-	return 0;
 }

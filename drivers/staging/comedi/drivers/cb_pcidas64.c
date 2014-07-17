@@ -636,8 +636,8 @@ static inline unsigned int ai_dma_ring_count(const struct pcidas64_board *board)
 {
 	if (board->layout == LAYOUT_4020)
 		return MAX_AI_DMA_RING_COUNT;
-	else
-		return MIN_AI_DMA_RING_COUNT;
+
+	return MIN_AI_DMA_RING_COUNT;
 }
 
 static const int bytes_in_sample = 2;
@@ -1045,9 +1045,9 @@ static inline unsigned short se_diff_bit_6xxx(struct comedi_device *dev,
 	if ((thisboard->layout == LAYOUT_64XX && !use_differential) ||
 	    (thisboard->layout == LAYOUT_60XX && use_differential))
 		return ADC_SE_DIFF_BIT;
-	else
-		return 0;
-};
+
+	return 0;
+}
 
 struct ext_clock_info {
 	/*  master clock divisor to use for scans with external master clock */
@@ -1874,7 +1874,6 @@ static int ai_config_master_clock_4020(struct comedi_device *dev,
 		break;
 	default:
 		return -EINVAL;
-		break;
 	}
 
 	data[4] = divisor;
@@ -1890,10 +1889,8 @@ static int ai_config_master_clock(struct comedi_device *dev, unsigned int *data)
 	switch (thisboard->layout) {
 	case LAYOUT_4020:
 		return ai_config_master_clock_4020(dev, data);
-		break;
 	default:
 		return -EINVAL;
-		break;
 	}
 
 	return -EINVAL;
@@ -1907,16 +1904,12 @@ static int ai_config_insn(struct comedi_device *dev, struct comedi_subdevice *s,
 	switch (id) {
 	case INSN_CONFIG_ALT_SOURCE:
 		return ai_config_calibration_source(dev, data);
-		break;
 	case INSN_CONFIG_BLOCK_SIZE:
 		return ai_config_block_size(dev, data);
-		break;
 	case INSN_CONFIG_TIMER_1:
 		return ai_config_master_clock(dev, data);
-		break;
 	default:
 		return -EINVAL;
-		break;
 	}
 	return -EINVAL;
 }
@@ -2162,8 +2155,8 @@ static int use_hw_sample_counter(struct comedi_cmd *cmd)
 
 	if (cmd->stop_src == TRIG_COUNT && cmd->stop_arg <= max_counter_value)
 		return 1;
-	else
-		return 0;
+
+	return 0;
 }
 
 static void setup_sample_counters(struct comedi_device *dev,
@@ -2224,7 +2217,6 @@ static uint32_t ai_scan_counter_6xxx(struct comedi_device *dev,
 		break;
 	default:
 		return 0;
-		break;
 	}
 	return count - 3;
 }
@@ -3384,9 +3376,8 @@ static int dio_callback(int dir, int port, int data, unsigned long arg)
 	if (dir) {
 		writeb(data, iobase + port);
 		return 0;
-	} else {
-		return readb(iobase + port);
 	}
+	return readb(iobase + port);
 }
 
 static int dio_callback_4020(int dir, int port, int data, unsigned long arg)
@@ -3395,9 +3386,8 @@ static int dio_callback_4020(int dir, int port, int data, unsigned long arg)
 	if (dir) {
 		writew(data, iobase + 2 * port);
 		return 0;
-	} else {
-		return readw(iobase + 2 * port);
 	}
+	return readw(iobase + 2 * port);
 }
 
 static int di_rbits(struct comedi_device *dev, struct comedi_subdevice *s,
@@ -3570,7 +3560,6 @@ static int caldac_i2c_write(struct comedi_device *dev,
 	default:
 		comedi_error(dev, "invalid caldac channel\n");
 		return -1;
-		break;
 	}
 	serial_bytes[1] = NOT_CLEAR_REGISTERS | ((value >> 8) & 0xf);
 	serial_bytes[2] = value & 0xff;
