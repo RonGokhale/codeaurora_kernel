@@ -6,6 +6,7 @@
 
 #include <linux/atomic.h>
 #include <linux/compat.h>
+#include <linux/skbuff.h>
 #include <linux/workqueue.h>
 #include <uapi/linux/filter.h>
 
@@ -361,7 +362,7 @@ void sk_unattached_filter_destroy(struct sk_filter *fp);
 int sk_attach_filter(struct sock_fprog *fprog, struct sock *sk);
 int sk_detach_filter(struct sock *sk);
 
-int sk_chk_filter(struct sock_filter *filter, unsigned int flen);
+int sk_chk_filter(const struct sock_filter *filter, unsigned int flen);
 int sk_get_filter(struct sock *sk, struct sock_filter __user *filter,
 		  unsigned int len);
 
@@ -404,6 +405,18 @@ static inline u16 bpf_anc_helper(const struct sock_filter *ftest)
 	default:
 		return ftest->code;
 	}
+}
+
+void *bpf_internal_load_pointer_neg_helper(const struct sk_buff *skb,
+					   int k, unsigned int size);
+
+static inline void *bpf_load_pointer(const struct sk_buff *skb, int k,
+				     unsigned int size, void *buffer)
+{
+	if (k >= 0)
+		return skb_header_pointer(skb, k, size, buffer);
+
+	return bpf_internal_load_pointer_neg_helper(skb, k, size);
 }
 
 #ifdef CONFIG_BPF_JIT

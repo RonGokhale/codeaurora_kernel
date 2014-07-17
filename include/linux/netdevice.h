@@ -943,7 +943,8 @@ typedef u16 (*select_queue_fallback_t)(struct net_device *dev,
  *		      const unsigned char *addr)
  *	Deletes the FDB entry from dev coresponding to addr.
  * int (*ndo_fdb_dump)(struct sk_buff *skb, struct netlink_callback *cb,
- *		       struct net_device *dev, int idx)
+ *		       struct net_device *dev, struct net_device *filter_dev,
+ *		       int idx)
  *	Used to add FDB entries to dump requests. Implementers should add
  *	entries to skb and update idx with the number of entries.
  *
@@ -1114,6 +1115,7 @@ struct net_device_ops {
 	int			(*ndo_fdb_dump)(struct sk_buff *skb,
 						struct netlink_callback *cb,
 						struct net_device *dev,
+						struct net_device *filter_dev,
 						int idx);
 
 	int			(*ndo_bridge_setlink)(struct net_device *dev,
@@ -1378,6 +1380,8 @@ struct net_device {
 #ifdef CONFIG_SYSFS
 	struct kset		*queues_kset;
 #endif
+
+	unsigned char		name_assign_type;
 
 	bool			uc_promisc;
 	unsigned int		promiscuity;
@@ -2486,7 +2490,7 @@ static inline int netif_set_xps_queue(struct net_device *dev,
  * as a distribution range limit for the returned value.
  */
 static inline u16 skb_tx_hash(const struct net_device *dev,
-			      const struct sk_buff *skb)
+			      struct sk_buff *skb)
 {
 	return __skb_tx_hash(dev, skb, dev->real_num_tx_queues);
 }
@@ -2987,13 +2991,15 @@ void ether_setup(struct net_device *dev);
 
 /* Support for loadable net-drivers */
 struct net_device *alloc_netdev_mqs(int sizeof_priv, const char *name,
+				    unsigned char name_assign_type,
 				    void (*setup)(struct net_device *),
 				    unsigned int txqs, unsigned int rxqs);
-#define alloc_netdev(sizeof_priv, name, setup) \
-	alloc_netdev_mqs(sizeof_priv, name, setup, 1, 1)
+#define alloc_netdev(sizeof_priv, name, name_assign_type, setup) \
+	alloc_netdev_mqs(sizeof_priv, name, name_assign_type, setup, 1, 1)
 
-#define alloc_netdev_mq(sizeof_priv, name, setup, count) \
-	alloc_netdev_mqs(sizeof_priv, name, setup, count, count)
+#define alloc_netdev_mq(sizeof_priv, name, name_assign_type, setup, count) \
+	alloc_netdev_mqs(sizeof_priv, name, name_assign_type, setup, count, \
+			 count)
 
 int register_netdev(struct net_device *dev);
 void unregister_netdev(struct net_device *dev);
