@@ -2753,8 +2753,8 @@ void unmap_hugepage_range(struct vm_area_struct *vma, unsigned long start,
  * from other VMAs and let the children be SIGKILLed if they are faulting the
  * same region.
  */
-static int unmap_ref_private(struct mm_struct *mm, struct vm_area_struct *vma,
-				struct page *page, unsigned long address)
+static void unmap_ref_private(struct mm_struct *mm, struct vm_area_struct *vma,
+			      struct page *page, unsigned long address)
 {
 	struct hstate *h = hstate_vma(vma);
 	struct vm_area_struct *iter_vma;
@@ -2793,8 +2793,6 @@ static int unmap_ref_private(struct mm_struct *mm, struct vm_area_struct *vma,
 					     address + huge_page_size(h), page);
 	}
 	mutex_unlock(&mapping->i_mmap_mutex);
-
-	return 1;
 }
 
 /*
@@ -2856,20 +2854,18 @@ retry_avoidcopy:
 		 */
 		if (outside_reserve) {
 			BUG_ON(huge_pte_none(pte));
-			if (unmap_ref_private(mm, vma, old_page, address)) {
-				BUG_ON(huge_pte_none(pte));
-				spin_lock(ptl);
-				ptep = huge_pte_offset(mm, address & huge_page_mask(h));
-				if (likely(ptep &&
-					   pte_same(huge_ptep_get(ptep), pte)))
-					goto retry_avoidcopy;
-				/*
-				 * race occurs while re-acquiring page table
-				 * lock, and our job is done.
-				 */
-				return 0;
-			}
-			WARN_ON_ONCE(1);
+			unmap_ref_private(mm, vma, old_page, address);
+			BUG_ON(huge_pte_none(pte));
+			spin_lock(ptl);
+			ptep = huge_pte_offset(mm, address & huge_page_mask(h));
+			if (likely(ptep &&
+				   pte_same(huge_ptep_get(ptep), pte)))
+				goto retry_avoidcopy;
+			/*
+			 * race occurs while re-acquiring page table
+			 * lock, and our job is done.
+			 */
+			return 0;
 		}
 
 		/* Caller expects lock to be held */
