@@ -383,7 +383,6 @@ int remap_oldmem_pfn_checked(struct vm_area_struct *vma, unsigned long from,
 		if (remap_oldmem_pfn_range(vma, from + len, pos_start,
 					   map_size, prot))
 			goto fail;
-		len += map_size;
 	}
 	return 0;
 fail:
