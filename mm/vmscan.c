@@ -2710,7 +2710,7 @@ unsigned long mem_cgroup_shrink_node_zone(struct mem_cgroup *memcg,
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.gfp_mask = (gfp_mask & GFP_RECLAIM_MASK) |
-		            (GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
+			    (GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
 		.target_mem_cgroup = memcg,
 		.flags = MAY_UNMAP,
 	};
@@ -2751,7 +2751,7 @@ unsigned long try_to_free_mem_cgroup_pages(struct mem_cgroup *memcg,
 	struct scan_control sc = {
 		.nr_to_reclaim = SWAP_CLUSTER_MAX,
 		.gfp_mask = (gfp_mask & GFP_RECLAIM_MASK) |
-		            (GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
+			    (GFP_HIGHUSER_MOVABLE & ~GFP_RECLAIM_MASK),
 		.target_mem_cgroup = memcg,
 		.priority = DEF_PRIORITY,
 		.flags = MAY_UNMAP,
@@ -3407,7 +3407,7 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 		.gfp_mask = GFP_HIGHUSER_MOVABLE,
 		.priority = DEF_PRIORITY,
 		.flags = MAY_WRITEPAGE | MAY_UNMAP | MAY_SWAP |
-		         MAY_SKIP_CONGESTION,
+			 MAY_SKIP_CONGESTION,
 	};
 	struct zonelist *zonelist = node_zonelist(numa_node_id(), sc.gfp_mask);
 	struct task_struct *p = current;
