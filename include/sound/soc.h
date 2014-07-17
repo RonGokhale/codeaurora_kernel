@@ -438,6 +438,10 @@ int snd_soc_set_runtime_hwparams(struct snd_pcm_substream *substream,
 int snd_soc_platform_trigger(struct snd_pcm_substream *substream,
 		int cmd, struct snd_soc_platform *platform);
 
+int soc_dai_hw_params(struct snd_pcm_substream *substream,
+		      struct snd_pcm_hw_params *params,
+		      struct snd_soc_dai *dai);
+
 /* Jack reporting */
 int snd_soc_jack_new(struct snd_soc_codec *codec, const char *id, int type,
 		     struct snd_soc_jack *jack);
@@ -848,6 +852,12 @@ struct snd_soc_platform_driver {
 	int (*bespoke_trigger)(struct snd_pcm_substream *, int);
 };
 
+struct snd_soc_dai_link_component {
+	const char *name;
+	const struct device_node *of_node;
+	const char *dai_name;
+};
+
 struct snd_soc_platform {
 	struct device *dev;
 	const struct snd_soc_platform_driver *driver;
@@ -893,6 +903,10 @@ struct snd_soc_dai_link {
 	const struct device_node *codec_of_node;
 	/* You MUST specify the DAI name within the codec */
 	const char *codec_dai_name;
+
+	struct snd_soc_dai_link_component *codecs;
+	unsigned int num_codecs;
+
 	/*
 	 * You MAY specify the link's platform/PCM/DMA driver, either by
 	 * device name, or by DT/OF node, but not both. Some forms of link
@@ -1090,6 +1104,9 @@ struct snd_soc_pcm_runtime {
 	struct snd_soc_platform *platform;
 	struct snd_soc_dai *codec_dai;
 	struct snd_soc_dai *cpu_dai;
+
+	struct snd_soc_dai **codec_dais;
+	unsigned int num_codecs;
 
 	struct delayed_work delayed_work;
 #ifdef CONFIG_DEBUG_FS
