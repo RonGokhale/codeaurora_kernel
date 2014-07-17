@@ -46,7 +46,7 @@
 bool disable_ertm;
 
 static u32 l2cap_feat_mask = L2CAP_FEAT_FIXED_CHAN | L2CAP_FEAT_UCD;
-static u8 l2cap_fixed_chan[8] = { L2CAP_FC_L2CAP | L2CAP_FC_CONNLESS, };
+static u8 l2cap_fixed_chan[8] = { L2CAP_FC_SIG_BREDR | L2CAP_FC_CONNLESS, };
 
 static LIST_HEAD(chan_list);
 static DEFINE_RWLOCK(chan_list_lock);
@@ -798,14 +798,14 @@ static u8 l2cap_get_ident(struct l2cap_conn *conn)
 	 *  200 - 254 are used by utilities like l2ping, etc.
 	 */
 
-	spin_lock(&conn->lock);
+	mutex_lock(&conn->ident_lock);
 
 	if (++conn->tx_ident > 128)
 		conn->tx_ident = 1;
 
 	id = conn->tx_ident;
 
-	spin_unlock(&conn->lock);
+	mutex_unlock(&conn->ident_lock);
 
 	return id;
 }
@@ -1487,7 +1487,7 @@ static void l2cap_le_conn_ready(struct l2cap_conn *conn)
 	 * been configured for this connection. If not, then trigger
 	 * the connection update procedure.
 	 */
-	if (!test_bit(HCI_CONN_MASTER, &hcon->flags) &&
+	if (hcon->role == HCI_ROLE_SLAVE &&
 	    (hcon->le_conn_interval < hcon->le_conn_min_interval ||
 	     hcon->le_conn_interval > hcon->le_conn_max_interval)) {
 		struct l2cap_conn_param_update_req req;
@@ -5227,7 +5227,7 @@ static inline int l2cap_conn_param_update_req(struct l2cap_conn *conn,
 	u16 min, max, latency, to_multiplier;
 	int err;
 
-	if (!test_bit(HCI_CONN_MASTER, &hcon->flags))
+	if (hcon->role != HCI_ROLE_MASTER)
 		return -EINVAL;
 
 	if (cmd_len != sizeof(struct l2cap_conn_param_update_req))
@@ -7016,7 +7016,7 @@ static struct l2cap_conn *l2cap_conn_add(struct hci_conn *hcon)
 		conn->hs_enabled = test_bit(HCI_HS_ENABLED,
 					    &hcon->hdev->dev_flags);
 
-	spin_lock_init(&conn->lock);
+	mutex_init(&conn->ident_lock);
 	mutex_init(&conn->chan_lock);
 
 	INIT_LIST_HEAD(&conn->chan_l);
@@ -7128,7 +7128,7 @@ int l2cap_chan_connect(struct l2cap_chan *chan, __le16 psm, u16 cid,
 	chan->dcid = cid;
 
 	if (bdaddr_type_is_le(dst_type)) {
-		bool master;
+		u8 role;
 
 		/* Convert from L2CAP channel address type to HCI address type
 		 */
@@ -7137,10 +7137,13 @@ int l2cap_chan_connect(struct l2cap_chan *chan, __le16 psm, u16 cid,
 		else
 			dst_type = ADDR_LE_DEV_RANDOM;
 
-		master = !test_bit(HCI_ADVERTISING, &hdev->dev_flags);
+		if (test_bit(HCI_ADVERTISING, &hdev->dev_flags))
+			role = HCI_ROLE_SLAVE;
+		else
+			role = HCI_ROLE_MASTER;
 
 		hcon = hci_connect_le(hdev, dst, dst_type, chan->sec_level,
-				      HCI_LE_CONN_TIMEOUT, master);
+				      HCI_LE_CONN_TIMEOUT, role);
 	} else {
 		u8 auth_type = l2cap_get_auth_type(chan);
 		hcon = hci_connect_acl(hdev, dst, chan->sec_level, auth_type);
