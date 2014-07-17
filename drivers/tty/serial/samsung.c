@@ -199,10 +199,6 @@ static void s3c24xx_serial_stop_rx(struct uart_port *port)
 	}
 }
 
-static void s3c24xx_serial_enable_ms(struct uart_port *port)
-{
-}
-
 static inline struct s3c24xx_uart_info *s3c24xx_port_to_info(struct uart_port *port)
 {
 	return to_ourport(port)->info;
@@ -948,7 +944,6 @@ static struct uart_ops s3c24xx_serial_ops = {
 	.stop_tx	= s3c24xx_serial_stop_tx,
 	.start_tx	= s3c24xx_serial_start_tx,
 	.stop_rx	= s3c24xx_serial_stop_rx,
-	.enable_ms	= s3c24xx_serial_enable_ms,
 	.break_ctl	= s3c24xx_serial_break_ctl,
 	.startup	= s3c24xx_serial_startup,
 	.shutdown	= s3c24xx_serial_shutdown,
@@ -1222,8 +1217,8 @@ static int s3c24xx_serial_init_port(struct s3c24xx_uart_port *ourport,
 		wr_regl(port, S3C64XX_UINTSP, 0xf);
 	}
 
-	dbg("port: map=%08x, mem=%p, irq=%d (%d,%d), clock=%u\n",
-	    port->mapbase, port->membase, port->irq,
+	dbg("port: map=%pa, mem=%p, irq=%d (%d,%d), clock=%u\n",
+	    &port->mapbase, port->membase, port->irq,
 	    ourport->rx_irq, ourport->tx_irq, port->uartclk);
 
 	/* reset the fifos (and setup the uart) */
@@ -1271,11 +1266,18 @@ static inline struct s3c24xx_serial_drv_data *s3c24xx_get_driver_data(
 static int s3c24xx_serial_probe(struct platform_device *pdev)
 {
 	struct s3c24xx_uart_port *ourport;
+	int index = probe_index;
 	int ret;
 
-	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, probe_index);
+	if (pdev->dev.of_node) {
+		ret = of_alias_get_id(pdev->dev.of_node, "serial");
+		if (ret >= 0)
+			index = ret;
+	}
 
-	ourport = &s3c24xx_serial_ports[probe_index];
+	dbg("s3c24xx_serial_probe(%p) %d\n", pdev, index);
+
+	ourport = &s3c24xx_serial_ports[index];
 
 	ourport->drv_data = s3c24xx_get_driver_data(pdev);
 	if (!ourport->drv_data) {
@@ -1291,7 +1293,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ourport->port.fifosize = (ourport->info->fifosize) ?
 		ourport->info->fifosize :
-		ourport->drv_data->fifosize[probe_index];
+		ourport->drv_data->fifosize[index];
 
 	probe_index++;
 
@@ -1299,7 +1301,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 
 	ret = s3c24xx_serial_init_port(ourport, pdev);
 	if (ret < 0)
-		goto probe_err;
+		return ret;
 
 	if (!s3c24xx_uart_drv.state) {
 		ret = uart_register_driver(&s3c24xx_uart_drv);
@@ -1331,9 +1333,6 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to add cpufreq notifier\n");
 
 	return 0;
-
- probe_err:
-	return ret;
 }
 
 static int s3c24xx_serial_remove(struct platform_device *dev)
@@ -1708,9 +1707,7 @@ static struct s3c24xx_serial_drv_data s3c2440_serial_drv_data = {
 #define S3C2440_SERIAL_DRV_DATA (kernel_ulong_t)NULL
 #endif
 
-#if defined(CONFIG_CPU_S3C6400) || defined(CONFIG_CPU_S3C6410) || \
-	defined(CONFIG_CPU_S5P6440) || defined(CONFIG_CPU_S5P6450) || \
-	defined(CONFIG_CPU_S5PC100)
+#if defined(CONFIG_CPU_S3C6400) || defined(CONFIG_CPU_S3C6410)
 static struct s3c24xx_serial_drv_data s3c6400_serial_drv_data = {
 	.info = &(struct s3c24xx_uart_info) {
 		.name		= "Samsung S3C6400 UART",

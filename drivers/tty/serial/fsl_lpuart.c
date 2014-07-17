@@ -117,8 +117,6 @@
 #define UARTSFIFO_TXOF		0x02
 #define UARTSFIFO_RXUF		0x01
 
-#define DMA_MAXBURST		16
-#define DMA_MAXBURST_MASK	(DMA_MAXBURST - 1)
 #define FSL_UART_RX_DMA_BUFFER_SIZE	64
 
 #define DRIVER_NAME	"fsl-lpuart"
@@ -179,10 +177,6 @@ static void lpuart_stop_rx(struct uart_port *port)
 	writeb(temp & ~UARTCR2_RE, port->membase + UARTCR2);
 }
 
-static void lpuart_enable_ms(struct uart_port *port)
-{
-}
-
 static void lpuart_copy_rx_to_tty(struct lpuart_port *sport,
 		struct tty_port *tty, int count)
 {
@@ -240,7 +234,7 @@ static int lpuart_dma_tx(struct lpuart_port *sport, unsigned long count)
 
 	dma_sync_single_for_device(sport->port.dev, sport->dma_tx_buf_bus,
 				UART_XMIT_SIZE, DMA_TO_DEVICE);
-	sport->dma_tx_bytes = count & ~(DMA_MAXBURST_MASK);
+	sport->dma_tx_bytes = count & ~(sport->txfifo_size - 1);
 	tx_bus_addr = sport->dma_tx_buf_bus + xmit->tail;
 	sport->dma_tx_desc = dmaengine_prep_slave_single(sport->dma_tx_chan,
 					tx_bus_addr, sport->dma_tx_bytes,
@@ -269,7 +263,7 @@ static void lpuart_prepare_tx(struct lpuart_port *sport)
 	if (!count)
 		return;
 
-	if (count < DMA_MAXBURST)
+	if (count < sport->txfifo_size)
 		writeb(readb(sport->port.membase + UARTCR5) & ~UARTCR5_TDMAS,
 				sport->port.membase + UARTCR5);
 	else {
@@ -599,15 +593,7 @@ static void lpuart_setup_watermark(struct lpuart_port *sport)
 			UARTCR2_RIE | UARTCR2_RE);
 	writeb(cr2, sport->port.membase + UARTCR2);
 
-	/* determine FIFO size and enable FIFO mode */
 	val = readb(sport->port.membase + UARTPFIFO);
-
-	sport->txfifo_size = 0x1 << (((val >> UARTPFIFO_TXSIZE_OFF) &
-		UARTPFIFO_FIFOSIZE_MASK) + 1);
-
-	sport->rxfifo_size = 0x1 << (((val >> UARTPFIFO_RXSIZE_OFF) &
-		UARTPFIFO_FIFOSIZE_MASK) + 1);
-
 	writeb(val | UARTPFIFO_TXFE | UARTPFIFO_RXFE,
 			sport->port.membase + UARTPFIFO);
 
@@ -652,7 +638,7 @@ static int lpuart_dma_tx_request(struct uart_port *port)
 	dma_buf = sport->port.state->xmit.buf;
 	dma_tx_sconfig.dst_addr = sport->port.mapbase + UARTDR;
 	dma_tx_sconfig.dst_addr_width = DMA_SLAVE_BUSWIDTH_1_BYTE;
-	dma_tx_sconfig.dst_maxburst = DMA_MAXBURST;
+	dma_tx_sconfig.dst_maxburst = sport->txfifo_size;
 	dma_tx_sconfig.direction = DMA_MEM_TO_DEV;
 	ret = dmaengine_slave_config(tx_chan, &dma_tx_sconfig);
 
@@ -724,13 +710,6 @@ static int lpuart_dma_rx_request(struct uart_port *port)
 	sport->dma_rx_buf_bus = dma_bus;
 	sport->dma_rx_in_progress = 0;
 
-	sport->dma_rx_timeout = (sport->port.timeout - HZ / 50) *
-				FSL_UART_RX_DMA_BUFFER_SIZE * 3 /
-				sport->rxfifo_size / 2;
-
-	if (sport->dma_rx_timeout < msecs_to_jiffies(20))
-		sport->dma_rx_timeout = msecs_to_jiffies(20);
-
 	return 0;
 }
 
@@ -772,7 +751,16 @@ static int lpuart_startup(struct uart_port *port)
 	unsigned long flags;
 	unsigned char temp;
 
-	/*whether use dma support by dma request results*/
+	/* determine FIFO size and enable FIFO mode */
+	temp = readb(sport->port.membase + UARTPFIFO);
+
+	sport->txfifo_size = 0x1 << (((temp >> UARTPFIFO_TXSIZE_OFF) &
+		UARTPFIFO_FIFOSIZE_MASK) + 1);
+
+	sport->rxfifo_size = 0x1 << (((temp >> UARTPFIFO_RXSIZE_OFF) &
+		UARTPFIFO_FIFOSIZE_MASK) + 1);
+
+	/* Whether use dma support by dma request results */
 	if (lpuart_dma_tx_request(port) || lpuart_dma_rx_request(port)) {
 		sport->lpuart_dma_use = false;
 	} else {
@@ -922,6 +910,17 @@ lpuart_set_termios(struct uart_port *port, struct ktermios *termios,
 	/* update the per-port timeout */
 	uart_update_timeout(port, termios->c_cflag, baud);
 
+	if (sport->lpuart_dma_use) {
+		/* Calculate delay for 1.5 DMA buffers */
+		sport->dma_rx_timeout = (sport->port.timeout - HZ / 50) *
+					FSL_UART_RX_DMA_BUFFER_SIZE * 3 /
+					sport->rxfifo_size / 2;
+		dev_dbg(port->dev, "DMA Rx t-out %ums, tty t-out %u jiffies\n",
+			sport->dma_rx_timeout * 1000 / HZ, sport->port.timeout);
+		if (sport->dma_rx_timeout < msecs_to_jiffies(20))
+			sport->dma_rx_timeout = msecs_to_jiffies(20);
+	}
+
 	/* wait transmit engin complete */
 	while (!(readb(sport->port.membase + UARTSR1) & UARTSR1_TC))
 		barrier();
@@ -996,7 +995,6 @@ static struct uart_ops lpuart_pops = {
 	.stop_tx	= lpuart_stop_tx,
 	.start_tx	= lpuart_start_tx,
 	.stop_rx	= lpuart_stop_rx,
-	.enable_ms	= lpuart_enable_ms,
 	.break_ctl	= lpuart_break_ctl,
 	.startup	= lpuart_startup,
 	.shutdown	= lpuart_shutdown,
