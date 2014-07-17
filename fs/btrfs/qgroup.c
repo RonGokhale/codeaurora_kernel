@@ -1290,6 +1290,7 @@ int btrfs_qgroup_record_ref(struct btrfs_trans_handle *trans,
 	oper->seq = atomic_inc_return(&fs_info->qgroup_op_seq);
 	INIT_LIST_HEAD(&oper->elem.list);
 	oper->elem.seq = 0;
+	trace_btrfs_qgroup_record_ref(oper);
 	ret = insert_qgroup_oper(fs_info, oper);
 	if (ret) {
 		/* Shouldn't happen so have an assert for developers */
@@ -1910,6 +1911,8 @@ static int btrfs_qgroup_account(struct btrfs_trans_handle *trans,
 	mutex_unlock(&fs_info->qgroup_rescan_lock);
 
 	ASSERT(is_fstree(oper->ref_root));
+
+	trace_btrfs_qgroup_account(oper);
 
 	switch (oper->type) {
 	case BTRFS_QGROUP_OPER_ADD_EXCL:
