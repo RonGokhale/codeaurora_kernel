@@ -176,7 +176,7 @@ void __init proc_tty_init(void)
 {
 	if (!proc_mkdir("tty", NULL))
 		return;
-	proc_mkdir("tty/ldisc", NULL);
+	proc_mkdir("tty/ldisc", NULL);	/* Preserved: it's userspace visible */
 	/*
 	 * /proc/tty/driver/serial reveals the exact character counts for
 	 * serial links which is just too easy to abuse for inferring
