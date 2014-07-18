@@ -303,6 +303,7 @@ static const struct intel_device_info intel_broadwell_d_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -314,6 +315,7 @@ static const struct intel_device_info intel_broadwell_m_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -325,6 +327,7 @@ static const struct intel_device_info intel_broadwell_gt3d_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING | BSD2_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -336,6 +339,7 @@ static const struct intel_device_info intel_broadwell_gt3m_info = {
 	.ring_mask = RENDER_RING | BSD_RING | BLT_RING | VEBOX_RING | BSD2_RING,
 	.has_llc = 1,
 	.has_ddi = 1,
+	.has_fpga_dbg = 1,
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
@@ -477,10 +481,6 @@ bool i915_semaphore_is_enabled(struct drm_device *dev)
 	if (i915.semaphores >= 0)
 		return i915.semaphores;
 
-	/* Until we get further testing... */
-	if (IS_GEN8(dev))
-		return false;
-
 #ifdef CONFIG_INTEL_IOMMU
 	/* Enable semaphores on SNB when IO remapping is off */
 	if (INTEL_INFO(dev)->gen == 6 && intel_iommu_gfx_mapped)
@@ -520,18 +520,19 @@ static int i915_drm_freeze(struct drm_device *dev)
 			return error;
 		}
 
+		flush_delayed_work(&dev_priv->rps.delayed_resume_work);
+
 		intel_runtime_pm_disable_interrupts(dev);
 
 		intel_suspend_gt_powersave(dev);
 
 		/*
 		 * Disable CRTCs directly since we want to preserve sw state
-		 * for _thaw.
+		 * for _thaw. Also, power gate the CRTC power wells.
 		 */
 		drm_modeset_lock_all(dev);
-		for_each_crtc(dev, crtc) {
-			dev_priv->display.crtc_disable(crtc);
-		}
+		for_each_crtc(dev, crtc)
+			intel_crtc_control(crtc, false);
 		drm_modeset_unlock_all(dev);
 
 		intel_modeset_suspend_hw(dev);
@@ -541,10 +542,11 @@ static int i915_drm_freeze(struct drm_device *dev)
 
 	i915_save_state(dev);
 
-	if (acpi_target_system_state() >= ACPI_STATE_S3)
-		opregion_target_state = PCI_D3cold;
-	else
+	opregion_target_state = PCI_D3cold;
+#if IS_ENABLED(CONFIG_ACPI_SLEEP)
+	if (acpi_target_system_state() < ACPI_STATE_S3)
 		opregion_target_state = PCI_D1;
+#endif
 	intel_opregion_notify_adapter(dev, opregion_target_state);
 
 	intel_uncore_forcewake_reset(dev, false);
