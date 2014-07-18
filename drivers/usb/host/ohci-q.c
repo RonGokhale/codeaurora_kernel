@@ -311,8 +311,7 @@ static void periodic_unlink (struct ohci_hcd *ohci, struct ed *ed)
  *  - ED_OPER: when there's any request queued, the ED gets rescheduled
  *    immediately.  HC should be working on them.
  *
- *  - ED_IDLE:  when there's no TD queue. there's no reason for the HC
- *    to care about this ED; safe to disable the endpoint.
+ *  - ED_IDLE: when there's no TD queue or the HC isn't running.
  *
  * When finish_unlinks() runs later, after SOF interrupt, it will often
  * complete one or more URB unlinks before making that state change.
@@ -602,6 +601,8 @@ static void td_submit_urb (
 	u32		info = 0;
 	int		is_out = usb_pipeout (urb->pipe);
 	int		periodic = 0;
+	int		i, this_sg_len, n;
+	struct scatterlist	*sg;
 
 	/* OHCI handles the bulk/interrupt data toggles itself.  We just
 	 * use the device toggle bits for resetting, and rely on the fact
@@ -615,10 +616,24 @@ static void td_submit_urb (
 
 	list_add (&urb_priv->pending, &ohci->pending);
 
-	if (data_len)
-		data = urb->transfer_dma;
-	else
-		data = 0;
+	i = urb->num_mapped_sgs;
+	if (data_len > 0 && i > 0) {
+		sg = urb->sg;
+		data = sg_dma_address(sg);
+
+		/*
+		 * urb->transfer_buffer_length may be smaller than the
+		 * size of the scatterlist (or vice versa)
+		 */
+		this_sg_len = min_t(int, sg_dma_len(sg), data_len);
+	} else {
+		sg = NULL;
+		if (data_len)
+			data = urb->transfer_dma;
+		else
+			data = 0;
+		this_sg_len = data_len;
+	}
 
 	/* NOTE:  TD_CC is set so we can tell which TDs the HC processed by
 	 * using TD_CC_GET, as well as by seeing them on the done list.
@@ -639,17 +654,29 @@ static void td_submit_urb (
 			? TD_T_TOGGLE | TD_CC | TD_DP_OUT
 			: TD_T_TOGGLE | TD_CC | TD_DP_IN;
 		/* TDs _could_ transfer up to 8K each */
-		while (data_len > 4096) {
-			td_fill (ohci, info, data, 4096, urb, cnt);
-			data += 4096;
-			data_len -= 4096;
+		for (;;) {
+			n = min(this_sg_len, 4096);
+
+			/* maybe avoid ED halt on final TD short read */
+			if (n >= data_len || (i == 1 && n >= this_sg_len)) {
+				if (!(urb->transfer_flags & URB_SHORT_NOT_OK))
+					info |= TD_R;
+			}
+			td_fill(ohci, info, data, n, urb, cnt);
+			this_sg_len -= n;
+			data_len -= n;
+			data += n;
 			cnt++;
+
+			if (this_sg_len <= 0) {
+				if (--i <= 0 || data_len <= 0)
+					break;
+				sg = sg_next(sg);
+				data = sg_dma_address(sg);
+				this_sg_len = min_t(int, sg_dma_len(sg),
+						data_len);
+			}
 		}
-		/* maybe avoid ED halt on final TD short read */
-		if (!(urb->transfer_flags & URB_SHORT_NOT_OK))
-			info |= TD_R;
-		td_fill (ohci, info, data, data_len, urb, cnt);
-		cnt++;
 		if ((urb->transfer_flags & URB_ZERO_PACKET)
 				&& cnt < urb_priv->length) {
 			td_fill (ohci, info, 0, 0, urb, cnt);
@@ -926,6 +953,10 @@ rescan_all:
 		int			completed, modified;
 		__hc32			*prev;
 
+		/* Is this ED already invisible to the hardware? */
+		if (ed->state == ED_IDLE)
+			goto ed_idle;
+
 		/* only take off EDs that the HC isn't using, accounting for
 		 * frame counter wraps and EDs with partially retired TDs
 		 */
@@ -955,12 +986,20 @@ skip_ed:
 			}
 		}
 
+		/* ED's now officially unlinked, hc doesn't see */
+		ed->state = ED_IDLE;
+		if (quirk_zfmicro(ohci) && ed->type == PIPE_INTERRUPT)
+			ohci->eds_scheduled--;
+		ed->hwHeadP &= ~cpu_to_hc32(ohci, ED_H);
+		ed->hwNextED = 0;
+		wmb();
+		ed->hwINFO &= ~cpu_to_hc32(ohci, ED_SKIP | ED_DEQUEUE);
+ed_idle:
+
 		/* reentrancy:  if we drop the schedule lock, someone might
 		 * have modified this list.  normally it's just prepending
 		 * entries (which we'd ignore), but paranoia won't hurt.
 		 */
-		*last = ed->ed_next;
-		ed->ed_next = NULL;
 		modified = 0;
 
 		/* unlink urbs as requested, but rescan the list after
@@ -1018,19 +1057,20 @@ rescan_this:
 		if (completed && !list_empty (&ed->td_list))
 			goto rescan_this;
 
-		/* ED's now officially unlinked, hc doesn't see */
-		ed->state = ED_IDLE;
-		if (quirk_zfmicro(ohci) && ed->type == PIPE_INTERRUPT)
-			ohci->eds_scheduled--;
-		ed->hwHeadP &= ~cpu_to_hc32(ohci, ED_H);
-		ed->hwNextED = 0;
-		wmb ();
-		ed->hwINFO &= ~cpu_to_hc32 (ohci, ED_SKIP | ED_DEQUEUE);
-
-		/* but if there's work queued, reschedule */
-		if (!list_empty (&ed->td_list)) {
-			if (ohci->rh_state == OHCI_RH_RUNNING)
-				ed_schedule (ohci, ed);
+		/*
+		 * If no TDs are queued, take ED off the ed_rm_list.
+		 * Otherwise, if the HC is running, reschedule.
+		 * If not, leave it on the list for further dequeues.
+		 */
+		if (list_empty(&ed->td_list)) {
+			*last = ed->ed_next;
+			ed->ed_next = NULL;
+		} else if (ohci->rh_state == OHCI_RH_RUNNING) {
+			*last = ed->ed_next;
+			ed->ed_next = NULL;
+			ed_schedule(ohci, ed);
+		} else {
+			last = &ed->ed_next;
 		}
 
 		if (modified)

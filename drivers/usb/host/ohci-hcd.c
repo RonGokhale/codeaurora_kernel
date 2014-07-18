@@ -76,8 +76,8 @@ static const char	hcd_name [] = "ohci_hcd";
 #include "ohci.h"
 #include "pci-quirks.h"
 
-static void ohci_dump (struct ohci_hcd *ohci, int verbose);
-static void ohci_stop (struct usb_hcd *hcd);
+static void ohci_dump(struct ohci_hcd *ohci);
+static void ohci_stop(struct usb_hcd *hcd);
 
 #include "ohci-hub.c"
 #include "ohci-dbg.c"
@@ -108,6 +108,33 @@ module_param (no_handshake, bool, 0);
 MODULE_PARM_DESC (no_handshake, "true (not default) disables BIOS handshake");
 
 /*-------------------------------------------------------------------------*/
+
+static int number_of_tds(struct urb *urb)
+{
+	int			len, i, num, this_sg_len;
+	struct scatterlist	*sg;
+
+	len = urb->transfer_buffer_length;
+	i = urb->num_mapped_sgs;
+
+	if (len > 0 && i > 0) {		/* Scatter-gather transfer */
+		num = 0;
+		sg = urb->sg;
+		for (;;) {
+			this_sg_len = min_t(int, sg_dma_len(sg), len);
+			num += DIV_ROUND_UP(this_sg_len, 4096);
+			len -= this_sg_len;
+			if (--i <= 0 || len <= 0)
+				break;
+			sg = sg_next(sg);
+		}
+
+	} else {			/* Non-SG transfer */
+		/* one TD for every 4096 Bytes (could be up to 8K) */
+		num = DIV_ROUND_UP(len, 4096);
+	}
+	return num;
+}
 
 /*
  * queue up an urb for anything except the root hub
@@ -142,12 +169,8 @@ static int ohci_urb_enqueue (
 		// case PIPE_INTERRUPT:
 		// case PIPE_BULK:
 		default:
-			/* one TD for every 4096 Bytes (can be up to 8K) */
-			size += urb->transfer_buffer_length / 4096;
-			/* ... and for any remaining bytes ... */
-			if ((urb->transfer_buffer_length % 4096) != 0)
-				size++;
-			/* ... and maybe a zero length packet to wrap it up */
+			size += number_of_tds(urb);
+			/* maybe a zero-length packet to wrap it up */
 			if (size == 0)
 				size++;
 			else if ((urb->transfer_flags & URB_ZERO_PACKET) != 0
@@ -506,6 +529,9 @@ static int ohci_init (struct ohci_hcd *ohci)
 	int ret;
 	struct usb_hcd *hcd = ohci_to_hcd(ohci);
 
+	/* Accept arbitrarily long scatter-gather lists */
+	hcd->self.sg_tablesize = ~0;
+
 	if (distrust_firmware)
 		ohci->flags |= OHCI_QUIRK_HUB_POWER;
 
@@ -559,7 +585,7 @@ static int ohci_init (struct ohci_hcd *ohci)
 		return 0;
 
 	ohci->hcca = dma_alloc_coherent (hcd->self.controller,
-			sizeof *ohci->hcca, &ohci->hcca_dma, 0);
+			sizeof(*ohci->hcca), &ohci->hcca_dma, GFP_KERNEL);
 	if (!ohci->hcca)
 		return -ENOMEM;
 
@@ -744,7 +770,7 @@ retry:
 		ohci->ed_to_check = NULL;
 	}
 
-	ohci_dump (ohci, 1);
+	ohci_dump(ohci);
 
 	return 0;
 }
@@ -825,7 +851,7 @@ static irqreturn_t ohci_irq (struct usb_hcd *hcd)
 			usb_hc_died(hcd);
 		}
 
-		ohci_dump (ohci, 1);
+		ohci_dump(ohci);
 		ohci_usb_reset (ohci);
 	}
 
@@ -925,7 +951,7 @@ static void ohci_stop (struct usb_hcd *hcd)
 {
 	struct ohci_hcd		*ohci = hcd_to_ohci (hcd);
 
-	ohci_dump (ohci, 1);
+	ohci_dump(ohci);
 
 	if (quirk_nec(ohci))
 		flush_work(&ohci->nec_work);
