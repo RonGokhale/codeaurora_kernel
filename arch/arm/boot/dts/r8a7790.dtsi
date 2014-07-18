@@ -206,6 +206,38 @@
 			     <1 10 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
 	};
 
+	cmt0: timer@ffca0000 {
+		compatible = "renesas,cmt-48-gen2";
+		reg = <0 0xffca0000 0 0x1004>;
+		interrupts = <0 142 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 143 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&mstp1_clks R8A7790_CLK_CMT0>;
+		clock-names = "fck";
+
+		renesas,channels-mask = <0x60>;
+
+		status = "disabled";
+	};
+
+	cmt1: timer@e6130000 {
+		compatible = "renesas,cmt-48-gen2";
+		reg = <0 0xe6130000 0 0x1004>;
+		interrupts = <0 120 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 121 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 122 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 123 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 124 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 125 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 126 IRQ_TYPE_LEVEL_HIGH>,
+			     <0 127 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&mstp3_clks R8A7790_CLK_CMT1>;
+		clock-names = "fck";
+
+		renesas,channels-mask = <0xff>;
+
+		status = "disabled";
+	};
+
 	irqc0: interrupt-controller@e61c0000 {
 		compatible = "renesas,irqc-r8a7790", "renesas,irqc";
 		#interrupt-cells = <2>;
@@ -946,8 +978,8 @@
 		ranges = <0x02000000 0 0xee080000 0 0xee080000 0 0x00010000>;
 		interrupt-map-mask = <0xff00 0 0 0x7>;
 		interrupt-map = <0x0000 0 0 1 &gic 0 108 IRQ_TYPE_LEVEL_HIGH
-			      	 0x0800 0 0 1 &gic 0 108 IRQ_TYPE_LEVEL_HIGH
-			      	 0x1000 0 0 2 &gic 0 108 IRQ_TYPE_LEVEL_HIGH>;
+				 0x0800 0 0 1 &gic 0 108 IRQ_TYPE_LEVEL_HIGH
+				 0x1000 0 0 2 &gic 0 108 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
 	pci1: pci@ee0b0000 {
@@ -966,8 +998,8 @@
 		ranges = <0x02000000 0 0xee0a0000 0 0xee0a0000 0 0x00010000>;
 		interrupt-map-mask = <0xff00 0 0 0x7>;
 		interrupt-map = <0x0000 0 0 1 &gic 0 112 IRQ_TYPE_LEVEL_HIGH
-			      	 0x0800 0 0 1 &gic 0 112 IRQ_TYPE_LEVEL_HIGH
-			      	 0x1000 0 0 2 &gic 0 112 IRQ_TYPE_LEVEL_HIGH>;
+				 0x0800 0 0 1 &gic 0 112 IRQ_TYPE_LEVEL_HIGH
+				 0x1000 0 0 2 &gic 0 112 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
 	pci2: pci@ee0d0000 {
@@ -986,8 +1018,8 @@
 		ranges = <0x02000000 0 0xee0c0000 0 0xee0c0000 0 0x00010000>;
 		interrupt-map-mask = <0xff00 0 0 0x7>;
 		interrupt-map = <0x0000 0 0 1 &gic 0 113 IRQ_TYPE_LEVEL_HIGH
-			      	 0x0800 0 0 1 &gic 0 113 IRQ_TYPE_LEVEL_HIGH
-			      	 0x1000 0 0 2 &gic 0 113 IRQ_TYPE_LEVEL_HIGH>;
+				 0x0800 0 0 1 &gic 0 113 IRQ_TYPE_LEVEL_HIGH
+				 0x1000 0 0 2 &gic 0 113 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
 	pciec: pcie@fe000000 {
