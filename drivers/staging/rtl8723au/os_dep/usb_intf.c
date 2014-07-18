@@ -101,31 +101,16 @@ static inline int RT_usb_endpoint_num(const struct usb_endpoint_descriptor *epd)
 
 static int rtw_init_intf_priv(struct dvobj_priv *dvobj)
 {
-	int rst = _SUCCESS;
-
 	mutex_init(&dvobj->usb_vendor_req_mutex);
-	dvobj->usb_alloc_vendor_req_buf = kzalloc(MAX_USB_IO_CTL_SIZE,
-						  GFP_KERNEL);
-	if (dvobj->usb_alloc_vendor_req_buf == NULL) {
-		DBG_8723A("alloc usb_vendor_req_buf failed...\n");
-		rst = _FAIL;
-		goto exit;
-	}
-	dvobj->usb_vendor_req_buf =
-		PTR_ALIGN(dvobj->usb_alloc_vendor_req_buf, ALIGNMENT_UNIT);
-exit:
-	return rst;
+
+	return _SUCCESS;
 }
 
 static int rtw_deinit_intf_priv(struct dvobj_priv *dvobj)
 {
-	int rst = _SUCCESS;
-
-	kfree(dvobj->usb_alloc_vendor_req_buf);
-
 	mutex_destroy(&dvobj->usb_vendor_req_mutex);
 
-	return rst;
+	return _SUCCESS;
 }
 
 static struct dvobj_priv *usb_dvobj_init(struct usb_interface *usb_intf)
@@ -416,7 +401,6 @@ int rtw_hw_resume23a(struct rtw_adapter *padapter)
 			netif_tx_wake_all_queues(pnetdev);
 
 		pwrpriv->bkeepfwalive = false;
-		pwrpriv->brfoffbyhw = false;
 
 		pwrpriv->rf_pwrstate = rf_on;
 		pwrpriv->bips_processing = false;
@@ -572,7 +556,7 @@ static struct rtw_adapter *rtw_usb_if1_init(struct dvobj_priv *dvobj,
 
 	pnetdev = rtw_init_netdev23a(padapter);
 	if (!pnetdev)
-		goto handle_dualmac;
+		goto free_adapter;
 	padapter = netdev_priv(pnetdev);
 
 	padapter->dvobj = dvobj;
@@ -583,13 +567,10 @@ static struct rtw_adapter *rtw_usb_if1_init(struct dvobj_priv *dvobj,
 
 	rtl8723au_set_hw_type(padapter);
 
-	if (rtw_handle_dualmac23a(padapter, 1) != _SUCCESS)
-		goto free_adapter;
-
 	SET_NETDEV_DEV(pnetdev, dvobj_to_dev(dvobj));
 
 	if (rtw_wdev_alloc(padapter, dvobj_to_dev(dvobj)))
-		goto handle_dualmac;
+		goto free_adapter;
 
 	/* step 2. allocate HalData */
 	padapter->HalData = kzalloc(sizeof(struct hal_data_8723a), GFP_KERNEL);
@@ -650,9 +631,6 @@ free_wdev:
 		rtw_wdev_unregister(padapter->rtw_wdev);
 		rtw_wdev_free(padapter->rtw_wdev);
 	}
-handle_dualmac:
-	if (status != _SUCCESS)
-		rtw_handle_dualmac23a(padapter, 0);
 free_adapter:
 	if (status != _SUCCESS) {
 		if (pnetdev)
@@ -683,8 +661,6 @@ static void rtw_usb_if1_deinit(struct rtw_adapter *if1)
 
 	DBG_8723A("+r871xu_dev_remove, hw_init_completed =%d\n",
 		  if1->hw_init_completed);
-
-	rtw_handle_dualmac23a(if1, 0);
 
 	if (if1->rtw_wdev) {
 		rtw_wdev_unregister(if1->rtw_wdev);

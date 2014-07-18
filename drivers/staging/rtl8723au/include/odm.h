@@ -415,10 +415,6 @@ enum odm_ic_type_def {
 	ODM_RTL8821	=	BIT(6),
 };
 
-#define ODM_IC_11N_SERIES			\
-	(ODM_RTL8192S|ODM_RTL8192C|ODM_RTL8192D|ODM_RTL8723A|ODM_RTL8188E)
-#define ODM_IC_11AC_SERIES		(ODM_RTL8812)
-
 /* ODM_CMNINFO_CUT_VER */
 enum odm_cut_version {
 	ODM_CUT_A		=	1,
@@ -855,14 +851,6 @@ enum odm_rf_content {
 	odm_radiod_txt = 0x1003
 };
 
-enum odm_bb_config_type {
-    CONFIG_BB_PHY_REG,
-    CONFIG_BB_AGC_TAB,
-    CONFIG_BB_AGC_TAB_2G,
-    CONFIG_BB_AGC_TAB_5G,
-    CONFIG_BB_PHY_REG_PG,
-};
-
 /*  Status code */
 enum rt_status {
 	RT_STATUS_SUCCESS,
@@ -1013,10 +1001,6 @@ extern	u8 CCKSwingTable_Ch1423A [CCK_TABLE_SIZE][8];
 
 
 
-/*  */
-/*  check Sta pointer valid or not */
-/*  */
-#define IS_STA_VALID(pSta)		(pSta)
 /*  20100514 Joseph: Add definition for antenna switching test after link. */
 /*  This indicates two different the steps. */
 /*  In SWAW_STEP_PEAK, driver needs to switch antenna and listen to the signal on the air. */

@@ -531,24 +531,26 @@ static void labpc_adc_timing(struct comedi_device *dev, struct comedi_cmd *cmd,
 
 static enum scan_mode labpc_ai_scan_mode(const struct comedi_cmd *cmd)
 {
+	unsigned int chan0;
+	unsigned int chan1;
+
 	if (cmd->chanlist_len == 1)
 		return MODE_SINGLE_CHAN;
 
-	/* chanlist may be NULL during cmdtest. */
+	/* chanlist may be NULL during cmdtest */
 	if (cmd->chanlist == NULL)
 		return MODE_MULT_CHAN_UP;
 
-	if (CR_CHAN(cmd->chanlist[0]) == CR_CHAN(cmd->chanlist[1]))
-		return MODE_SINGLE_CHAN_INTERVAL;
+	chan0 = CR_CHAN(cmd->chanlist[0]);
+	chan1 = CR_CHAN(cmd->chanlist[1]);
 
-	if (CR_CHAN(cmd->chanlist[0]) < CR_CHAN(cmd->chanlist[1]))
+	if (chan0 < chan1)
 		return MODE_MULT_CHAN_UP;
 
-	if (CR_CHAN(cmd->chanlist[0]) > CR_CHAN(cmd->chanlist[1]))
+	if (chan0 > chan1)
 		return MODE_MULT_CHAN_DOWN;
 
-	pr_err("ni_labpc: bug! cannot determine AI scan mode\n");
-	return 0;
+	return MODE_SINGLE_CHAN_INTERVAL;
 }
 
 static int labpc_ai_check_chanlist(struct comedi_device *dev,
@@ -895,7 +897,7 @@ static int labpc_drain_fifo(struct comedi_device *dev)
 		devpriv->stat1 = devpriv->read_byte(dev->iobase + STAT1_REG);
 	}
 	if (i == timeout) {
-		comedi_error(dev, "ai timeout, fifo never empties");
+		dev_err(dev->class_dev, "ai timeout, fifo never empties\n");
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
 		return -1;
 	}
@@ -926,7 +928,7 @@ static irqreturn_t labpc_interrupt(int irq, void *d)
 	struct comedi_cmd *cmd;
 
 	if (!dev->attached) {
-		comedi_error(dev, "premature interrupt");
+		dev_err(dev->class_dev, "premature interrupt\n");
 		return IRQ_HANDLED;
 	}
 
@@ -950,7 +952,7 @@ static irqreturn_t labpc_interrupt(int irq, void *d)
 		devpriv->write_byte(0x1, dev->iobase + ADC_FIFO_CLEAR_REG);
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
 		cfc_handle_events(dev, s);
-		comedi_error(dev, "overrun");
+		dev_err(dev->class_dev, "overrun\n");
 		return IRQ_HANDLED;
 	}
 
@@ -960,7 +962,7 @@ static irqreturn_t labpc_interrupt(int irq, void *d)
 		labpc_drain_fifo(dev);
 
 	if (devpriv->stat1 & STAT1_CNTINT) {
-		comedi_error(dev, "handled timer interrupt?");
+		dev_err(dev->class_dev, "handled timer interrupt?\n");
 		/*  clear it */
 		devpriv->write_byte(0x1, dev->iobase + TIMER_CLEAR_REG);
 	}
@@ -970,7 +972,7 @@ static irqreturn_t labpc_interrupt(int irq, void *d)
 		devpriv->write_byte(0x1, dev->iobase + ADC_FIFO_CLEAR_REG);
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
 		cfc_handle_events(dev, s);
-		comedi_error(dev, "overflow");
+		dev_err(dev->class_dev, "overflow\n");
 		return IRQ_HANDLED;
 	}
 	/*  handle external stop trigger */
@@ -1051,9 +1053,9 @@ static int labpc_8255_mmio(int dir, int port, int data, unsigned long iobase)
 	if (dir) {
 		writeb(data, (void __iomem *)(iobase + port));
 		return 0;
-	} else {
-		return readb((void __iomem *)(iobase + port));
 	}
+
+	return readb((void __iomem *)(iobase + port));
 }
 
 /* lowlevel write to eeprom/dac */
@@ -1186,7 +1188,7 @@ static int labpc_eeprom_write(struct comedi_device *dev,
 			break;
 	}
 	if (i == timeout) {
-		comedi_error(dev, "eeprom write timed out");
+		dev_err(dev->class_dev, "eeprom write timed out\n");
 		return -ETIME;
 	}
 	/*  update software copy of eeprom */

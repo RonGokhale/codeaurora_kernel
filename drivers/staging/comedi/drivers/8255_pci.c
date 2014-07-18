@@ -56,7 +56,6 @@ Configuration Options: not applicable, uses PCI auto config
 #include "../comedidev.h"
 
 #include "8255.h"
-#include "mite.h"
 
 enum pci_8255_boardid {
 	BOARD_ADLINK_PCI7224,
@@ -172,6 +171,10 @@ struct pci_8255_private {
 	void __iomem *mmio_base;
 };
 
+/* ripped from mite.h and mite_setup2() to avoid mite dependancy */
+#define MITE_IODWBSR	0xc0	 /* IO Device Window Base Size Register */
+#define WENAB		(1 << 7) /* window enable */
+
 static int pci_8255_mite_init(struct pci_dev *pcidev)
 {
 	void __iomem *mite_base;
@@ -198,9 +201,8 @@ static int pci_8255_mmio(int dir, int port, int data, unsigned long iobase)
 	if (dir) {
 		writeb(data, mmio_base + port);
 		return 0;
-	} else {
-		return readb(mmio_base  + port);
 	}
+	return readb(mmio_base  + port);
 }
 
 static int pci_8255_auto_attach(struct comedi_device *dev,

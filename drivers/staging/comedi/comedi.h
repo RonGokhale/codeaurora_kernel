@@ -555,16 +555,16 @@ static inline unsigned NI_USUAL_PFI_SELECT(unsigned pfi_channel)
 {
 	if (pfi_channel < 10)
 		return 0x1 + pfi_channel;
-	else
-		return 0xb + pfi_channel;
+
+	return 0xb + pfi_channel;
 }
 
 static inline unsigned NI_USUAL_RTSI_SELECT(unsigned rtsi_channel)
 {
 	if (rtsi_channel < 7)
 		return 0xb + rtsi_channel;
-	else
-		return 0x1b;
+
+	return 0x1b;
 }
 
 /* mode bits for NI general-purpose counters, set with
@@ -974,6 +974,17 @@ enum amplc_dio_gate_source {
 	AMPLC_DIO_GAT_NPAT_PRESENT, /* negated "pattern present" */
 	AMPLC_DIO_GAT_NPAT_OCCURRED, /* negated "pattern occurred" */
 	AMPLC_DIO_GAT_NPAT_GONE	/* negated "pattern gone away" */
+};
+
+/*
+ * Values for setting a clock source with INSN_CONFIG_SET_CLOCK_SRC for
+ * the counter subdevice on the Kolter Electronic PCI-Counter board
+ * (ke_counter driver).
+ */
+enum ke_counter_clock_source {
+	KE_CLK_20MHZ,	/* internal 20MHz (default) */
+	KE_CLK_4MHZ,	/* internal 4MHz (option) */
+	KE_CLK_EXT	/* external clock on pin 21 of D-Sub */
 };
 
 #endif /* _COMEDI_H */

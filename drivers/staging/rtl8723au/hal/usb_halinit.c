@@ -338,17 +338,6 @@ static void _InitQueuePriority(struct rtw_adapter *Adapter)
 	_InitNormalChipQueuePriority(Adapter);
 }
 
-static void _InitNetworkType(struct rtw_adapter *Adapter)
-{
-	u32 value32;
-
-	value32 = rtl8723au_read32(Adapter, REG_CR);
-
-	/*  TODO: use the other function to set network type */
-	value32 = (value32 & ~MASK_NETTYPE) | _NETTYPE(NT_LINK_AP);
-	rtl8723au_write32(Adapter, REG_CR, value32);
-}
-
 static void _InitTransferPageSize(struct rtw_adapter *Adapter)
 {
 	/*  Tx page size is always 128. */
@@ -482,62 +471,6 @@ static void _InitRetryFunction(struct rtw_adapter *Adapter)
 
 	/*  Set ACK timeout */
 	rtl8723au_write8(Adapter, REG_ACKTO, 0x40);
-}
-
-/*-----------------------------------------------------------------------------
- * Function:	usb_AggSettingTxUpdate()
- *
- * Overview:	Seperate TX/RX parameters update independent for TP
- *		detection and dynamic TX/RX aggreagtion parameters update.
- *
- * Input:			struct rtw_adapter *
- *
- * Output/Return:	NONE
- *
- * Revised History:
- *	When		Who		Remark
- *	12/10/2010	MHC		Seperate to smaller function.
- *
- *---------------------------------------------------------------------------*/
-static void usb_AggSettingTxUpdate(struct rtw_adapter *Adapter)
-{
-}	/*  usb_AggSettingTxUpdate */
-
-/*-----------------------------------------------------------------------------
- * Function:	usb_AggSettingRxUpdate()
- *
- * Overview:	Seperate TX/RX parameters update independent for TP
- *		detection and dynamic TX/RX aggreagtion parameters update.
- *
- * Input:			struct rtw_adapter *
- *
- * Output/Return:	NONE
- *
- * Revised History:
- *	When		Who		Remark
- *	12/10/2010	MHC		Seperate to smaller function.
- *
- *---------------------------------------------------------------------------*/
-static void usb_AggSettingRxUpdate(struct rtw_adapter *Adapter)
-{
-}	/*  usb_AggSettingRxUpdate */
-
-static void InitUsbAggregationSetting(struct rtw_adapter *Adapter)
-{
-	struct hal_data_8723a *pHalData = GET_HAL_DATA(Adapter);
-
-	/*  Tx aggregation setting */
-	usb_AggSettingTxUpdate(Adapter);
-
-	/*  Rx aggregation setting */
-	usb_AggSettingRxUpdate(Adapter);
-
-	/*  201/12/10 MH Add for USB agg mode dynamic switch. */
-	pHalData->UsbRxHighSpeedMode = false;
-}
-
-static void _InitOperationMode(struct rtw_adapter *Adapter)
-{
 }
 
 static void _InitRFType(struct rtw_adapter *Adapter)
@@ -718,9 +651,9 @@ static int rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	/*  Add for tx power by rate fine tune. We need to call the function after BB config. */
 	/*  Because the tx power by rate table is inited in BB config. */
 
-	status = PHY_RFConfig8723A(Adapter);
+	status = PHY_RF6052_Config8723A(Adapter);
 	if (status == _FAIL) {
-		DBG_8723A("PHY_RFConfig8723A fault !!\n");
+		DBG_8723A("PHY_RF6052_Config8723A failed!!\n");
 		goto exit;
 	}
 
@@ -756,14 +689,12 @@ static int rtl8723au_hal_init(struct rtw_adapter *Adapter)
 
 	_InitInterrupt(Adapter);
 	hw_var_set_macaddr(Adapter, Adapter->eeprompriv.mac_addr);
-	_InitNetworkType(Adapter);/* set msr */
+	rtl8723a_set_media_status(Adapter, MSR_INFRA);
 	_InitWMACSetting(Adapter);
 	_InitAdaptiveCtrl(Adapter);
 	_InitEDCA(Adapter);
 	_InitRateFallback(Adapter);
 	_InitRetryFunction(Adapter);
-	InitUsbAggregationSetting(Adapter);
-	_InitOperationMode(Adapter);/* todo */
 	rtl8723a_InitBeaconParameters(Adapter);
 
 	_InitHWLed(Adapter);
@@ -771,7 +702,7 @@ static int rtl8723au_hal_init(struct rtw_adapter *Adapter)
 	_BBTurnOnBlock(Adapter);
 	/* NicIFSetMacAddress(padapter, padapter->PermanentAddress); */
 
-	invalidate_cam_all23a(Adapter);
+	rtl8723a_cam_invalidate_all(Adapter);
 
 	/*  2010/12/17 MH We need to set TX power according to EFUSE content at first. */
 	PHY_SetTxPowerLevel8723A(Adapter, pHalData->CurrentChannel);
@@ -1532,9 +1463,9 @@ void rtl8723a_update_ramask(struct rtw_adapter *padapter,
 		mask = update_supported_rate23a(cur_network->SupportedRates,
 					     supportRateNum);
 		mask |= (pmlmeinfo->HT_enable) ?
-			update_MSC_rate23a(&pmlmeinfo->HT_caps) : 0;
+			update_MSC_rate23a(&pmlmeinfo->ht_cap) : 0;
 
-		if (support_short_GI23a(padapter, &pmlmeinfo->HT_caps))
+		if (support_short_GI23a(padapter, &pmlmeinfo->ht_cap))
 			shortGIrate = true;
 		break;
 

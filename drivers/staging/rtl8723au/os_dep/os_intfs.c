@@ -425,7 +425,6 @@ static int rtw_init_default_value(struct rtw_adapter *padapter)
 	/* misc. */
 	padapter->bReadPortCancel = false;
 	padapter->bWritePortCancel = false;
-	padapter->bNotifyChannelChange = 0;
 	return ret;
 }
 
@@ -584,11 +583,6 @@ int rtw_free_drv_sw23a(struct rtw_adapter *padapter)
 	kfree(padapter->HalData);
 	padapter->HalData = NULL;
 
-	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("<== rtw_free_drv_sw23a\n"));
-
-	/*  clear pbuddy_adapter to avoid access wrong pointer. */
-	if (padapter->pbuddy_adapter != NULL)
-		padapter->pbuddy_adapter->pbuddy_adapter = NULL;
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("-rtw_free_drv_sw23a\n"));
 	return _SUCCESS;
 }
@@ -668,10 +662,6 @@ int netdev_open23a(struct net_device *pnetdev)
 	mutex_lock(&adapter_to_dvobj(padapter)->hw_init_mutex);
 
 	pwrctrlpriv = &padapter->pwrctrlpriv;
-	if (pwrctrlpriv->ps_flag) {
-		padapter->net_closed = false;
-		goto netdev_open23a_normal_process;
-	}
 
 	if (!padapter->bup) {
 		padapter->bDriverStopped = false;
@@ -716,7 +706,6 @@ int netdev_open23a(struct net_device *pnetdev)
 	else
 		netif_tx_wake_all_queues(pnetdev);
 
-netdev_open23a_normal_process:
 	RT_TRACE(_module_os_intfs_c_, _drv_info_, ("-871x_drv - dev_open\n"));
 	DBG_8723A("-871x_drv - drv_open, bup =%d\n", padapter->bup);
 exit:
