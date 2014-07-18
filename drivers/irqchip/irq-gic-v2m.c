@@ -235,15 +235,15 @@ gicv2m_of_init(struct device_node *node, struct device_node *parent)
 	gic->msi_chip.teardown_irq = gicv2m_teardown_msi_irq;
 	ret = of_pci_msi_chip_add(&gic->msi_chip);
 	if (ret) {
-		/* MSI is optional and not supported here */
-		pr_info("GICv2m: MSI is not supported.\n");
+		/*
+		* Note: msi-controller is checked in of_pci_msi_chip_add().
+		* MSI support is optional, and enabled only if msi-controller
+		* is specified. Hence, return 0.
+		*/
 		return 0;
 	}
 
-	ret = gicv2m_msi_init(node, &gic->v2m_data);
-	if (ret)
-		return ret;
-	return ret;
+	return gicv2m_msi_init(node, &gic->v2m_data);
 }
 
 IRQCHIP_DECLARE(arm_gic_400_v2m, "arm,gic-400-v2m", gicv2m_of_init);
