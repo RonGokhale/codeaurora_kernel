@@ -34,6 +34,7 @@
 #include <asm/processor.h>
 #include <asm/page.h>
 #include <asm/cacheflush.h>
+#include <asm/hvcall.h>
 
 #define KVM_MAX_VCPUS		NR_CPUS
 #define KVM_MAX_VCORES		NR_CPUS
@@ -254,7 +255,6 @@ struct kvm_arch {
 	atomic_t hpte_mod_interest;
 	spinlock_t slot_phys_lock;
 	cpumask_t need_tlb_flush;
-	struct kvmppc_vcore *vcores[KVM_MAX_VCORES];
 	int hpt_cma_alloc;
 #endif /* CONFIG_KVM_BOOK3S_HV_POSSIBLE */
 #ifdef CONFIG_KVM_BOOK3S_PR_POSSIBLE
@@ -263,6 +263,7 @@ struct kvm_arch {
 #ifdef CONFIG_PPC_BOOK3S_64
 	struct list_head spapr_tce_tables;
 	struct list_head rtas_tokens;
+	DECLARE_BITMAP(enabled_hcalls, MAX_HCALL_OPCODE/4 + 1);
 #endif
 #ifdef CONFIG_KVM_MPIC
 	struct openpic *mpic;
@@ -271,6 +272,10 @@ struct kvm_arch {
 	struct kvmppc_xics *xics;
 #endif
 	struct kvmppc_ops *kvm_ops;
+#ifdef CONFIG_KVM_BOOK3S_HV_POSSIBLE
+	/* This array can grow quite large, keep it at the end */
+	struct kvmppc_vcore *vcores[KVM_MAX_VCORES];
+#endif
 };
 
 /*
@@ -503,8 +508,10 @@ struct kvm_vcpu_arch {
 #ifdef CONFIG_BOOKE
 	u32 decar;
 #endif
-	u32 tbl;
-	u32 tbu;
+	/* Time base value when we entered the guest */
+	u64 entry_tb;
+	u64 entry_vtb;
+	u64 entry_ic;
 	u32 tcr;
 	ulong tsr; /* we need to perform set/clr_bits() which requires ulong */
 	u32 ivor[64];
@@ -580,6 +587,7 @@ struct kvm_vcpu_arch {
 	u32 mmucfg;
 	u32 eptcfg;
 	u32 epr;
+	u32 pwrmgtcr0;
 	u32 crit_save;
 	/* guest debug registers*/
 	struct debug_reg dbg_reg;
