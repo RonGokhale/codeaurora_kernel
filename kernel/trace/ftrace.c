@@ -80,9 +80,6 @@ static struct ftrace_ops ftrace_list_end __read_mostly = {
 int ftrace_enabled __read_mostly;
 static int last_ftrace_enabled;
 
-/* Quick disabling of function tracer. */
-int function_trace_stop __read_mostly;
-
 /* Current function tracing op */
 struct ftrace_ops *function_trace_op __read_mostly = &ftrace_list_end;
 /* What to set function_trace_op to */
@@ -2261,11 +2258,6 @@ static void ftrace_run_update_code(int command)
 	FTRACE_WARN_ON(ret);
 	if (ret)
 		return;
-	/*
-	 * Do not call function tracer while we update the code.
-	 * We are in stop machine.
-	 */
-	function_trace_stop++;
 
 	/*
 	 * By default we use stop_machine() to modify the code.
@@ -2274,8 +2266,6 @@ static void ftrace_run_update_code(int command)
 	 * produces the most overhead.
 	 */
 	arch_ftrace_update_code(command);
-
-	function_trace_stop--;
 
 	ret = ftrace_arch_code_modify_post_process();
 	FTRACE_WARN_ON(ret);
@@ -2957,13 +2947,6 @@ ftrace_enabled_open(struct inode *inode, struct file *file)
 	}
 
 	return iter ? 0 : -ENOMEM;
-}
-
-static void ftrace_filter_reset(struct ftrace_hash *hash)
-{
-	mutex_lock(&ftrace_lock);
-	ftrace_hash_clear(hash);
-	mutex_unlock(&ftrace_lock);
 }
 
 /**
@@ -3730,14 +3713,16 @@ ftrace_set_hash(struct ftrace_ops *ops, unsigned char *buf, int len,
 	else
 		orig_hash = &ops->notrace_hash;
 
-	hash = alloc_and_copy_ftrace_hash(FTRACE_HASH_DEFAULT_BITS, *orig_hash);
+	if (reset)
+		hash = alloc_ftrace_hash(FTRACE_HASH_DEFAULT_BITS);
+	else
+		hash = alloc_and_copy_ftrace_hash(FTRACE_HASH_DEFAULT_BITS, *orig_hash);
+
 	if (!hash) {
 		ret = -ENOMEM;
 		goto out_regex_unlock;
 	}
 
-	if (reset)
-		ftrace_filter_reset(hash);
 	if (buf && !ftrace_match_records(hash, buf, len)) {
 		ret = -EINVAL;
 		goto out_regex_unlock;
@@ -4727,9 +4712,6 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	struct ftrace_ops *op;
 	int bit;
 
-	if (function_trace_stop)
-		return;
-
 	bit = trace_test_and_set_recursion(TRACE_LIST_START, TRACE_LIST_MAX);
 	if (bit < 0)
 		return;
@@ -4741,9 +4723,8 @@ __ftrace_ops_list_func(unsigned long ip, unsigned long parent_ip,
 	preempt_disable_notrace();
 	do_for_each_ftrace_op(op, ftrace_ops_list) {
 		if (ftrace_ops_test(op, ip, regs)) {
-			if (WARN_ON(!op->func)) {
-				function_trace_stop = 1;
-				printk("op=%p %pS\n", op, op);
+			if (FTRACE_WARN_ON(!op->func)) {
+				pr_warn("op=%p %pS\n", op, op);
 				goto out;
 			}
 			op->func(ip, parent_ip, op, regs);
@@ -5366,7 +5347,8 @@ int register_ftrace_graph(trace_func_graph_ret_t retfunc,
 
 #ifdef CONFIG_DYNAMIC_FTRACE
 	/* Optimize function graph calling (if implemented by arch) */
-	global_ops.trampoline = FTRACE_GRAPH_ADDR;
+	if (FTRACE_GRAPH_TRAMP_ADDR != 0)
+		global_ops.trampoline = FTRACE_GRAPH_TRAMP_ADDR;
 #endif
 
 	ret = ftrace_startup(&global_ops, FTRACE_START_FUNC_RET);
@@ -5390,7 +5372,8 @@ void unregister_ftrace_graph(void)
 	ftrace_shutdown(&global_ops, FTRACE_STOP_FUNC_RET);
 	global_ops.flags &= ~FTRACE_OPS_FL_STUB;
 #ifdef CONFIG_DYNAMIC_FTRACE
-	global_ops.trampoline = 0;
+	if (FTRACE_GRAPH_TRAMP_ADDR != 0)
+		global_ops.trampoline = 0;
 #endif
 	unregister_pm_notifier(&ftrace_suspend_notifier);
 	unregister_trace_sched_switch(ftrace_graph_probe_sched_switch, NULL);
@@ -5470,10 +5453,5 @@ void ftrace_graph_exit_task(struct task_struct *t)
 	barrier();
 
 	kfree(ret_stack);
-}
-
-void ftrace_graph_stop(void)
-{
-	ftrace_stop();
 }
 #endif
