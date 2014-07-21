@@ -4300,10 +4300,6 @@ static void i9xx_pfit_enable(struct intel_crtc *crtc)
 	I915_WRITE(BCLRPAT(crtc->pipe), 0);
 }
 
-#define for_each_power_domain(domain, mask)				\
-	for ((domain) = 0; (domain) < POWER_DOMAIN_NUM; (domain)++)	\
-		if ((1 << (domain)) & (mask))
-
 enum intel_display_power_domain
 intel_display_port_power_domain(struct intel_encoder *intel_encoder)
 {
@@ -4872,35 +4868,21 @@ static void intel_crtc_update_sarea(struct drm_crtc *crtc,
 	}
 }
 
-/**
- * Sets the power management mode of the pipe and plane.
- */
-void intel_crtc_update_dpms(struct drm_crtc *crtc)
+/* Master function to enable/disable CRTC and corresponding power wells */
+void intel_crtc_control(struct drm_crtc *crtc, bool enable)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
-	struct intel_encoder *intel_encoder;
 	enum intel_display_power_domain domain;
 	unsigned long domains;
-	bool enable = false;
-
-	for_each_encoder_on_crtc(dev, crtc, intel_encoder)
-		enable |= intel_encoder->connectors_active;
 
 	if (enable) {
 		if (!intel_crtc->active) {
-			/*
-			 * FIXME: DDI plls and relevant code isn't converted
-			 * yet, so do runtime PM for DPMS only for all other
-			 * platforms for now.
-			 */
-			if (!HAS_DDI(dev)) {
-				domains = get_crtc_power_domains(crtc);
-				for_each_power_domain(domain, domains)
-					intel_display_power_get(dev_priv, domain);
-				intel_crtc->enabled_power_domains = domains;
-			}
+			domains = get_crtc_power_domains(crtc);
+			for_each_power_domain(domain, domains)
+				intel_display_power_get(dev_priv, domain);
+			intel_crtc->enabled_power_domains = domains;
 
 			dev_priv->display.crtc_enable(crtc);
 		}
@@ -4908,14 +4890,27 @@ void intel_crtc_update_dpms(struct drm_crtc *crtc)
 		if (intel_crtc->active) {
 			dev_priv->display.crtc_disable(crtc);
 
-			if (!HAS_DDI(dev)) {
-				domains = intel_crtc->enabled_power_domains;
-				for_each_power_domain(domain, domains)
-					intel_display_power_put(dev_priv, domain);
-				intel_crtc->enabled_power_domains = 0;
-			}
+			domains = intel_crtc->enabled_power_domains;
+			for_each_power_domain(domain, domains)
+				intel_display_power_put(dev_priv, domain);
+			intel_crtc->enabled_power_domains = 0;
 		}
 	}
+}
+
+/**
+ * Sets the power management mode of the pipe and plane.
+ */
+void intel_crtc_update_dpms(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct intel_encoder *intel_encoder;
+	bool enable = false;
+
+	for_each_encoder_on_crtc(dev, crtc, intel_encoder)
+		enable |= intel_encoder->connectors_active;
+
+	intel_crtc_control(crtc, enable);
 
 	intel_crtc_update_sarea(crtc, enable);
 }
@@ -4934,10 +4929,6 @@ static void intel_crtc_disable(struct drm_crtc *crtc)
 	dev_priv->display.crtc_disable(crtc);
 	intel_crtc_update_sarea(crtc, false);
 	dev_priv->display.off(crtc);
-
-	assert_plane_disabled(dev->dev_private, to_intel_crtc(crtc)->plane);
-	assert_cursor_disabled(dev_priv, pipe);
-	assert_pipe_disabled(dev->dev_private, pipe);
 
 	if (crtc->primary->fb) {
 		mutex_lock(&dev->struct_mutex);
@@ -7331,8 +7322,9 @@ static void assert_can_disable_lcpll(struct drm_i915_private *dev_priv)
 	WARN(I915_READ(PCH_PP_STATUS) & PP_ON, "Panel power on\n");
 	WARN(I915_READ(BLC_PWM_CPU_CTL2) & BLM_PWM_ENABLE,
 	     "CPU PWM1 enabled\n");
-	WARN(I915_READ(HSW_BLC_PWM2_CTL) & BLM_PWM_ENABLE,
-	     "CPU PWM2 enabled\n");
+	if (IS_HASWELL(dev))
+		WARN(I915_READ(HSW_BLC_PWM2_CTL) & BLM_PWM_ENABLE,
+		     "CPU PWM2 enabled\n");
 	WARN(I915_READ(BLC_PWM_PCH_CTL1) & BLM_PCH_PWM_ENABLE,
 	     "PCH PWM1 enabled\n");
 	WARN(I915_READ(UTIL_PIN_CTL) & UTIL_PIN_ENABLE,
@@ -7345,7 +7337,7 @@ static void assert_can_disable_lcpll(struct drm_i915_private *dev_priv)
 	 * gen-specific and since we only disable LCPLL after we fully disable
 	 * the interrupts, the check below should be enough.
 	 */
-	WARN(!dev_priv->pm.irqs_disabled, "IRQs enabled\n");
+	WARN(intel_irqs_enabled(dev_priv), "IRQs enabled\n");
 }
 
 static uint32_t hsw_read_dcomp(struct drm_i915_private *dev_priv)
@@ -8947,7 +8939,7 @@ void intel_fb_obj_invalidate(struct drm_i915_gem_object *obj,
 
 	intel_mark_fb_busy(dev, obj->frontbuffer_bits, ring);
 
-	intel_edp_psr_exit(dev);
+	intel_edp_psr_invalidate(dev, obj->frontbuffer_bits);
 }
 
 /**
@@ -8973,7 +8965,7 @@ void intel_frontbuffer_flush(struct drm_device *dev,
 
 	intel_mark_fb_busy(dev, frontbuffer_bits, NULL);
 
-	intel_edp_psr_exit(dev);
+	intel_edp_psr_flush(dev, frontbuffer_bits);
 }
 
 /**
@@ -12801,6 +12793,8 @@ static void intel_sanitize_encoder(struct intel_encoder *encoder)
 				      encoder->base.base.id,
 				      encoder->base.name);
 			encoder->disable(encoder);
+			if (encoder->post_disable)
+				encoder->post_disable(encoder);
 		}
 		encoder->base.crtc = NULL;
 		encoder->connectors_active = false;
@@ -13069,6 +13063,8 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	 */
 	drm_irq_uninstall(dev);
 	cancel_work_sync(&dev_priv->hotplug_work);
+	dev_priv->pm._irqs_disabled = true;
+
 	/*
 	 * Due to the hpd irq storm handling the hotplug work can re-arm the
 	 * poll handlers. Hence disable polling after hpd handling is shut down.
