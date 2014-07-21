@@ -46,7 +46,7 @@
 
 /* Current ACPICA subsystem version in YYYYMMDD format */
 
-#define ACPI_CA_VERSION                 0x20140424
+#define ACPI_CA_VERSION                 0x20140627
 
 #include <acpi/acconfig.h>
 #include <acpi/actypes.h>
@@ -334,6 +334,23 @@ ACPI_GLOBAL(u8, acpi_gbl_system_awake_and_running);
 	static ACPI_INLINE prototype {return;}
 
 #endif				/* ACPI_DEBUG_OUTPUT */
+
+/*
+ * Application prototypes
+ *
+ * All interfaces used by application will be configured
+ * out of the ACPICA build unless the ACPI_APPLICATION
+ * flag is defined.
+ */
+#ifdef ACPI_APPLICATION
+#define ACPI_APP_DEPENDENT_RETURN_VOID(prototype) \
+	prototype;
+
+#else
+#define ACPI_APP_DEPENDENT_RETURN_VOID(prototype) \
+	static ACPI_INLINE prototype {return;}
+
+#endif				/* ACPI_APPLICATION */
 
 /*****************************************************************************
  *
@@ -861,6 +878,9 @@ ACPI_DBG_DEPENDENT_RETURN_VOID(ACPI_PRINTF_LIKE(6)
 						     const char *module_name,
 						     u32 component_id,
 						     const char *format, ...))
+ACPI_APP_DEPENDENT_RETURN_VOID(ACPI_PRINTF_LIKE(1)
+				void ACPI_INTERNAL_VAR_XFACE
+				acpi_log_error(const char *format, ...))
 
 /*
  * Divergences
