@@ -75,7 +75,7 @@ void vmw_display_unit_cleanup(struct vmw_display_unit *du)
 		vmw_surface_unreference(&du->cursor_surface);
 	if (du->cursor_dmabuf)
 		vmw_dmabuf_unreference(&du->cursor_dmabuf);
-	drm_sysfs_connector_remove(&du->connector);
+	drm_connector_unregister(&du->connector);
 	drm_crtc_cleanup(&du->crtc);
 	drm_encoder_cleanup(&du->encoder);
 	drm_connector_cleanup(&du->connector);
@@ -1501,7 +1501,6 @@ int vmw_kms_cursor_bypass_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_vmw_cursor_bypass_arg *arg = data;
 	struct vmw_display_unit *du;
-	struct drm_mode_object *obj;
 	struct drm_crtc *crtc;
 	int ret = 0;
 
@@ -1519,13 +1518,12 @@ int vmw_kms_cursor_bypass_ioctl(struct drm_device *dev, void *data,
 		return 0;
 	}
 
-	obj = drm_mode_object_find(dev, arg->crtc_id, DRM_MODE_OBJECT_CRTC);
-	if (!obj) {
+	crtc = drm_crtc_find(dev, arg->crtc_id);
+	if (!crtc) {
 		ret = -ENOENT;
 		goto out;
 	}
 
-	crtc = obj_to_crtc(obj);
 	du = vmw_crtc_to_du(crtc);
 
 	du->hotspot_x = arg->xhot;
