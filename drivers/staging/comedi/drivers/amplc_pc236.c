@@ -460,11 +460,11 @@ static int pc236_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 		if (!pci_dev)
 			return -EIO;
 		return pc236_pci_common_attach(dev, pci_dev);
-	} else {
-		dev_err(dev->class_dev, PC236_DRIVER_NAME
-			": BUG! cannot determine board type!\n");
-		return -EINVAL;
 	}
+
+	dev_err(dev->class_dev, PC236_DRIVER_NAME
+		": BUG! cannot determine board type!\n");
+	return -EINVAL;
 }
 
 /*
@@ -515,6 +515,7 @@ static void pc236_detach(struct comedi_device *dev)
 		comedi_legacy_detach(dev);
 	} else if (is_pci_board(thisboard)) {
 		struct pci_dev *pcidev = comedi_to_pci_dev(dev);
+
 		if (dev->irq)
 			free_irq(dev->irq, dev);
 		comedi_pci_disable(dev);

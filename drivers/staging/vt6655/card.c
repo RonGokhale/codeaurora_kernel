@@ -351,6 +351,7 @@ s_vSetRSPINF(PSDevice pDevice, CARD_PHY_TYPE ePHYType, void *pvSupportRateIEs, v
 bool CARDbIsShortPreamble(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
+
 	if (pDevice->byPreambleType == 0)
 		return false;
 
@@ -372,6 +373,7 @@ bool CARDbIsShortPreamble(void *pDeviceHandler)
 bool CARDbIsShorSlotTime(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
+
 	return pDevice->bShortSlotTime;
 }
 
@@ -929,6 +931,7 @@ bool CARDbRadioPowerOn(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
 	bool bResult = true;
+
 	printk("chester power on\n");
 	if (pDevice->bRadioControlOff == true) {
 		if (pDevice->bHWRadioOff == true) printk("chester bHWRadioOff\n");
@@ -998,7 +1001,7 @@ CARDbAdd_PMKID_Candidate(
 )
 {
 	PSDevice            pDevice = (PSDevice) pDeviceHandler;
-	PPMKID_CANDIDATE    pCandidateList;
+	struct pmkid_candidate *pCandidateList;
 	unsigned int ii = 0;
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "bAdd_PMKID_Candidate START: (%d)\n", (int)pDevice->gsPMKIDCandidate.NumCandidates);

@@ -36,7 +36,6 @@ struct labpc_boardinfo {
 };
 
 struct labpc_private {
-	struct mite_struct *mite;	/*  for mite chip on pci-1200 */
 	/*  number of data points left to be taken */
 	unsigned long long count;
 	/*  software copy of analog output values */
@@ -80,8 +79,8 @@ struct labpc_private {
 	 * function pointers so we can use inb/outb or readb/writeb as
 	 * appropriate
 	 */
-	unsigned int (*read_byte) (unsigned long address);
-	void (*write_byte) (unsigned int byte, unsigned long address);
+	unsigned int (*read_byte)(unsigned long address);
+	void (*write_byte)(unsigned int byte, unsigned long address);
 };
 
 int labpc_common_attach(struct comedi_device *dev,

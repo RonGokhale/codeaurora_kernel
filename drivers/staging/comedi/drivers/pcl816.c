@@ -516,7 +516,7 @@ static int pcl816_ai_poll(struct comedi_device *dev, struct comedi_subdevice *s)
 
 	cfc_handle_events(dev, s);
 
-	return s->async->buf_write_count - s->async->buf_read_count;
+	return comedi_buf_n_bytes_ready(s);
 }
 
 static int pcl816_ai_cancel(struct comedi_device *dev,
@@ -552,7 +552,7 @@ check_channel_list(struct comedi_device *dev,
 
 	/*  correct channel and range number check itself comedi/range.c */
 	if (chanlen < 1) {
-		comedi_error(dev, "range/channel list is empty!");
+		dev_err(dev->class_dev, "range/channel list is empty!\n");
 		return 0;
 	}
 
