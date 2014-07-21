@@ -79,9 +79,10 @@ static int dack_mode = 1;
 module_param(dack_mode, int, 0644);
 MODULE_PARM_DESC(dack_mode, "Delayed ack mode (default=1)");
 
-int c4iw_max_read_depth = 8;
+uint c4iw_max_read_depth = 32;
 module_param(c4iw_max_read_depth, int, 0644);
-MODULE_PARM_DESC(c4iw_max_read_depth, "Per-connection max ORD/IRD (default=8)");
+MODULE_PARM_DESC(c4iw_max_read_depth,
+		 "Per-connection max ORD/IRD (default=32)");
 
 static int enable_tcp_timestamps;
 module_param(enable_tcp_timestamps, int, 0644);
@@ -474,7 +475,8 @@ static void send_flowc(struct c4iw_ep *ep, struct sk_buff *skb)
 					  16)) | FW_WR_FLOWID(ep->hwtid));
 
 	flowc->mnemval[0].mnemonic = FW_FLOWC_MNEM_PFNVFN;
-	flowc->mnemval[0].val = cpu_to_be32(PCI_FUNC(ep->com.dev->rdev.lldi.pdev->devfn) << 8);
+	flowc->mnemval[0].val = cpu_to_be32(FW_PFVF_CMD_PFN
+					    (ep->com.dev->rdev.lldi.pf));
 	flowc->mnemval[1].mnemonic = FW_FLOWC_MNEM_CH;
 	flowc->mnemval[1].val = cpu_to_be32(ep->tx_chan);
 	flowc->mnemval[2].mnemonic = FW_FLOWC_MNEM_PORT;
@@ -821,6 +823,8 @@ static void send_mpa_req(struct c4iw_ep *ep, struct sk_buff *skb,
 	if (mpa_rev_to_use == 2) {
 		mpa->private_data_size = htons(ntohs(mpa->private_data_size) +
 					       sizeof (struct mpa_v2_conn_params));
+		PDBG("%s initiator ird %u ord %u\n", __func__, ep->ird,
+		     ep->ord);
 		mpa_v2_params.ird = htons((u16)ep->ird);
 		mpa_v2_params.ord = htons((u16)ep->ord);
 
@@ -1190,8 +1194,8 @@ static int connect_request_upcall(struct c4iw_ep *ep)
 			sizeof(struct mpa_v2_conn_params);
 	} else {
 		/* this means MPA_v1 is used. Send max supported */
-		event.ord = c4iw_max_read_depth;
-		event.ird = c4iw_max_read_depth;
+		event.ord = cur_max_read_depth(ep->com.dev);
+		event.ird = cur_max_read_depth(ep->com.dev);
 		event.private_data_len = ep->plen;
 		event.private_data = ep->mpa_pkt + sizeof(struct mpa_message);
 	}
@@ -1254,6 +1258,8 @@ static int update_rx_credits(struct c4iw_ep *ep, u32 credits)
 	c4iw_ofld_send(&ep->com.dev->rdev, skb);
 	return credits;
 }
+
+#define RELAXED_IRD_NEGOTIATION 1
 
 static int process_mpa_reply(struct c4iw_ep *ep, struct sk_buff *skb)
 {
@@ -1366,17 +1372,33 @@ static int process_mpa_reply(struct c4iw_ep *ep, struct sk_buff *skb)
 				MPA_V2_IRD_ORD_MASK;
 			resp_ord = ntohs(mpa_v2_params->ord) &
 				MPA_V2_IRD_ORD_MASK;
+			PDBG("%s responder ird %u ord %u ep ird %u ord %u\n",
+			     __func__, resp_ird, resp_ord, ep->ird, ep->ord);
 
 			/*
 			 * This is a double-check. Ideally, below checks are
 			 * not required since ird/ord stuff has been taken
 			 * care of in c4iw_accept_cr
 			 */
-			if ((ep->ird < resp_ord) || (ep->ord > resp_ird)) {
+			if (ep->ird < resp_ord) {
+				if (RELAXED_IRD_NEGOTIATION && resp_ord <=
+				    ep->com.dev->rdev.lldi.max_ordird_qp)
+					ep->ird = resp_ord;
+				else
+					insuff_ird = 1;
+			} else if (ep->ird > resp_ord) {
+				ep->ird = resp_ord;
+			}
+			if (ep->ord > resp_ird) {
+				if (RELAXED_IRD_NEGOTIATION)
+					ep->ord = resp_ird;
+				else
+					insuff_ird = 1;
+			}
+			if (insuff_ird) {
 				err = -ENOMEM;
 				ep->ird = resp_ord;
 				ep->ord = resp_ird;
-				insuff_ird = 1;
 			}
 
 			if (ntohs(mpa_v2_params->ird) &
@@ -1579,6 +1601,8 @@ static void process_mpa_request(struct c4iw_ep *ep, struct sk_buff *skb)
 				MPA_V2_IRD_ORD_MASK;
 			ep->ord = ntohs(mpa_v2_params->ord) &
 				MPA_V2_IRD_ORD_MASK;
+			PDBG("%s initiator ird %u ord %u\n", __func__, ep->ird,
+			     ep->ord);
 			if (ntohs(mpa_v2_params->ird) & MPA_V2_PEER2PEER_MODEL)
 				if (peer2peer) {
 					if (ntohs(mpa_v2_params->ord) &
@@ -2731,8 +2755,8 @@ int c4iw_accept_cr(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	BUG_ON(!qp);
 
 	set_bit(ULP_ACCEPT, &ep->com.history);
-	if ((conn_param->ord > c4iw_max_read_depth) ||
-	    (conn_param->ird > c4iw_max_read_depth)) {
+	if ((conn_param->ord > cur_max_read_depth(ep->com.dev)) ||
+	    (conn_param->ird > cur_max_read_depth(ep->com.dev))) {
 		abort_connection(ep, NULL, GFP_KERNEL);
 		err = -EINVAL;
 		goto err;
@@ -2740,31 +2764,41 @@ int c4iw_accept_cr(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 
 	if (ep->mpa_attr.version == 2 && ep->mpa_attr.enhanced_rdma_conn) {
 		if (conn_param->ord > ep->ird) {
-			ep->ird = conn_param->ird;
-			ep->ord = conn_param->ord;
-			send_mpa_reject(ep, conn_param->private_data,
-					conn_param->private_data_len);
-			abort_connection(ep, NULL, GFP_KERNEL);
-			err = -ENOMEM;
-			goto err;
-		}
-		if (conn_param->ird > ep->ord) {
-			if (!ep->ord)
-				conn_param->ird = 1;
-			else {
+			if (RELAXED_IRD_NEGOTIATION) {
+				ep->ord = ep->ird;
+			} else {
+				ep->ird = conn_param->ird;
+				ep->ord = conn_param->ord;
+				send_mpa_reject(ep, conn_param->private_data,
+						conn_param->private_data_len);
 				abort_connection(ep, NULL, GFP_KERNEL);
 				err = -ENOMEM;
 				goto err;
 			}
 		}
-
+		if (conn_param->ird < ep->ord) {
+			if (RELAXED_IRD_NEGOTIATION &&
+			    ep->ord <= h->rdev.lldi.max_ordird_qp) {
+				conn_param->ird = ep->ord;
+			} else {
+				abort_connection(ep, NULL, GFP_KERNEL);
+				err = -ENOMEM;
+				goto err;
+			}
+		}
 	}
 	ep->ird = conn_param->ird;
 	ep->ord = conn_param->ord;
 
-	if (ep->mpa_attr.version != 2)
+	if (ep->mpa_attr.version == 1) {
 		if (peer2peer && ep->ird == 0)
 			ep->ird = 1;
+	} else {
+		if (peer2peer &&
+		    (ep->mpa_attr.p2p_type != FW_RI_INIT_P2PTYPE_DISABLED) &&
+		    (p2p_type == FW_RI_INIT_P2PTYPE_READ_REQ) && ep->ord == 0)
+			ep->ird = 1;
+	}
 
 	PDBG("%s %d ird %d ord %d\n", __func__, __LINE__, ep->ird, ep->ord);
 
@@ -2803,6 +2837,7 @@ int c4iw_accept_cr(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	return 0;
 err1:
 	ep->com.cm_id = NULL;
+	abort_connection(ep, NULL, GFP_KERNEL);
 	cm_id->rem_ref(cm_id);
 err:
 	mutex_unlock(&ep->com.mutex);
@@ -2886,8 +2921,8 @@ int c4iw_connect(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	int iptype;
 	int iwpm_err = 0;
 
-	if ((conn_param->ord > c4iw_max_read_depth) ||
-	    (conn_param->ird > c4iw_max_read_depth)) {
+	if ((conn_param->ord > cur_max_read_depth(dev)) ||
+	    (conn_param->ird > cur_max_read_depth(dev))) {
 		err = -EINVAL;
 		goto out;
 	}
