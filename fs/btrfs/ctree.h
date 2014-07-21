@@ -3867,6 +3867,8 @@ void btrfs_get_block_group_info(struct list_head *groups_list,
 				struct btrfs_ioctl_space_info *space);
 void update_ioctl_balance_args(struct btrfs_fs_info *fs_info, int lock,
 			       struct btrfs_ioctl_balance_args *bargs);
+int btrfs_search_path_in_tree(struct btrfs_fs_info *info,
+			      u64 tree_id, u64 dirid, char *name);
 
 
 /* file.c */

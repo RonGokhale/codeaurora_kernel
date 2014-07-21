@@ -1872,6 +1872,117 @@ static int btrfs_show_devname(struct seq_file *m, struct dentry *root)
 	return 0;
 }
 
+static char *str_prepend(char *dest, char *src)
+{
+	memmove(dest + strlen(src), dest, strlen(dest) + 1);
+	memcpy(dest, src, strlen(src));
+	return dest;
+}
+
+static int alloc_mem_if_needed(char **dest, char *src, int *len)
+{
+	char *tmp;
+
+	if (unlikely(strlen(*dest) + strlen(src) > *len)) {
+		*len *= 2;
+		tmp = krealloc(*dest, *len, GFP_NOFS);
+		if (!tmp) {
+			return -ENOMEM;
+		}
+		*dest = tmp;
+	}
+	return 0;
+}
+
+static int btrfs_show_path(struct seq_file *m, struct dentry *mount_root)
+{
+	struct inode *inode = mount_root->d_inode;
+	struct btrfs_root *subv_root = BTRFS_I(inode)->root;
+	struct btrfs_fs_info *fs_info = subv_root->fs_info;
+	struct btrfs_root *tree_root = fs_info->tree_root;
+	struct btrfs_root_ref *ref;
+	struct btrfs_key key;
+	struct btrfs_key found_key;
+	struct btrfs_path *path = NULL;
+	char *name = NULL;
+	char *buf = NULL;
+	int ret = 0;
+	int len;
+	u64 dirid = 0;
+	u16 namelen;
+
+	name = kmalloc(PAGE_SIZE, GFP_NOFS);
+	len = PAGE_SIZE;
+	buf = kmalloc(BTRFS_INO_LOOKUP_PATH_MAX, GFP_NOFS);
+	path = btrfs_alloc_path();
+	if (!name || !buf || !path) {
+		ret = -ENOMEM;
+		goto out_free;
+	}
+	*name = '/';
+	*(name + 1) = '\0';
+
+	key.objectid = subv_root->root_key.objectid;
+	key.type = BTRFS_ROOT_BACKREF_KEY;
+	key.offset = 0;
+	down_read(&fs_info->subvol_sem);
+	while (key.objectid != BTRFS_FS_TREE_OBJECTID) {
+		ret = btrfs_search_slot_for_read(tree_root, &key, path, 1, 1);
+		if (ret < 0)
+			goto out;
+		if (ret) {
+			ret = -ENOENT;
+			goto out;
+		}
+		btrfs_item_key_to_cpu(path->nodes[0], &found_key,
+				      path->slots[0]);
+		if (found_key.objectid != key.objectid ||
+		    found_key.type != BTRFS_ROOT_BACKREF_KEY) {
+			ret = -ENOENT;
+			goto out;
+		}
+		/* append the subvol name first */
+		ref = btrfs_item_ptr(path->nodes[0], path->slots[0],
+				     struct btrfs_root_ref);
+		dirid = btrfs_root_ref_dirid(path->nodes[0], ref);
+		namelen = btrfs_root_ref_name_len(path->nodes[0], ref);
+		read_extent_buffer(path->nodes[0], buf,
+				   (unsigned long)(ref + 1), namelen);
+		*(buf + namelen) = '/';
+		*(buf + namelen + 1) = '\0';
+		ret = alloc_mem_if_needed(&name, buf, &len);
+		if (ret < 0)
+			goto out;
+		str_prepend(name + 1, buf);
+
+		/* then append path name inside the subvole */
+		ret = btrfs_search_path_in_tree(fs_info, found_key.offset,
+						dirid, buf);
+		if (ret < 0) {
+			if (ret == -ENOENT)
+				/* parent dir may be under rename/moving,
+				 * info user to try again other than
+				 * "No such file or directory" */
+				ret = -EBUSY;
+			goto out;
+		}
+		btrfs_release_path(path);
+		key.objectid = found_key.offset;
+		ret = alloc_mem_if_needed(&name, buf, &len);
+		if (ret < 0)
+			goto out;
+		str_prepend(name + 1, buf);
+	}
+	seq_puts(m, name);
+out:
+	up_read(&fs_info->subvol_sem);
+out_free:
+	btrfs_free_path(path);
+	kfree(buf);
+	kfree(name);
+	return ret;
+}
+
 static const struct super_operations btrfs_super_ops = {
 	.drop_inode	= btrfs_drop_inode,
 	.evict_inode	= btrfs_evict_inode,
@@ -1886,6 +1997,7 @@ static const struct super_operations btrfs_super_ops = {
 	.remount_fs	= btrfs_remount,
 	.freeze_fs	= btrfs_freeze,
 	.unfreeze_fs	= btrfs_unfreeze,
+	.show_path	= btrfs_show_path,
 };
 
 static const struct file_operations btrfs_ctl_fops = {
