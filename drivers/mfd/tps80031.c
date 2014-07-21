@@ -334,6 +334,7 @@ static bool rd_wr_reg_id1(struct device *dev, unsigned int reg)
 	case TPS80031_PREQ1_RES_ASS_A ... TPS80031_PREQ3_RES_ASS_C:
 	case TPS80031_SMPS_OFFSET ... TPS80031_BATDEBOUNCING:
 	case TPS80031_CFG_INPUT_PUPD1 ... TPS80031_CFG_SMPS_PD:
+		/* Fall through */
 	case TPS80031_BACKUP_REG:
 		return true;
 	default:
