@@ -2445,7 +2445,7 @@ static int proc_tgid_io_accounting(struct task_struct *task, char *buffer)
 
 #ifdef CONFIG_USER_NS
 static int proc_id_map_open(struct inode *inode, struct file *file,
-	struct seq_operations *seq_ops)
+	const struct seq_operations *seq_ops)
 {
 	struct user_namespace *ns = NULL;
 	struct task_struct *task;
@@ -2774,12 +2774,12 @@ out:
 
 struct dentry *proc_pid_lookup(struct inode *dir, struct dentry * dentry, unsigned int flags)
 {
-	int result = 0;
+	int result = -ENOENT;
 	struct task_struct *task;
 	unsigned tgid;
 	struct pid_namespace *ns;
 
-	tgid = name_to_int(dentry);
+	tgid = name_to_int(&dentry->d_name);
 	if (tgid == ~0U)
 		goto out;
 
@@ -3027,7 +3027,7 @@ static struct dentry *proc_task_lookup(struct inode *dir, struct dentry * dentry
 	if (!leader)
 		goto out_no_task;
 
-	tid = name_to_int(dentry);
+	tid = name_to_int(&dentry->d_name);
 	if (tid == ~0U)
 		goto out;
 
