@@ -25,6 +25,7 @@
 #ifdef CONFIG_8xx
 #include <asm/reg_8xx.h>
 #endif /* CONFIG_8xx */
+#include <asm/bug.h>
 
 #define MSR_SF_LG	63              /* Enable 64 bit mode */
 #define MSR_ISF_LG	61              /* Interrupt 64b mode valid on 630 */
@@ -1202,6 +1203,21 @@
 #define mtspr(rn, v)	asm volatile("mtspr " __stringify(rn) ",%0" : \
 				     : "r" ((unsigned long)(v)) \
 				     : "memory")
+
+static inline unsigned long mfvtb (void)
+{
+#ifdef CONFIG_PPC_BOOK3S_64
+	if (cpu_has_feature(CPU_FTR_ARCH_207S))
+		return mfspr(SPRN_VTB);
+#endif
+	/*
+	 * The above mfspr will be a no-op on anything before Power8
+	 * That can result in random values returned. We need to
+	 * capture that.
+	 */
+	BUG();
+	return 0;
+}
 
 #ifdef __powerpc64__
 #if defined(CONFIG_PPC_CELL) || defined(CONFIG_PPC_FSL_BOOK3E)
