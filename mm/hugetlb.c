@@ -2260,6 +2260,9 @@ static int hugetlb_sysctl_handler_common(bool obey_mempolicy,
 	unsigned long tmp = h->max_huge_pages;
 	int ret;
 
+	if (!hugepages_supported())
+		return -ENOTSUPP;
+
 	table->data = &tmp;
 	table->maxlen = sizeof(unsigned long);
 	ret = proc_doulongvec_minmax(table, write, buffer, length, ppos);
