@@ -3017,6 +3017,7 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 	static char memcg_name_buf[NAME_MAX + 1]; /* protected by
 						     memcg_slab_mutex */
 	struct kmem_cache *cachep;
+	char *cache_name;
 	int id;
 
 	lockdep_assert_held(&memcg_slab_mutex);
@@ -3032,14 +3033,22 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 		return;
 
 	cgroup_name(memcg->css.cgroup, memcg_name_buf, NAME_MAX + 1);
-	cachep = memcg_create_kmem_cache(memcg, root_cache, memcg_name_buf);
+
+	cache_name = kasprintf(GFP_KERNEL, "%s(%d:%s)", root_cache->name,
+			       mem_cgroup_id(memcg), memcg_name_buf);
+	if (!cache_name)
+		return;
+
+	cachep = memcg_create_kmem_cache(memcg, root_cache, cache_name);
 	/*
 	 * If we could not create a memcg cache, do not complain, because
 	 * that's not critical at all as we can always proceed with the root
 	 * cache.
 	 */
-	if (!cachep)
+	if (!cachep) {
+		kfree(cache_name);
 		return;
+	}
 
 	list_add(&cachep->memcg_params->list, &memcg->memcg_slab_caches);
 
