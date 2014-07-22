@@ -648,10 +648,8 @@ EXPORT_SYMBOL(memcg_kmem_enabled_key);
 
 static void disarm_kmem_keys(struct mem_cgroup *memcg)
 {
-	if (memcg_kmem_is_active(memcg)) {
+	if (memcg_kmem_is_active(memcg))
 		static_key_slow_dec(&memcg_kmem_enabled_key);
-		ida_simple_remove(&kmem_limited_groups, memcg->kmemcg_id);
-	}
 	/*
 	 * This check can't live in kmem destruction function,
 	 * since the charges will outlive the cgroup
@@ -3017,6 +3015,12 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 	lockdep_assert_held(&memcg_slab_mutex);
 
 	id = memcg_cache_id(memcg);
+	/*
+	 * The cgroup was taken offline while the create work was pending,
+	 * nothing to do then.
+	 */
+	if (id < 0)
+		return;
 
 	/*
 	 * Since per-memcg caches are created asynchronously on first
@@ -3071,8 +3075,17 @@ static void memcg_unregister_cache(struct kmem_cache *cachep)
 	memcg = cachep->memcg_params->memcg;
 	id = memcg_cache_id(memcg);
 
-	BUG_ON(root_cache->memcg_params->memcg_caches[id] != cachep);
-	root_cache->memcg_params->memcg_caches[id] = NULL;
+	/*
+	 * This function can be called both after and before css offline. If
+	 * it's called before css offline, which happens on the root cache
+	 * destruction, we should clear the slot corresponding to the cache in
+	 * memcg_caches array. Otherwise the slot must have already been
+	 * cleared in memcg_unregister_all_caches.
+	 */
+	if (id >= 0) {
+		BUG_ON(root_cache->memcg_params->memcg_caches[id] != cachep);
+		root_cache->memcg_params->memcg_caches[id] = NULL;
+	}
 
 	list_del(&cachep->memcg_params->list);
 
@@ -3124,19 +3137,27 @@ void __memcg_cleanup_cache_params(struct kmem_cache *s)
 static void memcg_unregister_all_caches(struct mem_cgroup *memcg)
 {
 	struct memcg_cache_params *params, *tmp;
+	int id = memcg_cache_id(memcg);
 
 	if (!memcg_kmem_is_active(memcg))
 		return;
 
 	mutex_lock(&memcg_slab_mutex);
+	memcg->kmemcg_id = -1;
 	list_for_each_entry_safe(params, tmp, &memcg->memcg_slab_caches, list) {
 		struct kmem_cache *cachep = params->cachep;
+		struct kmem_cache *root_cache = params->root_cache;
+
+		BUG_ON(root_cache->memcg_params->memcg_caches[id] != cachep);
+		root_cache->memcg_params->memcg_caches[id] = NULL;
 
 		kmem_cache_shrink(cachep);
 		if (atomic_read(&cachep->memcg_params->nr_pages) == 0)
 			memcg_unregister_cache(cachep);
 	}
 	mutex_unlock(&memcg_slab_mutex);
+
+	ida_simple_remove(&kmem_limited_groups, id);
 }
 
 struct memcg_register_cache_work {
@@ -3235,6 +3256,7 @@ struct kmem_cache *__memcg_kmem_get_cache(struct kmem_cache *cachep,
 {
 	struct mem_cgroup *memcg;
 	struct kmem_cache *memcg_cachep;
+	int id;
 
 	VM_BUG_ON(!cachep->memcg_params);
 	VM_BUG_ON(!cachep->memcg_params->is_root_cache);
@@ -3248,7 +3270,15 @@ struct kmem_cache *__memcg_kmem_get_cache(struct kmem_cache *cachep,
 	if (!memcg_can_account_kmem(memcg))
 		goto out;
 
-	memcg_cachep = cache_from_memcg_idx(cachep, memcg_cache_id(memcg));
+	id = memcg_cache_id(memcg);
+	/*
+	 * This can happen if current was migrated to another cgroup and this
+	 * cgroup was taken offline after we issued mem_cgroup_from_task above.
+	 */
+	if (unlikely(id < 0))
+		goto out;
+
+	memcg_cachep = cache_from_memcg_idx(cachep, id);
 	if (likely(memcg_cachep)) {
 		cachep = memcg_cachep;
 		goto out;
