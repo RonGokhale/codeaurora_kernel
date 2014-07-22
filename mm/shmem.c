@@ -406,7 +406,6 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 			pvec.pages, indices);
 		if (!pvec.nr)
 			break;
-		mem_cgroup_uncharge_start();
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *page = pvec.pages[i];
 
@@ -434,7 +433,6 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 		}
 		pagevec_remove_exceptionals(&pvec);
 		pagevec_release(&pvec);
-		mem_cgroup_uncharge_end();
 		cond_resched();
 		index++;
 	}
@@ -482,7 +480,6 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 			index = start;
 			continue;
 		}
-		mem_cgroup_uncharge_start();
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *page = pvec.pages[i];
 
@@ -518,7 +515,6 @@ static void shmem_undo_range(struct inode *inode, loff_t lstart, loff_t lend,
 		}
 		pagevec_remove_exceptionals(&pvec);
 		pagevec_release(&pvec);
-		mem_cgroup_uncharge_end();
 		index++;
 	}
 
@@ -817,7 +813,7 @@ static int shmem_writepage(struct page *page, struct writeback_control *wbc)
 	}
 
 	mutex_unlock(&shmem_swaplist_mutex);
-	swapcache_free(swap, NULL);
+	swapcache_free(swap);
 redirty:
 	set_page_dirty(page);
 	if (wbc->for_reclaim)
@@ -990,7 +986,7 @@ static int shmem_replace_page(struct page **pagep, gfp_t gfp,
 		 */
 		oldpage = newpage;
 	} else {
-		mem_cgroup_replace_page_cache(oldpage, newpage);
+		mem_cgroup_migrate(oldpage, newpage, false);
 		lru_cache_add_anon(newpage);
 		*pagep = newpage;
 	}
