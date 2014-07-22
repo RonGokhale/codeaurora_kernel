@@ -834,8 +834,8 @@ static inline struct file *get_file(struct file *f)
 typedef void *fl_owner_t;
 
 struct file_lock_operations {
-	void (*fl_copy_lock)(struct file_lock *, struct file_lock *);
-	void (*fl_release_private)(struct file_lock *);
+	void (*fl_copy_lock)(struct file_lock *dst, struct file_lock *fl);
+	void (*fl_release_private)(struct file_lock *fl);
 };
 
 struct lock_manager_operations {
