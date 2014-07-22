@@ -36,7 +36,7 @@ static struct i2c_driver pcf85063_driver;
 struct pcf85063 {
 	struct rtc_device *rtc;
 	int c_polarity;	/* 0: MO_C=1 means 19xx, otherwise MO_C=1 means 20xx */
-	int voltage_low; /* incicates if a low_voltage was detected */
+	int voltage_low; /* indicates if a low_voltage was detected */
 };
 
 /*
@@ -47,7 +47,6 @@ static int pcf85063_get_datetime(struct i2c_client *client, struct rtc_time *tm)
 {
 	struct pcf85063 *pcf85063 = i2c_get_clientdata(client);
 	unsigned char buf[13] = { PCF85063_REG_CTRL1 };
-
 	struct i2c_msg msgs[] = {
 		{/* setup read ptr */
 			.addr = client->addr,
@@ -61,6 +60,7 @@ static int pcf85063_get_datetime(struct i2c_client *client, struct rtc_time *tm)
 			.buf = buf
 		},
 	};
+
 	/* read registers */
 	if ((i2c_transfer(client->adapter, msgs, 2)) != 2) {
 		dev_err(&client->dev, "%s: read error\n", __func__);
