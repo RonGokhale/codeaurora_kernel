@@ -2248,10 +2248,10 @@ static inline bool should_continue_reclaim(struct zone *zone,
 	}
 }
 
-static unsigned long shrink_zone(struct zone *zone, struct scan_control *sc)
+static bool shrink_zone(struct zone *zone, struct scan_control *sc)
 {
 	unsigned long nr_reclaimed, nr_scanned;
-	unsigned long zone_reclaimed = 0;
+	bool reclaimable = false;
 
 	do {
 		struct mem_cgroup *root = sc->target_mem_cgroup;
@@ -2295,12 +2295,13 @@ static unsigned long shrink_zone(struct zone *zone, struct scan_control *sc)
 			   sc->nr_scanned - nr_scanned,
 			   sc->nr_reclaimed - nr_reclaimed);
 
-		zone_reclaimed += sc->nr_reclaimed - nr_reclaimed;
+		if (sc->nr_reclaimed - nr_reclaimed)
+			reclaimable = true;
 
 	} while (should_continue_reclaim(zone, sc->nr_reclaimed - nr_reclaimed,
 					 sc->nr_scanned - nr_scanned, sc));
 
-	return zone_reclaimed;
+	return reclaimable;
 }
 
 /* Returns true if compaction should go ahead for a high-order request */
@@ -2350,7 +2351,7 @@ static inline bool compaction_ready(struct zone *zone, int order)
  * If a zone is deemed to be full of pinned pages then just give it a light
  * scan then give up on it.
  *
- * Returns whether the zones overall are reclaimable or not.
+ * Returns true if a zone was reclaimable.
  */
 static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 {
@@ -2365,7 +2366,7 @@ static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 		.gfp_mask = sc->gfp_mask,
 	};
 	enum zone_type requested_highidx = gfp_zone(sc->gfp_mask);
-	bool all_unreclaimable = true;
+	bool reclaimable = false;
 
 	/*
 	 * If the number of buffer_heads in the machine exceeds the maximum
@@ -2380,8 +2381,6 @@ static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 
 	for_each_zone_zonelist_nodemask(zone, z, zonelist,
 					gfp_zone(sc->gfp_mask), sc->nodemask) {
-		unsigned long zone_reclaimed = 0;
-
 		if (!populated_zone(zone))
 			continue;
 		/*
@@ -2428,15 +2427,17 @@ static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 						&nr_soft_scanned);
 			sc->nr_reclaimed += nr_soft_reclaimed;
 			sc->nr_scanned += nr_soft_scanned;
-			zone_reclaimed += nr_soft_reclaimed;
+			if (nr_soft_reclaimed)
+				reclaimable = true;
 			/* need some check for avoid more shrink_zone() */
 		}
 
-		zone_reclaimed += shrink_zone(zone, sc);
+		if (shrink_zone(zone, sc))
+			reclaimable = true;
 
-		if (zone_reclaimed ||
-		    (global_reclaim(sc) && zone_reclaimable(zone)))
-			all_unreclaimable = false;
+		if (global_reclaim(sc) &&
+		    !reclaimable && zone_reclaimable(zone))
+			reclaimable = true;
 	}
 
 	/*
@@ -2459,7 +2460,7 @@ static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 	 */
 	sc->gfp_mask = orig_mask;
 
-	return !all_unreclaimable;
+	return reclaimable;
 }
 
 /*
