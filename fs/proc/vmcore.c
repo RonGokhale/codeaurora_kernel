@@ -340,7 +340,7 @@ static inline char *alloc_elfnotes_buf(size_t notes_sz)
  *
  * Returns zero on success, -EAGAIN on failure.
  */
-int remap_oldmem_pfn_checked(struct vm_area_struct *vma, unsigned long from,
+static int remap_oldmem_pfn_checked(struct vm_area_struct *vma, unsigned long from,
 			     unsigned long pfn, unsigned long size,
 			     pgprot_t prot)
 {
@@ -391,7 +391,7 @@ fail:
 	return -EAGAIN;
 }
 
-int vmcore_remap_oldmem_pfn(struct vm_area_struct *vma,
+static int vmcore_remap_oldmem_pfn(struct vm_area_struct *vma,
 			    unsigned long from, unsigned long pfn,
 			    unsigned long size, pgprot_t prot)
 {
