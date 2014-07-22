@@ -839,12 +839,12 @@ struct file_lock_operations {
 };
 
 struct lock_manager_operations {
-	int (*lm_compare_owner)(struct file_lock *, struct file_lock *);
-	unsigned long (*lm_owner_key)(struct file_lock *);
-	void (*lm_notify)(struct file_lock *);	/* unblock callback */
-	int (*lm_grant)(struct file_lock *, struct file_lock *, int);
-	void (*lm_break)(struct file_lock *);
-	int (*lm_change)(struct file_lock **, int);
+	int (*lm_compare_owner)(struct file_lock *fl1, struct file_lock *fl2);
+	unsigned long (*lm_owner_key)(struct file_lock *fl);
+	void (*lm_notify)(struct file_lock *fl);	/* unblock callback */
+	int (*lm_grant)(struct file_lock *fl, struct file_lock *conf, int result);
+	void (*lm_break)(struct file_lock *fl);
+	int (*lm_change)(struct file_lock **fl, int type);
 };
 
 struct lock_manager {
