@@ -438,8 +438,6 @@ void __memcg_kmem_commit_charge(struct page *page,
 				       struct mem_cgroup *memcg, int order);
 void __memcg_kmem_uncharge_pages(struct page *page, int order);
 
-int memcg_cache_id(struct mem_cgroup *memcg);
-
 int memcg_alloc_cache_params(struct mem_cgroup *memcg, struct kmem_cache *s,
 			     struct kmem_cache *root_cache);
 void memcg_free_cache_params(struct kmem_cache *s);
@@ -567,11 +565,6 @@ static inline void memcg_kmem_uncharge_pages(struct page *page, int order)
 static inline void
 memcg_kmem_commit_charge(struct page *page, struct mem_cgroup *memcg, int order)
 {
-}
-
-static inline int memcg_cache_id(struct mem_cgroup *memcg)
-{
-	return -1;
 }
 
 static inline int memcg_alloc_cache_params(struct mem_cgroup *memcg,
