@@ -2500,10 +2500,10 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 
 		total_scanned += sc->nr_scanned;
 		if (sc->nr_reclaimed >= sc->nr_to_reclaim)
-			goto out;
+			break;
 
 		if (sc->compaction_ready)
-			goto out;
+			break;
 
 		/*
 		 * If we're getting trouble reclaiming, start doing
@@ -2527,7 +2527,6 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 		}
 	} while (--sc->priority >= 0);
 
-out:
 	delayacct_freepages_end();
 
 	if (sc->nr_reclaimed)
