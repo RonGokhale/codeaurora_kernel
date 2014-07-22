@@ -397,7 +397,6 @@ struct nfs4_file {
 	struct file_lock	*fi_lease;
 	atomic_t		fi_delegees;
 	struct knfsd_fh		fi_fhandle;
-	struct inode		*fi_inode;
 	bool			fi_had_conflict;
 };
 
@@ -412,6 +411,7 @@ struct nfs4_ol_stateid {
 	unsigned char                 st_access_bmap;
 	unsigned char                 st_deny_bmap;
 	struct nfs4_ol_stateid         * st_openstp;
+	struct inode		    * st_inode;
 };
 
 static inline struct nfs4_ol_stateid *openlockstateid(struct nfs4_stid *s)
