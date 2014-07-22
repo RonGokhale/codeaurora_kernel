@@ -6604,13 +6604,19 @@ void mem_cgroup_migrate(struct page *oldpage, struct page *newpage,
 
 	VM_BUG_ON_PAGE(!(pc->flags & PCG_MEM), oldpage);
 	VM_BUG_ON_PAGE(do_swap_account && !(pc->flags & PCG_MEMSW), oldpage);
-	pc->flags &= ~(PCG_MEM | PCG_MEMSW);
 
 	if (PageTransHuge(oldpage)) {
 		nr_pages <<= compound_order(oldpage);
 		VM_BUG_ON_PAGE(!PageTransHuge(oldpage), oldpage);
 		VM_BUG_ON_PAGE(!PageTransHuge(newpage), newpage);
 	}
+
+	pc->flags = 0;
+
+	local_irq_disable();
+	mem_cgroup_charge_statistics(pc->mem_cgroup, oldpage, -nr_pages);
+	memcg_check_events(pc->mem_cgroup, oldpage);
+	local_irq_enable();
 
 	commit_charge(newpage, pc->mem_cgroup, nr_pages, lrucare);
 }
