@@ -2414,8 +2414,12 @@ int sb_min_blocksize(struct super_block *, int);
 
 int generic_file_mmap(struct file *, struct vm_area_struct *);
 int generic_file_readonly_mmap(struct file *, struct vm_area_struct *);
-int generic_file_remap_pages(struct vm_area_struct *, unsigned long addr,
-			     unsigned long size, pgoff_t pgoff);
+static inline int generic_file_remap_pages(struct vm_area_struct *vma,
+		unsigned long addr, unsigned long size, pgoff_t pgoff)
+{
+	BUG();
+	return 0;
+}
 int generic_write_checks(struct file *file, loff_t *pos, size_t *count,
 			 int isblk);
 ssize_t generic_file_read_iter(struct kiocb *, struct iov_iter *);
