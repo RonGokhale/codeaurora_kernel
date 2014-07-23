@@ -120,7 +120,10 @@ struct s6e8aa0 {
 	int error;
 };
 
-#define panel_to_s6e8aa0(p) container_of(p, struct s6e8aa0, panel)
+static inline struct s6e8aa0 *panel_to_s6e8aa0(struct drm_panel *panel)
+{
+	return container_of(panel, struct s6e8aa0, panel);
+}
 
 static int s6e8aa0_clear_error(struct s6e8aa0 *ctx)
 {
@@ -133,14 +136,14 @@ static int s6e8aa0_clear_error(struct s6e8aa0 *ctx)
 static void s6e8aa0_dcs_write(struct s6e8aa0 *ctx, const void *data, size_t len)
 {
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
-	int ret;
+	ssize_t ret;
 
 	if (ctx->error < 0)
 		return;
 
-	ret = mipi_dsi_dcs_write(dsi, dsi->channel, data, len);
+	ret = mipi_dsi_dcs_write(dsi, data, len);
 	if (ret < 0) {
-		dev_err(ctx->dev, "error %d writing dcs seq: %*ph\n", ret, len,
+		dev_err(ctx->dev, "error %zd writing dcs seq: %*ph\n", ret, len,
 			data);
 		ctx->error = ret;
 	}
@@ -154,7 +157,7 @@ static int s6e8aa0_dcs_read(struct s6e8aa0 *ctx, u8 cmd, void *data, size_t len)
 	if (ctx->error < 0)
 		return ctx->error;
 
-	ret = mipi_dsi_dcs_read(dsi, dsi->channel, cmd, data, len);
+	ret = mipi_dsi_dcs_read(dsi, cmd, data, len);
 	if (ret < 0) {
 		dev_err(ctx->dev, "error %d reading dcs seq(%#x)\n", ret, cmd);
 		ctx->error = ret;
