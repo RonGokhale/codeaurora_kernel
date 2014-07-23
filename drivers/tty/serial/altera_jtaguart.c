@@ -109,10 +109,6 @@ static void altera_jtaguart_break_ctl(struct uart_port *port, int break_state)
 {
 }
 
-static void altera_jtaguart_enable_ms(struct uart_port *port)
-{
-}
-
 static void altera_jtaguart_set_termios(struct uart_port *port,
 					struct ktermios *termios,
 					struct ktermios *old)
@@ -291,7 +287,6 @@ static struct uart_ops altera_jtaguart_ops = {
 	.start_tx	= altera_jtaguart_start_tx,
 	.stop_tx	= altera_jtaguart_stop_tx,
 	.stop_rx	= altera_jtaguart_stop_rx,
-	.enable_ms	= altera_jtaguart_enable_ms,
 	.break_ctl	= altera_jtaguart_break_ctl,
 	.startup	= altera_jtaguart_startup,
 	.shutdown	= altera_jtaguart_shutdown,
@@ -309,7 +304,7 @@ static struct altera_jtaguart altera_jtaguart_ports[ALTERA_JTAGUART_MAXPORTS];
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE)
 
 #if defined(CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE_BYPASS)
-static void altera_jtaguart_console_putc(struct console *co, const char c)
+static void altera_jtaguart_console_putc(struct console *co, int c)
 {
 	struct uart_port *port = &(altera_jtaguart_ports + co->index)->port;
 	unsigned long status;
@@ -330,7 +325,7 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 	spin_unlock_irqrestore(&port->lock, flags);
 }
 #else
-static void altera_jtaguart_console_putc(struct console *co, const char c)
+static void altera_jtaguart_console_putc(struct console *co, int c)
 {
 	struct uart_port *port = &(altera_jtaguart_ports + co->index)->port;
 	unsigned long flags;
@@ -350,11 +345,9 @@ static void altera_jtaguart_console_putc(struct console *co, const char c)
 static void altera_jtaguart_console_write(struct console *co, const char *s,
 					  unsigned int count)
 {
-	for (; count; count--, s++) {
-		altera_jtaguart_console_putc(co, *s);
-		if (*s == '\n')
-			altera_jtaguart_console_putc(co, '\r');
-	}
+	struct uart_port *port = &(altera_jtaguart_ports + co->index)->port;
+
+	uart_console_write(port, s, count, altera_jtaguart_console_putc);
 }
 
 static int __init altera_jtaguart_console_setup(struct console *co,
