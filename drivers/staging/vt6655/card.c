@@ -87,7 +87,7 @@ static unsigned char abyDefaultSuppRatesB[] = {WLAN_EID_SUPP_RATES, 4, 0x02, 0x0
 
 /*---------------------  Static Variables  --------------------------*/
 
-const unsigned short cwRXBCNTSFOff[MAX_RATE] =
+static const unsigned short cwRXBCNTSFOff[MAX_RATE] =
 {17, 17, 17, 17, 34, 23, 17, 11, 8, 5, 4, 3};
 
 /*---------------------  Static Functions  --------------------------*/
@@ -351,6 +351,7 @@ s_vSetRSPINF(PSDevice pDevice, CARD_PHY_TYPE ePHYType, void *pvSupportRateIEs, v
 bool CARDbIsShortPreamble(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
+
 	if (pDevice->byPreambleType == 0)
 		return false;
 
@@ -372,6 +373,7 @@ bool CARDbIsShortPreamble(void *pDeviceHandler)
 bool CARDbIsShorSlotTime(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
+
 	return pDevice->bShortSlotTime;
 }
 
@@ -929,6 +931,7 @@ bool CARDbRadioPowerOn(void *pDeviceHandler)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
 	bool bResult = true;
+
 	printk("chester power on\n");
 	if (pDevice->bRadioControlOff == true) {
 		if (pDevice->bHWRadioOff == true) printk("chester bHWRadioOff\n");
@@ -998,7 +1001,7 @@ CARDbAdd_PMKID_Candidate(
 )
 {
 	PSDevice            pDevice = (PSDevice) pDeviceHandler;
-	PPMKID_CANDIDATE    pCandidateList;
+	struct pmkid_candidate *pCandidateList;
 	unsigned int ii = 0;
 
 	DBG_PRT(MSG_LEVEL_DEBUG, KERN_INFO "bAdd_PMKID_Candidate START: (%d)\n", (int)pDevice->gsPMKIDCandidate.NumCandidates);
@@ -1573,7 +1576,7 @@ CARDvSafeResetRx(
  * Return Value: response Control frame rate
  *
  */
-unsigned short CARDwGetCCKControlRate(void *pDeviceHandler, unsigned short wRateIdx)
+static unsigned short CARDwGetCCKControlRate(void *pDeviceHandler, unsigned short wRateIdx)
 {
 	PSDevice    pDevice = (PSDevice) pDeviceHandler;
 	unsigned int ui = (unsigned int) wRateIdx;
@@ -1600,7 +1603,7 @@ unsigned short CARDwGetCCKControlRate(void *pDeviceHandler, unsigned short wRate
  * Return Value: response Control frame rate
  *
  */
-unsigned short CARDwGetOFDMControlRate(void *pDeviceHandler, unsigned short wRateIdx)
+static unsigned short CARDwGetOFDMControlRate(void *pDeviceHandler, unsigned short wRateIdx)
 {
 	PSDevice pDevice = (PSDevice) pDeviceHandler;
 	unsigned int ui = (unsigned int) wRateIdx;
@@ -1888,7 +1891,7 @@ unsigned char CARDbyGetPktType(void *pDeviceHandler)
  * Return Value: none
  *
  */
-void CARDvSetLoopbackMode(unsigned long dwIoBase, unsigned short wLoopbackMode)
+void CARDvSetLoopbackMode(void __iomem *dwIoBase, unsigned short wLoopbackMode)
 {
 	switch (wLoopbackMode) {
 	case CARD_LB_NONE:
@@ -1977,7 +1980,7 @@ QWORD CARDqGetTSFOffset(unsigned char byRxRate, QWORD qwTSF1, QWORD qwTSF2)
  * Return Value: true if success; otherwise false
  *
  */
-bool CARDbGetCurrentTSF(unsigned long dwIoBase, PQWORD pqwCurrTSF)
+bool CARDbGetCurrentTSF(void __iomem *dwIoBase, PQWORD pqwCurrTSF)
 {
 	unsigned short ww;
 	unsigned char byData;
@@ -2050,7 +2053,7 @@ QWORD CARDqGetNextTBTT(QWORD qwTSF, unsigned short wBeaconInterval)
  * Return Value: none
  *
  */
-void CARDvSetFirstNextTBTT(unsigned long dwIoBase, unsigned short wBeaconInterval)
+void CARDvSetFirstNextTBTT(void __iomem *dwIoBase, unsigned short wBeaconInterval)
 {
 	QWORD   qwNextTBTT;
 
@@ -2081,7 +2084,7 @@ void CARDvSetFirstNextTBTT(unsigned long dwIoBase, unsigned short wBeaconInterva
  * Return Value: none
  *
  */
-void CARDvUpdateNextTBTT(unsigned long dwIoBase, QWORD qwTSF, unsigned short wBeaconInterval)
+void CARDvUpdateNextTBTT(void __iomem *dwIoBase, QWORD qwTSF, unsigned short wBeaconInterval)
 {
 	qwTSF = CARDqGetNextTBTT(qwTSF, wBeaconInterval);
 	// Set NextTBTT
