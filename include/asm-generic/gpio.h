@@ -63,19 +63,10 @@ static inline struct gpio_chip *gpio_to_chip(unsigned gpio)
 extern int gpio_request(unsigned gpio, const char *label);
 extern void gpio_free(unsigned gpio);
 
-static inline int gpio_direction_input(unsigned gpio)
-{
-	return gpiod_direction_input(gpio_to_desc(gpio));
-}
-static inline int gpio_direction_output(unsigned gpio, int value)
-{
-	return gpiod_direction_output_raw(gpio_to_desc(gpio), value);
-}
+extern int gpio_direction_input(unsigned gpio);
+extern int gpio_direction_output(unsigned gpio, int value);
 
-static inline int gpio_set_debounce(unsigned gpio, unsigned debounce)
-{
-	return gpiod_set_debounce(gpio_to_desc(gpio), debounce);
-}
+extern int gpio_set_debounce(unsigned gpio, unsigned debounce);
 
 static inline int gpio_get_value_cansleep(unsigned gpio)
 {
@@ -109,9 +100,6 @@ static inline int __gpio_to_irq(unsigned gpio)
 {
 	return gpiod_to_irq(gpio_to_desc(gpio));
 }
-
-extern int gpio_lock_as_irq(struct gpio_chip *chip, unsigned int offset);
-extern void gpio_unlock_as_irq(struct gpio_chip *chip, unsigned int offset);
 
 extern int gpio_request_one(unsigned gpio, unsigned long flags, const char *label);
 extern int gpio_request_array(const struct gpio *array, size_t num);
