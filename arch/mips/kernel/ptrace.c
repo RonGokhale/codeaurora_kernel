@@ -409,23 +409,35 @@ static int fpr_get(struct task_struct *target,
 	int err;
 	u64 fpr_val;
 
-	/* XXX fcr31  */
-
-	if (sizeof(target->thread.fpu.fpr[i]) == sizeof(elf_fpreg_t))
-		return user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-					   &target->thread.fpu,
-					   0, sizeof(elf_fpregset_t));
-
-	for (i = 0; i < NUM_FPU_REGS; i++) {
-		fpr_val = get_fpr64(&target->thread.fpu.fpr[i], 0);
+	if (sizeof(target->thread.fpu.fpr[i]) == sizeof(elf_fpreg_t)) {
 		err = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
-					  &fpr_val, i * sizeof(elf_fpreg_t),
-					  (i + 1) * sizeof(elf_fpreg_t));
+					  &target->thread.fpu.fpr,
+					  0, NUM_FPU_REGS * sizeof(elf_fpreg_t));
 		if (err)
 			return err;
+	} else {
+		for (i = 0; i < NUM_FPU_REGS; i++) {
+			fpr_val = get_fpr64(&target->thread.fpu.fpr[i], 0);
+			err = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
+						  &fpr_val,
+						  i * sizeof(elf_fpreg_t),
+						  (i + 1) * sizeof(elf_fpreg_t));
+			if (err)
+				return err;
+		}
 	}
 
-	return 0;
+	err = user_regset_copyout(&pos, &count, &kbuf, &ubuf,
+			   &target->thread.fpu.fcr31,
+			   NUM_FPU_REGS * sizeof(elf_fpreg_t),
+			   (NUM_FPU_REGS * sizeof(elf_fpreg_t)) + sizeof(u32));
+	if (err)
+		return err;
+
+	/* Zero fill the remaining 4 bytes. */
+	return user_regset_copyout_zero(&pos, &count, &kbuf, &ubuf,
+			    (NUM_FPU_REGS * sizeof(elf_fpreg_t)) + sizeof(u32),
+			    sizeof(elf_fpregset_t));
 }
 
 static int fpr_set(struct task_struct *target,
@@ -436,24 +448,37 @@ static int fpr_set(struct task_struct *target,
 	unsigned i;
 	int err;
 	u64 fpr_val;
+	u32 fcr31;
 
-	/* XXX fcr31  */
-
-	if (sizeof(target->thread.fpu.fpr[i]) == sizeof(elf_fpreg_t))
-		return user_regset_copyin(&pos, &count, &kbuf, &ubuf,
-					  &target->thread.fpu,
-					  0, sizeof(elf_fpregset_t));
-
-	for (i = 0; i < NUM_FPU_REGS; i++) {
+	if (sizeof(target->thread.fpu.fpr[i]) == sizeof(elf_fpreg_t)) {
 		err = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
-					 &fpr_val, i * sizeof(elf_fpreg_t),
-					 (i + 1) * sizeof(elf_fpreg_t));
+					 &target->thread.fpu.fpr,
+					 0, NUM_FPU_REGS * sizeof(elf_fpreg_t));
 		if (err)
 			return err;
-		set_fpr64(&target->thread.fpu.fpr[i], 0, fpr_val);
+	} else {
+		for (i = 0; i < NUM_FPU_REGS; i++) {
+			err = user_regset_copyin(&pos, &count, &kbuf, &ubuf,
+						 &fpr_val,
+						 i * sizeof(elf_fpreg_t),
+						 (i + 1) * sizeof(elf_fpreg_t));
+			if (err)
+				return err;
+			set_fpr64(&target->thread.fpu.fpr[i], 0, fpr_val);
+		}
 	}
 
-	return 0;
+	err = user_regset_copyin(&pos, &count, &kbuf, &ubuf, &fcr31,
+			    NUM_FPU_REGS * sizeof(elf_fpreg_t),
+			    (NUM_FPU_REGS * sizeof(elf_fpreg_t)) + sizeof(u32));
+	if (err)
+		return err;
+
+	target->thread.fpu.fcr31 = fcr31 & ~FPU_CSR_ALL_X;
+
+	return user_regset_copyin_ignore(&pos, &count, &kbuf, &ubuf,
+			    (NUM_FPU_REGS * sizeof(elf_fpreg_t)) + sizeof(u32),
+			    sizeof(elf_fpregset_t));
 }
 
 enum mips_regset {
