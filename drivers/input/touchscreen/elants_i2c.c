@@ -1078,9 +1078,11 @@ static int elan_fw_update(struct i2c_client *client)
 
 	/* Recovery mode detection! */
 	if (force) {
+		elan_dbg(client, "Recover mode procedure!\n");
 		elan_set_data(client, enter_iap2, 4);
 	} else {
 		/* Start IAP Procedure */
+		elan_dbg(client, "Normal IAP procedure!\n");
 		elan_sw_reset(client);
 
 		ts->i2caddr = DEV_MASTER;
@@ -1410,7 +1412,7 @@ static inline void elan_parse_fid(u8 *data, u8 *fid)
 }
 
 /*
- * Parsing finger widths data with length of 5 bits.
+ * Parsing finger widths data with length of 8 bits.
  *
  * data: the input bit stream
  * width: an array of width level
@@ -1420,7 +1422,7 @@ static inline void elan_parse_widths(u8 *data, u8 *width)
 	int i;
 
 	for (i = 0; i < MAX_CONTACT_NUM; i++)
-		width[i] = (data[i] & 0x1f);
+		width[i] = data[i];
 
 	return;
 }
