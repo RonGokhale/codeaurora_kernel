@@ -372,15 +372,9 @@ static inline void acpi_set_device_status(struct acpi_device *adev, u32 sta)
 }
 
 static inline void acpi_set_hp_context(struct acpi_device *adev,
-				       struct acpi_hotplug_context *hp,
-				       int (*notify)(struct acpi_device *, u32),
-				       void (*uevent)(struct acpi_device *, u32),
-				       void (*fixup)(struct acpi_device *))
+				       struct acpi_hotplug_context *hp)
 {
 	hp->self = adev;
-	hp->notify = notify;
-	hp->uevent = uevent;
-	hp->fixup = fixup;
 	adev->hp = hp;
 }
 
@@ -487,6 +481,8 @@ struct acpi_bus_type {
 };
 int register_acpi_bus_type(struct acpi_bus_type *);
 int unregister_acpi_bus_type(struct acpi_bus_type *);
+int acpi_bind_one(struct device *dev, struct acpi_device *adev);
+int acpi_unbind_one(struct device *dev);
 
 struct acpi_pci_root {
 	struct acpi_device * device;
