@@ -376,7 +376,7 @@ static short U14Control1401(short sHand, LONG lCode, TCSBLOCK* pBlk)
 ** SafeTickCount
 ** Gets time in approximately units of a millisecond.
 *****************************************************************************/
-static long SafeTickCount()
+static long SafeTickCount(void)
 {
 #ifdef _IS_WINDOWS_
     return GetTickCount();
@@ -1744,13 +1744,8 @@ U14API(short) U14GetString(short hand, char* pBuffer, unsigned short wMaxLen)
                                     &dwBytes, NULL);
                     if (iOK)                        /* Device IO control OK ? */
                     {
-                        if (dwBytes >= 0)           /* If driver OK */
-                        {
-                            strcpy(pBuffer, tstr);
-                            sErr = U14ERR_NOERROR;
-                        }
-                        else
-                            sErr = U14ERR_DRIVCOMMS;
+                        strcpy(pBuffer, tstr);
+                        sErr = U14ERR_NOERROR;
                     }
                     else
                     {

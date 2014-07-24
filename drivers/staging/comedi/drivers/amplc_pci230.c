@@ -200,9 +200,6 @@ for (or detection of) various hardware problems added by Ian Abbott.
 #define PCI_DEVICE_ID_PCI260 0x0006
 #define PCI_DEVICE_ID_INVALID 0xffff
 
-#define PCI230_IO1_SIZE 32	/* Size of I/O space 1 */
-#define PCI230_IO2_SIZE 16	/* Size of I/O space 2 */
-
 /* PCI230 i/o space 1 registers. */
 #define PCI230_PPI_X_BASE	0x00	/* User PPI (82C55) base */
 #define PCI230_PPI_X_A		0x00	/* User PPI (82C55) port A */
@@ -712,15 +709,14 @@ static inline void put_all_resources(struct comedi_device *dev,
 }
 
 static unsigned int divide_ns(uint64_t ns, unsigned int timebase,
-			      unsigned int round_mode)
+			      unsigned int flags)
 {
 	uint64_t div;
 	unsigned int rem;
 
 	div = ns;
 	rem = do_div(div, timebase);
-	round_mode &= TRIG_ROUND_MASK;
-	switch (round_mode) {
+	switch (flags & TRIG_ROUND_MASK) {
 	default:
 	case TRIG_ROUND_NEAREST:
 		div += (rem + (timebase / 2)) / timebase;
@@ -737,12 +733,12 @@ static unsigned int divide_ns(uint64_t ns, unsigned int timebase,
 /* Given desired period in ns, returns the required internal clock source
  * and gets the initial count. */
 static unsigned int pci230_choose_clk_count(uint64_t ns, unsigned int *count,
-					    unsigned int round_mode)
+					    unsigned int flags)
 {
 	unsigned int clk_src, cnt;
 
 	for (clk_src = CLK_10MHZ;; clk_src++) {
-		cnt = divide_ns(ns, pci230_timebase[clk_src], round_mode);
+		cnt = divide_ns(ns, pci230_timebase[clk_src], flags);
 		if ((cnt <= 65536) || (clk_src == CLK_1KHZ))
 			break;
 
@@ -751,19 +747,18 @@ static unsigned int pci230_choose_clk_count(uint64_t ns, unsigned int *count,
 	return clk_src;
 }
 
-static void pci230_ns_to_single_timer(unsigned int *ns, unsigned int round)
+static void pci230_ns_to_single_timer(unsigned int *ns, unsigned int flags)
 {
 	unsigned int count;
 	unsigned int clk_src;
 
-	clk_src = pci230_choose_clk_count(*ns, &count, round);
+	clk_src = pci230_choose_clk_count(*ns, &count, flags);
 	*ns = count * pci230_timebase[clk_src];
-	return;
 }
 
 static void pci230_ct_setup_ns_mode(struct comedi_device *dev, unsigned int ct,
 				    unsigned int mode, uint64_t ns,
-				    unsigned int round)
+				    unsigned int flags)
 {
 	struct pci230_private *devpriv = dev->private;
 	unsigned int clk_src;
@@ -772,7 +767,7 @@ static void pci230_ct_setup_ns_mode(struct comedi_device *dev, unsigned int ct,
 	/* Set mode. */
 	i8254_set_mode(devpriv->iobase1 + PCI230_Z2_CT_BASE, 0, ct, mode);
 	/* Determine clock source and count. */
-	clk_src = pci230_choose_clk_count(ns, &count, round);
+	clk_src = pci230_choose_clk_count(ns, &count, flags);
 	/* Program clock source. */
 	outb(CLK_CONFIG(ct, clk_src), devpriv->iobase1 + PCI230_ZCLK_SCE);
 	/* Set initial count. */
@@ -1080,8 +1075,7 @@ static int pci230_ao_cmdtest(struct comedi_device *dev,
 
 	if (cmd->scan_begin_src == TRIG_TIMER) {
 		tmp = cmd->scan_begin_arg;
-		pci230_ns_to_single_timer(&cmd->scan_begin_arg,
-					  cmd->flags & TRIG_ROUND_MASK);
+		pci230_ns_to_single_timer(&cmd->scan_begin_arg, cmd->flags);
 		if (tmp != cmd->scan_begin_arg)
 			err++;
 	}
@@ -1168,7 +1162,7 @@ static void pci230_handle_ao_nofifo(struct comedi_device *dev,
 		if (ret == 0) {
 			s->async->events |= COMEDI_CB_OVERFLOW;
 			pci230_ao_stop(dev, s);
-			comedi_error(dev, "AO buffer underrun");
+			dev_err(dev->class_dev, "AO buffer underrun\n");
 			return;
 		}
 		/* Write value to DAC. */
@@ -1216,7 +1210,7 @@ static int pci230_handle_ao_fifo(struct comedi_device *dev,
 	if (events == 0) {
 		/* Check for FIFO underrun. */
 		if ((dacstat & PCI230P2_DAC_FIFO_UNDERRUN_LATCHED) != 0) {
-			comedi_error(dev, "AO FIFO underrun");
+			dev_err(dev->class_dev, "AO FIFO underrun\n");
 			events |= COMEDI_CB_OVERFLOW | COMEDI_CB_ERROR;
 		}
 		/* Check for buffer underrun if FIFO less than half full
@@ -1224,7 +1218,7 @@ static int pci230_handle_ao_fifo(struct comedi_device *dev,
 		 * interrupts). */
 		if ((num_scans == 0)
 		    && ((dacstat & PCI230P2_DAC_FIFO_HALF) == 0)) {
-			comedi_error(dev, "AO buffer underrun");
+			dev_err(dev->class_dev, "AO buffer underrun\n");
 			events |= COMEDI_CB_OVERFLOW | COMEDI_CB_ERROR;
 		}
 	}
@@ -1271,7 +1265,7 @@ static int pci230_handle_ao_fifo(struct comedi_device *dev,
 		/* Check if FIFO underrun occurred while writing to FIFO. */
 		dacstat = inw(dev->iobase + PCI230_DACCON);
 		if ((dacstat & PCI230P2_DAC_FIFO_UNDERRUN_LATCHED) != 0) {
-			comedi_error(dev, "AO FIFO underrun");
+			dev_err(dev->class_dev, "AO FIFO underrun\n");
 			events |= COMEDI_CB_OVERFLOW | COMEDI_CB_ERROR;
 		}
 	}
@@ -1493,7 +1487,7 @@ static int pci230_ao_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 		     devpriv->iobase1 + PCI230_ZGAT_SCE);
 		pci230_ct_setup_ns_mode(dev, 1, I8254_MODE3,
 					cmd->scan_begin_arg,
-					cmd->flags & TRIG_ROUND_MASK);
+					cmd->flags);
 	}
 
 	/* N.B. cmd->start_src == TRIG_INT */
@@ -1800,8 +1794,7 @@ static int pci230_ai_cmdtest(struct comedi_device *dev,
 
 	if (cmd->convert_src == TRIG_TIMER) {
 		tmp = cmd->convert_arg;
-		pci230_ns_to_single_timer(&cmd->convert_arg,
-					  cmd->flags & TRIG_ROUND_MASK);
+		pci230_ns_to_single_timer(&cmd->convert_arg, cmd->flags);
 		if (tmp != cmd->convert_arg)
 			err++;
 	}
@@ -1809,8 +1802,7 @@ static int pci230_ai_cmdtest(struct comedi_device *dev,
 	if (cmd->scan_begin_src == TRIG_TIMER) {
 		/* N.B. cmd->convert_arg is also TRIG_TIMER */
 		tmp = cmd->scan_begin_arg;
-		pci230_ns_to_single_timer(&cmd->scan_begin_arg,
-					  cmd->flags & TRIG_ROUND_MASK);
+		pci230_ns_to_single_timer(&cmd->scan_begin_arg, cmd->flags);
 		if (!pci230_ai_check_scan_period(cmd)) {
 			/* Was below minimum required.  Round up. */
 			pci230_ns_to_single_timer(&cmd->scan_begin_arg,
@@ -2182,7 +2174,7 @@ static void pci230_handle_ai(struct comedi_device *dev,
 			if ((status_fifo & PCI230_ADC_FIFO_FULL_LATCHED) != 0) {
 				/* Report error otherwise FIFO overruns will go
 				 * unnoticed by the caller. */
-				comedi_error(dev, "AI FIFO overrun");
+				dev_err(dev->class_dev, "AI FIFO overrun\n");
 				events |= COMEDI_CB_OVERFLOW | COMEDI_CB_ERROR;
 				break;
 			} else if ((status_fifo & PCI230_ADC_FIFO_EMPTY) != 0) {
@@ -2209,7 +2201,7 @@ static void pci230_handle_ai(struct comedi_device *dev,
 		/* Read sample and store in Comedi's circular buffer. */
 		if (comedi_buf_put(s, pci230_ai_read(dev)) == 0) {
 			events |= COMEDI_CB_ERROR | COMEDI_CB_OVERFLOW;
-			comedi_error(dev, "AI buffer overflow");
+			dev_err(dev->class_dev, "AI buffer overflow\n");
 			break;
 		}
 		fifoamount--;
@@ -2381,7 +2373,7 @@ static int pci230_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 		outb(zgat, devpriv->iobase1 + PCI230_ZGAT_SCE);
 		/* Set counter/timer 2 to the specified conversion period. */
 		pci230_ct_setup_ns_mode(dev, 2, I8254_MODE3, cmd->convert_arg,
-					cmd->flags & TRIG_ROUND_MASK);
+					cmd->flags);
 		if (cmd->scan_begin_src != TRIG_FOLLOW) {
 			/*
 			 * Set up monostable on CT0 output for scan timing.  A
@@ -2412,9 +2404,7 @@ static int pci230_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 				outb(zgat, devpriv->iobase1 + PCI230_ZGAT_SCE);
 				pci230_ct_setup_ns_mode(dev, 1, I8254_MODE3,
 							cmd->scan_begin_arg,
-							cmd->
-							flags &
-							TRIG_ROUND_MASK);
+							cmd->flags);
 			}
 		}
 	}

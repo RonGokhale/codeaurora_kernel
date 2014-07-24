@@ -98,7 +98,9 @@ MODULE_AUTHOR("VIA Networking Technologies, Inc., <lyndonchen@vntek.com.tw>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("VIA Networking Solomon-A/B/G Wireless LAN Adapter Driver");
 
+#ifdef	THREAD
 static int mlme_kill;
+#endif
 
 #define DEVICE_PARAM(N, D)
 
@@ -260,7 +262,7 @@ static CHIP_INFO chip_info_table[] = {
 	{0, NULL}
 };
 
-const struct pci_device_id vt6655_pci_id_table[] = {
+static const struct pci_device_id vt6655_pci_id_table[] = {
 	{ PCI_VDEVICE(VIA, 0x3253), (kernel_ulong_t)chip_info_table},
 	{ 0, }
 };
@@ -285,7 +287,7 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd);
 static int device_notify_reboot(struct notifier_block *, unsigned long event, void *ptr);
 static int viawget_suspend(struct pci_dev *pcid, pm_message_t state);
 static int viawget_resume(struct pci_dev *pcid);
-struct notifier_block device_notifier = {
+static struct notifier_block device_notifier = {
 	.notifier_call = device_notify_reboot,
 	.next = NULL,
 	.priority = 0,
@@ -302,7 +304,7 @@ static int  device_dma0_tx_80211(struct sk_buff *skb, struct net_device *dev);
 //2008-0714<Add>by Mike Liu
 static bool device_release_WPADEV(PSDevice pDevice);
 
-static int  ethtool_ioctl(struct net_device *dev, void *useraddr);
+static int  ethtool_ioctl(struct net_device *dev, void __user *useraddr);
 static int  device_rx_srv(PSDevice pDevice, unsigned int uIdx);
 static int  device_tx_srv(PSDevice pDevice, unsigned int uIdx);
 static bool device_alloc_rx_buf(PSDevice pDevice, PSRxDesc pDesc);
@@ -891,9 +893,9 @@ vt6655_probe(struct pci_dev *pcid, const struct pci_device_id *ent)
 
 #endif
 
-	pDevice->PortOffset = (unsigned long)ioremap(pDevice->memaddr & PCI_BASE_ADDRESS_MEM_MASK, pDevice->io_size);
+	pDevice->PortOffset = ioremap(pDevice->memaddr & PCI_BASE_ADDRESS_MEM_MASK, pDevice->io_size);
 
-	if (pDevice->PortOffset == 0) {
+	if (pDevice->PortOffset == NULL) {
 		printk(KERN_ERR DEVICE_NAME ": Failed to IO remapping ..\n");
 		device_free_info(pDevice);
 		return -ENODEV;
@@ -1079,7 +1081,7 @@ static void device_free_info(PSDevice pDevice) {
 		unregister_netdev(dev);
 
 	if (pDevice->PortOffset)
-		iounmap((void *)pDevice->PortOffset);
+		iounmap(pDevice->PortOffset);
 
 	if (pDevice->pcid)
 		pci_release_regions(pDevice->pcid);
@@ -1612,7 +1614,8 @@ void	InitRxManagementQueue(PSDevice  pDevice)
 //PLICE_DEBUG<-
 
 //PLICE_DEBUG ->
-int MlmeThread(
+#ifdef	THREAD
+static int MlmeThread(
 	void *Context)
 {
 	PSDevice	pDevice =  (PSDevice) Context;
@@ -1635,6 +1638,7 @@ int MlmeThread(
 
 	return 0;
 }
+#endif
 
 static int  device_open(struct net_device *dev) {
 	PSDevice pDevice = (PSDevice)netdev_priv(dev);
@@ -3067,7 +3071,7 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd) {
 		break;
 
 	case SIOCETHTOOL:
-		return ethtool_ioctl(dev, (void *)rq->ifr_data);
+		return ethtool_ioctl(dev, rq->ifr_data);
 		// All other calls are currently unsupported
 
 	default:
@@ -3103,7 +3107,7 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd) {
 	return rc;
 }
 
-static int ethtool_ioctl(struct net_device *dev, void *useraddr)
+static int ethtool_ioctl(struct net_device *dev, void __user *useraddr)
 {
 	u32 ethcmd;
 
