@@ -678,7 +678,7 @@ static int setup_callback_client(struct nfs4_client *clp, struct nfs4_cb_conn *c
 				(clp->cl_cred.cr_flavor >= RPC_AUTH_GSS_KRB5))
 			return -EINVAL;
 		args.client_name = clp->cl_cred.cr_principal;
-		args.prognumber	= conn->cb_prog,
+		args.prognumber	= conn->cb_prog;
 		args.protocol = XPRT_TRANSPORT_TCP;
 		args.authflavor = clp->cl_cred.cr_flavor;
 		clp->cl_cb_ident = conn->cb_ident;
@@ -689,7 +689,8 @@ static int setup_callback_client(struct nfs4_client *clp, struct nfs4_cb_conn *c
 		clp->cl_cb_session = ses;
 		args.bc_xprt = conn->cb_xprt;
 		args.prognumber = clp->cl_cb_session->se_cb_prog;
-		args.protocol = XPRT_TRANSPORT_BC_TCP;
+		args.protocol = conn->cb_xprt->xpt_class->xcl_ident |
+				XPRT_TRANSPORT_BC;
 		args.authflavor = ses->se_cb_sec.flavor;
 	}
 	/* Create RPC client */
@@ -933,7 +934,7 @@ void nfsd4_shutdown_callback(struct nfs4_client *clp)
 	set_bit(NFSD4_CLIENT_CB_KILL, &clp->cl_flags);
 	/*
 	 * Note this won't actually result in a null callback;
-	 * instead, nfsd4_do_callback_rpc() will detect the killed
+	 * instead, nfsd4_run_cb_null() will detect the killed
 	 * client, destroy the rpc client, and stop:
 	 */
 	do_probe_callback(clp);
@@ -1011,9 +1012,9 @@ static void nfsd4_process_cb_update(struct nfsd4_callback *cb)
 		run_nfsd4_cb(cb);
 }
 
-static void nfsd4_do_callback_rpc(struct work_struct *w)
+static void
+nfsd4_run_callback_rpc(struct nfsd4_callback *cb)
 {
-	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback, cb_work);
 	struct nfs4_client *clp = cb->cb_clp;
 	struct rpc_clnt *clnt;
 
@@ -1031,9 +1032,22 @@ static void nfsd4_do_callback_rpc(struct work_struct *w)
 			cb->cb_ops, cb);
 }
 
-void nfsd4_init_callback(struct nfsd4_callback *cb)
+void
+nfsd4_run_cb_null(struct work_struct *w)
 {
-	INIT_WORK(&cb->cb_work, nfsd4_do_callback_rpc);
+	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback,
+							cb_work);
+	nfsd4_run_callback_rpc(cb);
+}
+
+void
+nfsd4_run_cb_recall(struct work_struct *w)
+{
+	struct nfsd4_callback *cb = container_of(w, struct nfsd4_callback,
+							cb_work);
+
+	nfsd4_prepare_cb_recall(cb->cb_op);
+	nfsd4_run_callback_rpc(cb);
 }
 
 void nfsd4_cb_recall(struct nfs4_delegation *dp)
