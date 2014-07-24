@@ -120,7 +120,7 @@ static void musb_h_tx_flush_fifo(struct musb_hw_ep *ep)
 		if (csr != lastcsr)
 			dev_dbg(musb->controller, "Host TX FIFONOTEMPTY csr: %02x\n", csr);
 		lastcsr = csr;
-		csr |= MUSB_TXCSR_FLUSHFIFO;
+		csr |= MUSB_TXCSR_FLUSHFIFO | MUSB_TXCSR_TXPKTRDY;
 		musb_writew(epio, MUSB_TXCSR, csr);
 		csr = musb_readw(epio, MUSB_TXCSR);
 		if (WARN(retries-- < 1,
@@ -1737,7 +1737,8 @@ void musb_host_rx(struct musb *musb, u8 epnum)
 		/* done if urb buffer is full or short packet is recd */
 		done = (urb->actual_length + xfer_len >=
 				urb->transfer_buffer_length
-			|| dma->actual_len < qh->maxpacket);
+			|| dma->actual_len < qh->maxpacket
+			|| dma->rx_packet_done);
 		}
 
 		/* send IN token for next packet, without AUTOREQ */
