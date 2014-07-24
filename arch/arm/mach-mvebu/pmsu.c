@@ -18,20 +18,26 @@
 
 #define pr_fmt(fmt) "mvebu-pmsu: " fmt
 
+#include <linux/clk.h>
 #include <linux/cpu_pm.h>
+#include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
+#include <linux/pm_opp.h>
 #include <linux/smp.h>
 #include <linux/resource.h>
+#include <linux/slab.h>
 #include <asm/cacheflush.h>
 #include <asm/cp15.h>
 #include <asm/smp_plat.h>
 #include <asm/suspend.h>
 #include <asm/tlbflush.h>
 #include "common.h"
+#include "armada-370-xp.h"
 
 static void __iomem *pmsu_mp_base;
 
@@ -56,6 +62,10 @@ static void __iomem *pmsu_mp_base;
 #define PMSU_STATUS_AND_MASK_DBG_WAKEUP		BIT(22)
 #define PMSU_STATUS_AND_MASK_IRQ_MASK		BIT(24)
 #define PMSU_STATUS_AND_MASK_FIQ_MASK		BIT(25)
+
+#define PMSU_EVENT_STATUS_AND_MASK(cpu)     ((cpu * 0x100) + 0x120)
+#define PMSU_EVENT_STATUS_AND_MASK_DFS_DONE        BIT(1)
+#define PMSU_EVENT_STATUS_AND_MASK_DFS_DONE_MASK   BIT(17)
 
 #define PMSU_BOOT_ADDR_REDIRECT_OFFSET(cpu) ((cpu * 0x100) + 0x124)
 
@@ -143,13 +153,13 @@ static void armada_370_xp_pmsu_enable_l2_powerdown_onidle(void)
 }
 
 /* No locking is needed because we only access per-CPU registers */
-void armada_370_xp_pmsu_idle_prepare(bool deepidle)
+int armada_370_xp_pmsu_idle_enter(unsigned long deepidle)
 {
 	unsigned int hw_cpu = cpu_logical_map(smp_processor_id());
 	u32 reg;
 
 	if (pmsu_mp_base == NULL)
-		return;
+		return -EINVAL;
 
 	/*
 	 * Adjust the PMSU configuration to wait for WFI signal, enable
@@ -178,11 +188,6 @@ void armada_370_xp_pmsu_idle_prepare(bool deepidle)
 	reg = readl(pmsu_mp_base + PMSU_CPU_POWER_DOWN_CONTROL(hw_cpu));
 	reg |= PMSU_CPU_POWER_DOWN_DIS_SNP_Q_SKIP;
 	writel(reg, pmsu_mp_base + PMSU_CPU_POWER_DOWN_CONTROL(hw_cpu));
-}
-
-static noinline int do_armada_370_xp_cpu_suspend(unsigned long deepidle)
-{
-	armada_370_xp_pmsu_idle_prepare(deepidle);
 
 	v7_exit_coherency_flush(all);
 
@@ -215,11 +220,11 @@ static noinline int do_armada_370_xp_cpu_suspend(unsigned long deepidle)
 
 static int armada_370_xp_cpu_suspend(unsigned long deepidle)
 {
-	return cpu_suspend(deepidle, do_armada_370_xp_cpu_suspend);
+	return cpu_suspend(deepidle, armada_370_xp_pmsu_idle_enter);
 }
 
 /* No locking is needed because we only access per-CPU registers */
-static noinline void armada_370_xp_pmsu_idle_restore(void)
+void armada_370_xp_pmsu_idle_exit(void)
 {
 	unsigned int hw_cpu = cpu_logical_map(smp_processor_id());
 	u32 reg;
@@ -248,7 +253,7 @@ static int armada_370_xp_cpu_pm_notify(struct notifier_block *self,
 		unsigned int hw_cpu = cpu_logical_map(smp_processor_id());
 		mvebu_pmsu_set_cpu_boot_addr(hw_cpu, armada_370_xp_cpu_resume);
 	} else if (action == CPU_PM_EXIT) {
-		armada_370_xp_pmsu_idle_restore();
+		armada_370_xp_pmsu_idle_exit();
 	}
 
 	return NOTIFY_OK;
@@ -258,7 +263,7 @@ static struct notifier_block armada_370_xp_cpu_pm_notifier = {
 	.notifier_call = armada_370_xp_cpu_pm_notify,
 };
 
-int __init armada_370_xp_cpu_pm_init(void)
+static int __init armada_370_xp_cpu_pm_init(void)
 {
 	struct device_node *np;
 
@@ -291,3 +296,155 @@ int __init armada_370_xp_cpu_pm_init(void)
 
 arch_initcall(armada_370_xp_cpu_pm_init);
 early_initcall(armada_370_xp_pmsu_init);
+
+static void mvebu_pmsu_dfs_request_local(void *data)
+{
+	u32 reg;
+	u32 cpu = smp_processor_id();
+	unsigned long flags;
+
+	local_irq_save(flags);
+
+	/* Prepare to enter idle */
+	reg = readl(pmsu_mp_base + PMSU_STATUS_AND_MASK(cpu));
+	reg |= PMSU_STATUS_AND_MASK_CPU_IDLE_WAIT |
+	       PMSU_STATUS_AND_MASK_IRQ_MASK     |
+	       PMSU_STATUS_AND_MASK_FIQ_MASK;
+	writel(reg, pmsu_mp_base + PMSU_STATUS_AND_MASK(cpu));
+
+	/* Request the DFS transition */
+	reg = readl(pmsu_mp_base + PMSU_CONTROL_AND_CONFIG(cpu));
+	reg |= PMSU_CONTROL_AND_CONFIG_DFS_REQ;
+	writel(reg, pmsu_mp_base + PMSU_CONTROL_AND_CONFIG(cpu));
+
+	/* The fact of entering idle will trigger the DFS transition */
+	wfi();
+
+	/*
+	 * We're back from idle, the DFS transition has completed,
+	 * clear the idle wait indication.
+	 */
+	reg = readl(pmsu_mp_base + PMSU_STATUS_AND_MASK(cpu));
+	reg &= ~PMSU_STATUS_AND_MASK_CPU_IDLE_WAIT;
+	writel(reg, pmsu_mp_base + PMSU_STATUS_AND_MASK(cpu));
+
+	local_irq_restore(flags);
+}
+
+int mvebu_pmsu_dfs_request(int cpu)
+{
+	unsigned long timeout;
+	int hwcpu = cpu_logical_map(cpu);
+	u32 reg;
+
+	/* Clear any previous DFS DONE event */
+	reg = readl(pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+	reg &= ~PMSU_EVENT_STATUS_AND_MASK_DFS_DONE;
+	writel(reg, pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+
+	/* Mask the DFS done interrupt, since we are going to poll */
+	reg = readl(pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+	reg |= PMSU_EVENT_STATUS_AND_MASK_DFS_DONE_MASK;
+	writel(reg, pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+
+	/* Trigger the DFS on the appropriate CPU */
+	smp_call_function_single(cpu, mvebu_pmsu_dfs_request_local,
+				 NULL, false);
+
+	/* Poll until the DFS done event is generated */
+	timeout = jiffies + HZ;
+	while (time_before(jiffies, timeout)) {
+		reg = readl(pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+		if (reg & PMSU_EVENT_STATUS_AND_MASK_DFS_DONE)
+			break;
+		udelay(10);
+	}
+
+	if (time_after(jiffies, timeout))
+		return -ETIME;
+
+	/* Restore the DFS mask to its original state */
+	reg = readl(pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+	reg &= ~PMSU_EVENT_STATUS_AND_MASK_DFS_DONE_MASK;
+	writel(reg, pmsu_mp_base + PMSU_EVENT_STATUS_AND_MASK(hwcpu));
+
+	return 0;
+}
+
+static int __init armada_xp_pmsu_cpufreq_init(void)
+{
+	struct device_node *np;
+	struct resource res;
+	int ret, cpu;
+
+	if (!of_machine_is_compatible("marvell,armadaxp"))
+		return 0;
+
+	/*
+	 * In order to have proper cpufreq handling, we need to ensure
+	 * that the Device Tree description of the CPU clock includes
+	 * the definition of the PMU DFS registers. If not, we do not
+	 * register the clock notifier and the cpufreq driver. This
+	 * piece of code is only for compatibility with old Device
+	 * Trees.
+	 */
+	np = of_find_compatible_node(NULL, NULL, "marvell,armada-xp-cpu-clock");
+	if (!np)
+		return 0;
+
+	ret = of_address_to_resource(np, 1, &res);
+	if (ret) {
+		pr_warn(FW_WARN "not enabling cpufreq, deprecated armada-xp-cpu-clock binding\n");
+		of_node_put(np);
+		return 0;
+	}
+
+	of_node_put(np);
+
+	/*
+	 * For each CPU, this loop registers the operating points
+	 * supported (which are the nominal CPU frequency and half of
+	 * it), and registers the clock notifier that will take care
+	 * of doing the PMSU part of a frequency transition.
+	 */
+	for_each_possible_cpu(cpu) {
+		struct device *cpu_dev;
+		struct clk *clk;
+		int ret;
+
+		cpu_dev = get_cpu_device(cpu);
+		if (!cpu_dev) {
+			pr_err("Cannot get CPU %d\n", cpu);
+			continue;
+		}
+
+		clk = clk_get(cpu_dev, 0);
+		if (IS_ERR(clk)) {
+			pr_err("Cannot get clock for CPU %d\n", cpu);
+			return PTR_ERR(clk);
+		}
+
+		/*
+		 * In case of a failure of dev_pm_opp_add(), we don't
+		 * bother with cleaning up the registered OPP (there's
+		 * no function to do so), and simply cancel the
+		 * registration of the cpufreq device.
+		 */
+		ret = dev_pm_opp_add(cpu_dev, clk_get_rate(clk), 0);
+		if (ret) {
+			clk_put(clk);
+			return ret;
+		}
+
+		ret = dev_pm_opp_add(cpu_dev, clk_get_rate(clk) / 2, 0);
+		if (ret) {
+			clk_put(clk);
+			return ret;
+		}
+	}
+
+	platform_device_register_simple("cpufreq-generic", -1, NULL, 0);
+	return 0;
+}
+
+device_initcall(armada_xp_pmsu_cpufreq_init);
