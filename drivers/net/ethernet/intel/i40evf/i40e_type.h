@@ -50,6 +50,9 @@
 					 (d) == I40E_DEV_ID_QSFP_B  || \
 					 (d) == I40E_DEV_ID_QSFP_C)
 
+/* I40E_MASK is a macro used on 32 bit registers */
+#define I40E_MASK(mask, shift) (mask << shift)
+
 #define I40E_MAX_VSI_QP			16
 #define I40E_MAX_VF_VSI			3
 #define I40E_MAX_CHAINED_RX_BUFFERS	5
@@ -137,6 +140,14 @@ enum i40e_fc_mode {
 	I40E_FC_DEFAULT
 };
 
+enum i40e_set_fc_aq_failures {
+	I40E_SET_FC_AQ_FAIL_NONE = 0,
+	I40E_SET_FC_AQ_FAIL_GET = 1,
+	I40E_SET_FC_AQ_FAIL_SET = 2,
+	I40E_SET_FC_AQ_FAIL_UPDATE = 4,
+	I40E_SET_FC_AQ_FAIL_SET_UPDATE = 6
+};
+
 enum i40e_vsi_type {
 	I40E_VSI_MAIN = 0,
 	I40E_VSI_VMDQ1,
@@ -163,6 +174,7 @@ struct i40e_link_status {
 	u8 an_info;
 	u8 ext_info;
 	u8 loopback;
+	bool an_enabled;
 	/* is Link Status Event notification to SW enabled */
 	bool lse_enable;
 	u16 max_frame_size;
@@ -875,7 +887,6 @@ enum i40e_filter_pctype {
 	I40E_FILTER_PCTYPE_FRAG_IPV4			= 36,
 	/* Note: Values 37-40 are reserved for future use */
 	I40E_FILTER_PCTYPE_NONF_IPV6_UDP		= 41,
-	I40E_FILTER_PCTYPE_NONF_IPV6_TCP_SYN		= 42,
 	I40E_FILTER_PCTYPE_NONF_IPV6_TCP		= 43,
 	I40E_FILTER_PCTYPE_NONF_IPV6_SCTP		= 44,
 	I40E_FILTER_PCTYPE_NONF_IPV6_OTHER		= 45,
@@ -1162,4 +1173,7 @@ enum i40e_reset_type {
 	I40E_RESET_GLOBR	= 2,
 	I40E_RESET_EMPR		= 3,
 };
+
+/* RSS Hash Table Size */
+#define I40E_PFQF_CTL_0_HASHLUTSIZE_512	0x00010000
 #endif /* _I40E_TYPE_H_ */
