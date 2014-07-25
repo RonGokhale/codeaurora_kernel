@@ -141,18 +141,15 @@ extern const char *gpiochip_is_requested(struct gpio_chip *chip,
 
 /* add/remove chips */
 extern int gpiochip_add(struct gpio_chip *chip);
-extern int __must_check gpiochip_remove(struct gpio_chip *chip);
+extern int gpiochip_remove(struct gpio_chip *chip);
 extern struct gpio_chip *gpiochip_find(void *data,
 			      int (*match)(struct gpio_chip *chip, void *data));
 
 /* lock/unlock as IRQ */
-int gpiod_lock_as_irq(struct gpio_desc *desc);
-void gpiod_unlock_as_irq(struct gpio_desc *desc);
+int gpio_lock_as_irq(struct gpio_chip *chip, unsigned int offset);
+void gpio_unlock_as_irq(struct gpio_chip *chip, unsigned int offset);
 
 struct gpio_chip *gpiod_to_chip(const struct gpio_desc *desc);
-
-struct gpio_desc *gpiochip_get_desc(struct gpio_chip *chip,
-				    u16 hwnum);
 
 enum gpio_lookup_flags {
 	GPIO_ACTIVE_HIGH = (0 << 0),
@@ -222,6 +219,9 @@ int gpiochip_irqchip_add(struct gpio_chip *gpiochip,
 		unsigned int type);
 
 #endif /* CONFIG_GPIO_IRQCHIP */
+
+int gpiochip_request_own_desc(struct gpio_desc *desc, const char *label);
+void gpiochip_free_own_desc(struct gpio_desc *desc);
 
 #else /* CONFIG_GPIOLIB */
 
