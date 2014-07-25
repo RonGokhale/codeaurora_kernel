@@ -12,11 +12,14 @@ Main node required properties:
 
 - compatible : should be one of:
 	"arm,gic-400"
+	"arm,gic-400-v2m"
 	"arm,cortex-a15-gic"
 	"arm,cortex-a9-gic"
 	"arm,cortex-a7-gic"
 	"arm,arm11mp-gic"
+
 - interrupt-controller : Identifies the node as an interrupt controller
+
 - #interrupt-cells : Specifies the number of cells needed to encode an
   interrupt source.  The type shall be a <u32> and the value shall be 3.
 
@@ -37,9 +40,16 @@ Main node required properties:
 	the 8 possible cpus attached to the GIC.  A bit set to '1' indicated
 	the interrupt is wired to that CPU.  Only valid for PPI interrupts.
 
-- reg : Specifies base physical address(s) and size of the GIC registers. The
-  first region is the GIC distributor register base and size. The 2nd region is
-  the GIC cpu interface register base and size.
+- reg : Specifies base physical address(s) and size of the GIC register frames.
+
+  Region | Description
+  Index  |
+  -------------------------------------------------------------------
+     0   | GIC distributor register base and size
+     1   | GIC cpu interface register base and size
+     2   | VGIC interface control register base and size (Optional)
+     3   | VGIC CPU interface register base and size (Optional)
+     4   | GICv2m MSI interface register base and size (Optional)
 
 Optional
 - interrupts	: Interrupt source of the parent interrupt controller on
@@ -55,6 +65,10 @@ Optional
 		  by a crossbar/multiplexer preceding the GIC. The GIC irq
 		  input line is assigned dynamically when the corresponding
 		  peripheral's crossbar line is mapped.
+
+- msi-controller : Identifies the node as an MSI controller.
+                   (Required for GICv2m)
+
 Example:
 
 	intc: interrupt-controller@fff11000 {
