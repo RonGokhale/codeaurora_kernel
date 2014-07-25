@@ -48,7 +48,7 @@ static int param_set_hashtbl_sz(const char *val, const struct kernel_param *kp)
 
 	if (!val)
 		goto out_inval;
-	ret = strict_strtoul(val, 0, &num);
+	ret = kstrtoul(val, 0, &num);
 	if (ret == -EINVAL)
 		goto out_inval;
 	nbits = fls(num);
@@ -362,6 +362,15 @@ rpcauth_cred_key_to_expire(struct rpc_cred *cred)
 	return cred->cr_ops->crkey_to_expire(cred);
 }
 EXPORT_SYMBOL_GPL(rpcauth_cred_key_to_expire);
+
+char *
+rpcauth_stringify_acceptor(struct rpc_cred *cred)
+{
+	if (!cred->cr_ops->crstringify_acceptor)
+		return NULL;
+	return cred->cr_ops->crstringify_acceptor(cred);
+}
+EXPORT_SYMBOL_GPL(rpcauth_stringify_acceptor);
 
 /*
  * Destroy a list of credentials
