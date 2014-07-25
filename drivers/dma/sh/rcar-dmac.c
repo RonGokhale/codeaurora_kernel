@@ -757,7 +757,7 @@ rcar_dmac_chan_prep_sg(struct rcar_dmac_chan *chan, struct scatterlist *sgl,
 			hwdesc->size = size;
 
 			dev_dbg(chan->chan.device->dev,
-				"chan%u: hwdesc %p/%p sgl %u@%p, %u/%u %pad -> %pad\n",
+				"chan%u: hwdesc %p/%p sgl %u@%p, %zu/%zu %pad -> %pad\n",
 				chan->index, hwdesc, desc, i, sg, size, len,
 				&hwdesc->src_addr, &hwdesc->dst_addr);
 
