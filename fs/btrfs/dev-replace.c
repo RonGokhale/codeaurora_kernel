@@ -571,6 +571,19 @@ static int btrfs_dev_replace_finishing(struct btrfs_fs_info *fs_info,
 
 	btrfs_rm_dev_replace_blocked(fs_info);
 
+	/*
+	 * if we are replacing a seed device with a writable device
+	 * then FS won't be a seeding FS any more.
+	 */
+	if (src_device->fs_devices->seeding && !src_device->writeable) {
+		fs_info->fs_devices->rw_devices++;
+		fs_info->fs_devices->num_devices++;
+		fs_info->fs_devices->open_devices++;
+
+		fs_info->fs_devices->seeding = 0;
+		fs_info->fs_devices->seed = NULL;
+	}
+
 	btrfs_rm_dev_replace_srcdev(fs_info, src_device);
 
 	btrfs_rm_dev_replace_unblocked(fs_info);
