@@ -102,7 +102,7 @@ static irqreturn_t xenvif_rx_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t xenvif_interrupt(int irq, void *dev_id)
+irqreturn_t xenvif_interrupt(int irq, void *dev_id)
 {
 	xenvif_tx_interrupt(irq, dev_id);
 	xenvif_rx_interrupt(irq, dev_id);
@@ -418,8 +418,8 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	 * When the guest selects the desired number, it will be updated
 	 * via netif_set_real_num_*_queues().
 	 */
-	dev = alloc_netdev_mq(sizeof(struct xenvif), name, ether_setup,
-			      xenvif_max_queues);
+	dev = alloc_netdev_mq(sizeof(struct xenvif), name, NET_NAME_UNKNOWN,
+			      ether_setup, xenvif_max_queues);
 	if (dev == NULL) {
 		pr_warn("Could not allocate netdev for %s\n", name);
 		return ERR_PTR(-ENOMEM);

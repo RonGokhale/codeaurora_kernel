@@ -181,7 +181,8 @@ struct sock_common {
 	unsigned short		skc_family;
 	volatile unsigned char	skc_state;
 	unsigned char		skc_reuse:4;
-	unsigned char		skc_reuseport:4;
+	unsigned char		skc_reuseport:1;
+	unsigned char		skc_ipv6only:1;
 	int			skc_bound_dev_if;
 	union {
 		struct hlist_node	skc_bind_node;
@@ -272,6 +273,7 @@ struct cg_proto;
   *	@sk_rcvtimeo: %SO_RCVTIMEO setting
   *	@sk_sndtimeo: %SO_SNDTIMEO setting
   *	@sk_rxhash: flow hash received from netif layer
+  *	@sk_txhash: computed flow hash for use on transmit
   *	@sk_filter: socket filtering instructions
   *	@sk_protinfo: private area, net family specific, when not using slab
   *	@sk_timer: sock cleanup timer
@@ -317,6 +319,7 @@ struct sock {
 #define sk_state		__sk_common.skc_state
 #define sk_reuse		__sk_common.skc_reuse
 #define sk_reuseport		__sk_common.skc_reuseport
+#define sk_ipv6only		__sk_common.skc_ipv6only
 #define sk_bound_dev_if		__sk_common.skc_bound_dev_if
 #define sk_bind_node		__sk_common.skc_bind_node
 #define sk_prot			__sk_common.skc_prot
@@ -345,6 +348,7 @@ struct sock {
 #ifdef CONFIG_RPS
 	__u32			sk_rxhash;
 #endif
+	__u32			sk_txhash;
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	unsigned int		sk_napi_id;
 	unsigned int		sk_ll_usec;
@@ -656,6 +660,20 @@ static inline void sk_add_bind_node(struct sock *sk,
 #define sk_for_each_bound(__sk, list) \
 	hlist_for_each_entry(__sk, list, sk_bind_node)
 
+/**
+ * sk_nulls_for_each_entry_offset - iterate over a list at a given struct offset
+ * @tpos:	the type * to use as a loop cursor.
+ * @pos:	the &struct hlist_node to use as a loop cursor.
+ * @head:	the head for your list.
+ * @offset:	offset of hlist_node within the struct.
+ *
+ */
+#define sk_nulls_for_each_entry_offset(tpos, pos, head, offset)		       \
+	for (pos = (head)->first;					       \
+	     (!is_a_nulls(pos)) &&					       \
+		({ tpos = (typeof(*tpos) *)((void *)pos - offset); 1;});       \
+	     pos = pos->next)
+
 static inline struct user_namespace *sk_user_ns(struct sock *sk)
 {
 	/* Careful only use this in a context where these parameters
@@ -792,8 +810,7 @@ static inline void __sk_add_backlog(struct sock *sk, struct sk_buff *skb)
  * Do not take into account this skb truesize,
  * to allow even a single big packet to come.
  */
-static inline bool sk_rcvqueues_full(const struct sock *sk, const struct sk_buff *skb,
-				     unsigned int limit)
+static inline bool sk_rcvqueues_full(const struct sock *sk, unsigned int limit)
 {
 	unsigned int qsize = sk->sk_backlog.len + atomic_read(&sk->sk_rmem_alloc);
 
@@ -804,7 +821,7 @@ static inline bool sk_rcvqueues_full(const struct sock *sk, const struct sk_buff
 static inline __must_check int sk_add_backlog(struct sock *sk, struct sk_buff *skb,
 					      unsigned int limit)
 {
-	if (sk_rcvqueues_full(sk, skb, limit))
+	if (sk_rcvqueues_full(sk, limit))
 		return -ENOBUFS;
 
 	__sk_add_backlog(sk, skb);
@@ -1978,6 +1995,14 @@ static inline void sock_poll_wait(struct file *filp,
 	}
 }
 
+static inline void skb_set_hash_from_sk(struct sk_buff *skb, struct sock *sk)
+{
+	if (sk->sk_txhash) {
+		skb->l4_hash = 1;
+		skb->hash = sk->sk_txhash;
+	}
+}
+
 /*
  *	Queue a received datagram if it will fit. Stream and sequenced
  *	protocols can't normally use this as they need to fit buffers in
@@ -1992,6 +2017,7 @@ static inline void skb_set_owner_w(struct sk_buff *skb, struct sock *sk)
 	skb_orphan(skb);
 	skb->sk = sk;
 	skb->destructor = sock_wfree;
+	skb_set_hash_from_sk(skb, sk);
 	/*
 	 * We used to take a refcount on sk, but following operation
 	 * is enough to guarantee sk_free() wont free this sock until
