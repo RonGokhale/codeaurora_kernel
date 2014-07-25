@@ -113,8 +113,8 @@ Configuration options: not applicable, uses PCI auto config
 
 #define DAQBOARD2000_FIRMWARE		"daqboard2000_firmware.bin"
 
-#define DAQBOARD2000_SUBSYSTEM_IDS2 	0x0002	/* Daqboard/2000 - 2 Dacs */
-#define DAQBOARD2000_SUBSYSTEM_IDS4 	0x0004	/* Daqboard/2000 - 4 Dacs */
+#define DAQBOARD2000_SUBSYSTEM_IDS2	0x0002	/* Daqboard/2000 - 2 Dacs */
+#define DAQBOARD2000_SUBSYSTEM_IDS4	0x0004	/* Daqboard/2000 - 4 Dacs */
 
 /* Initialization bits for the Serial EEPROM Control Register */
 #define DAQBOARD2000_SECRProgPinHi      0x8001767e
@@ -128,8 +128,8 @@ Configuration options: not applicable, uses PCI auto config
 #define DAQBOARD2000_EEPROM_PRESENT     0x10000000
 
 /* CPLD status bits */
-#define DAQBOARD2000_CPLD_INIT 		0x0002
-#define DAQBOARD2000_CPLD_DONE 		0x0004
+#define DAQBOARD2000_CPLD_INIT		0x0002
+#define DAQBOARD2000_CPLD_DONE		0x0004
 
 static const struct comedi_lrange range_daqboard2000_ai = {
 	13, {
@@ -673,9 +673,8 @@ static int daqboard2000_8255_cb(int dir, int port, int data,
 	if (dir) {
 		writew(data, mmio_base + port * 2);
 		return 0;
-	} else {
-		return readw(mmio_base + port * 2);
 	}
+	return readw(mmio_base + port * 2);
 }
 
 static const void *daqboard2000_find_boardinfo(struct comedi_device *dev,
