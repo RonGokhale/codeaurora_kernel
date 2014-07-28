@@ -389,9 +389,8 @@ static int apci3xxx_ai_started(struct comedi_device *dev)
 
 	if ((readl(devpriv->mmio + 8) & 0x80000) == 0x80000)
 		return 1;
-	else
-		return 0;
 
+	return 0;
 }
 
 static int apci3xxx_ai_setup(struct comedi_device *dev, unsigned int chanspec)
@@ -478,7 +477,7 @@ static int apci3xxx_ai_insn_read(struct comedi_device *dev,
 }
 
 static int apci3xxx_ai_ns_to_timer(struct comedi_device *dev,
-				   unsigned int *ns, int round_mode)
+				   unsigned int *ns, unsigned int flags)
 {
 	const struct apci3xxx_boardinfo *board = comedi_board(dev);
 	struct apci3xxx_private *devpriv = dev->private;
@@ -504,7 +503,7 @@ static int apci3xxx_ai_ns_to_timer(struct comedi_device *dev,
 			break;
 		}
 
-		switch (round_mode) {
+		switch (flags & TRIG_ROUND_MASK) {
 		case TRIG_ROUND_NEAREST:
 		default:
 			timer = (*ns + base / 2) / base;
@@ -574,7 +573,7 @@ static int apci3xxx_ai_cmdtest(struct comedi_device *dev,
 	/* step 4: fix up any arguments */
 
 	arg = cmd->convert_arg;
-	err |= apci3xxx_ai_ns_to_timer(dev, &arg, cmd->flags & TRIG_ROUND_MASK);
+	err |= apci3xxx_ai_ns_to_timer(dev, &arg, cmd->flags);
 	err |= cfc_check_trigger_arg_is(&cmd->convert_arg, arg);
 
 	if (err)
@@ -696,10 +695,9 @@ static int apci3xxx_dio_insn_config(struct comedi_device *dev,
 		/* ignore all other instructions for ports 0 and 1 */
 		if (chan < 16)
 			return -EINVAL;
-		else
-			/* changing any channel in port 2 */
-			/* changes the entire port        */
-			mask = 0xff0000;
+
+		/* changing any channel in port 2 changes the entire port */
+		mask = 0xff0000;
 	}
 
 	ret = comedi_dio_insn_config(dev, s, insn, data, mask);

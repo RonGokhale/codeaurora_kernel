@@ -1,51 +1,48 @@
 /*
-    comedi/drivers/amplc_pc236.c
-    Driver for Amplicon PC36AT and PCI236 DIO boards.
-
-    Copyright (C) 2002 MEV Ltd. <http://www.mev.co.uk/>
-
-    COMEDI - Linux Control and Measurement Device Interface
-    Copyright (C) 2000 David A. Schleef <ds@schleef.org>
-
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-*/
+ * comedi/drivers/amplc_pc236.c
+ * Driver for Amplicon PC36AT and PCI236 DIO boards.
+ *
+ * Copyright (C) 2002 MEV Ltd. <http://www.mev.co.uk/>
+ *
+ * COMEDI - Linux Control and Measurement Device Interface
+ * Copyright (C) 2000 David A. Schleef <ds@schleef.org>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
 /*
-Driver: amplc_pc236
-Description: Amplicon PC36AT, PCI236
-Author: Ian Abbott <abbotti@mev.co.uk>
-Devices: [Amplicon] PC36AT (pc36at), PCI236 (pci236 or amplc_pc236)
-Updated: Wed, 01 Apr 2009 15:41:25 +0100
-Status: works
-
-Configuration options - PC36AT:
-  [0] - I/O port base address
-  [1] - IRQ (optional)
-
-Configuration options - PCI236:
-  [0] - PCI bus of device (optional)
-  [1] - PCI slot of device (optional)
-  If bus/slot is not specified, the first available PCI device will be
-  used.
-
-The PC36AT ISA board and PCI236 PCI board have a single 8255 appearing
-as subdevice 0.
-
-Subdevice 1 pretends to be a digital input device, but it always returns
-0 when read. However, if you run a command with scan_begin_src=TRIG_EXT,
-a rising edge on port C bit 3 acts as an external trigger, which can be
-used to wake up tasks.  This is like the comedi_parport device, but the
-only way to physically disable the interrupt on the PC36AT is to remove
-the IRQ jumper.  If no interrupt is connected, then subdevice 1 is
-unused.
-*/
+ * Driver: amplc_pc236
+ * Description: Amplicon PC36AT, PCI236
+ * Author: Ian Abbott <abbotti@mev.co.uk>
+ * Devices: [Amplicon] PC36AT (pc36at), PCI236 (pci236)
+ * Updated: Thu, 24 Jul 2014 14:25:26 +0000
+ * Status: works
+ *
+ * Configuration options - PC36AT:
+ *   [0] - I/O port base address
+ *   [1] - IRQ (optional)
+ *
+ * Manual configuration of PCI board (PCI236) is not supported; it is
+ * configured automatically.
+ *
+ * The PC36AT ISA board and PCI236 PCI board have a single 8255 appearing
+ * as subdevice 0.
+ *
+ * Subdevice 1 pretends to be a digital input device, but it always returns
+ * 0 when read. However, if you run a command with scan_begin_src=TRIG_EXT,
+ * a rising edge on port C bit 3 acts as an external trigger, which can be
+ * used to wake up tasks.  This is like the comedi_parport device, but the
+ * only way to physically disable the interrupt on the PC36AT is to remove
+ * the IRQ jumper.  If no interrupt is connected, then subdevice 1 is
+ * unused.
+ */
 
 #include <linux/module.h>
 #include <linux/pci.h>
@@ -57,19 +54,10 @@ unused.
 #include "8255.h"
 #include "plx9052.h"
 
-#define PC236_DRIVER_NAME	"amplc_pc236"
-
 #define DO_ISA	IS_ENABLED(CONFIG_COMEDI_AMPLC_PC236_ISA)
 #define DO_PCI	IS_ENABLED(CONFIG_COMEDI_AMPLC_PC236_PCI)
 
-/* PCI236 PCI configuration register information */
-#define PCI_DEVICE_ID_AMPLICON_PCI236 0x0009
-#define PCI_DEVICE_ID_INVALID 0xffff
-
 /* PC36AT / PCI236 registers */
-
-#define PC236_IO_SIZE		4
-#define PC236_LCR_IO_SIZE	128
 
 /* Disable, and clear, interrupts */
 #define PCI236_INTR_DISABLE	(PLX9052_INTCSR_LI1POL |	\
@@ -90,42 +78,24 @@ unused.
  */
 
 enum pc236_bustype { isa_bustype, pci_bustype };
-enum pc236_model { pc36at_model, pci236_model, anypci_model };
 
 struct pc236_board {
 	const char *name;
-	unsigned short devid;
 	enum pc236_bustype bustype;
-	enum pc236_model model;
 };
-static const struct pc236_board pc236_boards[] = {
-#if DO_ISA
+
+static const struct pc236_board pc236_isa_boards[] = {
 	{
 		.name = "pc36at",
 		.bustype = isa_bustype,
-		.model = pc36at_model,
 	},
-#endif
-#if DO_PCI
-	{
-		.name = "pci236",
-		.devid = PCI_DEVICE_ID_AMPLICON_PCI236,
-		.bustype = pci_bustype,
-		.model = pci236_model,
-	},
-	{
-		.name = PC236_DRIVER_NAME,
-		.devid = PCI_DEVICE_ID_INVALID,
-		.bustype = pci_bustype,
-		.model = anypci_model,	/* wildcard */
-	},
-#endif
 };
 
-/* this structure is for data unique to this hardware driver.  If
-   several hardware drivers keep similar information in this structure,
-   feel free to suggest moving the variable to the struct comedi_device struct.
- */
+static const struct pc236_board pc236_pci_board = {
+	.name = "pci236",
+	.bustype = pci_bustype,
+};
+
 struct pc236_private {
 	unsigned long lcr_iobase; /* PLX PCI9052 config registers in PCIBAR1 */
 	int enable_irq;
@@ -141,63 +111,6 @@ static inline bool is_isa_board(const struct pc236_board *board)
 static inline bool is_pci_board(const struct pc236_board *board)
 {
 	return DO_PCI && board->bustype == pci_bustype;
-}
-
-/*
- * This function looks for a board matching the supplied PCI device.
- */
-static const struct pc236_board *pc236_find_pci_board(struct pci_dev *pci_dev)
-{
-	unsigned int i;
-
-	for (i = 0; i < ARRAY_SIZE(pc236_boards); i++)
-		if (is_pci_board(&pc236_boards[i]) &&
-		    pci_dev->device == pc236_boards[i].devid)
-			return &pc236_boards[i];
-	return NULL;
-}
-
-/*
- * This function looks for a PCI device matching the requested board name,
- * bus and slot.
- */
-static struct pci_dev *pc236_find_pci_dev(struct comedi_device *dev,
-					  struct comedi_devconfig *it)
-{
-	const struct pc236_board *thisboard = comedi_board(dev);
-	struct pci_dev *pci_dev = NULL;
-	int bus = it->options[0];
-	int slot = it->options[1];
-
-	for_each_pci_dev(pci_dev) {
-		if (bus || slot) {
-			if (bus != pci_dev->bus->number ||
-			    slot != PCI_SLOT(pci_dev->devfn))
-				continue;
-		}
-		if (pci_dev->vendor != PCI_VENDOR_ID_AMPLICON)
-			continue;
-
-		if (thisboard->model == anypci_model) {
-			/* Wildcard board matches any supported PCI board. */
-			const struct pc236_board *foundboard;
-
-			foundboard = pc236_find_pci_board(pci_dev);
-			if (foundboard == NULL)
-				continue;
-			/* Replace wildcard board_ptr. */
-			dev->board_ptr = foundboard;
-		} else {
-			/* Match specific model name. */
-			if (pci_dev->device != thisboard->devid)
-				continue;
-		}
-		return pci_dev;
-	}
-	dev_err(dev->class_dev,
-		"No supported board found! (req. bus %d, slot %d)\n",
-		bus, slot);
-	return NULL;
 }
 
 /*
@@ -371,11 +284,9 @@ static irqreturn_t pc236_interrupt(int irq, void *d)
 static int pc236_common_attach(struct comedi_device *dev, unsigned long iobase,
 			       unsigned int irq, unsigned long req_irq_flags)
 {
-	const struct pc236_board *thisboard = comedi_board(dev);
 	struct comedi_subdevice *s;
 	int ret;
 
-	dev->board_name = thisboard->name;
 	dev->iobase = iobase;
 
 	ret = comedi_alloc_subdevices(dev, 2);
@@ -394,7 +305,7 @@ static int pc236_common_attach(struct comedi_device *dev, unsigned long iobase,
 	pc236_intr_disable(dev);
 	if (irq) {
 		if (request_irq(irq, pc236_interrupt, req_irq_flags,
-				PC236_DRIVER_NAME, dev) >= 0) {
+				dev->board_name, dev) >= 0) {
 			dev->irq = irq;
 			s->type = COMEDI_SUBD_DI;
 			s->subdev_flags = SDF_READABLE | SDF_CMD_READ;
@@ -412,15 +323,44 @@ static int pc236_common_attach(struct comedi_device *dev, unsigned long iobase,
 	return 0;
 }
 
-static int pc236_pci_common_attach(struct comedi_device *dev,
-				   struct pci_dev *pci_dev)
+static int pc236_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 {
-	struct pc236_private *devpriv = dev->private;
+	struct pc236_private *devpriv;
+	int ret;
+
+	if (!DO_ISA)
+		return -EINVAL;
+
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
+	if (!devpriv)
+		return -ENOMEM;
+
+	ret = comedi_request_region(dev, it->options[0], 0x4);
+	if (ret)
+		return ret;
+
+	return pc236_common_attach(dev, dev->iobase, it->options[1], 0);
+}
+
+static int pc236_auto_attach(struct comedi_device *dev,
+				       unsigned long context_unused)
+{
+	struct pci_dev *pci_dev = comedi_to_pci_dev(dev);
+	struct pc236_private *devpriv;
 	unsigned long iobase;
 	int ret;
 
-	comedi_set_hw_dev(dev, &pci_dev->dev);
+	if (!DO_PCI)
+		return -EINVAL;
 
+	dev_info(dev->class_dev, "attach pci %s\n", pci_name(pci_dev));
+
+	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
+	if (!devpriv)
+		return -ENOMEM;
+
+	dev->board_ptr = &pc236_pci_board;
+	dev->board_name = pc236_pci_board.name;
 	ret = comedi_pci_enable(dev);
 	if (ret)
 		return ret;
@@ -428,79 +368,6 @@ static int pc236_pci_common_attach(struct comedi_device *dev,
 	devpriv->lcr_iobase = pci_resource_start(pci_dev, 1);
 	iobase = pci_resource_start(pci_dev, 2);
 	return pc236_common_attach(dev, iobase, pci_dev->irq, IRQF_SHARED);
-}
-
-/*
- * Attach is called by the Comedi core to configure the driver
- * for a particular board.  If you specified a board_name array
- * in the driver structure, dev->board_ptr contains that
- * address.
- */
-static int pc236_attach(struct comedi_device *dev, struct comedi_devconfig *it)
-{
-	const struct pc236_board *thisboard = comedi_board(dev);
-	struct pc236_private *devpriv;
-	int ret;
-
-	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
-	if (!devpriv)
-		return -ENOMEM;
-
-	/* Process options according to bus type. */
-	if (is_isa_board(thisboard)) {
-		ret = comedi_request_region(dev, it->options[0], PC236_IO_SIZE);
-		if (ret)
-			return ret;
-
-		return pc236_common_attach(dev, dev->iobase, it->options[1], 0);
-	} else if (is_pci_board(thisboard)) {
-		struct pci_dev *pci_dev;
-
-		pci_dev = pc236_find_pci_dev(dev, it);
-		if (!pci_dev)
-			return -EIO;
-		return pc236_pci_common_attach(dev, pci_dev);
-	} else {
-		dev_err(dev->class_dev, PC236_DRIVER_NAME
-			": BUG! cannot determine board type!\n");
-		return -EINVAL;
-	}
-}
-
-/*
- * The auto_attach hook is called at PCI probe time via
- * comedi_pci_auto_config().  dev->board_ptr is NULL on entry.
- * There should be a board entry matching the supplied PCI device.
- */
-static int pc236_auto_attach(struct comedi_device *dev,
-				       unsigned long context_unused)
-{
-	struct pci_dev *pci_dev = comedi_to_pci_dev(dev);
-	struct pc236_private *devpriv;
-
-	if (!DO_PCI)
-		return -EINVAL;
-
-	dev_info(dev->class_dev, PC236_DRIVER_NAME ": attach pci %s\n",
-		 pci_name(pci_dev));
-
-	devpriv = comedi_alloc_devpriv(dev, sizeof(*devpriv));
-	if (!devpriv)
-		return -ENOMEM;
-
-	dev->board_ptr = pc236_find_pci_board(pci_dev);
-	if (dev->board_ptr == NULL) {
-		dev_err(dev->class_dev, "BUG! cannot determine board type!\n");
-		return -EINVAL;
-	}
-	/*
-	 * Need to 'get' the PCI device to match the 'put' in pc236_detach().
-	 * TODO: Remove the pci_dev_get() and matching pci_dev_put() once
-	 * support for manual attachment of PCI devices via pc236_attach()
-	 * has been removed.
-	 */
-	pci_dev_get(pci_dev);
-	return pc236_pci_common_attach(dev, pci_dev);
 }
 
 static void pc236_detach(struct comedi_device *dev)
@@ -514,36 +381,29 @@ static void pc236_detach(struct comedi_device *dev)
 	if (is_isa_board(thisboard)) {
 		comedi_legacy_detach(dev);
 	} else if (is_pci_board(thisboard)) {
-		struct pci_dev *pcidev = comedi_to_pci_dev(dev);
 		if (dev->irq)
 			free_irq(dev->irq, dev);
 		comedi_pci_disable(dev);
-		if (pcidev)
-			pci_dev_put(pcidev);
 	}
 }
 
-/*
- * The struct comedi_driver structure tells the Comedi core module
- * which functions to call to configure/deconfigure (attach/detach)
- * the board, and also about the kernel module that contains
- * the device code.
- */
 static struct comedi_driver amplc_pc236_driver = {
-	.driver_name = PC236_DRIVER_NAME,
+	.driver_name = "amplc_pc236",
 	.module = THIS_MODULE,
 	.attach = pc236_attach,
 	.auto_attach = pc236_auto_attach,
 	.detach = pc236_detach,
-	.board_name = &pc236_boards[0].name,
+#if DO_ISA
+	.board_name = &pc236_isa_boards[0].name,
 	.offset = sizeof(struct pc236_board),
-	.num_names = ARRAY_SIZE(pc236_boards),
+	.num_names = ARRAY_SIZE(pc236_isa_boards),
+#endif
 };
 
 #if DO_PCI
 static const struct pci_device_id pc236_pci_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_AMPLICON, PCI_DEVICE_ID_AMPLICON_PCI236) },
-	{0}
+	{ PCI_DEVICE(PCI_VENDOR_ID_AMPLICON, 0x0009) },
+	{ 0 }
 };
 
 MODULE_DEVICE_TABLE(pci, pc236_pci_table);
@@ -556,7 +416,7 @@ static int amplc_pc236_pci_probe(struct pci_dev *dev,
 }
 
 static struct pci_driver amplc_pc236_pci_driver = {
-	.name = PC236_DRIVER_NAME,
+	.name = "amplc_pc236",
 	.id_table = pc236_pci_table,
 	.probe = &amplc_pc236_pci_probe,
 	.remove		= comedi_pci_auto_unconfig,

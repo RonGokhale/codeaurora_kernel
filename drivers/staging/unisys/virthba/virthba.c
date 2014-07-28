@@ -50,7 +50,7 @@
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_device.h>
 #include <asm/param.h>
-#include <linux/proc_fs.h>
+#include <linux/debugfs.h>
 #include <linux/types.h>
 
 #include "virthba.h"
@@ -66,6 +66,11 @@
 
 /* NOTE:  L1_CACHE_BYTES >=128 */
 #define DEVICE_ATTRIBUTE struct device_attribute
+
+ /* MAX_BUF = 6 lines x 10 MAXVHBA x 80 characters
+ *         = 4800 bytes ~ 2^13 = 8192 bytes
+ */
+#define MAX_BUF 8192
 
 /*****************************************************/
 /* Forward declarations                              */
@@ -105,15 +110,10 @@ static int virthba_serverup(struct virtpci_dev *virtpcidev);
 static int virthba_serverdown(struct virtpci_dev *virtpcidev, u32 state);
 static void doDiskAddRemove(struct work_struct *work);
 static void virthba_serverdown_complete(struct work_struct *work);
-
-static ssize_t info_proc_read(struct file *file, char __user *buf,
-			      size_t len, loff_t *offset);
-static ssize_t rqwu_proc_write(struct file *file, const char __user *buffer,
-			       size_t count, loff_t *ppos);
-static ssize_t enable_ints_read(struct file *file, char __user *buffer,
-				size_t count, loff_t *ppos);
-static ssize_t enable_ints_write(struct file *file, const char __user *buffer,
-				 size_t count, loff_t *ppos);
+static ssize_t info_debugfs_read(struct file *file, char __user *buf,
+			size_t len, loff_t *offset);
+static ssize_t enable_ints_write(struct file *file,
+			const char __user *buffer, size_t count, loff_t *ppos);
 
 /*****************************************************/
 /* Globals                                           */
@@ -139,8 +139,6 @@ static struct virtpci_driver virthba_driver = {
 	.name = "uisvirthba",
 	.version = VERSION,
 	.vertag = NULL,
-	.build_date = __DATE__,
-	.build_time = __TIME__,
 	.id_table = virthba_id_table,
 	.probe = virthba_probe,
 	.remove = virthba_remove,
@@ -210,7 +208,6 @@ struct diskaddremove {
 static DEVICE_ATTRIBUTE *virthba_shost_attrs[];
 static struct scsi_host_template virthba_driver_template = {
 	.name = "Unisys Virtual HBA",
-	.proc_name = "uisvirthba",
 	.info = virthba_get_info,
 	.ioctl = virthba_ioctl,
 	.queuecommand = virthba_queue_command,
@@ -234,31 +231,22 @@ struct virthba_devices_open {
 	struct virthba_info *virthbainfo;
 };
 
-static const struct file_operations proc_info_fops = {
-	.read = info_proc_read,
+static const struct file_operations debugfs_info_fops = {
+	.read = info_debugfs_read,
 };
 
-static const struct file_operations proc_rqwu_fops = {
-	.write = rqwu_proc_write,
-};
-
-static const struct file_operations proc_enable_ints_fops = {
-	.read = enable_ints_read,
+static const struct file_operations debugfs_enable_ints_fops = {
 	.write = enable_ints_write,
 };
 
+/*****************************************************/
+/* Structs                                           */
+/*****************************************************/
 
 #define VIRTHBASOPENMAX 1
 /* array of open devices maintained by open() and close(); */
 static struct virthba_devices_open VirtHbasOpen[VIRTHBASOPENMAX];
-static struct proc_dir_entry *virthba_proc_dir;
-static struct proc_dir_entry *info_proc_entry;
-static struct proc_dir_entry *rqwaitus_proc_entry;
-static struct proc_dir_entry *enable_ints_proc_entry;
-#define INFO_PROC_ENTRY_FN "info"
-#define ENABLE_INTS_ENTRY_FN "enable_ints"
-#define RQWU_PROC_ENTRY_FN "rqwait_usecs"
-#define DIR_PROC_ENTRY "virthba"
+static struct dentry *virthba_debugfs_dir;
 
 /*****************************************************/
 /* Local Functions				     */
@@ -1378,25 +1366,21 @@ process_incoming_rsps(void *v)
 }
 
 /*****************************************************/
-/* proc filesystem functions						 */
+/* Debugfs filesystem functions                      */
 /*****************************************************/
 
-static ssize_t
-info_proc_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
+static ssize_t info_debugfs_read(struct file *file,
+			char __user *buf, size_t len, loff_t *offset)
 {
-	int length = 0;
+	ssize_t bytes_read = 0;
+	int str_pos = 0;
 	U64 phys_flags_addr;
 	int i;
 	struct virthba_info *virthbainfo;
 	char *vbuf;
-	loff_t pos = *offset;
 
-	if (pos < 0)
-		return -EINVAL;
-
-	if (pos > 0 || !len)
-		return 0;
-
+	if (len > MAX_BUF)
+		len = MAX_BUF;
 	vbuf = kzalloc(len, GFP_KERNEL);
 	if (!vbuf)
 		return -ENOMEM;
@@ -1406,54 +1390,44 @@ info_proc_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 			continue;
 
 		virthbainfo = VirtHbasOpen[i].virthbainfo;
-		length += sprintf(vbuf + length, "CHANSOCK is not defined.\n");
 
-		length += sprintf(vbuf + length, "MaxBuffLen:%u\n", MaxBuffLen);
+		str_pos += scnprintf(vbuf + str_pos,
+				len - str_pos, "MaxBuffLen:%u\n", MaxBuffLen);
 
-		length += sprintf(vbuf + length, "\nvirthba result queue poll wait:%d usecs.\n",
-				  rsltq_wait_usecs);
-
-		length += sprintf(vbuf + length,
-				  "\nModule build: Date:%s Time:%s\n",
-				  __DATE__, __TIME__);
-		length += sprintf(vbuf + length, "\ninterrupts_rcvd = %llu, interrupts_disabled = %llu\n",
-				  virthbainfo->interrupts_rcvd,
-				  virthbainfo->interrupts_disabled);
-		length += sprintf(vbuf + length, "\ninterrupts_notme = %llu,\n",
-				  virthbainfo->interrupts_notme);
+		str_pos += scnprintf(vbuf + str_pos, len - str_pos,
+				"\nvirthba result queue poll wait:%d usecs.\n",
+				rsltq_wait_usecs);
+		str_pos += scnprintf(vbuf + str_pos, len - str_pos,
+				"\ninterrupts_rcvd = %llu, interrupts_disabled = %llu\n",
+				virthbainfo->interrupts_rcvd,
+				virthbainfo->interrupts_disabled);
+		str_pos += scnprintf(vbuf + str_pos,
+				len - str_pos, "\ninterrupts_notme = %llu,\n",
+				virthbainfo->interrupts_notme);
 		phys_flags_addr = virt_to_phys((__force  void *)
 					       virthbainfo->flags_addr);
-		length += sprintf(vbuf + length, "flags_addr = %p, phys_flags_addr=0x%016llx, FeatureFlags=%llu\n",
-			  virthbainfo->flags_addr, phys_flags_addr,
-				  (__le64)readq(virthbainfo->flags_addr));
-		length += sprintf(vbuf + length, "acquire_failed_cnt:%llu\n",
-				  virthbainfo->acquire_failed_cnt);
-		length += sprintf(vbuf + length, "\n");
-	}
-	if (copy_to_user(buf, vbuf, length)) {
-		kfree(vbuf);
-		return -EFAULT;
+		str_pos += scnprintf(vbuf + str_pos, len - str_pos,
+				"flags_addr = %p, phys_flags_addr=0x%016llx, FeatureFlags=%llu\n",
+				virthbainfo->flags_addr, phys_flags_addr,
+				(__le64)readq(virthbainfo->flags_addr));
+		str_pos += scnprintf(vbuf + str_pos,
+			len - str_pos, "acquire_failed_cnt:%llu\n",
+			virthbainfo->acquire_failed_cnt);
+		str_pos += scnprintf(vbuf + str_pos, len - str_pos, "\n");
 	}
 
+	bytes_read = simple_read_from_buffer(buf, len, offset, vbuf, str_pos);
 	kfree(vbuf);
-	*offset += length;
-	return length;
+	return bytes_read;
 }
 
-static ssize_t
-enable_ints_read(struct file *file, char __user *buffer,
-		  size_t count, loff_t *ppos)
-{
-	return 0;
-}
-
-static ssize_t
-enable_ints_write(struct file *file, const char __user *buffer,
-		  size_t count, loff_t *ppos)
+static ssize_t enable_ints_write(struct file *file,
+			const char __user *buffer, size_t count, loff_t *ppos)
 {
 	char buf[4];
 	int i, new_value;
 	struct virthba_info *virthbainfo;
+
 	U64 __iomem *Features_addr;
 	U64 mask;
 
@@ -1467,9 +1441,9 @@ enable_ints_write(struct file *file, const char __user *buffer,
 		return -EFAULT;
 	}
 
-	i = sscanf(buf, "%d", &new_value);
+	i = kstrtoint(buf, 10 , &new_value);
 
-	if (i < 1) {
+	if (i != 0) {
 		LOGERR("Failed to scan value for enable_ints, buf<<%.*s>>",
 		       (int) count, buf);
 		return -EFAULT;
@@ -1498,35 +1472,6 @@ enable_ints_write(struct file *file, const char __user *buffer,
 			}
 		}
 	}
-	return count;
-}
-
-static ssize_t
-rqwu_proc_write(struct file *file, const char __user *buffer,
-		size_t count, loff_t *ppos)
-{
-	char buf[16];
-	int i, usecs;
-
-	if (count >= ARRAY_SIZE(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, buffer, count)) {
-		LOGERR("copy_from_user failed. buf<<%.*s>> count<<%lu>>\n",
-		       (int) count, buf, count);
-		return -EFAULT;
-	}
-
-	i = sscanf(buf, "%d", &usecs);
-
-	if (i < 1) {
-		LOGERR("Failed to scan value for rqwait_usecs buf<<%.*s>>",
-		       (int) count, buf);
-		return -EFAULT;
-	}
-
-	/* set global wait time */
-	rsltq_wait_usecs = usecs;
 	return count;
 }
 
@@ -1713,18 +1658,16 @@ virthba_mod_init(void)
 		POSTCODE_LINUX_3(VHBA_CREATE_FAILURE_PC, error,
 				 POSTCODE_SEVERITY_ERR);
 	} else {
-		/* create the proc directories */
-		virthba_proc_dir = proc_mkdir(DIR_PROC_ENTRY, NULL);
-		info_proc_entry = proc_create(INFO_PROC_ENTRY_FN, 0,
-					      virthba_proc_dir,
-					      &proc_info_fops);
-		rqwaitus_proc_entry = proc_create(RQWU_PROC_ENTRY_FN, 0,
-						  virthba_proc_dir,
-						  &proc_rqwu_fops);
-		enable_ints_proc_entry = proc_create(ENABLE_INTS_ENTRY_FN, 0,
-						     virthba_proc_dir,
-						     &proc_enable_ints_fops);
 
+		/* create the debugfs directories and entries */
+		virthba_debugfs_dir = debugfs_create_dir("virthba", NULL);
+		debugfs_create_file("info", S_IRUSR, virthba_debugfs_dir,
+				NULL, &debugfs_info_fops);
+		debugfs_create_u32("rqwait_usecs", S_IRUSR | S_IWUSR,
+				virthba_debugfs_dir, &rsltq_wait_usecs);
+		debugfs_create_file("enable_ints", S_IWUSR,
+				virthba_debugfs_dir, NULL,
+				&debugfs_enable_ints_fops);
 		/* Initialize DARWorkQ */
 		INIT_WORK(&DARWorkQ, doDiskAddRemove);
 		spin_lock_init(&DARWorkQLock);
@@ -1804,18 +1747,7 @@ virthba_mod_exit(void)
 		virthba_serverdown_workqueue = NULL;
 	}
 
-	if (info_proc_entry)
-		remove_proc_entry(INFO_PROC_ENTRY_FN, virthba_proc_dir);
-
-	if (rqwaitus_proc_entry)
-		remove_proc_entry(RQWU_PROC_ENTRY_FN, NULL);
-
-	if (enable_ints_proc_entry)
-		remove_proc_entry(ENABLE_INTS_ENTRY_FN, NULL);
-
-	if (virthba_proc_dir)
-		remove_proc_entry(DIR_PROC_ENTRY, NULL);
-
+	debugfs_remove_recursive(virthba_debugfs_dir);
 	LOGINF("Leaving virthba_mod_exit\n");
 
 }
