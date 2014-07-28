@@ -1086,8 +1086,8 @@ static void enable_advertising(struct hci_request *req)
 		return;
 
 	memset(&cp, 0, sizeof(cp));
-	cp.min_interval = cpu_to_le16(0x0800);
-	cp.max_interval = cpu_to_le16(0x0800);
+	cp.min_interval = cpu_to_le16(hdev->le_adv_min_interval);
+	cp.max_interval = cpu_to_le16(hdev->le_adv_max_interval);
 	cp.type = connectable ? LE_ADV_IND : LE_ADV_NONCONN_IND;
 	cp.own_address_type = own_addr_type;
 	cp.channel_map = hdev->le_adv_channel_map;
@@ -2264,7 +2264,7 @@ static int set_le(struct sock *sk, struct hci_dev *hdev, void *data, u16 len)
 
 	if (val) {
 		hci_cp.le = val;
-		hci_cp.simul = lmp_le_br_capable(hdev);
+		hci_cp.simul = 0x00;
 	} else {
 		if (test_bit(HCI_LE_ADV, &hdev->dev_flags))
 			disable_advertising(&req);
@@ -5271,7 +5271,7 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 				    MGMT_STATUS_INVALID_PARAMS,
 				    &cp->addr, sizeof(cp->addr));
 
-	if (cp->action != 0x00 && cp->action != 0x01)
+	if (cp->action != 0x00 && cp->action != 0x01 && cp->action != 0x02)
 		return cmd_complete(sk, hdev->id, MGMT_OP_ADD_DEVICE,
 				    MGMT_STATUS_INVALID_PARAMS,
 				    &cp->addr, sizeof(cp->addr));
@@ -5281,7 +5281,7 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 	if (cp->addr.type == BDADDR_BREDR) {
 		bool update_scan;
 
-		/* Only "connect" action supported for now */
+		/* Only incoming connections action is supported for now */
 		if (cp->action != 0x01) {
 			err = cmd_complete(sk, hdev->id, MGMT_OP_ADD_DEVICE,
 					   MGMT_STATUS_INVALID_PARAMS,
@@ -5307,8 +5307,10 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 	else
 		addr_type = ADDR_LE_DEV_RANDOM;
 
-	if (cp->action)
+	if (cp->action == 0x02)
 		auto_conn = HCI_AUTO_CONN_ALWAYS;
+	else if (cp->action == 0x01)
+		auto_conn = HCI_AUTO_CONN_DIRECT;
 	else
 		auto_conn = HCI_AUTO_CONN_REPORT;
 
@@ -5870,6 +5872,7 @@ static void restart_le_actions(struct hci_dev *hdev)
 		list_del_init(&p->action);
 
 		switch (p->auto_connect) {
+		case HCI_AUTO_CONN_DIRECT:
 		case HCI_AUTO_CONN_ALWAYS:
 			list_add(&p->action, &hdev->pend_le_conns);
 			break;
@@ -5922,8 +5925,8 @@ static int powered_update_hci(struct hci_dev *hdev)
 	    lmp_bredr_capable(hdev)) {
 		struct hci_cp_write_le_host_supported cp;
 
-		cp.le = 1;
-		cp.simul = lmp_le_br_capable(hdev);
+		cp.le = 0x01;
+		cp.simul = 0x00;
 
 		/* Check first if we already have the right
 		 * host state (host features set)
