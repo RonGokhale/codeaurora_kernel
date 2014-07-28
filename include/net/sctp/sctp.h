@@ -109,6 +109,7 @@ void sctp_copy_sock(struct sock *newsk, struct sock *sk,
 		    struct sctp_association *asoc);
 extern struct percpu_counter sctp_sockets_allocated;
 int sctp_asconf_mgmt(struct sctp_sock *, struct sctp_sockaddr_entry *);
+struct sk_buff *sctp_skb_recv_datagram(struct sock *, int, int, int *);
 
 /*
  * sctp/primitive.c
@@ -386,27 +387,6 @@ static inline void sctp_skb_set_owner_r(struct sk_buff *skb, struct sock *sk)
 static inline int sctp_list_single_entry(struct list_head *head)
 {
 	return (head->next != head) && (head->next == head->prev);
-}
-
-/* Generate a random jitter in the range of -50% ~ +50% of input RTO. */
-static inline __s32 sctp_jitter(__u32 rto)
-{
-	static __u32 sctp_rand;
-	__s32 ret;
-
-	/* Avoid divide by zero. */
-	if (!rto)
-		rto = 1;
-
-	sctp_rand += jiffies;
-	sctp_rand ^= (sctp_rand << 12);
-	sctp_rand ^= (sctp_rand >> 20);
-
-	/* Choose random number from 0 to rto, then move to -50% ~ +50%
-	 * of rto.
-	 */
-	ret = sctp_rand % rto - (rto >> 1);
-	return ret;
 }
 
 /* Break down data chunks at this point.  */

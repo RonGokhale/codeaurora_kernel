@@ -205,7 +205,8 @@ int ip6_xmit(struct sock *sk, struct sk_buff *skb, struct flowi6 *fl6,
 	if (hlimit < 0)
 		hlimit = ip6_dst_hoplimit(dst);
 
-	ip6_flow_hdr(hdr, tclass, fl6->flowlabel);
+	ip6_flow_hdr(hdr, tclass, ip6_make_flowlabel(net, skb, fl6->flowlabel,
+						     np->autoflowlabel));
 
 	hdr->payload_len = htons(seg_len);
 	hdr->nexthdr = proto;
@@ -800,8 +801,8 @@ slow_path:
 		/*
 		 *	Copy a block of the IP datagram.
 		 */
-		if (skb_copy_bits(skb, ptr, skb_transport_header(frag), len))
-			BUG();
+		BUG_ON(skb_copy_bits(skb, ptr, skb_transport_header(frag),
+				     len));
 		left -= len;
 
 		fh->frag_off = htons(offset);
@@ -1269,8 +1270,7 @@ emsgsize:
 		}
 	}
 
-	/* For UDP, check if TX timestamp is enabled */
-	if (sk->sk_type == SOCK_DGRAM)
+	if (sk->sk_type == SOCK_DGRAM || sk->sk_type == SOCK_RAW)
 		sock_tx_timestamp(sk, &tx_flags);
 
 	/*
@@ -1379,12 +1379,6 @@ alloc_new_skb:
 							   sk->sk_allocation);
 				if (unlikely(skb == NULL))
 					err = -ENOBUFS;
-				else {
-					/* Only the initial fragment
-					 * is time stamped.
-					 */
-					tx_flags = 0;
-				}
 			}
 			if (skb == NULL)
 				goto error;
@@ -1398,8 +1392,9 @@ alloc_new_skb:
 			skb_reserve(skb, hh_len + sizeof(struct frag_hdr) +
 				    dst_exthdrlen);
 
-			if (sk->sk_type == SOCK_DGRAM)
-				skb_shinfo(skb)->tx_flags = tx_flags;
+			/* Only the initial fragment is time stamped */
+			skb_shinfo(skb)->tx_flags = tx_flags;
+			tx_flags = 0;
 
 			/*
 			 *	Find where to start putting bytes
@@ -1569,7 +1564,9 @@ int ip6_push_pending_frames(struct sock *sk)
 	skb_reset_network_header(skb);
 	hdr = ipv6_hdr(skb);
 
-	ip6_flow_hdr(hdr, np->cork.tclass, fl6->flowlabel);
+	ip6_flow_hdr(hdr, np->cork.tclass,
+		     ip6_make_flowlabel(net, skb, fl6->flowlabel,
+					np->autoflowlabel));
 	hdr->hop_limit = np->cork.hop_limit;
 	hdr->nexthdr = proto;
 	hdr->saddr = fl6->saddr;
