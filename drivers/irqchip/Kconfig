@@ -7,6 +7,13 @@ config ARM_GIC
 	select IRQ_DOMAIN
 	select MULTI_IRQ_HANDLER
 
+config ARM_GIC_V2M
+	bool
+	select IRQ_DOMAIN
+	select MULTI_IRQ_HANDLER
+	depends on ARM_GIC
+	depends on PCI && PCI_MSI
+
 config GIC_NON_BANKED
 	bool
 
@@ -33,6 +40,20 @@ config ARM_VIC_NR
 	help
 	  The maximum number of VICs available in the system, for
 	  power management.
+
+config ATMEL_AIC_IRQ
+	bool
+	select GENERIC_IRQ_CHIP
+	select IRQ_DOMAIN
+	select MULTI_IRQ_HANDLER
+	select SPARSE_IRQ
+
+config ATMEL_AIC5_IRQ
+	bool
+	select GENERIC_IRQ_CHIP
+	select IRQ_DOMAIN
+	select MULTI_IRQ_HANDLER
+	select SPARSE_IRQ
 
 config BRCMSTB_L2_IRQ
 	bool
