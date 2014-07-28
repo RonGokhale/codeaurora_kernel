@@ -10,6 +10,7 @@ menu "Device Tree and Open Firmware support"
 config OF_SELFTEST
 	bool "Device Tree Runtime self tests"
 	depends on OF_IRQ
+	select OF_DYNAMIC
 	help
 	  This option builds in test cases for the device tree infrastructure
 	  that are executed once at boot time, and the results dumped to the
@@ -32,7 +33,7 @@ config OF_PROMTREE
 # Hardly any platforms need this.  It is safe to select, but only do so if you
 # need it.
 config OF_DYNAMIC
-	bool
+	bool "Device Tree runtime modifications"
 
 config OF_ADDRESS
 	def_bool y
