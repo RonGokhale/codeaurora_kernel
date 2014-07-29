@@ -53,6 +53,7 @@ static bool intel_pipe_update_start(struct intel_crtc *crtc, uint32_t *start_vbl
 	enum pipe pipe = crtc->pipe;
 	long timeout = msecs_to_jiffies_timeout(1);
 	int scanline, min, max, vblank_start;
+	wait_queue_head_t *wq = drm_crtc_vblank_waitqueue(&crtc->base);
 	DEFINE_WAIT(wait);
 
 	WARN_ON(!drm_modeset_is_locked(&crtc->base.mutex));
@@ -81,7 +82,7 @@ static bool intel_pipe_update_start(struct intel_crtc *crtc, uint32_t *start_vbl
 		 * other CPUs can see the task state update by the time we
 		 * read the scanline.
 		 */
-		prepare_to_wait(&crtc->vbl_wait, &wait, TASK_UNINTERRUPTIBLE);
+		prepare_to_wait(wq, &wait, TASK_UNINTERRUPTIBLE);
 
 		scanline = intel_get_crtc_scanline(crtc);
 		if (scanline < min || scanline > max)
@@ -100,7 +101,7 @@ static bool intel_pipe_update_start(struct intel_crtc *crtc, uint32_t *start_vbl
 		local_irq_disable();
 	}
 
-	finish_wait(&crtc->vbl_wait, &wait);
+	finish_wait(wq, &wait);
 
 	drm_vblank_put(dev, pipe);
 
@@ -218,7 +219,8 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 
 	sprctl |= SP_ENABLE;
 
-	intel_update_sprite_watermarks(dplane, crtc, src_w, pixel_size, true,
+	intel_update_sprite_watermarks(dplane, crtc, src_w, src_h,
+				       pixel_size, true,
 				       src_w != crtc_w || src_h != crtc_h);
 
 	/* Sizes are 0 based */
@@ -283,7 +285,7 @@ vlv_disable_plane(struct drm_plane *dplane, struct drm_crtc *crtc)
 	if (atomic_update)
 		intel_pipe_update_end(intel_crtc, start_vbl_count);
 
-	intel_update_sprite_watermarks(dplane, crtc, 0, 0, false, false);
+	intel_update_sprite_watermarks(dplane, crtc, 0, 0, 0, false, false);
 }
 
 static int
@@ -406,7 +408,8 @@ ivb_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	if (IS_HASWELL(dev) || IS_BROADWELL(dev))
 		sprctl |= SPRITE_PIPE_CSC_ENABLE;
 
-	intel_update_sprite_watermarks(plane, crtc, src_w, pixel_size, true,
+	intel_update_sprite_watermarks(plane, crtc, src_w, src_h, pixel_size,
+				       true,
 				       src_w != crtc_w || src_h != crtc_h);
 
 	/* Sizes are 0 based */
@@ -486,7 +489,7 @@ ivb_disable_plane(struct drm_plane *plane, struct drm_crtc *crtc)
 	 */
 	intel_wait_for_vblank(dev, pipe);
 
-	intel_update_sprite_watermarks(plane, crtc, 0, 0, false, false);
+	intel_update_sprite_watermarks(plane, crtc, 0, 0, 0, false, false);
 }
 
 static int
@@ -606,7 +609,8 @@ ilk_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		dvscntr |= DVS_TRICKLE_FEED_DISABLE; /* must disable */
 	dvscntr |= DVS_ENABLE;
 
-	intel_update_sprite_watermarks(plane, crtc, src_w, pixel_size, true,
+	intel_update_sprite_watermarks(plane, crtc, src_w, src_h,
+				       pixel_size, true,
 				       src_w != crtc_w || src_h != crtc_h);
 
 	/* Sizes are 0 based */
@@ -681,7 +685,7 @@ ilk_disable_plane(struct drm_plane *plane, struct drm_crtc *crtc)
 	 */
 	intel_wait_for_vblank(dev, pipe);
 
-	intel_update_sprite_watermarks(plane, crtc, 0, 0, false, false);
+	intel_update_sprite_watermarks(plane, crtc, 0, 0, 0, false, false);
 }
 
 static void

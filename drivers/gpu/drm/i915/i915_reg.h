@@ -501,6 +501,18 @@
 #define   DSPFREQSTAT_MASK			(0x3 << DSPFREQSTAT_SHIFT)
 #define   DSPFREQGUAR_SHIFT			14
 #define   DSPFREQGUAR_MASK			(0x3 << DSPFREQGUAR_SHIFT)
+#define   _DP_SSC(val, pipe)			((val) << (2 * (pipe)))
+#define   DP_SSC_MASK(pipe)			_DP_SSC(0x3, (pipe))
+#define   DP_SSC_PWR_ON(pipe)			_DP_SSC(0x0, (pipe))
+#define   DP_SSC_CLK_GATE(pipe)			_DP_SSC(0x1, (pipe))
+#define   DP_SSC_RESET(pipe)			_DP_SSC(0x2, (pipe))
+#define   DP_SSC_PWR_GATE(pipe)			_DP_SSC(0x3, (pipe))
+#define   _DP_SSS(val, pipe)			((val) << (2 * (pipe) + 16))
+#define   DP_SSS_MASK(pipe)			_DP_SSS(0x3, (pipe))
+#define   DP_SSS_PWR_ON(pipe)			_DP_SSS(0x0, (pipe))
+#define   DP_SSS_CLK_GATE(pipe)			_DP_SSS(0x1, (pipe))
+#define   DP_SSS_RESET(pipe)			_DP_SSS(0x2, (pipe))
+#define   DP_SSS_PWR_GATE(pipe)			_DP_SSS(0x3, (pipe))
 
 /* See the PUNIT HAS v0.8 for the below bits */
 enum punit_power_well {
@@ -514,6 +526,7 @@ enum punit_power_well {
 	PUNIT_POWER_WELL_DPIO_TX_C_LANES_23	= 9,
 	PUNIT_POWER_WELL_DPIO_RX0		= 10,
 	PUNIT_POWER_WELL_DPIO_RX1		= 11,
+	PUNIT_POWER_WELL_DPIO_CMN_D		= 12,
 
 	PUNIT_POWER_WELL_NUM,
 };
@@ -2284,7 +2297,7 @@ enum punit_power_well {
 /* Same as Haswell, but 72064 bytes now. */
 #define GEN8_CXT_TOTAL_SIZE		(18 * PAGE_SIZE)
 
-
+#define CHV_CLK_CTL1			0x101100
 #define VLV_CLK_CTL2			0x101104
 #define   CLK_CTL2_CZCOUNT_30NS_SHIFT	28
 
@@ -5540,6 +5553,12 @@ enum punit_power_well {
 #define  GEN6_PM_RPS_EVENTS			(GEN6_PM_RP_UP_THRESHOLD | \
 						 GEN6_PM_RP_DOWN_THRESHOLD | \
 						 GEN6_PM_RP_DOWN_TIMEOUT)
+
+#define CHV_CZ_CLOCK_FREQ_MODE_200			200
+#define CHV_CZ_CLOCK_FREQ_MODE_267			267
+#define CHV_CZ_CLOCK_FREQ_MODE_320			320
+#define CHV_CZ_CLOCK_FREQ_MODE_333			333
+#define CHV_CZ_CLOCK_FREQ_MODE_400			400
 
 #define GEN7_GT_SCRATCH_BASE			0x4F100
 #define GEN7_GT_SCRATCH_REG_NUM			8
