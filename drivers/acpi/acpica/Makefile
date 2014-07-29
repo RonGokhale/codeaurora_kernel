@@ -2,7 +2,7 @@
 # Makefile for ACPICA Core interpreter
 #
 
-ccflags-y			:= -Os
+ccflags-y			:= -Os -DBUILDING_ACPICA
 ccflags-$(CONFIG_ACPI_DEBUG)	+= -DACPI_DEBUG_OUTPUT
 
 # use acpi.o to put all files here into acpi.o modparam namespace
@@ -175,5 +175,5 @@ acpi-y +=		\
 	utxferror.o	\
 	utxfmutex.o
 
-acpi-$(ACPI_FUTURE_USAGE) += uttrack.o utcache.o
+acpi-$(ACPI_FUTURE_USAGE) += utfileio.o utprint.o uttrack.o utcache.o
 
