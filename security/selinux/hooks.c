@@ -161,6 +161,17 @@ static int selinux_peerlbl_enabled(void)
 	return (selinux_policycap_alwaysnetwork || netlbl_enabled() || selinux_xfrm_enabled());
 }
 
+static int selinux_netcache_avc_callback(u32 event)
+{
+	if (event == AVC_CALLBACK_RESET) {
+		sel_netif_flush();
+		sel_netnode_flush();
+		sel_netport_flush();
+		synchronize_net();
+	}
+	return 0;
+}
+
 /*
  * initialise the security for the init task
  */
@@ -4499,9 +4510,18 @@ static void selinux_sock_graft(struct sock *sk, struct socket *parent)
 	struct inode_security_struct *isec = SOCK_INODE(parent)->i_security;
 	struct sk_security_struct *sksec = sk->sk_security;
 
-	if (sk->sk_family == PF_INET || sk->sk_family == PF_INET6 ||
-	    sk->sk_family == PF_UNIX)
+	switch (sk->sk_family) {
+	case PF_INET:
+	case PF_INET6:
+	case PF_UNIX:
 		isec->sid = sksec->sid;
+		break;
+	default:
+		/* by default there is no special labeling mechanism for the
+		 * sksec label so inherit the label from the parent socket */
+		BUG_ON(sksec->sid != SECINITSID_UNLABELED);
+		sksec->sid = isec->sid;
+	}
 	sksec->sclass = isec->sclass;
 }
 
@@ -5992,6 +6012,9 @@ static __init int selinux_init(void)
 
 	if (register_security(&selinux_ops))
 		panic("SELinux: Unable to register with kernel.\n");
+
+	if (avc_add_callback(selinux_netcache_avc_callback, AVC_CALLBACK_RESET))
+		panic("SELinux: Unable to register AVC netcache callback\n");
 
 	if (selinux_enforcing)
 		printk(KERN_DEBUG "SELinux:  Starting in enforcing mode\n");
