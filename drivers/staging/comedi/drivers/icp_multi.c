@@ -49,8 +49,6 @@ Configuration options: not applicable, uses PCI auto config
 
 #include "../comedidev.h"
 
-#define PCI_DEVICE_ID_ICP_MULTI	0x8000
-
 #define ICP_MULTI_ADC_CSR	0	/* R/W: ADC command/status register */
 #define ICP_MULTI_AI		2	/* R:   Analogue input data */
 #define ICP_MULTI_DAC_CSR	4	/* R/W: DAC command/status register */
@@ -420,7 +418,7 @@ static int check_channel_list(struct comedi_device *dev,
 
 	/*  Check that we at least have one channel to check */
 	if (n_chan < 1) {
-		comedi_error(dev, "range/channel list is empty!");
+		dev_err(dev->class_dev, "range/channel list is empty!\n");
 		return 0;
 	}
 	/*  Check all channels */
@@ -428,14 +426,14 @@ static int check_channel_list(struct comedi_device *dev,
 		/*  Check that channel number is < maximum */
 		if (CR_AREF(chanlist[i]) == AREF_DIFF) {
 			if (CR_CHAN(chanlist[i]) > (s->nchan / 2)) {
-				comedi_error(dev,
-					     "Incorrect differential ai ch-nr");
+				dev_err(dev->class_dev,
+					"Incorrect differential ai ch-nr\n");
 				return 0;
 			}
 		} else {
 			if (CR_CHAN(chanlist[i]) > s->n_chan) {
-				comedi_error(dev,
-					     "Incorrect ai channel number");
+				dev_err(dev->class_dev,
+					"Incorrect ai channel number\n");
 				return 0;
 			}
 		}
@@ -594,7 +592,7 @@ static int icp_multi_pci_probe(struct pci_dev *dev,
 }
 
 static const struct pci_device_id icp_multi_pci_table[] = {
-	{ PCI_DEVICE(PCI_VENDOR_ID_ICP, PCI_DEVICE_ID_ICP_MULTI) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_ICP, 0x8000) },
 	{ 0 }
 };
 MODULE_DEVICE_TABLE(pci, icp_multi_pci_table);

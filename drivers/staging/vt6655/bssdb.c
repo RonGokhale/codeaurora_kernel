@@ -65,14 +65,14 @@
 /*---------------------  Static Variables  --------------------------*/
 static int msglevel = MSG_LEVEL_INFO;
 
-const unsigned short awHWRetry0[5][5] = {
+static const unsigned short awHWRetry0[5][5] = {
 	{RATE_18M, RATE_18M, RATE_12M, RATE_12M, RATE_12M},
 	{RATE_24M, RATE_24M, RATE_18M, RATE_12M, RATE_12M},
 	{RATE_36M, RATE_36M, RATE_24M, RATE_18M, RATE_18M},
 	{RATE_48M, RATE_48M, RATE_36M, RATE_24M, RATE_24M},
 	{RATE_54M, RATE_54M, RATE_48M, RATE_36M, RATE_36M}
 };
-const unsigned short awHWRetry1[5][5] = {
+static const unsigned short awHWRetry1[5][5] = {
 	{RATE_18M, RATE_18M, RATE_12M, RATE_6M, RATE_6M},
 	{RATE_24M, RATE_24M, RATE_18M, RATE_6M, RATE_6M},
 	{RATE_36M, RATE_36M, RATE_24M, RATE_12M, RATE_12M},
@@ -262,8 +262,6 @@ BSSvClearBSSList(
 		memset(&pMgmt->sBSSList[ii], 0, sizeof(KnownBSS));
 	}
 	BSSvClearAnyBSSJoinRecord(pDevice);
-
-	return;
 }
 
 /*+
@@ -424,6 +422,7 @@ BSSbInsertToBSSList(
 
 	if (pRSN != NULL) {
 		unsigned int uLen = pRSN->len + 2;
+
 		if (uLen <= (uIELength - (unsigned int)((unsigned char *)pRSN - pbyIEs))) {
 			pBSSList->wRSNLen = uLen;
 			memcpy(pBSSList->byRSNIE, pRSN, uLen);
@@ -600,6 +599,7 @@ BSSbUpdateToBSSList(
 
 	if (pRSNWPA != NULL) {
 		unsigned int uLen = pRSNWPA->len + 2;
+
 		if (uLen <= (uIELength - (unsigned int)((unsigned char *)pRSNWPA - pbyIEs))) {
 			pBSSList->wWPALen = uLen;
 			memcpy(pBSSList->byWPAIE, pRSNWPA, uLen);
@@ -611,6 +611,7 @@ BSSbUpdateToBSSList(
 
 	if (pRSN != NULL) {
 		unsigned int uLen = pRSN->len + 2;
+
 		if (uLen <= (uIELength - (unsigned int)((unsigned char *)pRSN - pbyIEs))) {
 			pBSSList->wRSNLen = uLen;
 			memcpy(pBSSList->byRSNIE, pRSN, uLen);
@@ -990,6 +991,7 @@ start:
 #ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 			{
 				union iwreq_data  wrqu;
+
 				memset(&wrqu, 0, sizeof(wrqu));
 				wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 				PRINT_K("wireless_send_event--->SIOCGIWAP(disassociated)\n");
@@ -1169,6 +1171,7 @@ start:
 #ifdef WPA_SUPPLICANT_DRIVER_WEXT_SUPPORT
 				{
 					union iwreq_data  wrqu;
+
 					memset(&wrqu, 0, sizeof(wrqu));
 					wrqu.ap_addr.sa_family = ARPHRD_ETHER;
 					PRINT_K("wireless_send_event--->SIOCGIWAP(disassociated)\n");
@@ -1235,7 +1238,6 @@ start:
 
 	pMgmt->sTimerSecondCallback.expires = RUN_AT(HZ);
 	add_timer(&pMgmt->sTimerSecondCallback);
-	return;
 }
 
 /*+
@@ -1270,6 +1272,7 @@ BSSvUpdateNodeTxCounter(
 	unsigned short wFallBackRate = RATE_1M;
 	unsigned char byFallBack;
 	unsigned int ii;
+
 	pTxBufHead = (PSTxBufHead) pbyBuffer;
 	if (pTxBufHead->wFIFOCtl & FIFOCTL_AUTO_FB_0)
 		byFallBack = AUTO_FB_0;
@@ -1385,8 +1388,6 @@ BSSvUpdateNodeTxCounter(
 			}
 		}
 	}
-
-	return;
 }
 
 /*+
@@ -1456,6 +1457,7 @@ void s_vCheckSensitivity(
 			/* Update BB Reg if RSSI is too strong */
 			long    LocalldBmAverage = 0;
 			long    uNumofdBm = 0;
+
 			for (ii = 0; ii < RSSI_STAT_COUNT; ii++) {
 				if (pBSSList->ldBmAverage[ii] != 0) {
 					uNumofdBm++;
@@ -1494,7 +1496,6 @@ BSSvClearAnyBSSJoinRecord(
 
 	for (ii = 0; ii < MAX_BSS_NUM; ii++)
 		pMgmt->sBSSList[ii].bSelected = false;
-	return;
 }
 
 #ifdef Calcu_LinkQual
@@ -1535,7 +1536,6 @@ void s_uCalculateLinkQual(
 	pDevice->scStatistic.TxFailCount = 0;
 	pDevice->scStatistic.TxNoRetryOkCount = 0;
 	pDevice->scStatistic.TxRetryOkCount = 0;
-	return;
 }
 #endif
 
@@ -1553,5 +1553,4 @@ void s_vCheckPreEDThreshold(
 		if (pBSSList != NULL)
 			pDevice->byBBPreEDRSSI = (unsigned char) (~(pBSSList->ldBmAverRange) + 1);
 	}
-	return;
 }
