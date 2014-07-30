@@ -6627,6 +6627,12 @@ void mem_cgroup_migrate(struct page *oldpage, struct page *newpage,
 	if (mem_cgroup_disabled())
 		return;
 
+	/* Page cache replacement: new page already charged? */
+	pc = lookup_page_cgroup(newpage);
+	if (PageCgroupUsed(pc))
+		return;
+
+	/* Re-entrant migration: old page already uncharged? */
 	pc = lookup_page_cgroup(oldpage);
 	if (!PageCgroupUsed(pc))
 		return;
