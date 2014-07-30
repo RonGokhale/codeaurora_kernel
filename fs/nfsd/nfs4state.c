@@ -515,10 +515,6 @@ static struct nfs4_ol_stateid * nfs4_alloc_stateid(struct nfs4_client *clp)
 
 static void nfs4_free_deleg(struct nfs4_stid *stid)
 {
-	struct nfs4_delegation *dp = delegstateid(stid);
-
-	if (dp->dl_file)
-		put_nfs4_file(dp->dl_file);
 	kmem_cache_free(deleg_slab, stid);
 	atomic_long_dec(&num_delegations);
 }
@@ -636,12 +632,15 @@ out_dec:
 void
 nfs4_put_stid(struct nfs4_stid *s)
 {
+	struct nfs4_file *fp = s->sc_file;
 	struct nfs4_client *clp = s->sc_client;
 
 	if (!atomic_dec_and_test(&s->sc_count))
 		return;
 	idr_remove(&clp->cl_stateids, s->sc_stateid.si_opaque.so_id);
 	s->sc_free(s);
+	if (fp)
+		put_nfs4_file(fp);
 }
 
 static void nfs4_put_deleg_lease(struct nfs4_file *fp)
@@ -677,7 +676,7 @@ hash_delegation_locked(struct nfs4_delegation *dp, struct nfs4_file *fp)
 static void
 unhash_delegation_locked(struct nfs4_delegation *dp)
 {
-	struct nfs4_file *fp = dp->dl_file;
+	struct nfs4_file *fp = dp->dl_stid.sc_file;
 
 	lockdep_assert_held(&state_lock);
 
@@ -3097,10 +3096,10 @@ nfs4_share_conflict(struct svc_fh *current_fh, unsigned int deny_type)
 
 void nfsd4_prepare_cb_recall(struct nfs4_delegation *dp)
 {
-	struct nfs4_client *clp = dp->dl_stid.sc_client;
-	struct nfsd_net *nn = net_generic(clp->net, nfsd_net_id);
+	struct nfsd_net *nn = net_generic(dp->dl_stid.sc_client->net,
+					  nfsd_net_id);
 
-	block_delegations(&dp->dl_file->fi_fhandle);
+	block_delegations(&dp->dl_stid.sc_file->fi_fhandle);
 
 	/*
 	 * We can't do this in nfsd_break_deleg_cb because it is
@@ -3508,7 +3507,7 @@ static struct file_lock *nfs4_alloc_init_lease(struct nfs4_file *fp, int flag)
 
 static int nfs4_setlease(struct nfs4_delegation *dp)
 {
-	struct nfs4_file *fp = dp->dl_file;
+	struct nfs4_file *fp = dp->dl_stid.sc_file;
 	struct file_lock *fl;
 	struct file *filp;
 	int status = 0;
@@ -3573,7 +3572,7 @@ nfs4_set_delegation(struct nfs4_client *clp, struct svc_fh *fh,
 	get_nfs4_file(fp);
 	spin_lock(&state_lock);
 	spin_lock(&fp->fi_lock);
-	dp->dl_file = fp;
+	dp->dl_stid.sc_file = fp;
 	if (!fp->fi_lease) {
 		spin_unlock(&fp->fi_lock);
 		spin_unlock(&state_lock);
@@ -4167,7 +4166,7 @@ nfs4_preprocess_stateid_op(struct net *net, struct nfsd4_compound_state *cstate,
 		if (status)
 			goto out;
 		if (filpp) {
-			file = dp->dl_file->fi_deleg_file;
+			file = dp->dl_stid.sc_file->fi_deleg_file;
 			if (!file) {
 				WARN_ON_ONCE(1);
 				status = nfserr_serverfault;
