@@ -778,14 +778,12 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 		rc = fallback_migrate_page(mapping, newpage, page, mode);
 
 	if (rc != MIGRATEPAGE_SUCCESS) {
-		if (!PageAnon(newpage))
-			newpage->mapping = NULL;
+		newpage->mapping = NULL;
 	} else {
 		mem_cgroup_migrate(page, newpage, false);
 		if (remap_swapcache)
 			remove_migration_ptes(page, newpage);
-		if (!PageAnon(page))
-			page->mapping = NULL;
+		page->mapping = NULL;
 	}
 
 	unlock_page(newpage);
