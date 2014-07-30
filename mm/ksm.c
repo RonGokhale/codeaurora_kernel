@@ -1720,8 +1720,6 @@ static int ksmd_should_run(void)
 
 static int ksm_scan_thread(void *nothing)
 {
-	signed long to;
-
 	set_freezable();
 	set_user_nice(current, 5);
 
@@ -1735,7 +1733,9 @@ static int ksm_scan_thread(void *nothing)
 		try_to_freeze();
 
 		if (ksmd_should_run()) {
-			timeout = msecs_to_jiffies(ksm_thread_sleep_millisecs);
+			signed long to;
+
+			to = msecs_to_jiffies(ksm_thread_sleep_millisecs);
 			if (use_deferrable_timer)
 				schedule_timeout_deferrable_interruptible(to);
 			else
