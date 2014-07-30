@@ -419,7 +419,8 @@ static int pcf8563_probe(struct i2c_client *client,
 				pcf8563_driver.driver.name,
 				&pcf8563_rtc_ops, THIS_MODULE);
 
-	return PTR_ERR_OR_ZERO(pcf8563->rtc);
+	if (IS_ERR(pcf8563->rtc))
+		return PTR_ERR(pcf8563->rtc);
 
 	if (client->irq > 0) {
 		err = devm_request_threaded_irq(&client->dev, client->irq,
