@@ -2770,7 +2770,6 @@ static inline unsigned long fault_around_mask(void)
 	return ~(fault_around_bytes - 1) & PAGE_MASK;
 }
 
-
 #ifdef CONFIG_DEBUG_FS
 static int fault_around_bytes_get(void *data, u64 *val)
 {
@@ -2780,7 +2779,8 @@ static int fault_around_bytes_get(void *data, u64 *val)
 
 /*
  * fault_around_pages() and fault_around_mask() expects fault_around_bytes
- * rounded down to nearest page order. It's what do_fault_around() expects to see.
+ * rounded down to nearest page order. It's what do_fault_around() expects to
+ * see.
  */
 static int fault_around_bytes_set(void *data, u64 val)
 {
