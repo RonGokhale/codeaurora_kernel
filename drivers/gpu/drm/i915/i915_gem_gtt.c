@@ -2031,6 +2031,12 @@ static void gen6_gmch_remove(struct i915_address_space *vm)
 	teardown_scratch_page(vm->dev);
 }
 
+void i915_gem_chipset_flush(struct drm_device *dev)
+{
+	if (INTEL_INFO(dev)->gen < 6)
+		intel_gtt_chipset_flush();
+}
+
 static int i915_gmch_probe(struct drm_device *dev,
 			   size_t *gtt_total,
 			   size_t *stolen,

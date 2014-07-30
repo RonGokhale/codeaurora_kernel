@@ -2541,13 +2541,6 @@ int __must_check i915_gem_evict_something(struct drm_device *dev,
 int i915_gem_evict_vm(struct i915_address_space *vm, bool do_idle);
 int i915_gem_evict_everything(struct drm_device *dev);
 
-/* belongs in i915_gem_gtt.h */
-static inline void i915_gem_chipset_flush(struct drm_device *dev)
-{
-	if (INTEL_INFO(dev)->gen < 6)
-		intel_gtt_chipset_flush();
-}
-
 /* i915_gem_stolen.c */
 int i915_gem_init_stolen(struct drm_device *dev);
 int i915_gem_stolen_setup_compression(struct drm_device *dev, int size, int fb_cpp);

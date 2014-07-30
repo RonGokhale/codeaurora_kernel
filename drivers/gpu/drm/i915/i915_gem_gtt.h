@@ -294,4 +294,6 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev);
 int __must_check i915_gem_gtt_prepare_object(struct drm_i915_gem_object *obj);
 void i915_gem_gtt_finish_object(struct drm_i915_gem_object *obj);
 
+void i915_gem_chipset_flush(struct drm_device *dev);
+
 #endif
