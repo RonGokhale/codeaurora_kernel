@@ -1031,8 +1031,8 @@ EXPORT_SYMBOL(find_lock_entry);
  * @mapping: the address_space to search
  * @offset: the page index
  * @fgp_flags: PCG flags
- * @cache_gfp_mask: gfp mask to use if a page is to be allocated
- * @radix_gfp_mask: gfp mask to use for page cache LRU allocation
+ * @cache_gfp_mask: gfp mask to use for the page cache data page allocation
+ * @radix_gfp_mask: gfp mask to use for radix tree node allocation
  *
  * Looks up the page cache slot at @mapping & @offset.
  *
@@ -1042,8 +1042,10 @@ EXPORT_SYMBOL(find_lock_entry);
  * FGP_LOCK: Page is return locked
  * FGP_CREAT: If page is not present then a new page is allocated using
  *		@cache_gfp_mask and added to the page cache and the VM's LRU
- *		list. The page is returned locked and with an increased
- *		refcount. Otherwise, %NULL is returned.
+ *		list. If radix tree nodes are allocated during page cache
+ *		insertion then @radix_gfp_mask is used. The page is returned
+ * 		locked and with an increased refcount. Otherwise, %NULL is
+ * 		returned.
  *
  * If FGP_LOCK or FGP_CREAT are specified then the function may sleep even
  * if the GFP flags specified for FGP_CREAT are atomic.
