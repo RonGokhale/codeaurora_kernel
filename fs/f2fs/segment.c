@@ -239,6 +239,12 @@ int f2fs_issue_flush(struct f2fs_sb_info *sbi)
 	struct flush_cmd_control *fcc = SM_I(sbi)->cmd_control_info;
 	struct flush_cmd cmd;
 
+	trace_f2fs_issue_flush(sbi->sb, test_opt(sbi, NOBARRIER),
+					test_opt(sbi, FLUSH_MERGE));
+
+	if (test_opt(sbi, NOBARRIER))
+		return 0;
+
 	if (!test_opt(sbi, FLUSH_MERGE))
 		return blkdev_issue_flush(sbi->sb->s_bdev, GFP_KERNEL, NULL);
 
@@ -272,13 +278,13 @@ int create_flush_cmd_control(struct f2fs_sb_info *sbi)
 		return -ENOMEM;
 	spin_lock_init(&fcc->issue_lock);
 	init_waitqueue_head(&fcc->flush_wait_queue);
-	sbi->sm_info->cmd_control_info = fcc;
+	SM_I(sbi)->cmd_control_info = fcc;
 	fcc->f2fs_issue_flush = kthread_run(issue_flush_thread, sbi,
 				"f2fs_flush-%u:%u", MAJOR(dev), MINOR(dev));
 	if (IS_ERR(fcc->f2fs_issue_flush)) {
 		err = PTR_ERR(fcc->f2fs_issue_flush);
 		kfree(fcc);
-		sbi->sm_info->cmd_control_info = NULL;
+		SM_I(sbi)->cmd_control_info = NULL;
 		return err;
 	}
 
@@ -287,13 +293,12 @@ int create_flush_cmd_control(struct f2fs_sb_info *sbi)
 
 void destroy_flush_cmd_control(struct f2fs_sb_info *sbi)
 {
-	struct flush_cmd_control *fcc =
-				sbi->sm_info->cmd_control_info;
+	struct flush_cmd_control *fcc = SM_I(sbi)->cmd_control_info;
 
 	if (fcc && fcc->f2fs_issue_flush)
 		kthread_stop(fcc->f2fs_issue_flush);
 	kfree(fcc);
-	sbi->sm_info->cmd_control_info = NULL;
+	SM_I(sbi)->cmd_control_info = NULL;
 }
 
 static void __locate_dirty_segment(struct f2fs_sb_info *sbi, unsigned int segno,
@@ -377,11 +382,8 @@ static int f2fs_issue_discard(struct f2fs_sb_info *sbi,
 	return blkdev_issue_discard(sbi->sb->s_bdev, start, len, GFP_NOFS, 0);
 }
 
-void discard_next_dnode(struct f2fs_sb_info *sbi)
+void discard_next_dnode(struct f2fs_sb_info *sbi, block_t blkaddr)
 {
-	struct curseg_info *curseg = CURSEG_I(sbi, CURSEG_WARM_NODE);
-	block_t blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
-
 	if (f2fs_issue_discard(sbi, blkaddr, 1)) {
 		struct page *page = grab_meta_page(sbi, blkaddr);
 		/* zero-filled page */
@@ -1703,7 +1705,7 @@ static int build_curseg(struct f2fs_sb_info *sbi)
 	struct curseg_info *array;
 	int i;
 
-	array = kzalloc(sizeof(*array) * NR_CURSEG_TYPE, GFP_KERNEL);
+	array = kcalloc(NR_CURSEG_TYPE, sizeof(*array), GFP_KERNEL);
 	if (!array)
 		return -ENOMEM;
 
