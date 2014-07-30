@@ -344,10 +344,10 @@ static int remap_oldmem_pfn_checked(struct vm_area_struct *vma,
 				    unsigned long from, unsigned long pfn,
 				    unsigned long size, pgprot_t prot)
 {
-	size_t map_size;
+	unsigned long map_size;
 	unsigned long pos_start, pos_end, pos;
 	unsigned long zeropage_pfn = my_zero_pfn(0);
-	u64 len = 0;
+	size_t len = 0;
 
 	pos_start = pfn;
 	pos_end = pfn + (size >> PAGE_SHIFT);
@@ -381,7 +381,7 @@ static int remap_oldmem_pfn_checked(struct vm_area_struct *vma,
 		/* Remap the rest */
 		map_size = (pos - pos_start) << PAGE_SHIFT;
 		if (remap_oldmem_pfn_range(vma, from + len, pos_start,
-					   map_size, vma->vm_page_prot))
+					   map_size, prot))
 			goto fail;
 		len += map_size;
 	}
