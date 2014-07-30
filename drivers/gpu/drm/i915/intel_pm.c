@@ -1388,7 +1388,8 @@ static void valleyview_update_wm(struct drm_crtc *crtc)
 		plane_sr = cursor_sr = 0;
 	}
 
-	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
+	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, "
+		      "B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
 		      planeb_wm, cursorb_wm,
 		      plane_sr, cursor_sr);
@@ -1444,7 +1445,8 @@ static void g4x_update_wm(struct drm_crtc *crtc)
 		plane_sr = cursor_sr = 0;
 	}
 
-	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
+	DRM_DEBUG_KMS("Setting FIFO watermarks - A: plane=%d, cursor=%d, "
+		      "B: plane=%d, cursor=%d, SR: plane=%d, cursor=%d\n",
 		      planea_wm, cursora_wm,
 		      planeb_wm, cursorb_wm,
 		      plane_sr, cursor_sr);
@@ -2743,10 +2745,11 @@ static void ilk_update_wm(struct drm_crtc *crtc)
 	ilk_write_wm_values(dev_priv, &results);
 }
 
-static void ilk_update_sprite_wm(struct drm_plane *plane,
-				     struct drm_crtc *crtc,
-				     uint32_t sprite_width, int pixel_size,
-				     bool enabled, bool scaled)
+static void
+ilk_update_sprite_wm(struct drm_plane *plane,
+		     struct drm_crtc *crtc,
+		     uint32_t sprite_width, uint32_t sprite_height,
+		     int pixel_size, bool enabled, bool scaled)
 {
 	struct drm_device *dev = plane->dev;
 	struct intel_plane *intel_plane = to_intel_plane(plane);
@@ -2754,6 +2757,7 @@ static void ilk_update_sprite_wm(struct drm_plane *plane,
 	intel_plane->wm.enabled = enabled;
 	intel_plane->wm.scaled = scaled;
 	intel_plane->wm.horiz_pixels = sprite_width;
+	intel_plane->wm.vert_pixels = sprite_width;
 	intel_plane->wm.bytes_per_pixel = pixel_size;
 
 	/*
@@ -2888,13 +2892,16 @@ void intel_update_watermarks(struct drm_crtc *crtc)
 
 void intel_update_sprite_watermarks(struct drm_plane *plane,
 				    struct drm_crtc *crtc,
-				    uint32_t sprite_width, int pixel_size,
+				    uint32_t sprite_width,
+				    uint32_t sprite_height,
+				    int pixel_size,
 				    bool enabled, bool scaled)
 {
 	struct drm_i915_private *dev_priv = plane->dev->dev_private;
 
 	if (dev_priv->display.update_sprite_wm)
-		dev_priv->display.update_sprite_wm(plane, crtc, sprite_width,
+		dev_priv->display.update_sprite_wm(plane, crtc,
+						   sprite_width, sprite_height,
 						   pixel_size, enabled, scaled);
 }
 
@@ -3289,7 +3296,9 @@ void gen6_rps_idle(struct drm_i915_private *dev_priv)
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 	if (dev_priv->rps.enabled) {
-		if (IS_VALLEYVIEW(dev))
+		if (IS_CHERRYVIEW(dev))
+			valleyview_set_rps(dev_priv->dev, dev_priv->rps.min_freq_softlimit);
+		else if (IS_VALLEYVIEW(dev))
 			vlv_set_rps_idle(dev_priv);
 		else
 			gen6_set_rps(dev_priv->dev, dev_priv->rps.min_freq_softlimit);
@@ -3392,6 +3401,8 @@ static void cherryview_disable_rps(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
+
+	gen8_disable_rps_interrupts(dev);
 }
 
 static void valleyview_disable_rps(struct drm_device *dev)
@@ -3465,7 +3476,7 @@ static void gen8_enable_rps_interrupts(struct drm_device *dev)
 
 	spin_lock_irq(&dev_priv->irq_lock);
 	WARN_ON(dev_priv->rps.pm_iir);
-	bdw_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
+	gen8_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
 	I915_WRITE(GEN8_GT_IIR(2), dev_priv->pm_rps_events);
 	spin_unlock_irq(&dev_priv->irq_lock);
 }
@@ -3476,7 +3487,7 @@ static void gen6_enable_rps_interrupts(struct drm_device *dev)
 
 	spin_lock_irq(&dev_priv->irq_lock);
 	WARN_ON(dev_priv->rps.pm_iir);
-	snb_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
+	gen6_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
 	I915_WRITE(GEN6_PMIIR, dev_priv->pm_rps_events);
 	spin_unlock_irq(&dev_priv->irq_lock);
 }
@@ -3781,7 +3792,7 @@ void gen6_update_ring_freq(struct drm_device *dev)
 	mutex_unlock(&dev_priv->rps.hw_lock);
 }
 
-int cherryview_rps_max_freq(struct drm_i915_private *dev_priv)
+static int cherryview_rps_max_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rp0;
 
@@ -3801,7 +3812,17 @@ static int cherryview_rps_rpe_freq(struct drm_i915_private *dev_priv)
 	return rpe;
 }
 
-int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
+static int cherryview_rps_guar_freq(struct drm_i915_private *dev_priv)
+{
+	u32 val, rp1;
+
+	val = vlv_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS);
+	rp1 = (val >> PUNIT_GPU_STATUS_MAX_FREQ_SHIFT) & PUNIT_GPU_STATUS_MAX_FREQ_MASK;
+
+	return rp1;
+}
+
+static int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rpn;
 
@@ -3810,7 +3831,18 @@ int cherryview_rps_min_freq(struct drm_i915_private *dev_priv)
 	return rpn;
 }
 
-int valleyview_rps_max_freq(struct drm_i915_private *dev_priv)
+static int valleyview_rps_guar_freq(struct drm_i915_private *dev_priv)
+{
+	u32 val, rp1;
+
+	val = vlv_nc_read(dev_priv, IOSF_NC_FB_GFX_FREQ_FUSE);
+
+	rp1 = (val & FB_GFX_FGUARANTEED_FREQ_FUSE_MASK) >> FB_GFX_FGUARANTEED_FREQ_FUSE_SHIFT;
+
+	return rp1;
+}
+
+static int valleyview_rps_max_freq(struct drm_i915_private *dev_priv)
 {
 	u32 val, rp0;
 
@@ -3835,7 +3867,7 @@ static int valleyview_rps_rpe_freq(struct drm_i915_private *dev_priv)
 	return rpe;
 }
 
-int valleyview_rps_min_freq(struct drm_i915_private *dev_priv)
+static int valleyview_rps_min_freq(struct drm_i915_private *dev_priv)
 {
 	return vlv_punit_read(dev_priv, PUNIT_REG_GPU_LFM) & 0xff;
 }
@@ -3952,6 +3984,11 @@ static void valleyview_init_gt_powersave(struct drm_device *dev)
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
 			 dev_priv->rps.efficient_freq);
 
+	dev_priv->rps.rp1_freq = valleyview_rps_guar_freq(dev_priv);
+	DRM_DEBUG_DRIVER("RP1(Guar Freq) GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv, dev_priv->rps.rp1_freq),
+			 dev_priv->rps.rp1_freq);
+
 	dev_priv->rps.min_freq = valleyview_rps_min_freq(dev_priv);
 	DRM_DEBUG_DRIVER("min GPU freq: %d MHz (%u)\n",
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.min_freq),
@@ -3985,6 +4022,11 @@ static void cherryview_init_gt_powersave(struct drm_device *dev)
 	DRM_DEBUG_DRIVER("RPe GPU freq: %d MHz (%u)\n",
 			 vlv_gpu_freq(dev_priv, dev_priv->rps.efficient_freq),
 			 dev_priv->rps.efficient_freq);
+
+	dev_priv->rps.rp1_freq = cherryview_rps_guar_freq(dev_priv);
+	DRM_DEBUG_DRIVER("RP1(Guar) GPU freq: %d MHz (%u)\n",
+			 vlv_gpu_freq(dev_priv, dev_priv->rps.rp1_freq),
+			 dev_priv->rps.rp1_freq);
 
 	dev_priv->rps.min_freq = cherryview_rps_min_freq(dev_priv);
 	DRM_DEBUG_DRIVER("min GPU freq: %d MHz (%u)\n",
@@ -4092,6 +4134,8 @@ static void cherryview_enable_rps(struct drm_device *dev)
 			 dev_priv->rps.efficient_freq);
 
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.efficient_freq);
+
+	gen8_enable_rps_interrupts(dev);
 
 	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -4934,11 +4978,14 @@ void intel_suspend_gt_powersave(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* Interrupts should be disabled already to avoid re-arming. */
-	WARN_ON(dev->irq_enabled && !dev_priv->pm.irqs_disabled);
+	WARN_ON(intel_irqs_enabled(dev_priv));
 
 	flush_delayed_work(&dev_priv->rps.delayed_resume_work);
 
 	cancel_work_sync(&dev_priv->rps.work);
+
+	/* Force GPU to min freq during suspend */
+	gen6_rps_idle(dev_priv);
 }
 
 void intel_disable_gt_powersave(struct drm_device *dev)
@@ -4946,7 +4993,7 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* Interrupts should be disabled already to avoid re-arming. */
-	WARN_ON(dev->irq_enabled && !dev_priv->pm.irqs_disabled);
+	WARN_ON(intel_irqs_enabled(dev_priv));
 
 	if (IS_IRONLAKE_M(dev)) {
 		ironlake_disable_drps(dev);
@@ -5684,6 +5731,35 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 static void cherryview_init_clock_gating(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+
+	mutex_lock(&dev_priv->rps.hw_lock);
+	val = vlv_punit_read(dev_priv, CCK_FUSE_REG);
+	mutex_unlock(&dev_priv->rps.hw_lock);
+	switch ((val >> 2) & 0x7) {
+	case 0:
+	case 1:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_200;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 2:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_267;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 3:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_333;
+			dev_priv->mem_freq = 2000;
+			break;
+	case 4:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_320;
+			dev_priv->mem_freq = 1600;
+			break;
+	case 5:
+			dev_priv->rps.cz_freq = CHV_CZ_CLOCK_FREQ_MODE_400;
+			dev_priv->mem_freq = 1600;
+			break;
+	}
+	DRM_DEBUG_DRIVER("DDR speed: %d MHz", dev_priv->mem_freq);
 
 	I915_WRITE(DSPCLK_GATE_D, VRHUNIT_CLOCK_GATE_DISABLE);
 
@@ -5924,7 +6000,6 @@ bool intel_display_power_enabled(struct drm_i915_private *dev_priv,
 static void hsw_power_well_post_enable(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
-	unsigned long irqflags;
 
 	/*
 	 * After we re-enable the power well, if we touch VGA register 0x3d5
@@ -5940,21 +6015,8 @@ static void hsw_power_well_post_enable(struct drm_i915_private *dev_priv)
 	outb(inb(VGA_MSR_READ), VGA_MSR_WRITE);
 	vga_put(dev->pdev, VGA_RSRC_LEGACY_IO);
 
-	if (IS_BROADWELL(dev)) {
-		spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
-		I915_WRITE(GEN8_DE_PIPE_IMR(PIPE_B),
-			   dev_priv->de_irq_mask[PIPE_B]);
-		I915_WRITE(GEN8_DE_PIPE_IER(PIPE_B),
-			   ~dev_priv->de_irq_mask[PIPE_B] |
-			   GEN8_PIPE_VBLANK);
-		I915_WRITE(GEN8_DE_PIPE_IMR(PIPE_C),
-			   dev_priv->de_irq_mask[PIPE_C]);
-		I915_WRITE(GEN8_DE_PIPE_IER(PIPE_C),
-			   ~dev_priv->de_irq_mask[PIPE_C] |
-			   GEN8_PIPE_VBLANK);
-		POSTING_READ(GEN8_DE_PIPE_IER(PIPE_C));
-		spin_unlock_irqrestore(&dev_priv->irq_lock, irqflags);
-	}
+	if (IS_BROADWELL(dev))
+		gen8_irq_power_well_post_enable(dev_priv);
 }
 
 static void hsw_set_power_well(struct drm_i915_private *dev_priv,
@@ -6197,6 +6259,153 @@ static void vlv_dpio_cmn_power_well_disable(struct drm_i915_private *dev_priv,
 	vlv_set_power_well(dev_priv, power_well, false);
 }
 
+static void chv_dpio_cmn_power_well_enable(struct drm_i915_private *dev_priv,
+					   struct i915_power_well *power_well)
+{
+	enum dpio_phy phy;
+
+	WARN_ON_ONCE(power_well->data != PUNIT_POWER_WELL_DPIO_CMN_BC &&
+		     power_well->data != PUNIT_POWER_WELL_DPIO_CMN_D);
+
+	/*
+	 * Enable the CRI clock source so we can get at the
+	 * display and the reference clock for VGA
+	 * hotplug / manual detection.
+	 */
+	if (power_well->data == PUNIT_POWER_WELL_DPIO_CMN_BC) {
+		phy = DPIO_PHY0;
+		I915_WRITE(DPLL(PIPE_B), I915_READ(DPLL(PIPE_B)) |
+			   DPLL_REFA_CLK_ENABLE_VLV);
+		I915_WRITE(DPLL(PIPE_B), I915_READ(DPLL(PIPE_B)) |
+			   DPLL_REFA_CLK_ENABLE_VLV | DPLL_INTEGRATED_CRI_CLK_VLV);
+	} else {
+		phy = DPIO_PHY1;
+		I915_WRITE(DPLL(PIPE_C), I915_READ(DPLL(PIPE_C)) |
+			   DPLL_REFA_CLK_ENABLE_VLV | DPLL_INTEGRATED_CRI_CLK_VLV);
+	}
+	udelay(1); /* >10ns for cmnreset, >0ns for sidereset */
+	vlv_set_power_well(dev_priv, power_well, true);
+
+	/* Poll for phypwrgood signal */
+	if (wait_for(I915_READ(DISPLAY_PHY_STATUS) & PHY_POWERGOOD(phy), 1))
+		DRM_ERROR("Display PHY %d is not power up\n", phy);
+
+	I915_WRITE(DISPLAY_PHY_CONTROL,
+		   PHY_COM_LANE_RESET_DEASSERT(phy, I915_READ(DISPLAY_PHY_CONTROL)));
+}
+
+static void chv_dpio_cmn_power_well_disable(struct drm_i915_private *dev_priv,
+					    struct i915_power_well *power_well)
+{
+	enum dpio_phy phy;
+
+	WARN_ON_ONCE(power_well->data != PUNIT_POWER_WELL_DPIO_CMN_BC &&
+		     power_well->data != PUNIT_POWER_WELL_DPIO_CMN_D);
+
+	if (power_well->data == PUNIT_POWER_WELL_DPIO_CMN_BC) {
+		phy = DPIO_PHY0;
+		assert_pll_disabled(dev_priv, PIPE_A);
+		assert_pll_disabled(dev_priv, PIPE_B);
+	} else {
+		phy = DPIO_PHY1;
+		assert_pll_disabled(dev_priv, PIPE_C);
+	}
+
+	I915_WRITE(DISPLAY_PHY_CONTROL,
+		   PHY_COM_LANE_RESET_ASSERT(phy, I915_READ(DISPLAY_PHY_CONTROL)));
+
+	vlv_set_power_well(dev_priv, power_well, false);
+}
+
+static bool chv_pipe_power_well_enabled(struct drm_i915_private *dev_priv,
+					struct i915_power_well *power_well)
+{
+	enum pipe pipe = power_well->data;
+	bool enabled;
+	u32 state, ctrl;
+
+	mutex_lock(&dev_priv->rps.hw_lock);
+
+	state = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ) & DP_SSS_MASK(pipe);
+	/*
+	 * We only ever set the power-on and power-gate states, anything
+	 * else is unexpected.
+	 */
+	WARN_ON(state != DP_SSS_PWR_ON(pipe) && state != DP_SSS_PWR_GATE(pipe));
+	enabled = state == DP_SSS_PWR_ON(pipe);
+
+	/*
+	 * A transient state at this point would mean some unexpected party
+	 * is poking at the power controls too.
+	 */
+	ctrl = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ) & DP_SSC_MASK(pipe);
+	WARN_ON(ctrl << 16 != state);
+
+	mutex_unlock(&dev_priv->rps.hw_lock);
+
+	return enabled;
+}
+
+static void chv_set_pipe_power_well(struct drm_i915_private *dev_priv,
+				    struct i915_power_well *power_well,
+				    bool enable)
+{
+	enum pipe pipe = power_well->data;
+	u32 state;
+	u32 ctrl;
+
+	state = enable ? DP_SSS_PWR_ON(pipe) : DP_SSS_PWR_GATE(pipe);
+
+	mutex_lock(&dev_priv->rps.hw_lock);
+
+#define COND \
+	((vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ) & DP_SSS_MASK(pipe)) == state)
+
+	if (COND)
+		goto out;
+
+	ctrl = vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ);
+	ctrl &= ~DP_SSC_MASK(pipe);
+	ctrl |= enable ? DP_SSC_PWR_ON(pipe) : DP_SSC_PWR_GATE(pipe);
+	vlv_punit_write(dev_priv, PUNIT_REG_DSPFREQ, ctrl);
+
+	if (wait_for(COND, 100))
+		DRM_ERROR("timout setting power well state %08x (%08x)\n",
+			  state,
+			  vlv_punit_read(dev_priv, PUNIT_REG_DSPFREQ));
+
+#undef COND
+
+out:
+	mutex_unlock(&dev_priv->rps.hw_lock);
+}
+
+static void chv_pipe_power_well_sync_hw(struct drm_i915_private *dev_priv,
+					struct i915_power_well *power_well)
+{
+	chv_set_pipe_power_well(dev_priv, power_well, power_well->count > 0);
+}
+
+static void chv_pipe_power_well_enable(struct drm_i915_private *dev_priv,
+				       struct i915_power_well *power_well)
+{
+	WARN_ON_ONCE(power_well->data != PIPE_A &&
+		     power_well->data != PIPE_B &&
+		     power_well->data != PIPE_C);
+
+	chv_set_pipe_power_well(dev_priv, power_well, true);
+}
+
+static void chv_pipe_power_well_disable(struct drm_i915_private *dev_priv,
+					struct i915_power_well *power_well)
+{
+	WARN_ON_ONCE(power_well->data != PIPE_A &&
+		     power_well->data != PIPE_B &&
+		     power_well->data != PIPE_C);
+
+	chv_set_pipe_power_well(dev_priv, power_well, false);
+}
+
 static void check_power_well_state(struct drm_i915_private *dev_priv,
 				   struct i915_power_well *power_well)
 {
@@ -6388,11 +6597,58 @@ EXPORT_SYMBOL_GPL(i915_get_cdclk_freq);
 	BIT(POWER_DOMAIN_PORT_DDI_C_4_LANES) |	\
 	BIT(POWER_DOMAIN_INIT))
 
+#define CHV_PIPE_A_POWER_DOMAINS (	\
+	BIT(POWER_DOMAIN_PIPE_A) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_PIPE_B_POWER_DOMAINS (	\
+	BIT(POWER_DOMAIN_PIPE_B) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_PIPE_C_POWER_DOMAINS (	\
+	BIT(POWER_DOMAIN_PIPE_C) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_DPIO_CMN_BC_POWER_DOMAINS (		\
+	BIT(POWER_DOMAIN_PORT_DDI_B_2_LANES) |	\
+	BIT(POWER_DOMAIN_PORT_DDI_B_4_LANES) |	\
+	BIT(POWER_DOMAIN_PORT_DDI_C_2_LANES) |	\
+	BIT(POWER_DOMAIN_PORT_DDI_C_4_LANES) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_DPIO_CMN_D_POWER_DOMAINS (		\
+	BIT(POWER_DOMAIN_PORT_DDI_D_2_LANES) |	\
+	BIT(POWER_DOMAIN_PORT_DDI_D_4_LANES) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_DPIO_TX_D_LANES_01_POWER_DOMAINS (	\
+	BIT(POWER_DOMAIN_PORT_DDI_D_2_LANES) |	\
+	BIT(POWER_DOMAIN_PORT_DDI_D_4_LANES) |	\
+	BIT(POWER_DOMAIN_INIT))
+
+#define CHV_DPIO_TX_D_LANES_23_POWER_DOMAINS (	\
+	BIT(POWER_DOMAIN_PORT_DDI_D_4_LANES) |	\
+	BIT(POWER_DOMAIN_INIT))
+
 static const struct i915_power_well_ops i9xx_always_on_power_well_ops = {
 	.sync_hw = i9xx_always_on_power_well_noop,
 	.enable = i9xx_always_on_power_well_noop,
 	.disable = i9xx_always_on_power_well_noop,
 	.is_enabled = i9xx_always_on_power_well_enabled,
+};
+
+static const struct i915_power_well_ops chv_pipe_power_well_ops = {
+	.sync_hw = chv_pipe_power_well_sync_hw,
+	.enable = chv_pipe_power_well_enable,
+	.disable = chv_pipe_power_well_disable,
+	.is_enabled = chv_pipe_power_well_enabled,
+};
+
+static const struct i915_power_well_ops chv_dpio_cmn_power_well_ops = {
+	.sync_hw = vlv_power_well_sync_hw,
+	.enable = chv_dpio_cmn_power_well_enable,
+	.disable = chv_dpio_cmn_power_well_disable,
+	.is_enabled = vlv_power_well_enabled,
 };
 
 static struct i915_power_well i9xx_always_on_power_well[] = {
@@ -6402,6 +6658,88 @@ static struct i915_power_well i9xx_always_on_power_well[] = {
 		.domains = POWER_DOMAIN_MASK,
 		.ops = &i9xx_always_on_power_well_ops,
 	},
+#if 0
+	{
+		.name = "display",
+		.domains = VLV_DISPLAY_POWER_DOMAINS,
+		.data = PUNIT_POWER_WELL_DISP2D,
+		.ops = &vlv_display_power_well_ops,
+	},
+	{
+		.name = "pipe-a",
+		.domains = CHV_PIPE_A_POWER_DOMAINS,
+		.data = PIPE_A,
+		.ops = &chv_pipe_power_well_ops,
+	},
+	{
+		.name = "pipe-b",
+		.domains = CHV_PIPE_B_POWER_DOMAINS,
+		.data = PIPE_B,
+		.ops = &chv_pipe_power_well_ops,
+	},
+	{
+		.name = "pipe-c",
+		.domains = CHV_PIPE_C_POWER_DOMAINS,
+		.data = PIPE_C,
+		.ops = &chv_pipe_power_well_ops,
+	},
+#endif
+	{
+		.name = "dpio-common-bc",
+		.domains = CHV_DPIO_CMN_BC_POWER_DOMAINS,
+		.data = PUNIT_POWER_WELL_DPIO_CMN_BC,
+		.ops = &chv_dpio_cmn_power_well_ops,
+	},
+	{
+		.name = "dpio-common-d",
+		.domains = CHV_DPIO_CMN_D_POWER_DOMAINS,
+		.data = PUNIT_POWER_WELL_DPIO_CMN_D,
+		.ops = &chv_dpio_cmn_power_well_ops,
+	},
+#if 0
+	{
+		.name = "dpio-tx-b-01",
+		.domains = VLV_DPIO_TX_B_LANES_01_POWER_DOMAINS |
+			   VLV_DPIO_TX_B_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_B_LANES_01,
+	},
+	{
+		.name = "dpio-tx-b-23",
+		.domains = VLV_DPIO_TX_B_LANES_01_POWER_DOMAINS |
+			   VLV_DPIO_TX_B_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_B_LANES_23,
+	},
+	{
+		.name = "dpio-tx-c-01",
+		.domains = VLV_DPIO_TX_C_LANES_01_POWER_DOMAINS |
+			   VLV_DPIO_TX_C_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_C_LANES_01,
+	},
+	{
+		.name = "dpio-tx-c-23",
+		.domains = VLV_DPIO_TX_C_LANES_01_POWER_DOMAINS |
+			   VLV_DPIO_TX_C_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_C_LANES_23,
+	},
+	{
+		.name = "dpio-tx-d-01",
+		.domains = CHV_DPIO_TX_D_LANES_01_POWER_DOMAINS |
+			   CHV_DPIO_TX_D_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_D_LANES_01,
+	},
+	{
+		.name = "dpio-tx-d-23",
+		.domains = CHV_DPIO_TX_D_LANES_01_POWER_DOMAINS |
+			   CHV_DPIO_TX_D_LANES_23_POWER_DOMAINS,
+		.ops = &vlv_dpio_power_well_ops,
+		.data = PUNIT_POWER_WELL_DPIO_TX_D_LANES_23,
+	},
+#endif
 };
 
 static const struct i915_power_well_ops hsw_power_well_ops = {
@@ -6881,7 +7219,7 @@ int sandybridge_pcode_write(struct drm_i915_private *dev_priv, u8 mbox, u32 val)
 	return 0;
 }
 
-int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+static int byt_gpu_freq(struct drm_i915_private *dev_priv, int val)
 {
 	int div;
 
@@ -6903,7 +7241,7 @@ int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
 	return DIV_ROUND_CLOSEST(dev_priv->mem_freq * (val + 6 - 0xbd), 4 * div);
 }
 
-int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+static int byt_freq_opcode(struct drm_i915_private *dev_priv, int val)
 {
 	int mul;
 
@@ -6925,6 +7263,80 @@ int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
 	return DIV_ROUND_CLOSEST(4 * mul * val, dev_priv->mem_freq) + 0xbd - 6;
 }
 
+static int chv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+{
+	int div, freq;
+
+	switch (dev_priv->rps.cz_freq) {
+	case 200:
+		div = 5;
+		break;
+	case 267:
+		div = 6;
+		break;
+	case 320:
+	case 333:
+	case 400:
+		div = 8;
+		break;
+	default:
+		return -1;
+	}
+
+	freq = (DIV_ROUND_CLOSEST((dev_priv->rps.cz_freq * val), 2 * div) / 2);
+
+	return freq;
+}
+
+static int chv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+{
+	int mul, opcode;
+
+	switch (dev_priv->rps.cz_freq) {
+	case 200:
+		mul = 5;
+		break;
+	case 267:
+		mul = 6;
+		break;
+	case 320:
+	case 333:
+	case 400:
+		mul = 8;
+		break;
+	default:
+		return -1;
+	}
+
+	opcode = (DIV_ROUND_CLOSEST((val * 2 * mul), dev_priv->rps.cz_freq) * 2);
+
+	return opcode;
+}
+
+int vlv_gpu_freq(struct drm_i915_private *dev_priv, int val)
+{
+	int ret = -1;
+
+	if (IS_CHERRYVIEW(dev_priv->dev))
+		ret = chv_gpu_freq(dev_priv, val);
+	else if (IS_VALLEYVIEW(dev_priv->dev))
+		ret = byt_gpu_freq(dev_priv, val);
+
+	return ret;
+}
+
+int vlv_freq_opcode(struct drm_i915_private *dev_priv, int val)
+{
+	int ret = -1;
+
+	if (IS_CHERRYVIEW(dev_priv->dev))
+		ret = chv_freq_opcode(dev_priv, val);
+	else if (IS_VALLEYVIEW(dev_priv->dev))
+		ret = byt_freq_opcode(dev_priv, val);
+
+	return ret;
+}
+
 void intel_pm_setup(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -6935,5 +7347,5 @@ void intel_pm_setup(struct drm_device *dev)
 			  intel_gen6_powersave_work);
 
 	dev_priv->pm.suspended = false;
-	dev_priv->pm.irqs_disabled = false;
+	dev_priv->pm._irqs_disabled = false;
 }
