@@ -2202,10 +2202,11 @@ static ssize_t deferrable_timer_store(struct kobject *kobj,
 	int err;
 
 	err = kstrtoul(buf, 10, &enable);
-
-	if (enable == 0 || enable == 1)
-		use_deferrable_timer = enable;
-
+	if (err < 0)
+		return err;
+	if (enable >= 1)
+		return -EINVAL;
+	use_deferrable_timer = enable;
 	return count;
 }
 KSM_ATTR(deferrable_timer);
