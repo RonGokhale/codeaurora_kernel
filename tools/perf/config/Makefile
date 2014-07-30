@@ -48,6 +48,10 @@ ifneq ($(ARCH),$(filter $(ARCH),x86 arm))
   NO_LIBDW_DWARF_UNWIND := 1
 endif
 
+ifeq ($(ARCH),powerpc)
+  CFLAGS += -DHAVE_SKIP_CALLCHAIN_IDX
+endif
+
 ifeq ($(LIBUNWIND_LIBS),)
   NO_LIBUNWIND := 1
 else
@@ -588,6 +592,10 @@ ifndef NO_LIBNUMA
     CFLAGS += -DHAVE_LIBNUMA_SUPPORT
     EXTLIBS += -lnuma
   endif
+endif
+
+ifdef HAVE_KVM_STAT_SUPPORT
+    CFLAGS += -DHAVE_KVM_STAT_SUPPORT
 endif
 
 # Among the variables below, these:

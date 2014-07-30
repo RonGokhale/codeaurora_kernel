@@ -85,21 +85,13 @@ static inline bool apic_from_smp_config(void)
 #include <asm/paravirt.h>
 #endif
 
-#ifdef CONFIG_X86_64
-extern int is_vsmp_box(void);
-#else
-static inline int is_vsmp_box(void)
-{
-	return 0;
-}
-#endif
 extern int setup_profiling_timer(unsigned int);
 
 static inline void native_apic_mem_write(u32 reg, u32 v)
 {
 	volatile u32 *addr = (volatile u32 *)(APIC_BASE + reg);
 
-	alternative_io("movl %0, %1", "xchgl %0, %1", X86_FEATURE_11AP,
+	alternative_io("movl %0, %1", "xchgl %0, %1", X86_BUG_11AP,
 		       ASM_OUTPUT2("=r" (v), "=m" (*addr)),
 		       ASM_OUTPUT2("0" (v), "m" (*addr)));
 }
@@ -502,8 +494,6 @@ static inline unsigned default_get_apic_id(unsigned long x)
 #define DEFAULT_TRAMPOLINE_PHYS_HIGH		0x469
 
 #ifdef CONFIG_X86_64
-extern int default_acpi_madt_oem_check(char *, char *);
-
 extern void apic_send_IPI_self(int vector);
 
 DECLARE_PER_CPU(int, x2apic_extra_bits);
@@ -551,6 +541,8 @@ static inline int default_apic_id_valid(int apicid)
 {
 	return (apicid < 255);
 }
+
+extern int default_acpi_madt_oem_check(char *, char *);
 
 extern void default_setup_apic_routing(void);
 
