@@ -30,6 +30,7 @@
 #include "wl_cfg80211.h"
 #include "fwil.h"
 #include "fwsignal.h"
+#include "feature.h"
 #include "proto.h"
 
 MODULE_AUTHOR("Broadcom Corporation");
@@ -808,7 +809,8 @@ struct brcmf_if *brcmf_add_if(struct brcmf_pub *drvr, s32 bssidx, s32 ifidx,
 	} else {
 		brcmf_dbg(INFO, "allocate netdev interface\n");
 		/* Allocate netdev, including space for private structure */
-		ndev = alloc_netdev(sizeof(*ifp), name, ether_setup);
+		ndev = alloc_netdev(sizeof(*ifp), name, NET_NAME_UNKNOWN,
+				    ether_setup);
 		if (!ndev)
 			return ERR_PTR(-ENOMEM);
 
@@ -935,6 +937,8 @@ int brcmf_bus_start(struct device *dev)
 	ret = brcmf_c_preinit_dcmds(ifp);
 	if (ret < 0)
 		goto fail;
+
+	brcmf_feat_attach(drvr);
 
 	ret = brcmf_fws_init(drvr);
 	if (ret < 0)
@@ -1071,16 +1075,6 @@ int brcmf_netdev_wait_pend8021x(struct net_device *ndev)
 	WARN_ON(!err);
 
 	return !err;
-}
-
-/*
- * return chip id and rev of the device encoded in u32.
- */
-u32 brcmf_get_chip_info(struct brcmf_if *ifp)
-{
-	struct brcmf_bus *bus = ifp->drvr->bus_if;
-
-	return bus->chip << 4 | bus->chiprev;
 }
 
 static void brcmf_driver_register(struct work_struct *work)
