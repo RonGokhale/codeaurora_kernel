@@ -71,6 +71,12 @@ static void kvmppc_core_vcpu_load_pr(struct kvm_vcpu *vcpu, int cpu)
 	svcpu->in_use = 0;
 	svcpu_put(svcpu);
 #endif
+
+	/* Disable AIL if supported */
+	if (cpu_has_feature(CPU_FTR_HVMODE) &&
+	    cpu_has_feature(CPU_FTR_ARCH_207S))
+		mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) & ~LPCR_AIL);
+
 	vcpu->cpu = smp_processor_id();
 #ifdef CONFIG_PPC_BOOK3S_32
 	current->thread.kvm_shadow_vcpu = vcpu->arch.shadow_vcpu;
@@ -91,6 +97,12 @@ static void kvmppc_core_vcpu_put_pr(struct kvm_vcpu *vcpu)
 
 	kvmppc_giveup_ext(vcpu, MSR_FP | MSR_VEC | MSR_VSX);
 	kvmppc_giveup_fac(vcpu, FSCR_TAR_LG);
+
+	/* Enable AIL if supported */
+	if (cpu_has_feature(CPU_FTR_HVMODE) &&
+	    cpu_has_feature(CPU_FTR_ARCH_207S))
+		mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) | LPCR_AIL_3);
+
 	vcpu->cpu = -1;
 }
 
@@ -120,6 +132,14 @@ void kvmppc_copy_to_svcpu(struct kvmppc_book3s_shadow_vcpu *svcpu,
 #ifdef CONFIG_PPC_BOOK3S_64
 	svcpu->shadow_fscr = vcpu->arch.shadow_fscr;
 #endif
+	/*
+	 * Now also save the current time base value. We use this
+	 * to find the guest purr and spurr value.
+	 */
+	vcpu->arch.entry_tb = get_tb();
+	vcpu->arch.entry_vtb = get_vtb();
+	if (cpu_has_feature(CPU_FTR_ARCH_207S))
+		vcpu->arch.entry_ic = mfspr(SPRN_IC);
 	svcpu->in_use = true;
 }
 
@@ -166,6 +186,14 @@ void kvmppc_copy_from_svcpu(struct kvm_vcpu *vcpu,
 #ifdef CONFIG_PPC_BOOK3S_64
 	vcpu->arch.shadow_fscr = svcpu->shadow_fscr;
 #endif
+	/*
+	 * Update purr and spurr using time base on exit.
+	 */
+	vcpu->arch.purr += get_tb() - vcpu->arch.entry_tb;
+	vcpu->arch.spurr += get_tb() - vcpu->arch.entry_tb;
+	vcpu->arch.vtb += get_vtb() - vcpu->arch.entry_vtb;
+	if (cpu_has_feature(CPU_FTR_ARCH_207S))
+		vcpu->arch.ic += mfspr(SPRN_IC) - vcpu->arch.entry_ic;
 	svcpu->in_use = false;
 
 out:
@@ -960,6 +988,7 @@ int kvmppc_handle_exit_pr(struct kvm_run *run, struct kvm_vcpu *vcpu,
 	case BOOK3S_INTERRUPT_DECREMENTER:
 	case BOOK3S_INTERRUPT_HV_DECREMENTER:
 	case BOOK3S_INTERRUPT_DOORBELL:
+	case BOOK3S_INTERRUPT_H_DOORBELL:
 		vcpu->stat.dec_exits++;
 		r = RESUME_GUEST;
 		break;
@@ -1568,6 +1597,11 @@ static int kvmppc_core_init_vm_pr(struct kvm *kvm)
 {
 	mutex_init(&kvm->arch.hpt_mutex);
 
+#ifdef CONFIG_PPC_BOOK3S_64
+	/* Start out with the default set of hcalls enabled */
+	kvmppc_pr_init_default_hcalls(kvm);
+#endif
+
 	if (firmware_has_feature(FW_FEATURE_SET_MODE)) {
 		spin_lock(&kvm_global_user_count_lock);
 		if (++kvm_global_user_count == 1)
@@ -1636,6 +1670,9 @@ static struct kvmppc_ops kvm_ops_pr = {
 	.emulate_mfspr = kvmppc_core_emulate_mfspr_pr,
 	.fast_vcpu_kick = kvm_vcpu_kick,
 	.arch_vm_ioctl  = kvm_arch_vm_ioctl_pr,
+#ifdef CONFIG_PPC_BOOK3S_64
+	.hcall_implemented = kvmppc_hcall_impl_pr,
+#endif
 };
 
 
