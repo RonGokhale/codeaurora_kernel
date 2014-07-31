@@ -64,7 +64,8 @@ static int sanitize_enable_ppgtt(struct drm_device *dev, int enable_ppgtt)
 #endif
 
 	/* Early VLV doesn't have this */
-	if (IS_VALLEYVIEW(dev) && dev->pdev->revision < 0xb) {
+	if (IS_VALLEYVIEW(dev) && !IS_CHERRYVIEW(dev) &&
+	    dev->pdev->revision < 0xb) {
 		DRM_DEBUG_DRIVER("disabling PPGTT on pre-B3 step VLV\n");
 		return 0;
 	}
@@ -1190,7 +1191,7 @@ static int gen6_ppgtt_init(struct i915_hw_ppgtt *ppgtt)
 	return 0;
 }
 
-int i915_gem_init_ppgtt(struct drm_device *dev, struct i915_hw_ppgtt *ppgtt)
+int i915_ppgtt_init(struct drm_device *dev, struct i915_hw_ppgtt *ppgtt)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret = 0;
@@ -1219,6 +1220,19 @@ int i915_gem_init_ppgtt(struct drm_device *dev, struct i915_hw_ppgtt *ppgtt)
 	}
 
 	return ret;
+}
+
+void  i915_ppgtt_release(struct kref *kref)
+{
+	struct i915_hw_ppgtt *ppgtt =
+		container_of(kref, struct i915_hw_ppgtt, ref);
+
+	/* vmas should already be unbound */
+	WARN_ON(!list_empty(&ppgtt->base.active_list));
+	WARN_ON(!list_empty(&ppgtt->base.inactive_list));
+
+	ppgtt->base.cleanup(&ppgtt->base);
+	kfree(ppgtt);
 }
 
 static void
@@ -1414,7 +1428,7 @@ static void gen8_ggtt_insert_entries(struct i915_address_space *vm,
 		(gen8_gtt_pte_t __iomem *)dev_priv->gtt.gsm + first_entry;
 	int i = 0;
 	struct sg_page_iter sg_iter;
-	dma_addr_t addr = 0;
+	dma_addr_t addr = 0; /* shut up gcc */
 
 	for_each_sg_page(st->sgl, &sg_iter, st->nents, 0) {
 		addr = sg_dma_address(sg_iter.sg) +
@@ -1460,7 +1474,7 @@ static void gen6_ggtt_insert_entries(struct i915_address_space *vm,
 		(gen6_gtt_pte_t __iomem *)dev_priv->gtt.gsm + first_entry;
 	int i = 0;
 	struct sg_page_iter sg_iter;
-	dma_addr_t addr;
+	dma_addr_t addr = 0;
 
 	for_each_sg_page(st->sgl, &sg_iter, st->nents, 0) {
 		addr = sg_page_iter_dma_address(&sg_iter);
@@ -1474,9 +1488,10 @@ static void gen6_ggtt_insert_entries(struct i915_address_space *vm,
 	 * of NUMA access patterns. Therefore, even with the way we assume
 	 * hardware should work, we must keep this posting read for paranoia.
 	 */
-	if (i != 0)
-		WARN_ON(readl(&gtt_entries[i-1]) !=
-			vm->pte_encode(addr, level, true, flags));
+	if (i != 0) {
+		unsigned long gtt = readl(&gtt_entries[i-1]);
+		WARN_ON(gtt != vm->pte_encode(addr, level, true, flags));
+	}
 
 	/* This next bit makes the above posting read even more important. We
 	 * want to flush the TLBs only after we're certain all the PTE updates
@@ -2016,6 +2031,12 @@ static void gen6_gmch_remove(struct i915_address_space *vm)
 	teardown_scratch_page(vm->dev);
 }
 
+void i915_gem_chipset_flush(struct drm_device *dev)
+{
+	if (INTEL_INFO(dev)->gen < 6)
+		intel_gtt_chipset_flush();
+}
+
 static int i915_gmch_probe(struct drm_device *dev,
 			   size_t *gtt_total,
 			   size_t *stolen,
@@ -2161,6 +2182,8 @@ i915_gem_obj_lookup_or_create_vma(struct drm_i915_gem_object *obj,
 	vma = i915_gem_obj_to_vma(obj, vm);
 	if (!vma)
 		vma = __i915_gem_vma_create(obj, vm);
+
+	i915_ppgtt_get(vm_to_ppgtt(vm));
 
 	return vma;
 }

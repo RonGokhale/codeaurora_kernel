@@ -96,50 +96,6 @@
 #define GEN6_CONTEXT_ALIGN (64<<10)
 #define GEN7_CONTEXT_ALIGN 4096
 
-static void do_ppgtt_cleanup(struct i915_hw_ppgtt *ppgtt)
-{
-	struct drm_device *dev = ppgtt->base.dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct i915_address_space *vm = &ppgtt->base;
-
-	if (ppgtt == dev_priv->mm.aliasing_ppgtt ||
-	    (list_empty(&vm->active_list) && list_empty(&vm->inactive_list))) {
-		ppgtt->base.cleanup(&ppgtt->base);
-		return;
-	}
-
-	/*
-	 * Make sure vmas are unbound before we take down the drm_mm
-	 *
-	 * FIXME: Proper refcounting should take care of this, this shouldn't be
-	 * needed at all.
-	 */
-	if (!list_empty(&vm->active_list)) {
-		struct i915_vma *vma;
-
-		list_for_each_entry(vma, &vm->active_list, mm_list)
-			if (WARN_ON(list_empty(&vma->vma_link) ||
-				    list_is_singular(&vma->vma_link)))
-				break;
-
-		i915_gem_evict_vm(&ppgtt->base, true);
-	} else {
-		i915_gem_retire_requests(dev);
-		i915_gem_evict_vm(&ppgtt->base, false);
-	}
-
-	ppgtt->base.cleanup(&ppgtt->base);
-}
-
-static void ppgtt_release(struct kref *kref)
-{
-	struct i915_hw_ppgtt *ppgtt =
-		container_of(kref, struct i915_hw_ppgtt, ref);
-
-	do_ppgtt_cleanup(ppgtt);
-	kfree(ppgtt);
-}
-
 static size_t get_context_alignment(struct drm_device *dev)
 {
 	if (IS_GEN6(dev))
@@ -186,14 +142,11 @@ void i915_gem_context_free(struct kref *ctx_ref)
 		/* We refcount even the aliasing PPGTT to keep the code symmetric */
 		if (USES_PPGTT(ctx->legacy_hw_ctx.rcs_state->base.dev))
 			ppgtt = ctx_to_ppgtt(ctx);
-
-		/* XXX: Free up the object before tearing down the address space, in
-		 * case we're bound in the PPGTT */
-		drm_gem_object_unreference(&ctx->legacy_hw_ctx.rcs_state->base);
 	}
 
-	if (ppgtt)
-		kref_put(&ppgtt->ref, ppgtt_release);
+	i915_ppgtt_put(ppgtt);
+	if (ctx->legacy_hw_ctx.rcs_state)
+		drm_gem_object_unreference(&ctx->legacy_hw_ctx.rcs_state->base);
 	list_del(&ctx->link);
 	kfree(ctx);
 }
@@ -238,7 +191,7 @@ create_vm_for_ctx(struct drm_device *dev, struct intel_context *ctx)
 	if (!ppgtt)
 		return ERR_PTR(-ENOMEM);
 
-	ret = i915_gem_init_ppgtt(dev, ppgtt);
+	ret = i915_ppgtt_init(dev, ppgtt);
 	if (ret) {
 		kfree(ppgtt);
 		return ERR_PTR(ret);
@@ -250,7 +203,7 @@ create_vm_for_ctx(struct drm_device *dev, struct intel_context *ctx)
 
 static struct intel_context *
 __create_hw_context(struct drm_device *dev,
-		  struct drm_i915_file_private *file_priv)
+		    struct drm_i915_file_private *file_priv)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_context *ctx;
@@ -358,7 +311,7 @@ i915_gem_create_context(struct drm_device *dev,
 		/* For platforms which only have aliasing PPGTT, we fake the
 		 * address space and refcounting. */
 		ctx->vm = &dev_priv->mm.aliasing_ppgtt->base;
-		kref_get(&dev_priv->mm.aliasing_ppgtt->ref);
+		i915_ppgtt_get(dev_priv->mm.aliasing_ppgtt);
 	} else
 		ctx->vm = &dev_priv->gtt.base;
 
