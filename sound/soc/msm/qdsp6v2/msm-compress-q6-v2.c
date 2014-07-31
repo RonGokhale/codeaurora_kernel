@@ -154,6 +154,7 @@ struct msm_compr_audio_effects {
 	struct virtualizer_params virtualizer;
 	struct reverb_params reverb;
 	struct eq_params equalizer;
+	struct dts_eagle_param_desc depd;
 };
 
 struct msm_compr_dec_params {
@@ -182,19 +183,9 @@ static int msm_compr_set_volume(struct snd_compr_stream *cstream,
 			pr_debug("%s: call q6asm_set_volume\n", __func__);
 			rc = q6asm_set_volume(prtd->audio_client, volume_l);
 		}
-		if (rc < 0) {
+		if (rc < 0)
 			pr_err("%s: Send Volume command failed rc=%d\n",
 				__func__, rc);
-		} else {
-			pr_debug("%s: now calling msm_dts_eagle_set_volume\n",
-				 __func__);
-			rc = msm_dts_eagle_set_volume(prtd->audio_client,
-						      volume_l, volume_r);
-			if (rc < 0) {
-				pr_err("%s: Send Volume command failed (DTS_EAGLE) rc=%d\n",
-						__func__, rc);
-			}
-		}
 	}
 
 	return rc;
@@ -1817,7 +1808,25 @@ static int msm_compr_audio_effects_config_put(struct snd_kcontrol *kcontrol,
 		break;
 	case DTS_EAGLE_MODULE:
 		pr_debug("%s: DTS_EAGLE_MODULE\n", __func__);
-		msm_dts_eagle_handler_pre(prtd->audio_client, values);
+		if (ucontrol->value.integer.value[4] &
+		    DTS_EAGLE_FLAG_ALSA_GET) {
+			pr_debug("%s: DTS_EAGLE_MODULE queueing get\n",
+				 __func__);
+			audio_effects->depd.id = (__u32)*values++;
+			audio_effects->depd.size = (__s32)*values++;
+			audio_effects->depd.offset = (__s32)*values++;
+			audio_effects->depd.device = (__u32)*values++;
+			audio_effects->depd.device &= ~DTS_EAGLE_FLAG_ALSA_GET;
+		} else {
+			msm_dts_eagle_handle_asm(NULL, (void *)values, true,
+					 false, prtd->audio_client, NULL);
+		}
+		break;
+	case DTS_EAGLE_MODULE_BYPASS:
+		pr_debug("%s: DTS_EAGLE_MODULE_BYPASS\n", __func__);
+		msm_dts_eagle_bypass_asm(prtd->audio_client,
+					(bool)values[0],
+					AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
 		break;
 	default:
 		pr_err("%s Invalid effects config module\n", __func__);
@@ -1829,7 +1838,44 @@ static int msm_compr_audio_effects_config_put(struct snd_kcontrol *kcontrol,
 static int msm_compr_audio_effects_config_get(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
-	/* dummy function */
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	unsigned long fe_id = kcontrol->private_value;
+	struct msm_compr_pdata *pdata = (struct msm_compr_pdata *)
+			snd_soc_platform_get_drvdata(platform);
+	struct msm_compr_audio_effects *audio_effects = NULL;
+	struct snd_compr_stream *cstream = NULL;
+	struct msm_compr_audio *prtd = NULL;
+	long *values = &(ucontrol->value.integer.value[0]);
+
+	pr_debug("%s\n", __func__);
+	if (fe_id >= MSM_FRONTEND_DAI_MAX) {
+		pr_err("%s Received out of bounds fe_id %lu\n",
+			__func__, fe_id);
+		return -EINVAL;
+	}
+	cstream = pdata->cstream[fe_id];
+	audio_effects = pdata->audio_effects[fe_id];
+	if (!cstream || !audio_effects) {
+		pr_err("%s: stream or effects inactive\n", __func__);
+		return -EINVAL;
+	}
+	prtd = cstream->runtime->private_data;
+	if (!prtd) {
+		pr_err("%s: cannot set audio effects\n", __func__);
+		return -EINVAL;
+	}
+
+	if (audio_effects->depd.id) {
+		pr_debug("%s: DTS_EAGLE_MODULE handle queued get\n", __func__);
+		values[0] = DTS_EAGLE_MODULE;
+		values[1] = (long)audio_effects->depd.id;
+		values[2] = (long)audio_effects->depd.size;
+		values[3] = (long)audio_effects->depd.offset;
+		values[4] = (long)audio_effects->depd.device;
+		audio_effects->depd.id = 0;
+		msm_dts_eagle_handle_asm(NULL, (void *)&values[1],
+					 true, true, prtd->audio_client, NULL);
+	}
 	return 0;
 }
 

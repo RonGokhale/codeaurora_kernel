@@ -4955,6 +4955,8 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 
 	msm_dolby_dap_add_controls(platform);
 
+	msm_dts_eagle_add_controls(platform);
+
 	return 0;
 }
 
