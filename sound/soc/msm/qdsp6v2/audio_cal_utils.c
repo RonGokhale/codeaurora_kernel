@@ -114,6 +114,9 @@ size_t get_cal_info_size(int32_t cal_type)
 	case MAD_CAL_TYPE:
 		size = 0;
 		break;
+	case DTS_EAGLE_CAL_TYPE:
+		size = 0;
+		break;
 	default:
 		pr_err("%s:Invalid cal type %d!",
 			__func__, cal_type);
@@ -214,6 +217,9 @@ size_t get_user_cal_type_size(int32_t cal_type)
 		size = 0;
 		break;
 	case MAD_CAL_TYPE:
+		size = 0;
+		break;
+	case DTS_EAGLE_CAL_TYPE:
 		size = 0;
 		break;
 	default:
