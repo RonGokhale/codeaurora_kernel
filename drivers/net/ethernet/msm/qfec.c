@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2099,10 +2099,7 @@ static irqreturn_t qfec_int(int irq, void *dev_id)
 			hrtimer_start(&priv->rx_timer,
 					ns_to_ktime(RX_POLL_INT_NS),
 					HRTIMER_MODE_REL);
-		} else
-			printk(KERN_DEBUG "Recvd. Spurious Rx INT," \
-			" (INTRP_EN_REG & INTRP_EN_REG_RIE) = 0x%08X",
-			qfec_reg_read(priv, INTRP_EN_REG) & INTRP_EN_REG_RIE);
+		}
 	}
 	spin_unlock_irqrestore(&priv->rx_lock, flags);
 
