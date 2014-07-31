@@ -21,7 +21,6 @@
 #include <linux/mman.h>
 #include <linux/personality.h>
 #include <linux/sys.h>
-#include <linux/user.h>
 #include <linux/init.h>
 #include <linux/completion.h>
 #include <linux/kallsyms.h>
@@ -36,6 +35,7 @@
 #include <asm/pgtable.h>
 #include <asm/mipsregs.h>
 #include <asm/processor.h>
+#include <asm/reg.h>
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/elf.h>
@@ -150,61 +150,6 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
 		ti->tp_value = regs->regs[7];
 
 	return 0;
-}
-
-/* Fill in the fpu structure for a core dump.. */
-int dump_fpu(struct pt_regs *regs, elf_fpregset_t *r)
-{
-	int i;
-
-	for (i = 0; i < NUM_FPU_REGS; i++)
-		memcpy(&r[i], &current->thread.fpu.fpr[i], sizeof(*r));
-
-	memcpy(&r[NUM_FPU_REGS], &current->thread.fpu.fcr31,
-	       sizeof(current->thread.fpu.fcr31));
-
-	return 1;
-}
-
-void elf_dump_regs(elf_greg_t *gp, struct pt_regs *regs)
-{
-	int i;
-
-	for (i = 0; i < EF_R0; i++)
-		gp[i] = 0;
-	gp[EF_R0] = 0;
-	for (i = 1; i <= 31; i++)
-		gp[EF_R0 + i] = regs->regs[i];
-	gp[EF_R26] = 0;
-	gp[EF_R27] = 0;
-	gp[EF_LO] = regs->lo;
-	gp[EF_HI] = regs->hi;
-	gp[EF_CP0_EPC] = regs->cp0_epc;
-	gp[EF_CP0_BADVADDR] = regs->cp0_badvaddr;
-	gp[EF_CP0_STATUS] = regs->cp0_status;
-	gp[EF_CP0_CAUSE] = regs->cp0_cause;
-#ifdef EF_UNUSED0
-	gp[EF_UNUSED0] = 0;
-#endif
-}
-
-int dump_task_regs(struct task_struct *tsk, elf_gregset_t *regs)
-{
-	elf_dump_regs(*regs, task_pt_regs(tsk));
-	return 1;
-}
-
-int dump_task_fpu(struct task_struct *t, elf_fpregset_t *fpr)
-{
-	int i;
-
-	for (i = 0; i < NUM_FPU_REGS; i++)
-		memcpy(&fpr[i], &t->thread.fpu.fpr[i], sizeof(*fpr));
-
-	memcpy(&fpr[NUM_FPU_REGS], &t->thread.fpu.fcr31,
-	       sizeof(t->thread.fpu.fcr31));
-
-	return 1;
 }
 
 #ifdef CONFIG_CC_STACKPROTECTOR
