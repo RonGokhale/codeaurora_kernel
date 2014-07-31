@@ -156,8 +156,8 @@ static unsigned char dio200_read8(struct comedi_device *dev,
 	offset <<= thisboard->mainshift;
 	if (devpriv->io.regtype == io_regtype)
 		return inb(devpriv->io.u.iobase + offset);
-	else
-		return readb(devpriv->io.u.membase + offset);
+
+	return readb(devpriv->io.u.membase + offset);
 }
 
 /*
@@ -188,8 +188,8 @@ static unsigned int dio200_read32(struct comedi_device *dev,
 	offset <<= thisboard->mainshift;
 	if (devpriv->io.regtype == io_regtype)
 		return inl(devpriv->io.u.iobase + offset);
-	else
-		return readl(devpriv->io.u.membase + offset);
+
+	return readl(devpriv->io.u.membase + offset);
 }
 
 /*
@@ -327,7 +327,7 @@ static void dio200_read_scan_intr(struct comedi_device *dev,
 		/* Error!  Stop acquisition.  */
 		dio200_stop_intr(dev, s);
 		s->async->events |= COMEDI_CB_ERROR | COMEDI_CB_OVERFLOW;
-		comedi_error(dev, "buffer overflow");
+		dev_err(dev->class_dev, "buffer overflow\n");
 	}
 
 	/* Check for end of acquisition. */
