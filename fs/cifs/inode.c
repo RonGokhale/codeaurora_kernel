@@ -1790,7 +1790,7 @@ cifs_invalidate_mapping(struct inode *inode)
  * @word: long word containing the bit lock
  */
 static int
-cifs_wait_bit_killable(void *word)
+cifs_wait_bit_killable(struct wait_bit_key *key)
 {
 	if (fatal_signal_pending(current))
 		return -ERESTARTSYS;
@@ -1804,8 +1804,8 @@ cifs_revalidate_mapping(struct inode *inode)
 	int rc;
 	unsigned long *flags = &CIFS_I(inode)->flags;
 
-	rc = wait_on_bit_lock(flags, CIFS_INO_LOCK, cifs_wait_bit_killable,
-				TASK_KILLABLE);
+	rc = wait_on_bit_lock_action(flags, CIFS_INO_LOCK, cifs_wait_bit_killable,
+				     TASK_KILLABLE);
 	if (rc)
 		return rc;
 

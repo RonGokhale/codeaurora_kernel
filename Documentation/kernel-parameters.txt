@@ -2188,6 +2188,21 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			and restore using xsave. The kernel will fallback to
 			enabling legacy floating-point and sse state.
 
+	noxsaveopt	[X86] Disables xsaveopt used in saving x86 extended
+			register states. The kernel will fall back to use
+			xsave to save the states. By using this parameter,
+			performance of saving the states is degraded because
+			xsave doesn't support modified optimization while
+			xsaveopt supports it on xsaveopt enabled systems.
+
+	noxsaves	[X86] Disables xsaves and xrstors used in saving and
+			restoring x86 extended register state in compacted
+			form of xsave area. The kernel will fall back to use
+			xsaveopt and xrstor to save and restore the states
+			in standard form of xsave area. By using this
+			parameter, xsave area per process might occupy more
+			memory on xsaves enabled systems.
+
 	eagerfpu=	[X86]
 			on	enable eager fpu restore
 			off	disable eager fpu restore
@@ -2828,6 +2843,13 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			Set delay between subsequent attempts to force
 			quiescent states.  Units are jiffies, minimum
 			value is one, and maximum value is HZ.
+
+	rcutree.rcu_nocb_leader_stride= [KNL]
+			Set the number of NOCB kthread groups, which
+			defaults to the square root of the number of
+			CPUs.  Larger numbers reduces the wakeup overhead
+			on the per-CPU grace-period kthreads, but increases
+			that same overhead on each group's leader.
 
 	rcutree.qhimark= [KNL]
 			Set threshold of queued RCU callbacks beyond which

@@ -386,8 +386,8 @@ struct bndcsr_struct {
 
 struct xsave_hdr_struct {
 	u64 xstate_bv;
-	u64 reserved1[2];
-	u64 reserved2[5];
+	u64 xcomp_bv;
+	u64 reserved[6];
 } __attribute__((packed));
 
 struct xsave_struct {
@@ -695,6 +695,8 @@ static inline void cpu_relax(void)
 {
 	rep_nop();
 }
+
+#define cpu_relax_lowlatency() cpu_relax()
 
 /* Stop speculative execution and prefetching of modified code. */
 static inline void sync_core(void)
