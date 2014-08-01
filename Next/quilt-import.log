@@ -1,0 +1,17 @@
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.16-rc5
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 1795cd9b3a91d4b5473c97f491d63892442212ab
+HEAD is now at 1795cd9b3a91 Linux 3.16-rc5
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-add-botching-up-ioctls.patch
+Applying: I pointed some folks at this and they wondered why it wasn't in the
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-laptops-freefall-fix-dev-stuffing.patch
+Applying: Copying to local variable is actually not neccessary, if all we need
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-submit-patches-overhaul-changelog.patch
+Applying: Maintainers often repeat the same feedback on poorly written
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + c78004d4a428...51c57ea7c788 master     -> rd-docs/master  (forced update)
