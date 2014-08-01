@@ -670,8 +670,8 @@ struct dev_pm_domain {
  * during the suspend/resume cycle -- and can't issue wakeup events.
  *
  * More power-aware drivers may also use low power states at runtime as
- * well as during system sleep states like PM_SUSPEND_STANDBY.  They may
- * be able to use wakeup events to exit from runtime low-power states,
+ * well as during system sleep states like PM_SUSPEND_SHALLOW.  They
+ * may be able to use wakeup events to exit from runtime low-power states,
  * or from system low-power states such as standby or suspend-to-RAM.
  */
 

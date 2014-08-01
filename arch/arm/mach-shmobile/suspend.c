@@ -38,7 +38,7 @@ struct platform_suspend_ops shmobile_suspend_ops = {
 	.begin		= shmobile_suspend_begin,
 	.end		= shmobile_suspend_end,
 	.enter		= shmobile_suspend_default_enter,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 int __init shmobile_suspend_init(void)

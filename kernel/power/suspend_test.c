@@ -91,13 +91,13 @@ static void __init test_wakealarm(struct rtc_device *rtc, suspend_state_t state)
 		return;
 	}
 
-	if (state == PM_SUSPEND_MEM) {
+	if (state == PM_SUSPEND_DEEP) {
 		printk(info_test, pm_states[state]);
 		status = pm_suspend(state);
 		if (status == -ENODEV)
-			state = PM_SUSPEND_STANDBY;
+			state = PM_SUSPEND_SHALLOW;
 	}
-	if (state == PM_SUSPEND_STANDBY) {
+	if (state == PM_SUSPEND_SHALLOW) {
 		printk(info_test, pm_states[state]);
 		status = pm_suspend(state);
 	}

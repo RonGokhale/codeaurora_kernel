@@ -613,7 +613,7 @@ static void power_down(void)
 		break;
 #ifdef CONFIG_SUSPEND
 	case HIBERNATION_SUSPEND:
-		error = suspend_devices_and_enter(PM_SUSPEND_MEM);
+		error = suspend_devices_and_enter(PM_SUSPEND_DEEP);
 		if (error) {
 			if (hibernation_ops)
 				hibernation_mode = HIBERNATION_PLATFORM;

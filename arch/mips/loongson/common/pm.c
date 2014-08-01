@@ -138,8 +138,8 @@ static int loongson_pm_valid_state(suspend_state_t state)
 {
 	switch (state) {
 	case PM_SUSPEND_ON:
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		return 1;
 
 	default:

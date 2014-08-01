@@ -97,7 +97,7 @@ pm_irq0:
 	/*
 	 * void cpu_enter_standby(unsigned long sdramc_base)
 	 *
-	 * Enter PM_SUSPEND_STANDBY mode. At this point, all drivers
+	 * Enter PM_SUSPEND_SHALLOW mode. At this point, all drivers
 	 * are suspended and interrupts are disabled. Interrupts
 	 * marked as 'wakeup' event sources may still come along and
 	 * get us out of here.

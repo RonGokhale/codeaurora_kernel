@@ -241,17 +241,17 @@ static void mpc83xx_suspend_end(void)
 
 static int mpc83xx_suspend_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_STANDBY || state == PM_SUSPEND_MEM;
+	return state == PM_SUSPEND_SHALLOW || state == PM_SUSPEND_DEEP;
 }
 
 static int mpc83xx_suspend_begin(suspend_state_t state)
 {
 	switch (state) {
-		case PM_SUSPEND_STANDBY:
+		case PM_SUSPEND_SHALLOW:
 			deep_sleeping = 0;
 			return 0;
 
-		case PM_SUSPEND_MEM:
+		case PM_SUSPEND_DEEP:
 			if (has_deep_sleep)
 				deep_sleeping = 1;
 
@@ -280,8 +280,8 @@ static int agent_thread_fn(void *data)
 
 		wake_from_pci = 1;
 
-		pm_suspend(pci_pm_state == 3 ? PM_SUSPEND_MEM :
-		                               PM_SUSPEND_STANDBY);
+		pm_suspend(pci_pm_state == 3 ? PM_SUSPEND_DEEP :
+		                               PM_SUSPEND_SHALLOW);
 
 		wake_from_pci = 0;
 	}

@@ -202,9 +202,9 @@ static void cpm_idle(void)
 static int cpm_suspend_valid(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		return !!cpm.standby;
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		return !!cpm.suspend;
 	default:
 		return 0;
@@ -229,10 +229,10 @@ static void cpm_suspend_standby(unsigned int mask)
 static int cpm_suspend_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		cpm_suspend_standby(cpm.standby);
 		break;
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		cpm_suspend_standby(cpm.suspend);
 		break;
 	}

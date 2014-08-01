@@ -111,8 +111,8 @@ static int at91_pm_valid_state(suspend_state_t state)
 {
 	switch (state) {
 		case PM_SUSPEND_ON:
-		case PM_SUSPEND_STANDBY:
-		case PM_SUSPEND_MEM:
+		case PM_SUSPEND_SHALLOW:
+		case PM_SUSPEND_DEEP:
 			return 1;
 
 		default:
@@ -186,7 +186,7 @@ static int at91_pm_verify_clocks(void)
  */
 int at91_suspend_entering_slow_clock(void)
 {
-	return (target_state == PM_SUSPEND_MEM);
+	return (target_state == PM_SUSPEND_DEEP);
 }
 EXPORT_SYMBOL(at91_suspend_entering_slow_clock);
 
@@ -223,7 +223,7 @@ static int at91_pm_enter(suspend_state_t state)
 		 * drivers must suspend more deeply:  only the master clock
 		 * controller may be using the main oscillator.
 		 */
-		case PM_SUSPEND_MEM:
+		case PM_SUSPEND_DEEP:
 			/*
 			 * Ensure that clocks are in a valid state.
 			 */
@@ -259,7 +259,7 @@ static int at91_pm_enter(suspend_state_t state)
 		 * But otherwise it's identical to PM_SUSPEND_ON:  cpu idle, and
 		 * nothing fancy done with main or cpu clocks.
 		 */
-		case PM_SUSPEND_STANDBY:
+		case PM_SUSPEND_SHALLOW:
 			/*
 			 * NOTE: the Wait-for-Interrupt instruction needs to be
 			 * in icache so no SDRAM accesses are needed until the

@@ -101,8 +101,8 @@ static int davinci_pm_enter(suspend_state_t state)
 	int ret = 0;
 
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		davinci_pm_suspend();
 		break;
 	default:
@@ -114,7 +114,7 @@ static int davinci_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops davinci_pm_ops = {
 	.enter		= davinci_pm_enter,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 static int __init davinci_pm_probe(struct platform_device *pdev)

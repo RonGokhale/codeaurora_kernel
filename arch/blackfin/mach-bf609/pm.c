@@ -264,7 +264,7 @@ void bf609_cpu_pm_enter(suspend_state_t state)
 	if (error < 0)
 		printk(KERN_DEBUG "Unable to get irq wake\n");
 
-	if (state == PM_SUSPEND_STANDBY)
+	if (state == PM_SUSPEND_SHALLOW)
 		bfin_deepsleep(wakeup, wakeup_pol);
 	else {
 		bfin_hibernate(wakeup, wakeup_pol);

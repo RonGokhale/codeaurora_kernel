@@ -26,9 +26,9 @@
  * The WAIT_UNCLOCKED_POWER_OFF state only requires <= 500ns to exit.
  * This is also the lowest power state possible without affecting
  * non-cpu parts of the system.  For these reasons, imx5 should default
- * to always using this state for cpu idling.  The PM_SUSPEND_STANDBY also
- * uses this state and needs to take no action when registers remain confgiured
- * for this state.
+ * to always using this state for cpu idling.  The PM_SUSPEND_SHALLOW
+ * also uses this state and needs to take no action when registers remain
+ * configured for this state.
  */
 #define IMX5_DEFAULT_CPU_IDLE_STATE WAIT_UNCLOCKED_POWER_OFF
 
@@ -99,17 +99,17 @@ static void mx5_cpu_lp_set(enum mxc_cpu_pwr_mode mode)
 static int mx5_suspend_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		mx5_cpu_lp_set(STOP_POWER_OFF);
 		break;
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		/* DEFAULT_IDLE_STATE already configured */
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (state == PM_SUSPEND_MEM) {
+	if (state == PM_SUSPEND_DEEP) {
 		local_flush_tlb_all();
 		flush_cache_all();
 

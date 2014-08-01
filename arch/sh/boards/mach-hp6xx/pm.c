@@ -146,7 +146,7 @@ static int hp6x0_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops hp6x0_pm_ops = {
 	.enter		= hp6x0_pm_enter,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 static int __init hp6x0_pm_init(void)
