@@ -34,6 +34,7 @@
 /* Used for inband payload copy, max size is 4k */
 /* 2 is to account for module & param ID in payload */
 #define ADM_GET_PARAMETER_LENGTH  (4096 - APR_HDR_SIZE - 2 * sizeof(uint32_t))
+#define CMD_OB_HDR_SZ  12 /*size of header needed for passing data out of band*/
 
 #define ULL_SUPPORTED_SAMPLE_RATE 48000
 
@@ -216,7 +217,7 @@ int adm_dts_eagle_set(int port_id, int copp_idx, int param_id,
 		      void *data, int size)
 {
 	struct adm_cmd_set_pp_params_v5	admp;
-	int p_idx, ret = 0, *update_params_value;
+	int p_idx, ret = 0, *ob_params;
 
 	pr_debug("DTS_EAGLE_ADM: %s - port id %i, copp idx %i, param id 0x%X\n",
 		__func__, port_id, copp_idx, param_id);
@@ -232,17 +233,24 @@ int adm_dts_eagle_set(int port_id, int copp_idx, int param_id,
 		return -EINVAL;
 	}
 
-	update_params_value = (int *)this_adm.outband_memmap.kvaddr;
-	if (update_params_value == NULL) {
+	ob_params = (int *)this_adm.outband_memmap.kvaddr;
+	if (ob_params == NULL) {
 		pr_err("DTS_EAGLE_ADM: %s - NULL memmap. Non Eagle topology selected?",
 				__func__);
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	*update_params_value++ = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
-	*update_params_value++ = param_id;
-	*update_params_value++ = size;
-	memcpy(update_params_value, data, size);
+	if (size + CMD_OB_HDR_SZ > this_adm.outband_memmap.size) {
+		pr_err("DTS_EAGLE_ADM - %s: ion alloc of size %zu too small for size requested %i.\n",
+			__func__, this_adm.outband_memmap.size,
+			size + CMD_OB_HDR_SZ);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+	*ob_params++ = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
+	*ob_params++ = param_id;
+	*ob_params++ = size;
+	memcpy(ob_params, data, size);
 
 	admp.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 		APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
@@ -293,7 +301,7 @@ int adm_dts_eagle_get(int port_id, int copp_idx, int param_id,
 		      void *data, int size)
 {
 	struct adm_cmd_get_pp_params_v5	admp;
-	int p_idx, ret = 0, orig_size = size, *update_params_value;
+	int p_idx, ret = 0, orig_size = size, *ob_params;
 
 	pr_debug("DTS_EAGLE_ADM: %s - port id %i, copp idx %i, param id 0x%X\n",
 		 __func__, port_id, copp_idx, param_id);
@@ -314,16 +322,23 @@ int adm_dts_eagle_get(int port_id, int copp_idx, int param_id,
 
 	size = (size+3) & 0xFFFFFFFC;
 
-	update_params_value = (int *)this_adm.outband_memmap.kvaddr;
-	if (update_params_value == NULL) {
+	ob_params = (int *)this_adm.outband_memmap.kvaddr;
+	if (ob_params == NULL) {
 		pr_err("DTS_EAGLE_ADM: %s - NULL memmap. Non Eagle topology selected?",
 				__func__);
 		ret = -EINVAL;
 		goto fail_cmd;
 	}
-	*update_params_value++ = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
-	*update_params_value++ = param_id;
-	*update_params_value++ = size;
+	if (size + CMD_OB_HDR_SZ > this_adm.outband_memmap.size) {
+		pr_err("DTS_EAGLE_ADM - %s: ion alloc of size %zu too small for size requested %i.\n",
+			__func__, this_adm.outband_memmap.size,
+			size + CMD_OB_HDR_SZ);
+		ret = -EINVAL;
+		goto fail_cmd;
+	}
+	*ob_params++ = AUDPROC_MODULE_ID_DTS_HPX_POSTMIX;
+	*ob_params++ = param_id;
+	*ob_params++ = size;
 
 	admp.hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
 			     APR_HDR_LEN(APR_HDR_SIZE), APR_PKT_VER);
@@ -365,7 +380,7 @@ int adm_dts_eagle_get(int port_id, int copp_idx, int param_id,
 		goto fail_cmd;
 	}
 
-	memcpy(data, update_params_value, orig_size);
+	memcpy(data, ob_params, orig_size);
 	ret = 0;
 fail_cmd:
 	return ret;

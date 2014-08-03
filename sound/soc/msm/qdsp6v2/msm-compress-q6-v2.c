@@ -1822,11 +1822,10 @@ static int msm_compr_audio_effects_config_put(struct snd_kcontrol *kcontrol,
 					 false, prtd->audio_client, NULL);
 		}
 		break;
-	case DTS_EAGLE_MODULE_BYPASS:
-		pr_debug("%s: DTS_EAGLE_MODULE_BYPASS\n", __func__);
-		msm_dts_eagle_bypass_asm(prtd->audio_client,
-					(bool)values[0],
-					AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
+	case DTS_EAGLE_MODULE_ENABLE:
+		pr_debug("%s: DTS_EAGLE_MODULE_ENABLE\n", __func__);
+		msm_dts_eagle_enable_asm(prtd->audio_client, (bool)values[0],
+					 AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
 		break;
 	default:
 		pr_err("%s Invalid effects config module\n", __func__);

@@ -179,7 +179,7 @@ static struct vol_cmds_d *_vol_cmds_d;
 static const __s32 _log10_10_inv_x20 = 0x0008af84;
 
 /* hpx master control */
-static bool _is_hpx_enabled;
+static __u32 _is_hpx_enabled;
 
 static void _volume_cmds_free(void)
 {
@@ -381,14 +381,14 @@ static struct audio_client *_getNTDeviceAC(void)
 	return _ac_NT;
 }
 
-static int _msm_dts_eagle_hpx_enabled_get_control(struct snd_kcontrol *kcontrol,
+static int _msm_dts_eagle_enable_post_get_control(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
 	ucontrol->value.integer.value[0] = _is_hpx_enabled;
 	return 0;
 }
 
-static int _msm_dts_eagle_hpx_enabled_put_control(struct snd_kcontrol *kcontrol,
+static int _msm_dts_eagle_enable_post_put_control(struct snd_kcontrol *kcontrol,
 					   struct snd_ctl_elem_value *ucontrol)
 {
 	int idx = 0, be_index = 0, port_id, topology;
@@ -414,11 +414,8 @@ static int _msm_dts_eagle_hpx_enabled_put_control(struct snd_kcontrol *kcontrol,
 								port_id, idx);
 			if (topology ==
 				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) {
-				msm_dts_eagle_bypass_adm(port_id, idx,
-							_is_hpx_enabled);
-				if (_is_hpx_enabled)
-					msm_dts_eagle_init_post(port_id, idx,
-								topology);
+				msm_dts_eagle_enable_adm(port_id, idx,
+							 _is_hpx_enabled);
 			}
 		}
 	}
@@ -427,9 +424,9 @@ static int _msm_dts_eagle_hpx_enabled_put_control(struct snd_kcontrol *kcontrol,
 }
 
 static const struct snd_kcontrol_new _hpx_enabled_controls[] = {
-	SOC_SINGLE_EXT("Set HPX OnOff", SND_SOC_NOPM, 0,
-	1, 0, _msm_dts_eagle_hpx_enabled_get_control,
-	_msm_dts_eagle_hpx_enabled_put_control),
+	SOC_SINGLE_EXT("Set HPX OnOff", SND_SOC_NOPM, 0, 1, 0,
+	_msm_dts_eagle_enable_post_get_control,
+	_msm_dts_eagle_enable_post_put_control),
 };
 
 /*//////////////////*/
@@ -455,19 +452,42 @@ void msm_dts_eagle_clear_audioclient(void)
 	_unreg_ion_mem_NT();
 }
 
-
-int msm_dts_eagle_bypass_asm(struct audio_client *ac, bool state, int module)
+int msm_dts_eagle_enable_asm(struct audio_client *ac, __u32 enable, int module)
 {
-	__u32 payload = state ? 0 : 1;
-	return q6asm_dts_eagle_set(ac, AUDPROC_PARAM_ID_ENABLE, sizeof(payload),
-				   &payload, NULL, module);
+	int ret = 0;
+	pr_debug("DTS_EAGLE_ENABLE: %s - enable = %i on module %i\n",
+		 __func__, enable, module);
+	_is_hpx_enabled = enable;
+	ret = q6asm_dts_eagle_set(ac, AUDPROC_PARAM_ID_ENABLE,
+				      sizeof(enable), &enable,
+				      NULL, module);
+	if (_is_hpx_enabled) {
+		if (module == MPRE)
+			msm_dts_eagle_sendcache_pre(ac);
+		else if (module == MPST)
+			msm_dts_eagle_sendcache_post(-1, 0, 0);
+	}
+	return ret;
 }
 
-int msm_dts_eagle_bypass_adm(int port_id, int copp_idx, bool state)
+int msm_dts_eagle_enable_adm(int port_id, int copp_idx, __u32 enable)
 {
-	__u32 payload = state ? 0 : 1;
-	return adm_dts_eagle_set(port_id, copp_idx, AUDPROC_PARAM_ID_ENABLE,
-				 (char *)&payload, sizeof(payload));
+	int ret = 0;
+	pr_debug("DTS_EAGLE_ENABLE: %s - enable = %i\n", __func__, enable);
+	_is_hpx_enabled = enable;
+	ret = adm_dts_eagle_set(port_id, copp_idx, AUDPROC_PARAM_ID_ENABLE,
+			     (char *)&enable, sizeof(enable));
+	if (_is_hpx_enabled)
+		msm_dts_eagle_sendcache_post(-1, 0, 0);
+	return ret;
+}
+
+int msm_dts_eagle_enable_master(struct audio_client *ac, __u32 enable)
+{
+	int ret = msm_dts_eagle_enable_asm(ac, enable, MPRE);
+	if (ret >= 0)
+		ret = msm_dts_eagle_enable_asm(ac, enable, MPST);
+	return ret;
 }
 
 void msm_dts_eagle_add_controls(struct snd_soc_platform *platform)
@@ -1200,26 +1220,46 @@ NT_MODE_GOTO:
 int msm_dts_eagle_init_pre(struct audio_client *ac)
 {
 	int ret = msm_dts_eagle_sendcache_pre(ac);
-	msm_dts_eagle_bypass_asm(ac, _is_hpx_enabled,
+	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
 				 AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
 	return ret;
 }
 
 int msm_dts_eagle_deinit_pre(struct audio_client *ac)
 {
-	return 1;
+	return 0;
 }
 
 int msm_dts_eagle_init_post(int port_id, int copp_idx, int topology)
 {
 	int ret = msm_dts_eagle_sendcache_post(port_id, copp_idx, topology);
-	msm_dts_eagle_bypass_adm(port_id, copp_idx, _is_hpx_enabled);
+	msm_dts_eagle_enable_adm(port_id, copp_idx, _is_hpx_enabled);
 	return ret;
 }
 
 int msm_dts_eagle_deinit_post(int port_id, int topology)
 {
-	return 1;
+	return 0;
+}
+
+int msm_dts_eagle_init_master_module(struct audio_client *ac)
+{
+	msm_dts_eagle_set_audioclient(ac);
+	msm_dts_eagle_sendcache_pre(ac);
+	msm_dts_eagle_sendcache_post(-1, 0, 0);
+	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
+				 AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
+	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
+				 AUDPROC_MODULE_ID_DTS_HPX_POSTMIX);
+	return 0;
+}
+
+int msm_dts_eagle_deinit_master_module(struct audio_client *ac)
+{
+	msm_dts_eagle_clear_audioclient();
+	msm_dts_eagle_deinit_pre(ac);
+	msm_dts_eagle_deinit_post(-1, 0);
+	return 0;
 }
 
 int msm_dts_eagle_pcm_new(struct snd_soc_pcm_runtime *runtime)
@@ -1234,7 +1274,6 @@ int msm_dts_eagle_pcm_new(struct snd_soc_pcm_runtime *runtime)
 
 void msm_dts_eagle_pcm_free(struct snd_pcm *pcm)
 {
-	/* TODO: Remove hwdep interface */
 	if (!--_ref_cnt)
 		_unreg_ion_mem();
 }
