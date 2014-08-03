@@ -40,7 +40,6 @@
 
 #define MPST				AUDPROC_MODULE_ID_DTS_HPX_POSTMIX
 #define MPRE				AUDPROC_MODULE_ID_DTS_HPX_PREMIX
-#define AUDPROC_PARAM_ID_ENABLE		0x00010904
 
 enum {
 	AUDIO_DEVICE_OUT_EARPIECE = 0,
@@ -372,8 +371,13 @@ static void _reg_ion_mem_NT(void)
 
 static void _unreg_ion_mem_NT(void)
 {
-	if (_ion_client_NT)
-		msm_audio_ion_free(_ion_client_NT, _ion_handle_NT);
+	int rc = -EINVAL;
+	rc = q6asm_memory_unmap(_ac_NT,	(uint32_t) _po_NT.paddr, IN);
+	if (rc < 0)
+		pr_err("%s: mem unmap failed\n", __func__);
+	rc = msm_audio_ion_free(_ion_client_NT, _ion_handle_NT);
+	if (rc < 0)
+		pr_err("%s: mem free failed\n", __func__);
 }
 
 static struct audio_client *_getNTDeviceAC(void)
@@ -381,15 +385,147 @@ static struct audio_client *_getNTDeviceAC(void)
 	return _ac_NT;
 }
 
-static int _msm_dts_eagle_enable_post_get_control(struct snd_kcontrol *kcontrol,
-					   struct snd_ctl_elem_value *ucontrol)
+static void _set_audioclient(struct audio_client *ac)
+{
+	_ac_NT = ac;
+	_reg_ion_mem_NT();
+}
+
+static void _clear_audioclient(void)
+{
+	_unreg_ion_mem_NT();
+	_ac_NT = NULL;
+}
+
+
+static int _sendcache_pre(struct audio_client *ac)
+{
+	int offset, cidx, size, cmd;
+	cidx = _get_cb_for_dev(_device_primary);
+	if (cidx < 0) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, no cache for primary device %i found.\n",
+			__func__, _device_primary);
+		return -EINVAL;
+	}
+	offset = _c_bl[cidx][CBD_OFFSG];
+	cmd = _c_bl[cidx][CBD_CMD0];
+	size = _c_bl[cidx][CBD_SZ0];
+
+	if (_depc_size == 0 || !_depc || offset < 0 || size <= 0 || cmd == 0 ||
+	    (offset + size) > _depc_size) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, primary device %i cache index %i general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
+			__func__, _device_primary, cidx, _depc_size, _depc,
+			offset, size, cmd);
+		return -EINVAL;
+	}
+
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: first 6 integers %i %i %i %i %i %i (30th %i)\n",
+		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
+		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
+		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]),
+		  *((int *)&_depc[offset+120]));
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to port, with cache index = %d device mask 0x%X, param = 0x%X, offset = %d, and size = %d\n",
+		  cidx, _c_bl[cidx][CBD_DEV_MASK], cmd, offset, size);
+
+	if (q6asm_dts_eagle_set(ac, cmd, size, (void *)&_depc[offset],
+				NULL, MPRE)) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set failed with id = %d and size = %d\n",
+			__func__, cmd, size);
+	} else {
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set succeeded with id = %d and size = %d\n",
+			 __func__, cmd, size);
+	}
+	return 0;
+}
+
+static int _sendcache_post(int port_id, int copp_idx, int topology)
+{
+	int offset, cidx = -1, size, cmd, mask, index;
+
+	if (port_id == -1) {
+		cidx = _get_cb_for_dev(_device_primary);
+		goto NT_MODE_GOTO;
+	}
+
+	index = adm_validate_and_get_port_index(port_id);
+	if (index < 0) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST :%s: Invalid port idx %d port_id %#x\n",
+			__func__, index, port_id);
+	} else {
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST : %s valid port idx %d for port_id %#x set to %i",
+			 __func__, index, port_id, copp_idx);
+	}
+	_cidx[index] = copp_idx;
+
+	mask = _get_dev_mask_for_pid(port_id);
+	if (mask & _device_primary) {
+		cidx = _get_cb_for_dev(_device_primary);
+		if (cidx < 0) {
+			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for primary device %i found. Port id was 0x%X.\n",
+				__func__, _device_primary, port_id);
+			return -EINVAL;
+		}
+	} else if (mask & _device_all) {
+		cidx = _get_cb_for_dev(_device_all);
+		if (cidx < 0) {
+			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for combo device %i found. Port id was 0x%X.\n",
+				__func__, _device_primary, port_id);
+			return -EINVAL;
+		}
+	} else {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, port id 0x%X not for primary or combo device %i.\n",
+			__func__, port_id, _device_primary);
+		return -EINVAL;
+	}
+
+NT_MODE_GOTO:
+	offset = _c_bl[cidx][CBD_OFFSG] + _c_bl[cidx][CBD_OFFS2];
+	cmd = _c_bl[cidx][CBD_CMD2];
+	size = _c_bl[cidx][CBD_SZ2];
+
+	if (_depc_size == 0 || !_depc || offset < 0 || size <= 0 || cmd == 0 ||
+	    (offset + size) > _depc_size) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, primary device %i cache index %i port_id 0x%X general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
+			__func__, _device_primary, cidx, port_id,
+			_depc_size, _depc, offset, size, cmd);
+		return -EINVAL;
+	}
+
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: first 6 integers %i %i %i %i %i %i\n",
+		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
+		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
+		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]));
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask 0x%X, port_id = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
+		  cidx, _c_bl[cidx][CBD_DEV_MASK], port_id, cmd, offset, size);
+
+	if (_ac_NT) {
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: NT Route detected\n");
+		if (q6asm_dts_eagle_set(_getNTDeviceAC(), cmd, size,
+					(void *)&_depc[offset],
+					&_po_NT, MPST)) {
+			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, q6asm_dts_eagle_set failed with id = 0x%X and size = %d\n",
+			__func__, cmd, size);
+		}
+	} else if (adm_dts_eagle_set(port_id, copp_idx, cmd,
+			      (void *)&_depc[offset], size) < 0) {
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set failed with id = 0x%X and size = %d\n",
+			__func__, cmd, size);
+	} else {
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set succeeded with id = 0x%X and size = %d\n",
+			 __func__, cmd, size);
+	}
+	return 0;
+}
+
+static int _enable_post_get_control(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_value *ucontrol)
 {
 	ucontrol->value.integer.value[0] = _is_hpx_enabled;
 	return 0;
 }
 
-static int _msm_dts_eagle_enable_post_put_control(struct snd_kcontrol *kcontrol,
-					   struct snd_ctl_elem_value *ucontrol)
+static int _enable_post_put_control(struct snd_kcontrol *kcontrol,
+				    struct snd_ctl_elem_value *ucontrol)
 {
 	int idx = 0, be_index = 0, port_id, topology;
 	int flag = ucontrol->value.integer.value[0];
@@ -425,8 +561,7 @@ static int _msm_dts_eagle_enable_post_put_control(struct snd_kcontrol *kcontrol,
 
 static const struct snd_kcontrol_new _hpx_enabled_controls[] = {
 	SOC_SINGLE_EXT("Set HPX OnOff", SND_SOC_NOPM, 0, 1, 0,
-	_msm_dts_eagle_enable_post_get_control,
-	_msm_dts_eagle_enable_post_put_control),
+	_enable_post_get_control, _enable_post_put_control)
 };
 
 /*//////////////////*/
@@ -439,19 +574,6 @@ void msm_dts_ion_memmap(struct param_outband *po_)
 	po_->kvaddr = _po.kvaddr;
 	po_->paddr = _po.paddr;
 }
-
-void msm_dts_eagle_set_audioclient(struct audio_client *ac)
-{
-	_ac_NT = ac;
-	_reg_ion_mem_NT();
-}
-
-void msm_dts_eagle_clear_audioclient(void)
-{
-	_ac_NT = NULL;
-	_unreg_ion_mem_NT();
-}
-
 int msm_dts_eagle_enable_asm(struct audio_client *ac, __u32 enable, int module)
 {
 	int ret = 0;
@@ -463,9 +585,9 @@ int msm_dts_eagle_enable_asm(struct audio_client *ac, __u32 enable, int module)
 				      NULL, module);
 	if (_is_hpx_enabled) {
 		if (module == MPRE)
-			msm_dts_eagle_sendcache_pre(ac);
+			_sendcache_pre(ac);
 		else if (module == MPST)
-			msm_dts_eagle_sendcache_post(-1, 0, 0);
+			_sendcache_post(-1, 0, 0);
 	}
 	return ret;
 }
@@ -478,7 +600,7 @@ int msm_dts_eagle_enable_adm(int port_id, int copp_idx, __u32 enable)
 	ret = adm_dts_eagle_set(port_id, copp_idx, AUDPROC_PARAM_ID_ENABLE,
 			     (char *)&enable, sizeof(enable));
 	if (_is_hpx_enabled)
-		msm_dts_eagle_sendcache_post(-1, 0, 0);
+		_sendcache_post(port_id, copp_idx, MPST);
 	return ret;
 }
 
@@ -1098,131 +1220,10 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 	return (int)ret;
 }
 
-int msm_dts_eagle_sendcache_pre(struct audio_client *ac)
-{
-	int offset, cidx, size, cmd;
-	cidx = _get_cb_for_dev(_device_primary);
-	if (cidx < 0) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, no cache for primary device %i found.\n",
-			__func__, _device_primary);
-		return -EINVAL;
-	}
-	offset = _c_bl[cidx][CBD_OFFSG];
-	cmd = _c_bl[cidx][CBD_CMD0];
-	size = _c_bl[cidx][CBD_SZ0];
-
-	if (_depc_size == 0 || !_depc || offset < 0 || size <= 0 || cmd == 0 ||
-	    (offset + size) > _depc_size) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, primary device %i cache index %i general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
-			__func__, _device_primary, cidx, _depc_size, _depc,
-			offset, size, cmd);
-		return -EINVAL;
-	}
-
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: first 6 integers %i %i %i %i %i %i (30th %i)\n",
-		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
-		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
-		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]),
-		  *((int *)&_depc[offset+120]));
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to port, with cache index = %d device mask 0x%X, param = 0x%X, offset = %d, and size = %d\n",
-		  cidx, _c_bl[cidx][CBD_DEV_MASK], cmd, offset, size);
-
-	if (q6asm_dts_eagle_set(ac, cmd, size, (void *)&_depc[offset],
-				NULL, MPRE)) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set failed with id = %d and size = %d\n",
-			__func__, cmd, size);
-	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set succeeded with id = %d and size = %d\n",
-			 __func__, cmd, size);
-	}
-	return 0;
-}
-
-int msm_dts_eagle_sendcache_post(int port_id, int copp_idx, int topology)
-{
-	int offset, cidx = -1, size, cmd, mask, index;
-
-	if (port_id == -1) {
-		cidx = _get_cb_for_dev(_device_primary);
-		goto NT_MODE_GOTO;
-	}
-
-	index = adm_validate_and_get_port_index(port_id);
-	if (index < 0) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST :%s: Invalid port idx %d port_id %#x\n",
-			__func__, index, port_id);
-	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST : %s valid port idx %d for port_id %#x set to %i",
-			 __func__, index, port_id, copp_idx);
-	}
-	_cidx[index] = copp_idx;
-
-	mask = _get_dev_mask_for_pid(port_id);
-	if (mask & _device_primary) {
-		cidx = _get_cb_for_dev(_device_primary);
-		if (cidx < 0) {
-			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for primary device %i found. Port id was 0x%X.\n",
-				__func__, _device_primary, port_id);
-			return -EINVAL;
-		}
-	} else if (mask & _device_all) {
-		cidx = _get_cb_for_dev(_device_all);
-		if (cidx < 0) {
-			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, no cache for combo device %i found. Port id was 0x%X.\n",
-				__func__, _device_primary, port_id);
-			return -EINVAL;
-		}
-	} else {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, port id 0x%X not for primary or combo device %i.\n",
-			__func__, port_id, _device_primary);
-		return -EINVAL;
-	}
-
-NT_MODE_GOTO:
-	offset = _c_bl[cidx][CBD_OFFSG] + _c_bl[cidx][CBD_OFFS2];
-	cmd = _c_bl[cidx][CBD_CMD2];
-	size = _c_bl[cidx][CBD_SZ2];
-
-	if (_depc_size == 0 || !_depc || offset < 0 || size <= 0 || cmd == 0 ||
-	    (offset + size) > _depc_size) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, primary device %i cache index %i port_id 0x%X general error - cache size = %u, cache ptr = %p, offset = %i, size = %i, cmd = %i\n",
-			__func__, _device_primary, cidx, port_id,
-			_depc_size, _depc, offset, size, cmd);
-		return -EINVAL;
-	}
-
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: first 6 integers %i %i %i %i %i %i\n",
-		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
-		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
-		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]));
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask 0x%X, port_id = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
-		  cidx, _c_bl[cidx][CBD_DEV_MASK], port_id, cmd, offset, size);
-
-	if (_ac_NT) {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: NT Route detected\n");
-		if (q6asm_dts_eagle_set(_getNTDeviceAC(), cmd, size,
-					(void *)&_depc[offset],
-					&_po_NT, MPST)) {
-			pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, q6asm_dts_eagle_set failed with id = 0x%X and size = %d\n",
-			__func__, cmd, size);
-		}
-	} else if (adm_dts_eagle_set(port_id, copp_idx, cmd,
-			      (void *)&_depc[offset], size) < 0) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set failed with id = 0x%X and size = %d\n",
-			__func__, cmd, size);
-	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: in %s, adm_dts_eagle_set succeeded with id = 0x%X and size = %d\n",
-			 __func__, cmd, size);
-	}
-	return 0;
-}
-
 int msm_dts_eagle_init_pre(struct audio_client *ac)
 {
-	int ret = msm_dts_eagle_sendcache_pre(ac);
-	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
+	return msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
 				 AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
-	return ret;
 }
 
 int msm_dts_eagle_deinit_pre(struct audio_client *ac)
@@ -1232,9 +1233,7 @@ int msm_dts_eagle_deinit_pre(struct audio_client *ac)
 
 int msm_dts_eagle_init_post(int port_id, int copp_idx, int topology)
 {
-	int ret = msm_dts_eagle_sendcache_post(port_id, copp_idx, topology);
-	msm_dts_eagle_enable_adm(port_id, copp_idx, _is_hpx_enabled);
-	return ret;
+	return msm_dts_eagle_enable_adm(port_id, copp_idx, _is_hpx_enabled);
 }
 
 int msm_dts_eagle_deinit_post(int port_id, int topology)
@@ -1244,9 +1243,7 @@ int msm_dts_eagle_deinit_post(int port_id, int topology)
 
 int msm_dts_eagle_init_master_module(struct audio_client *ac)
 {
-	msm_dts_eagle_set_audioclient(ac);
-	msm_dts_eagle_sendcache_pre(ac);
-	msm_dts_eagle_sendcache_post(-1, 0, 0);
+	_set_audioclient(ac);
 	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
 				 AUDPROC_MODULE_ID_DTS_HPX_PREMIX);
 	msm_dts_eagle_enable_asm(ac, _is_hpx_enabled,
@@ -1256,9 +1253,9 @@ int msm_dts_eagle_init_master_module(struct audio_client *ac)
 
 int msm_dts_eagle_deinit_master_module(struct audio_client *ac)
 {
-	msm_dts_eagle_clear_audioclient();
 	msm_dts_eagle_deinit_pre(ac);
 	msm_dts_eagle_deinit_post(-1, 0);
+	_clear_audioclient();
 	return 0;
 }
 

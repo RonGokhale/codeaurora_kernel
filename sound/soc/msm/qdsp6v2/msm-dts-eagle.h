@@ -27,8 +27,6 @@ struct param_outband {
 
 #ifdef CONFIG_DTS_EAGLE
 void msm_dts_ion_memmap(struct param_outband *po_);
-void msm_dts_eagle_set_audioclient(struct audio_client *ac);
-void msm_dts_eagle_clear_audioclient(void);
 int msm_dts_eagle_enable_asm(struct audio_client *ac, __u32 enable, int module);
 int msm_dts_eagle_enable_adm(int port_id, int copp_idx, __u32 enable);
 int msm_dts_eagle_enable_master(struct audio_client *ac, __u32 enable);
@@ -41,8 +39,6 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 int msm_dts_eagle_handle_adm(struct dts_eagle_param_desc *depd, char *buf,
 			     bool for_pre, bool get);
 int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg);
-int msm_dts_eagle_sendcache_pre(struct audio_client *ac);
-int msm_dts_eagle_sendcache_post(int port_id, int copp_idx, int topology);
 int msm_dts_eagle_init_pre(struct audio_client *ac);
 int msm_dts_eagle_deinit_pre(struct audio_client *ac);
 int msm_dts_eagle_init_post(int port_id, int copp_id, int topology);
@@ -56,8 +52,6 @@ static inline void msm_dts_ion_memmap(struct param_outband *po_)
 {
 	pr_debug("%s\n", __func__);
 }
-static inline void msm_dts_eagle_set_audioclient(struct audio_client *ac) {}
-static inline void msm_dts_eagle_clear_audioclient(void) {}
 static inline int msm_dts_eagle_enable_asm(struct audio_client *ac,
 					   __u32 enable, int module)
 {
@@ -97,15 +91,6 @@ static inline int msm_dts_eagle_handle_adm(struct dts_eagle_param_desc *depd,
 static inline int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 {
 	return -EPERM;
-}
-static inline int msm_dts_eagle_sendcache_pre(struct audio_client *ac)
-{
-	return 0;
-}
-static inline int msm_dts_eagle_sendcache_post(int port_id, int copp_idx,
-					       int topology)
-{
-	return 0;
 }
 static inline int msm_dts_eagle_init_pre(struct audio_client *ac)
 {
