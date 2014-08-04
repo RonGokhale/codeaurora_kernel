@@ -1099,10 +1099,9 @@ static int max77693_muic_probe(struct platform_device *pdev)
 
 	info = devm_kzalloc(&pdev->dev, sizeof(struct max77693_muic_info),
 				   GFP_KERNEL);
-	if (!info) {
-		dev_err(&pdev->dev, "failed to allocate memory\n");
+	if (!info)
 		return -ENOMEM;
-	}
+
 	info->dev = &pdev->dev;
 	info->max77693 = max77693;
 	if (info->max77693->regmap_muic) {
@@ -1184,7 +1183,6 @@ static int max77693_muic_probe(struct platform_device *pdev)
 		goto err_irq;
 	}
 	info->edev->name = DEV_NAME;
-	info->edev->dev.parent = &pdev->dev;
 
 	ret = devm_extcon_dev_register(&pdev->dev, info->edev);
 	if (ret) {

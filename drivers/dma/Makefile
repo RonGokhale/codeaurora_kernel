@@ -48,3 +48,4 @@ obj-$(CONFIG_FSL_EDMA) += fsl-edma.o
 obj-$(CONFIG_QCOM_BAM_DMA) += qcom_bam_dma.o
 obj-y += xilinx/
 obj-$(CONFIG_DMA_SUN6I) += sun6i-dma.o
+obj-$(CONFIG_INTEL_MIC_X100_DMA) += mic_x100_dma.o
