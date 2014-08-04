@@ -588,6 +588,9 @@ static void handle_event_change(enum command_response cmd, void *data)
 		rc = msm_vidc_check_session_supported(inst);
 		if (!rc) {
 			msm_vidc_queue_v4l2_event(inst, event);
+		} else {
+			msm_vidc_queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
+			wake_up(&inst->kernel_event_queue);
 		}
 
 		return;
@@ -3294,8 +3297,6 @@ int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
 		mutex_lock(&inst->sync_lock);
 		inst->state = MSM_VIDC_CORE_INVALID;
 		mutex_unlock(&inst->sync_lock);
-		msm_vidc_queue_v4l2_event(inst, V4L2_EVENT_MSM_VIDC_SYS_ERROR);
-		wake_up(&inst->kernel_event_queue);
 	}
 	return rc;
 }
