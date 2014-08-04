@@ -380,12 +380,32 @@ gen7_render_ring_flush(struct intel_engine_cs *ring,
 }
 
 static int
+gen8_emit_pipe_control(struct intel_engine_cs *ring,
+		       u32 flags, u32 scratch_addr)
+{
+	int ret;
+
+	ret = intel_ring_begin(ring, 6);
+	if (ret)
+		return ret;
+
+	intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
+	intel_ring_emit(ring, flags);
+	intel_ring_emit(ring, scratch_addr);
+	intel_ring_emit(ring, 0);
+	intel_ring_emit(ring, 0);
+	intel_ring_emit(ring, 0);
+	intel_ring_advance(ring);
+
+	return 0;
+}
+
+static int
 gen8_render_ring_flush(struct intel_engine_cs *ring,
 		       u32 invalidate_domains, u32 flush_domains)
 {
 	u32 flags = 0;
 	u32 scratch_addr = ring->scratch.gtt_offset + 2 * CACHELINE_BYTES;
-	int ret;
 
 	flags |= PIPE_CONTROL_CS_STALL;
 
@@ -404,20 +424,7 @@ gen8_render_ring_flush(struct intel_engine_cs *ring,
 		flags |= PIPE_CONTROL_GLOBAL_GTT_IVB;
 	}
 
-	ret = intel_ring_begin(ring, 6);
-	if (ret)
-		return ret;
-
-	intel_ring_emit(ring, GFX_OP_PIPE_CONTROL(6));
-	intel_ring_emit(ring, flags);
-	intel_ring_emit(ring, scratch_addr);
-	intel_ring_emit(ring, 0);
-	intel_ring_emit(ring, 0);
-	intel_ring_emit(ring, 0);
-	intel_ring_advance(ring);
-
-	return 0;
-
+	return gen8_emit_pipe_control(ring, flags, scratch_addr);
 }
 
 static void ring_write_tail(struct intel_engine_cs *ring,
@@ -1004,7 +1011,7 @@ gen5_ring_get_irq(struct intel_engine_cs *ring)
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (ring->irq_refcount++ == 0)
-		ilk_enable_gt_irq(dev_priv, ring->irq_enable_mask);
+		gen5_enable_gt_irq(dev_priv, ring->irq_enable_mask);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 
 	return true;
@@ -1019,7 +1026,7 @@ gen5_ring_put_irq(struct intel_engine_cs *ring)
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (--ring->irq_refcount == 0)
-		ilk_disable_gt_irq(dev_priv, ring->irq_enable_mask);
+		gen5_disable_gt_irq(dev_priv, ring->irq_enable_mask);
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 }
 
@@ -1212,7 +1219,7 @@ gen6_ring_get_irq(struct intel_engine_cs *ring)
 					 GT_PARITY_ERROR(dev)));
 		else
 			I915_WRITE_IMR(ring, ~ring->irq_enable_mask);
-		ilk_enable_gt_irq(dev_priv, ring->irq_enable_mask);
+		gen5_enable_gt_irq(dev_priv, ring->irq_enable_mask);
 	}
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 
@@ -1232,7 +1239,7 @@ gen6_ring_put_irq(struct intel_engine_cs *ring)
 			I915_WRITE_IMR(ring, ~GT_PARITY_ERROR(dev));
 		else
 			I915_WRITE_IMR(ring, ~0);
-		ilk_disable_gt_irq(dev_priv, ring->irq_enable_mask);
+		gen5_disable_gt_irq(dev_priv, ring->irq_enable_mask);
 	}
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 }
@@ -1250,7 +1257,7 @@ hsw_vebox_get_irq(struct intel_engine_cs *ring)
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (ring->irq_refcount++ == 0) {
 		I915_WRITE_IMR(ring, ~ring->irq_enable_mask);
-		snb_enable_pm_irq(dev_priv, ring->irq_enable_mask);
+		gen6_enable_pm_irq(dev_priv, ring->irq_enable_mask);
 	}
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 
@@ -1270,7 +1277,7 @@ hsw_vebox_put_irq(struct intel_engine_cs *ring)
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (--ring->irq_refcount == 0) {
 		I915_WRITE_IMR(ring, ~0);
-		snb_disable_pm_irq(dev_priv, ring->irq_enable_mask);
+		gen6_disable_pm_irq(dev_priv, ring->irq_enable_mask);
 	}
 	spin_unlock_irqrestore(&dev_priv->irq_lock, flags);
 }

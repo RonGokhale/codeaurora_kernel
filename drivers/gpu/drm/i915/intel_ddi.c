@@ -587,8 +587,8 @@ static int intel_ddi_calc_wrpll_link(struct drm_i915_private *dev_priv,
 	return (refclk * n * 100) / (p * r);
 }
 
-void intel_ddi_clock_get(struct intel_encoder *encoder,
-			 struct intel_crtc_config *pipe_config)
+static void hsw_ddi_clock_get(struct intel_encoder *encoder,
+			      struct intel_crtc_config *pipe_config)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	int link_clock = 0;
@@ -643,9 +643,15 @@ void intel_ddi_clock_get(struct intel_encoder *encoder,
 		pipe_config->adjusted_mode.crtc_clock = pipe_config->port_clock;
 }
 
+void intel_ddi_clock_get(struct intel_encoder *encoder,
+			 struct intel_crtc_config *pipe_config)
+{
+	hsw_ddi_clock_get(encoder, pipe_config);
+}
+
 static void
-intel_ddi_calculate_wrpll(int clock /* in Hz */,
-			  unsigned *r2_out, unsigned *n2_out, unsigned *p_out)
+hsw_ddi_calculate_wrpll(int clock /* in Hz */,
+			unsigned *r2_out, unsigned *n2_out, unsigned *p_out)
 {
 	uint64_t freq2k;
 	unsigned p, n2, r2;
@@ -708,27 +714,17 @@ intel_ddi_calculate_wrpll(int clock /* in Hz */,
 	*r2_out = best.r2;
 }
 
-/*
- * Tries to find a PLL for the CRTC. If it finds, it increases the refcount and
- * stores it in intel_crtc->ddi_pll_sel, so other mode sets won't be able to
- * steal the selected PLL. You need to call intel_ddi_pll_enable to actually
- * enable the PLL.
- */
-bool intel_ddi_pll_select(struct intel_crtc *intel_crtc)
+static bool
+hsw_ddi_pll_select(struct intel_crtc *intel_crtc,
+		   struct intel_encoder *intel_encoder,
+		   int clock)
 {
-	struct drm_crtc *crtc = &intel_crtc->base;
-	struct intel_encoder *intel_encoder = intel_ddi_get_crtc_encoder(crtc);
-	int type = intel_encoder->type;
-	int clock = intel_crtc->config.port_clock;
-
-	intel_put_shared_dpll(intel_crtc);
-
-	if (type == INTEL_OUTPUT_HDMI) {
+	if (intel_encoder->type == INTEL_OUTPUT_HDMI) {
 		struct intel_shared_dpll *pll;
 		uint32_t val;
 		unsigned p, n2, r2;
 
-		intel_ddi_calculate_wrpll(clock * 1000, &r2, &n2, &p);
+		hsw_ddi_calculate_wrpll(clock * 1000, &r2, &n2, &p);
 
 		val = WRPLL_PLL_ENABLE | WRPLL_PLL_LCPLL |
 		      WRPLL_DIVIDER_REFERENCE(r2) | WRPLL_DIVIDER_FEEDBACK(n2) |
@@ -747,6 +743,25 @@ bool intel_ddi_pll_select(struct intel_crtc *intel_crtc)
 	}
 
 	return true;
+}
+
+
+/*
+ * Tries to find a *shared* PLL for the CRTC and store it in
+ * intel_crtc->ddi_pll_sel.
+ *
+ * For private DPLLs, compute_config() should do the selection for us. This
+ * function should be folded into compute_config() eventually.
+ */
+bool intel_ddi_pll_select(struct intel_crtc *intel_crtc)
+{
+	struct drm_crtc *crtc = &intel_crtc->base;
+	struct intel_encoder *intel_encoder = intel_ddi_get_crtc_encoder(crtc);
+	int clock = intel_crtc->config.port_clock;
+
+	intel_put_shared_dpll(intel_crtc);
+
+	return hsw_ddi_pll_select(intel_crtc, intel_encoder, clock);
 }
 
 void intel_ddi_set_pipe_settings(struct drm_crtc *crtc)
@@ -1183,31 +1198,52 @@ static void intel_disable_ddi(struct intel_encoder *intel_encoder)
 	}
 }
 
-int intel_ddi_get_cdclk_freq(struct drm_i915_private *dev_priv)
+static int bdw_get_cdclk_freq(struct drm_i915_private *dev_priv)
+{
+	uint32_t lcpll = I915_READ(LCPLL_CTL);
+	uint32_t freq = lcpll & LCPLL_CLK_FREQ_MASK;
+
+	if (lcpll & LCPLL_CD_SOURCE_FCLK)
+		return 800000;
+	else if (I915_READ(FUSE_STRAP) & HSW_CDCLK_LIMIT)
+		return 450000;
+	else if (freq == LCPLL_CLK_FREQ_450)
+		return 450000;
+	else if (freq == LCPLL_CLK_FREQ_54O_BDW)
+		return 540000;
+	else if (freq == LCPLL_CLK_FREQ_337_5_BDW)
+		return 337500;
+	else
+		return 675000;
+}
+
+static int hsw_get_cdclk_freq(struct drm_i915_private *dev_priv)
 {
 	struct drm_device *dev = dev_priv->dev;
 	uint32_t lcpll = I915_READ(LCPLL_CTL);
 	uint32_t freq = lcpll & LCPLL_CLK_FREQ_MASK;
 
-	if (lcpll & LCPLL_CD_SOURCE_FCLK) {
+	if (lcpll & LCPLL_CD_SOURCE_FCLK)
 		return 800000;
-	} else if (I915_READ(FUSE_STRAP) & HSW_CDCLK_LIMIT) {
+	else if (I915_READ(FUSE_STRAP) & HSW_CDCLK_LIMIT)
 		return 450000;
-	} else if (freq == LCPLL_CLK_FREQ_450) {
+	else if (freq == LCPLL_CLK_FREQ_450)
 		return 450000;
-	} else if (IS_HASWELL(dev)) {
-		if (IS_ULT(dev))
-			return 337500;
-		else
-			return 540000;
-	} else {
-		if (freq == LCPLL_CLK_FREQ_54O_BDW)
-			return 540000;
-		else if (freq == LCPLL_CLK_FREQ_337_5_BDW)
-			return 337500;
-		else
-			return 675000;
-	}
+	else if (IS_ULT(dev))
+		return 337500;
+	else
+		return 540000;
+}
+
+int intel_ddi_get_cdclk_freq(struct drm_i915_private *dev_priv)
+{
+	struct drm_device *dev = dev_priv->dev;
+
+	if (IS_BROADWELL(dev))
+		return bdw_get_cdclk_freq(dev_priv);
+
+	/* Haswell */
+	return hsw_get_cdclk_freq(dev_priv);
 }
 
 static void hsw_ddi_pll_enable(struct drm_i915_private *dev_priv,
@@ -1243,15 +1279,13 @@ static bool hsw_ddi_pll_get_hw_state(struct drm_i915_private *dev_priv,
 	return val & WRPLL_PLL_ENABLE;
 }
 
-static char *hsw_ddi_pll_names[] = {
+static const char * const hsw_ddi_pll_names[] = {
 	"WRPLL 1",
 	"WRPLL 2",
 };
 
-void intel_ddi_pll_init(struct drm_device *dev)
+static void hsw_shared_dplls_init(struct drm_i915_private *dev_priv)
 {
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	uint32_t val = I915_READ(LCPLL_CTL);
 	int i;
 
 	dev_priv->num_shared_dpll = 2;
@@ -1264,6 +1298,14 @@ void intel_ddi_pll_init(struct drm_device *dev)
 		dev_priv->shared_dplls[i].get_hw_state =
 			hsw_ddi_pll_get_hw_state;
 	}
+}
+
+void intel_ddi_pll_init(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t val = I915_READ(LCPLL_CTL);
+
+	hsw_shared_dplls_init(dev_priv);
 
 	/* The LCPLL register should be turned on by the BIOS. For now let's
 	 * just check its state and print errors in case something is wrong.
@@ -1444,7 +1486,7 @@ void intel_ddi_get_config(struct intel_encoder *encoder,
 		dev_priv->vbt.edp_bpp = pipe_config->pipe_bpp;
 	}
 
-	intel_ddi_clock_get(encoder, pipe_config);
+	hsw_ddi_clock_get(encoder, pipe_config);
 }
 
 static void intel_ddi_destroy(struct drm_encoder *encoder)
