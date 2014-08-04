@@ -49,16 +49,6 @@
  */
 #define BRCMF_DRIVER_FIRMWARE_VERSION_LEN	32
 
-/* Bus independent dongle command */
-struct brcmf_dcmd {
-	uint cmd;		/* common dongle cmd definition */
-	void *buf;		/* pointer to user buffer */
-	uint len;		/* length of user buffer */
-	u8 set;			/* get or set request (optional) */
-	uint used;		/* bytes read or written (optional) */
-	uint needed;		/* bytes needed (optional) */
-};
-
 /**
  * struct brcmf_ampdu_rx_reorder - AMPDU receive reorder info
  *
@@ -113,6 +103,10 @@ struct brcmf_pub {
 
 	struct brcmf_ampdu_rx_reorder
 		*reorder_flows[BRCMF_AMPDU_RX_REORDER_MAXFLOWS];
+
+	u32 feat_flags;
+	u32 chip_quirks;
+
 #ifdef DEBUG
 	struct dentry *dbgfs_dir;
 #endif
@@ -185,7 +179,6 @@ struct brcmf_if *brcmf_add_if(struct brcmf_pub *drvr, s32 bssidx, s32 ifidx,
 void brcmf_del_if(struct brcmf_pub *drvr, s32 bssidx);
 void brcmf_txflowblock_if(struct brcmf_if *ifp,
 			  enum brcmf_netif_stop_reason reason, bool state);
-u32 brcmf_get_chip_info(struct brcmf_if *ifp);
 void brcmf_txfinalize(struct brcmf_pub *drvr, struct sk_buff *txp, u8 ifidx,
 		      bool success);
 
