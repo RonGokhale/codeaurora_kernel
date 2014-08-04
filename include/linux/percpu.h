@@ -7,6 +7,7 @@
 #include <linux/cpumask.h>
 #include <linux/pfn.h>
 #include <linux/init.h>
+#include <linux/workqueue.h>
 
 #include <asm/percpu.h>
 
@@ -128,5 +129,94 @@ extern phys_addr_t per_cpu_ptr_to_phys(void *addr);
 
 #define alloc_percpu(type)	\
 	(typeof(type) __percpu *)__alloc_percpu(sizeof(type), __alignof__(type))
+
+/*
+ * percpu_pool is an automatically managed percpu allocation cache which
+ * can be used to allocate percpu areas from atomic contexts.
+ */
+struct percpu_pool {
+	spinlock_t		lock;
+	size_t			elem_size;
+	size_t			elem_align;
+	int			nr_low;
+	int			nr_high;
+	int			nr;
+	bool			inhibit_fill:1;
+	void __percpu		*head;
+	struct work_struct	fill_work;
+};
+
+void __pcpu_pool_fill_workfn(struct work_struct *work);
+
+/**
+ * __PERCPU_POOL_INIT - initializer for percpu_pool
+ * @name: name of the percpu_pool being initialized
+ * @size: size of the percpu elements to be cached
+ * @align: alignment of the percpu elements to be cached
+ * @low: low watermark of the pool
+ * @high: high watermark of the pool
+ *
+ * Initializer for percpu_pool @name which serves percpu areas of @size
+ * bytes with the alignment of @align.  If the pool falls below @low, it's
+ * filled upto @high.  Note that the pool starts empty.  If not explicitly
+ * filled with percpu_pool_fill(), the first allocation will fail and
+ * trigger filling.
+ */
+#define __PERCPU_POOL_INIT(name, size, align, low, high)		\
+{									\
+	.lock			= __SPIN_LOCK_INITIALIZER(name.lock),	\
+	.elem_size		= (size),				\
+	.elem_align		= (align),				\
+	.nr_low			= (low),				\
+	.nr_high		= (high),				\
+	.fill_work		= __WORK_INITIALIZER(name.fill_work,	\
+					__pcpu_pool_fill_workfn),	\
+}
+
+/**
+ * __DEFINE_PERCPU_POOL - define a percpu_pool
+ * @name: name of the percpu_pool being defined
+ * @size: size of the percpu elements to be cached
+ * @align: alignment of the percpu elements to be cached
+ * @low: low watermark of the pool
+ * @high: high watermark of the pool
+ *
+ * Define a percpu_pool @name.  See __PERCPU_POOL_INIT().
+ */
+#define __DEFINE_PERCPU_POOL(name, size, align, low, high)		\
+	struct percpu_pool name = __PERCPU_POOL_INIT(name, size, align,	\
+						     low, high)
+
+/**
+ * PERCPU_POOL_INIT - initializer for percpu_pool
+ * @name: name of the percpu_pool being initialized
+ * @type: type of the percpu elements to be cached
+ * @low: low watermark of the pool
+ * @high: high watermark of the pool
+ *
+ * Equivalent to __PERCPU_POOL_INIT() except that the size and alignment
+ * are calculated from @type instead of being explicitly specified.
+ */
+#define PERCPU_POOL_INIT(name, type, low, high)				\
+	__PERCPU_POOL_INIT(name, sizeof(type), __alignof__(type),	\
+			   low, high)
+
+/**
+ * DEFINE_PERCPU_POOL - define a percpu_pool
+ * @name: name of the percpu_pool being defined
+ * @type: type of the percpu elements to be cached
+ * @low: low watermark of the pool
+ * @high: high watermark of the pool
+ *
+ * Equivalent to __DEFINE_PERCPU_POOL() except that the size and alignment
+ * are calculated from @type instead of being explicitly specified.
+ */
+#define DEFINE_PERCPU_POOL(name, type, low, high)			\
+	__DEFINE_PERCPU_POOL(name, sizeof(type), __alignof__(type),	\
+			     low, high)
+
+extern void percpu_pool_fill(struct percpu_pool *pool, int target_nr);
+extern void percpu_pool_empty(struct percpu_pool *pool);
+extern void __percpu *percpu_pool_alloc(struct percpu_pool *pool);
 
 #endif /* __LINUX_PERCPU_H */

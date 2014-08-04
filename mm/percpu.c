@@ -68,6 +68,8 @@
 #include <linux/vmalloc.h>
 #include <linux/workqueue.h>
 #include <linux/kmemleak.h>
+#include <linux/delay.h>
+#include <linux/sched.h>
 
 #include <asm/cacheflush.h>
 #include <asm/sections.h>
@@ -1964,4 +1966,180 @@ void __init percpu_init_late(void)
 		chunk->map = map;
 		spin_unlock_irqrestore(&pcpu_lock, flags);
 	}
+}
+
+
+/*
+ * percpu_pool implementation.
+ *
+ * percpu_pool allocates percpu areas and chain them so that they can be
+ * given out in atomic contexts.  When a pool goes below its configured low
+ * watermark, its work item is queued to fill it upto the high watermark.
+ */
+
+static void __percpu **pcpu_pool_nextp(void __percpu *p)
+{
+	static int pcpu_pool_cpu = -1;
+
+	/*
+	 * @pcpu_pool_cpu is the CPU whose area is used to chain percpu
+	 * areas and can be any possible CPU.
+	 */
+	if (unlikely(pcpu_pool_cpu < 0))
+		pcpu_pool_cpu = cpumask_any(cpu_possible_mask);
+
+	return per_cpu_ptr((void __percpu * __percpu *)p, pcpu_pool_cpu);
+}
+
+/**
+ * pcpu_pool_alloc_elems - allocate percpu_areas and put them on a list
+ * @elem_size: the size of each element
+ * @elem_align: the alignment of each element
+ * @nr: the number of elements to allocate
+ * @headp: out param for the head of the allocated list
+ * @tailp: out param for the tail of the allocated list
+ *
+ * Try to allocate @nr percpu areas with @elem_size and @elem_align and put
+ * them on a list pointed to by *@headp and *@tailp.  Returns the number of
+ * successfully allocated elements which may be zero.
+ */
+static int pcpu_pool_alloc_elems(size_t elem_size, size_t elem_align, int nr,
+				 void __percpu **headp, void __percpu **tailp)
+{
+	void __percpu *head = NULL;
+	void __percpu *tail = NULL;
+	int i;
+
+	/* each elem should be able to carry a pointer to allow chaining */
+	elem_size = max_t(size_t, elem_size, sizeof(void __percpu *));
+	elem_align = max_t(size_t, elem_align, __alignof__(void __percpu *));
+
+	for (i = 0; i < nr; i++) {
+		void __percpu *p;
+
+		p = __alloc_percpu(elem_size, elem_align);
+		if (!p)
+			break;
+
+		if (!tail)
+			tail = p;
+		if (head)
+			*pcpu_pool_nextp(p) = head;
+		head = p;
+
+		cond_resched();
+	}
+
+	*headp = head;
+	*tailp = tail;
+	return i;
+}
+
+/**
+ * pcpu_pool_fill - fill a percpu_pool
+ * @pool: percpu_pool to fill
+ * @target_nr: target number of elements (0 for default)
+ *
+ * Try to fill @pool upto @target_nr elements.  If @target_nr is zero, the
+ * high watermark set during pool init is used.
+ *
+ * If @target_nr is non-zero but lower than the low watermark, automatic
+ * pool refilling is disabled until it is completely empty.  This is useful
+ * for a pool which allocates some fixed number of elements during boot but
+ * may or may not be used afterwards.  By pre-filling with the amount
+ * necessary during boot, systems which don't use it afterwards can avoid
+ * carrying around a potentially large cache of percpu areas.
+ */
+void percpu_pool_fill(struct percpu_pool *pool, int target_nr)
+{
+	void __percpu *head;
+	void __percpu *tail;
+	int nr;
+
+	target_nr = target_nr ?: pool->nr_high;
+	nr = max(target_nr - pool->nr, 0);
+	nr = pcpu_pool_alloc_elems(pool->elem_size, pool->elem_align, nr,
+				   &head, &tail);
+
+	spin_lock_irq(&pool->lock);
+	if (nr) {
+		*pcpu_pool_nextp(tail) = pool->head;
+		pool->head = head;
+		pool->nr += nr;
+	}
+	pool->inhibit_fill = target_nr < pool->nr_low;
+	spin_unlock_irq(&pool->lock);
+}
+
+/**
+ * pcpu_pool_empty - empty a percpu_pool
+ * @pool: percpu_pool to empty
+ *
+ * Empty @pool.  If @pool is not used after this function is invoked, @pool
+ * can be destroyed on completion.
+ */
+void percpu_pool_empty(struct percpu_pool *pool)
+{
+	void __percpu *head;
+	unsigned long flags;
+
+	cancel_work_sync(&pool->fill_work);
+
+	spin_lock_irqsave(&pool->lock, flags);
+	head = pool->head;
+	pool->head = NULL;
+	pool->nr = 0;
+	spin_unlock_irqrestore(&pool->lock, flags);
+
+	while (head) {
+		void __percpu *p = head;
+
+		head = *pcpu_pool_nextp(p);
+		free_percpu(p);
+	}
+}
+
+void __pcpu_pool_fill_workfn(struct work_struct *work)
+{
+	struct percpu_pool *pool = container_of(work, struct percpu_pool,
+						fill_work);
+	percpu_pool_fill(pool, 0);
+}
+
+/**
+ * percpu_pool_alloc - allocate from a percpu_pool
+ * @pool: percpu_pool to allocate from
+ *
+ * Allocate an element from @pool.  This function can be used from any
+ * context.
+ *
+ * @pool is automatically refilled if it falls below the low watermark set
+ * during pool init; however, the refilling is asynchronous and the pool
+ * may go empty before refilling is complete.
+ *
+ * Returns the pointer to the allocated percpu area on success, %NULL on
+ * failure.  The returned percpu pointer can be freed via free_percpu().
+ */
+void __percpu *percpu_pool_alloc(struct percpu_pool *pool)
+{
+	void __percpu *p;
+	unsigned long flags;
+
+	spin_lock_irqsave(&pool->lock, flags);
+
+	p = pool->head;
+	if (p) {
+		pool->head = *pcpu_pool_nextp(p);
+		*pcpu_pool_nextp(p) = NULL;
+		pool->nr--;
+	}
+
+	if (!pool->nr || (!pool->inhibit_fill && pool->nr < pool->nr_low)) {
+		pool->inhibit_fill = false;
+		schedule_work(&pool->fill_work);
+	}
+
+	spin_unlock_irqrestore(&pool->lock, flags);
+
+	return p;
 }
