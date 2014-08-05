@@ -424,15 +424,15 @@ static int _sendcache_pre(struct audio_client *ac)
 		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
 		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]),
 		  *((int *)&_depc[offset+120]));
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to port, with cache index = %d device mask 0x%X, param = 0x%X, offset = %d, and size = %d\n",
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: sending full data block to port, with cache index = %d device mask = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
 		  cidx, _c_bl[cidx][CBD_DEV_MASK], cmd, offset, size);
 
 	if (q6asm_dts_eagle_set(ac, cmd, size, (void *)&_depc[offset],
 				NULL, MPRE)) {
-		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set failed with id = %d and size = %d\n",
+		pr_err("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set failed with id = 0x%X and size = %d\n",
 			__func__, cmd, size);
 	} else {
-		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set succeeded with id = %d and size = %d\n",
+		pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_PRE: in %s, q6asm_dts_eagle_set succeeded with id = 0x%X and size = %d\n",
 			 __func__, cmd, size);
 	}
 	return 0;
@@ -495,7 +495,7 @@ NT_MODE_GOTO:
 		  *((int *)&_depc[offset]), *((int *)&_depc[offset+4]),
 		  *((int *)&_depc[offset+8]), *((int *)&_depc[offset+12]),
 		  *((int *)&_depc[offset+16]), *((int *)&_depc[offset+20]));
-	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask 0x%X, port_id = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
+	pr_debug("DTS_EAGLE_DRIVER_SENDCACHE_POST: sending full data block to port, with cache index = %d device mask = 0x%X, port_id = 0x%X, param = 0x%X, offset = %d, and size = %d\n",
 		  cidx, _c_bl[cidx][CBD_DEV_MASK], port_id, cmd, offset, size);
 
 	if (_ac_NT) {
