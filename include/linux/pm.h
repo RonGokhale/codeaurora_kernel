@@ -27,6 +27,7 @@
 #include <linux/wait.h>
 #include <linux/timer.h>
 #include <linux/completion.h>
+#include <linux/notifier.h>
 
 /*
  * Callbacks for platform drivers to implement.
@@ -523,6 +524,7 @@ struct wakeup_source;
 struct pm_domain_data {
 	struct list_head list_node;
 	struct device *dev;
+	struct blocking_notifier_head notify_chain_head;
 };
 
 struct pm_subsys_data {
