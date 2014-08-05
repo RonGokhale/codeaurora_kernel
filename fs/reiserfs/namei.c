@@ -580,8 +580,8 @@ static int reiserfs_add_entry(struct reiserfs_transaction_handle *th,
 }
 
 /*
- * quota utility function, call if you've had to abort after calling
- * new_inode_init, and have not called reiserfs_new_inode yet.
+ * Utility function to call if you've had to abort after calling
+ * get_new_inode, and have not called reiserfs_new_inode yet.
  * This should only be called on inodes that do not have stat data
  * inserted into the tree yet.
  */
@@ -590,6 +590,7 @@ static int drop_new_inode(struct inode *inode)
 	dquot_drop(inode);
 	make_bad_inode(inode);
 	inode->i_flags |= S_NOQUOTA;
+	unlock_new_inode(inode);
 	iput(inode);
 	return 0;
 }
@@ -600,8 +601,23 @@ static int drop_new_inode(struct inode *inode)
  * outside of a transaction, so we had to pull some bits of
  * reiserfs_new_inode out into this func.
  */
-static int new_inode_init(struct inode *inode, struct inode *dir, umode_t mode)
+static struct inode *get_new_inode(struct inode *dir, umode_t mode)
 {
+	struct super_block *sb = dir->i_sb;
+	struct inode *inode = sb->s_op->alloc_inode(sb);
+
+	if (!inode)
+		return NULL;
+	if (unlikely(inode_init_always(sb, inode))) {
+		sb->s_op->destroy_inode(inode);
+		return NULL;
+	}
+	/* Make sure noone works with half-initialized inode */
+	spin_lock(&inode->i_lock);
+	inode->i_state = I_NEW;
+	spin_unlock(&inode->i_lock);
+	inode_sb_list_add(inode);
+
 	/*
 	 * Make inode invalid - just in case we are going to drop it before
 	 * the initialization happens
@@ -614,7 +630,8 @@ static int new_inode_init(struct inode *inode, struct inode *dir, umode_t mode)
 	 */
 	inode_init_owner(inode, dir, mode);
 	dquot_initialize(inode);
-	return 0;
+
+	return inode;
 }
 
 static int reiserfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
@@ -635,10 +652,8 @@ static int reiserfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
 	dquot_initialize(dir);
 
-	if (!(inode = new_inode(dir->i_sb))) {
+	if (!(inode = get_new_inode(dir, mode)))
 		return -ENOMEM;
-	}
-	new_inode_init(inode, dir, mode);
 
 	jbegin_count += reiserfs_cache_default_acl(dir);
 	retval = reiserfs_security_init(dir, inode, &dentry->d_name, &security);
@@ -712,10 +727,8 @@ static int reiserfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode
 
 	dquot_initialize(dir);
 
-	if (!(inode = new_inode(dir->i_sb))) {
+	if (!(inode = get_new_inode(dir, mode)))
 		return -ENOMEM;
-	}
-	new_inode_init(inode, dir, mode);
 
 	jbegin_count += reiserfs_cache_default_acl(dir);
 	retval = reiserfs_security_init(dir, inode, &dentry->d_name, &security);
@@ -797,10 +810,8 @@ static int reiserfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 	REISERFS_I(dir)->new_packing_locality = 1;
 #endif
 	mode = S_IFDIR | mode;
-	if (!(inode = new_inode(dir->i_sb))) {
+	if (!(inode = get_new_inode(dir, mode)))
 		return -ENOMEM;
-	}
-	new_inode_init(inode, dir, mode);
 
 	jbegin_count += reiserfs_cache_default_acl(dir);
 	retval = reiserfs_security_init(dir, inode, &dentry->d_name, &security);
@@ -1097,10 +1108,8 @@ static int reiserfs_symlink(struct inode *parent_dir,
 
 	dquot_initialize(parent_dir);
 
-	if (!(inode = new_inode(parent_dir->i_sb))) {
+	if (!(inode = get_new_inode(parent_dir, mode)))
 		return -ENOMEM;
-	}
-	new_inode_init(inode, parent_dir, mode);
 
 	retval = reiserfs_security_init(parent_dir, inode, &dentry->d_name,
 					&security);
