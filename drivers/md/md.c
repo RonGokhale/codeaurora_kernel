@@ -3500,6 +3500,12 @@ level_store(struct mddev *mddev, const char *buf, size_t len)
 		       mdname(mddev), clevel);
 		return -EINVAL;
 	}
+	if (mddev->bitmap && !pers->quiesce) {
+		module_put(pers->owner);
+		printk(KERN_WARNING "md: %s: %s does not support a bitmap\n",
+		       mdname(mddev), clevel);
+		return -EINVAL;
+	}
 
 	rdev_for_each(rdev, mddev)
 		rdev->new_raid_disk = rdev->raid_disk;
