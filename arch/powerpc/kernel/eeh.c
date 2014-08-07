@@ -1162,8 +1162,11 @@ int eeh_dev_open(struct pci_dev *pdev)
 
 	/* No EEH device or PE ? */
 	edev = pci_dev_to_eeh_dev(pdev);
-	if (!edev || !edev->pe)
+	if (!edev || !edev->pe) {
+		pr_warn_once("%s: PCI device %s not supported\n",
+			     __func__, pci_name(pdev));
 		goto out;
+	}
 
 	/* Increase PE's pass through count */
 	atomic_inc(&edev->pe->pass_dev_cnt);
