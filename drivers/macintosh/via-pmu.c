@@ -2255,7 +2255,7 @@ static void pmac_suspend_enable_irqs(void)
 
 static int pmu_sleep_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_MEM
+	return state == PM_SUSPEND_DEEP
 		&& (pmac_call_feature(PMAC_FTR_SLEEP_STATE, NULL, 0, -1) >= 0);
 }
 
@@ -2288,7 +2288,7 @@ static int pmu_ioctl(struct file *filp,
 	case PMU_IOC_SLEEP:
 		if (!capable(CAP_SYS_ADMIN))
 			return -EACCES;
-		return pm_suspend(PM_SUSPEND_MEM);
+		return pm_suspend(PM_SUSPEND_DEEP);
 	case PMU_IOC_CAN_SLEEP:
 		if (pmac_call_feature(PMAC_FTR_SLEEP_STATE, NULL, 0, -1) < 0)
 			return put_user(0, argp);

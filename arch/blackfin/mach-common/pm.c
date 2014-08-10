@@ -32,7 +32,7 @@ void bfin_pm_suspend_standby_enter(void)
 #endif
 
 #ifdef CONFIG_BF60x
-	bfin_cpu_pm->enter(PM_SUSPEND_STANDBY);
+	bfin_cpu_pm->enter(PM_SUSPEND_SHALLOW);
 #else
 # ifdef CONFIG_PM_BFIN_SLEEP_DEEPER
 	sleep_deeper(bfin_sic_iwr[0], bfin_sic_iwr[1], bfin_sic_iwr[2]);
@@ -188,7 +188,7 @@ int bfin_pm_suspend_mem_enter(void)
 #ifndef CONFIG_BF60x
 	do_hibernate(wakeup | vr_wakeup);	/* See you later! */
 #else
-	bfin_cpu_pm->enter(PM_SUSPEND_MEM);
+	bfin_cpu_pm->enter(PM_SUSPEND_DEEP);
 #endif
 
 	bf53x_resume_l1_mem(memptr);
@@ -214,7 +214,7 @@ int bfin_pm_suspend_mem_enter(void)
  */
 static int bfin_pm_valid(suspend_state_t state)
 {
-	return (state == PM_SUSPEND_STANDBY
+	return (state == PM_SUSPEND_SHALLOW
 #if !(defined(BF533_FAMILY) || defined(CONFIG_BF561))
 	/*
 	 * On BF533/2/1:
@@ -229,7 +229,7 @@ static int bfin_pm_valid(suspend_state_t state)
 	 * start losing its contents.
 	 * An external HW workaround is possible using logic gates.
 	 */
-	|| state == PM_SUSPEND_MEM
+	|| state == PM_SUSPEND_DEEP
 #endif
 	);
 }
@@ -242,10 +242,10 @@ static int bfin_pm_valid(suspend_state_t state)
 static int bfin_pm_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		bfin_pm_suspend_standby_enter();
 		break;
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		bfin_pm_suspend_mem_enter();
 		break;
 	default:

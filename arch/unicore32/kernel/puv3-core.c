@@ -208,7 +208,7 @@ static void puv3_cpu_pm_enter(suspend_state_t state)
 /*	case PM_SUSPEND_ON:
 		puv3_cpu_idle();
 		break; */
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		puv3_cpu_pm_prepare();
 		puv3_cpu_suspend(PM_PMCR_SFB);
 		break;
@@ -217,7 +217,7 @@ static void puv3_cpu_pm_enter(suspend_state_t state)
 
 static int puv3_cpu_pm_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_MEM;
+	return state == PM_SUSPEND_DEEP;
 }
 
 static void puv3_cpu_pm_finish(void)

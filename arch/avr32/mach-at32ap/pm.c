@@ -100,8 +100,8 @@ static int avr32_pm_valid_state(suspend_state_t state)
 {
 	switch (state) {
 	case PM_SUSPEND_ON:
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		return 1;
 
 	default:
@@ -116,7 +116,7 @@ static int avr32_pm_enter(suspend_state_t state)
 	void		*sram;
 
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		sram = avr32_pm_map_sram();
 
 		/* Switch to in-sram exception handlers */
@@ -138,7 +138,7 @@ static int avr32_pm_enter(suspend_state_t state)
 		avr32_pm_unmap_sram();
 		break;
 
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		sram = avr32_pm_map_sram();
 
 		/* Switch to in-sram exception handlers */

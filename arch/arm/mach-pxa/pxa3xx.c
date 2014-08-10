@@ -196,11 +196,11 @@ static void pxa3xx_cpu_pm_enter(suspend_state_t state)
 	}
 
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		pxa3xx_cpu_standby(PXA3xx_PM_S0D2C2);
 		break;
 
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		pxa3xx_cpu_pm_suspend();
 		break;
 	}
@@ -208,7 +208,7 @@ static void pxa3xx_cpu_pm_enter(suspend_state_t state)
 
 static int pxa3xx_cpu_pm_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_MEM || state == PM_SUSPEND_STANDBY;
+	return state == PM_SUSPEND_DEEP || state == PM_SUSPEND_SHALLOW;
 }
 
 static struct pxa_cpu_pm_fns pxa3xx_cpu_pm_fns = {

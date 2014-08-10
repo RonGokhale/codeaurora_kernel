@@ -314,7 +314,7 @@ static int imx6q_suspend_finish(unsigned long val)
 static int imx6q_pm_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		imx6q_set_lpm(STOP_POWER_OFF);
 		imx6q_enable_wb(true);
 		/*
@@ -345,7 +345,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops imx6q_pm_ops = {
 	.enter = imx6q_pm_enter,
-	.valid = suspend_valid_only_mem,
+	.valid = suspend_valid_only_deep,
 };
 
 void __init imx6q_pm_set_ccm_base(void __iomem *base)

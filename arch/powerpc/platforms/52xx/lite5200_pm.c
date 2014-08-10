@@ -24,8 +24,8 @@ static suspend_state_t lite5200_pm_target_state;
 static int lite5200_pm_valid(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		return 1;
 	default:
 		return 0;
@@ -55,10 +55,10 @@ static int lite5200_pm_prepare(void)
 	const u32 *regaddr_p;
 
 	/* deep sleep? let mpc52xx code handle that */
-	if (lite5200_pm_target_state == PM_SUSPEND_STANDBY)
+	if (lite5200_pm_target_state == PM_SUSPEND_SHALLOW)
 		return mpc52xx_pm_prepare();
 
-	if (lite5200_pm_target_state != PM_SUSPEND_MEM)
+	if (lite5200_pm_target_state != PM_SUSPEND_DEEP)
 		return -EINVAL;
 
 	/* map registers */
@@ -204,7 +204,7 @@ static void lite5200_restore_regs(void)
 static int lite5200_pm_enter(suspend_state_t state)
 {
 	/* deep sleep? let mpc52xx code handle that */
-	if (state == PM_SUSPEND_STANDBY) {
+	if (state == PM_SUSPEND_SHALLOW) {
 		return mpc52xx_pm_enter(state);
 	}
 
@@ -224,7 +224,7 @@ static int lite5200_pm_enter(suspend_state_t state)
 static void lite5200_pm_finish(void)
 {
 	/* deep sleep? let mpc52xx code handle that */
-	if (lite5200_pm_target_state == PM_SUSPEND_STANDBY)
+	if (lite5200_pm_target_state == PM_SUSPEND_SHALLOW)
 		mpc52xx_pm_finish();
 }
 

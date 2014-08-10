@@ -50,7 +50,7 @@ static int pmc_suspend_enter(suspend_state_t state)
 
 static int pmc_suspend_valid(suspend_state_t state)
 {
-	if (state != PM_SUSPEND_STANDBY)
+	if (state != PM_SUSPEND_SHALLOW)
 		return 0;
 	return 1;
 }

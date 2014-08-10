@@ -207,8 +207,8 @@ static int omap_pm_enter(suspend_state_t suspend_state)
 		return -ENOENT; /* XXX doublecheck */
 
 	switch (suspend_state) {
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		ret = omap_pm_suspend();
 		break;
 	default:
@@ -242,7 +242,7 @@ static const struct platform_suspend_ops omap_pm_ops = {
 	.end		= omap_pm_end,
 	.enter		= omap_pm_enter,
 	.finish		= omap_pm_finish,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 /**

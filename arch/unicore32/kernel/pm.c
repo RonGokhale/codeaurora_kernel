@@ -31,7 +31,7 @@ int puv3_pm_enter(suspend_state_t state)
 	int i;
 
 	/* skip registers saving for standby */
-	if (state != PM_SUSPEND_STANDBY) {
+	if (state != PM_SUSPEND_SHALLOW) {
 		puv3_cpu_pm_fns->save(sleep_save);
 		/* before sleeping, calculate and save a checksum */
 		for (i = 0; i < puv3_cpu_pm_fns->save_count - 1; i++)
@@ -47,7 +47,7 @@ int puv3_pm_enter(suspend_state_t state)
 #ifdef CONFIG_PCI
 	pci_puv3_preinit();
 #endif
-	if (state != PM_SUSPEND_STANDBY) {
+	if (state != PM_SUSPEND_SHALLOW) {
 		/* after sleeping, validate the checksum */
 		for (i = 0; i < puv3_cpu_pm_fns->save_count - 1; i++)
 			checksum += sleep_save[i];

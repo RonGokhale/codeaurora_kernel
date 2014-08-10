@@ -68,7 +68,7 @@ static int sirfsoc_pre_suspend_power_off(void)
 static int sirfsoc_pm_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		sirfsoc_pre_suspend_power_off();
 
 		outer_disable();
@@ -84,7 +84,7 @@ static int sirfsoc_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops sirfsoc_pm_ops = {
 	.enter = sirfsoc_pm_enter,
-	.valid = suspend_valid_only_mem,
+	.valid = suspend_valid_only_deep,
 };
 
 static const struct of_device_id pwrc_ids[] = {

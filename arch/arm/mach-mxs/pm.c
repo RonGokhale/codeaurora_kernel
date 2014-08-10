@@ -20,7 +20,7 @@
 static int mxs_suspend_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		cpu_do_idle();
 		break;
 
@@ -32,7 +32,7 @@ static int mxs_suspend_enter(suspend_state_t state)
 
 static struct platform_suspend_ops mxs_suspend_ops = {
 	.enter = mxs_suspend_enter,
-	.valid = suspend_valid_only_mem,
+	.valid = suspend_valid_only_deep,
 };
 
 void __init mxs_pm_init(void)

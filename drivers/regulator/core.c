@@ -757,10 +757,10 @@ static int suspend_prepare(struct regulator_dev *rdev, suspend_state_t state)
 		return -EINVAL;
 
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		return suspend_set_state(rdev,
 			&rdev->constraints->state_standby);
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		return suspend_set_state(rdev,
 			&rdev->constraints->state_mem);
 	case PM_SUSPEND_MAX:

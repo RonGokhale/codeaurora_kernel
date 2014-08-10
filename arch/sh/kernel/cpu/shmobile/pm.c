@@ -144,7 +144,7 @@ static int sh_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops sh_pm_ops = {
 	.enter          = sh_pm_enter,
-	.valid          = suspend_valid_only_mem,
+	.valid          = suspend_valid_only_deep,
 };
 
 static int __init sh_pm_init(void)

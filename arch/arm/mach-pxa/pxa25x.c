@@ -251,7 +251,7 @@ static void pxa25x_cpu_pm_enter(suspend_state_t state)
 	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
 
 	switch (state) {
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		cpu_suspend(PWRMODE_SLEEP, pxa25x_finish_suspend);
 		break;
 	}
@@ -272,7 +272,7 @@ static void pxa25x_cpu_pm_finish(void)
 
 static struct pxa_cpu_pm_fns pxa25x_cpu_pm_fns = {
 	.save_count	= SLEEP_SAVE_COUNT,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 	.save		= pxa25x_cpu_pm_save,
 	.restore	= pxa25x_cpu_pm_restore,
 	.enter		= pxa25x_cpu_pm_enter,

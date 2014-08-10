@@ -124,7 +124,7 @@ static int lpc32xx_pm_enter(suspend_state_t state)
 }
 
 static const struct platform_suspend_ops lpc32xx_pm_ops = {
-	.valid	= suspend_valid_only_mem,
+	.valid	= suspend_valid_only_deep,
 	.enter	= lpc32xx_pm_enter,
 };
 

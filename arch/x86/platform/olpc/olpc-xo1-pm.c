@@ -54,7 +54,7 @@ static int xo1_power_state_enter(suspend_state_t pm_state)
 	unsigned long saved_sci_mask;
 
 	/* Only STR is supported */
-	if (pm_state != PM_SUSPEND_MEM)
+	if (pm_state != PM_SUSPEND_DEEP)
 		return -EINVAL;
 
 	/*
@@ -113,7 +113,7 @@ static void xo1_power_off(void)
 static int xo1_power_state_valid(suspend_state_t pm_state)
 {
 	/* suspend-to-RAM only */
-	return pm_state == PM_SUSPEND_MEM;
+	return pm_state == PM_SUSPEND_DEEP;
 }
 
 static const struct platform_suspend_ops xo1_suspend_ops = {

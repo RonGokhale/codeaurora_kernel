@@ -390,9 +390,9 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 
 	/*
 	 * active wakeup source should bring the system
-	 * out of PM_SUSPEND_FREEZE state
+	 * out of PM_IDLE_SLEEP state
 	 */
-	freeze_wake();
+	suspend_to_idle_wake();
 
 	ws->active = true;
 	ws->active_count++;
