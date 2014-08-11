@@ -409,7 +409,7 @@ start_transaction(struct btrfs_root *root, u64 num_items, unsigned int type,
 	if (num_items > 0 && root != root->fs_info->chunk_root) {
 		if (root->fs_info->quota_enabled &&
 		    is_fstree(root->root_key.objectid)) {
-			qgroup_reserved = num_items * root->leafsize;
+			qgroup_reserved = num_items * root->nodesize;
 			ret = btrfs_qgroup_reserve(root, qgroup_reserved);
 			if (ret)
 				return ERR_PTR(ret);
@@ -2010,9 +2010,6 @@ int btrfs_clean_one_deleted_snapshot(struct btrfs_root *root)
 		ret = btrfs_drop_snapshot(root, NULL, 0, 0);
 	else
 		ret = btrfs_drop_snapshot(root, NULL, 1, 0);
-	/*
-	 * If we encounter a transaction abort during snapshot cleaning, we
-	 * don't want to crash here
-	 */
+
 	return (ret < 0) ? 0 : 1;
 }
