@@ -1847,6 +1847,25 @@ void btrfs_rm_dev_replace_srcdev(struct btrfs_fs_info *fs_info,
 			btrfs_scratch_superblock(srcdev);
 	}
 
+	/* unless fs_devices is seed fs, num_devices shouldn't go
+	 * zero
+	 */
+	BUG_ON(!fs_devices->num_devices && !fs_devices->seeding);
+
+	/* if this is no devs we rather delete the fs_devices */
+	if (!fs_devices->num_devices) {
+		struct btrfs_fs_devices *tmp_fs_devices;
+
+		tmp_fs_devices = fs_info->fs_devices;
+		while (tmp_fs_devices) {
+			if (tmp_fs_devices->seed == fs_devices) {
+				tmp_fs_devices->seed = fs_devices->seed;
+				break;
+			}
+			tmp_fs_devices = tmp_fs_devices->seed;
+		}
+		fs_devices->seed = NULL;
+	}
 	call_rcu(&srcdev->rcu, free_device);
 }
 
