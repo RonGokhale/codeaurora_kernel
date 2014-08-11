@@ -139,11 +139,17 @@ static int smp_ah(struct crypto_blkcipher *tfm, u8 irk[16], u8 r[3], u8 res[3])
 	return 0;
 }
 
-bool smp_irk_matches(struct crypto_blkcipher *tfm, u8 irk[16],
-		     bdaddr_t *bdaddr)
+bool smp_irk_matches(struct hci_dev *hdev, u8 irk[16], bdaddr_t *bdaddr)
 {
+	struct l2cap_chan *chan = hdev->smp_data;
+	struct crypto_blkcipher *tfm;
 	u8 hash[3];
 	int err;
+
+	if (!chan || !chan->data)
+		return false;
+
+	tfm = chan->data;
 
 	BT_DBG("RPA %pMR IRK %*phN", bdaddr, 16, irk);
 
@@ -154,9 +160,16 @@ bool smp_irk_matches(struct crypto_blkcipher *tfm, u8 irk[16],
 	return !memcmp(bdaddr->b, hash, 3);
 }
 
-int smp_generate_rpa(struct crypto_blkcipher *tfm, u8 irk[16], bdaddr_t *rpa)
+int smp_generate_rpa(struct hci_dev *hdev, u8 irk[16], bdaddr_t *rpa)
 {
+	struct l2cap_chan *chan = hdev->smp_data;
+	struct crypto_blkcipher *tfm;
 	int err;
+
+	if (!chan || !chan->data)
+		return -EOPNOTSUPP;
+
+	tfm = chan->data;
 
 	get_random_bytes(&rpa->b[3], 3);
 
@@ -235,44 +248,29 @@ static int smp_s1(struct smp_chan *smp, u8 k[16], u8 r1[16], u8 r2[16],
 	return err;
 }
 
-static struct sk_buff *smp_build_cmd(struct l2cap_conn *conn, u8 code,
-				     u16 dlen, void *data)
-{
-	struct sk_buff *skb;
-	struct l2cap_hdr *lh;
-	int len;
-
-	len = L2CAP_HDR_SIZE + sizeof(code) + dlen;
-
-	if (len > conn->mtu)
-		return NULL;
-
-	skb = bt_skb_alloc(len, GFP_ATOMIC);
-	if (!skb)
-		return NULL;
-
-	lh = (struct l2cap_hdr *) skb_put(skb, L2CAP_HDR_SIZE);
-	lh->len = cpu_to_le16(sizeof(code) + dlen);
-	lh->cid = cpu_to_le16(L2CAP_CID_SMP);
-
-	memcpy(skb_put(skb, sizeof(code)), &code, sizeof(code));
-
-	memcpy(skb_put(skb, dlen), data, dlen);
-
-	return skb;
-}
-
 static void smp_send_cmd(struct l2cap_conn *conn, u8 code, u16 len, void *data)
 {
-	struct sk_buff *skb = smp_build_cmd(conn, code, len, data);
+	struct l2cap_chan *chan = conn->smp;
+	struct kvec iv[2];
+	struct msghdr msg;
+
+	if (!chan)
+		return;
 
 	BT_DBG("code 0x%2.2x", code);
 
-	if (!skb)
-		return;
+	iv[0].iov_base = &code;
+	iv[0].iov_len = 1;
 
-	skb->priority = HCI_PRIO_MAX;
-	hci_send_acl(conn->hchan, skb, 0);
+	iv[1].iov_base = data;
+	iv[1].iov_len = len;
+
+	memset(&msg, 0, sizeof(msg));
+
+	msg.msg_iov = (struct iovec *) &iv;
+	msg.msg_iovlen = 2;
+
+	l2cap_chan_send(chan, &msg, 1 + len);
 
 	cancel_delayed_work_sync(&conn->security_timer);
 	schedule_delayed_work(&conn->security_timer, SMP_TIMEOUT);
@@ -302,7 +300,8 @@ static void build_pairing_cmd(struct l2cap_conn *conn,
 			      struct smp_cmd_pairing *req,
 			      struct smp_cmd_pairing *rsp, __u8 authreq)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_conn *hcon = conn->hcon;
 	struct hci_dev *hdev = hcon->hdev;
 	u8 local_dist = 0, remote_dist = 0;
@@ -345,7 +344,8 @@ static void build_pairing_cmd(struct l2cap_conn *conn,
 
 static u8 check_enc_key_size(struct l2cap_conn *conn, __u8 max_key_size)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 
 	if ((max_key_size > SMP_MAX_ENC_KEY_SIZE) ||
 	    (max_key_size < SMP_MIN_ENC_KEY_SIZE))
@@ -405,7 +405,8 @@ static int tk_request(struct l2cap_conn *conn, u8 remote_oob, u8 auth,
 						u8 local_io, u8 remote_io)
 {
 	struct hci_conn *hcon = conn->hcon;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	u8 method;
 	u32 passkey = 0;
 	int ret = 0;
@@ -576,6 +577,7 @@ static u8 smp_random(struct smp_chan *smp)
 
 static struct smp_chan *smp_chan_create(struct l2cap_conn *conn)
 {
+	struct l2cap_chan *chan = conn->smp;
 	struct smp_chan *smp;
 
 	smp = kzalloc(sizeof(*smp), GFP_ATOMIC);
@@ -593,7 +595,7 @@ static struct smp_chan *smp_chan_create(struct l2cap_conn *conn)
 	}
 
 	smp->conn = conn;
-	conn->smp_chan = smp;
+	chan->data = smp;
 
 	hci_conn_hold(conn->hcon);
 
@@ -602,7 +604,8 @@ static struct smp_chan *smp_chan_create(struct l2cap_conn *conn)
 
 void smp_chan_destroy(struct l2cap_conn *conn)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	bool complete;
 
 	BUG_ON(!smp);
@@ -633,14 +636,15 @@ void smp_chan_destroy(struct l2cap_conn *conn)
 		}
 	}
 
+	chan->data = NULL;
 	kfree(smp);
-	conn->smp_chan = NULL;
 	hci_conn_drop(conn->hcon);
 }
 
 int smp_user_confirm_reply(struct hci_conn *hcon, u16 mgmt_op, __le32 passkey)
 {
 	struct l2cap_conn *conn = hcon->l2cap_data;
+	struct l2cap_chan *chan;
 	struct smp_chan *smp;
 	u32 value;
 
@@ -649,7 +653,11 @@ int smp_user_confirm_reply(struct hci_conn *hcon, u16 mgmt_op, __le32 passkey)
 	if (!conn || !test_bit(HCI_CONN_LE_SMP_PEND, &hcon->flags))
 		return -ENOTCONN;
 
-	smp = conn->smp_chan;
+	chan = conn->smp;
+	if (!chan)
+		return -ENOTCONN;
+
+	smp = chan->data;
 
 	switch (mgmt_op) {
 	case MGMT_OP_USER_PASSKEY_REPLY:
@@ -696,10 +704,12 @@ static u8 smp_cmd_pairing_req(struct l2cap_conn *conn, struct sk_buff *skb)
 	if (conn->hcon->role != HCI_ROLE_SLAVE)
 		return SMP_CMD_NOTSUPP;
 
-	if (!test_and_set_bit(HCI_CONN_LE_SMP_PEND, &conn->hcon->flags))
+	if (!test_and_set_bit(HCI_CONN_LE_SMP_PEND, &conn->hcon->flags)) {
 		smp = smp_chan_create(conn);
-	else
-		smp = conn->smp_chan;
+	} else {
+		struct l2cap_chan *chan = conn->smp;
+		smp = chan->data;
+	}
 
 	if (!smp)
 		return SMP_UNSPECIFIED;
@@ -753,7 +763,8 @@ static u8 smp_cmd_pairing_req(struct l2cap_conn *conn, struct sk_buff *skb)
 static u8 smp_cmd_pairing_rsp(struct l2cap_conn *conn, struct sk_buff *skb)
 {
 	struct smp_cmd_pairing *req, *rsp = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	u8 key_size, auth = SMP_AUTH_NONE;
 	int ret;
 
@@ -814,7 +825,8 @@ static u8 smp_cmd_pairing_rsp(struct l2cap_conn *conn, struct sk_buff *skb)
 
 static u8 smp_cmd_pairing_confirm(struct l2cap_conn *conn, struct sk_buff *skb)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 
 	BT_DBG("conn %p %s", conn, conn->hcon->out ? "master" : "slave");
 
@@ -837,7 +849,8 @@ static u8 smp_cmd_pairing_confirm(struct l2cap_conn *conn, struct sk_buff *skb)
 
 static u8 smp_cmd_pairing_random(struct l2cap_conn *conn, struct sk_buff *skb)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 
 	BT_DBG("conn %p", conn);
 
@@ -1010,7 +1023,8 @@ int smp_conn_security(struct hci_conn *hcon, __u8 sec_level)
 static int smp_cmd_encrypt_info(struct l2cap_conn *conn, struct sk_buff *skb)
 {
 	struct smp_cmd_encrypt_info *rp = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 
 	BT_DBG("conn %p", conn);
 
@@ -1031,7 +1045,8 @@ static int smp_cmd_encrypt_info(struct l2cap_conn *conn, struct sk_buff *skb)
 static int smp_cmd_master_ident(struct l2cap_conn *conn, struct sk_buff *skb)
 {
 	struct smp_cmd_master_ident *rp = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_dev *hdev = conn->hcon->hdev;
 	struct hci_conn *hcon = conn->hcon;
 	struct smp_ltk *ltk;
@@ -1067,7 +1082,8 @@ static int smp_cmd_master_ident(struct l2cap_conn *conn, struct sk_buff *skb)
 static int smp_cmd_ident_info(struct l2cap_conn *conn, struct sk_buff *skb)
 {
 	struct smp_cmd_ident_info *info = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 
 	BT_DBG("");
 
@@ -1089,7 +1105,8 @@ static int smp_cmd_ident_addr_info(struct l2cap_conn *conn,
 				   struct sk_buff *skb)
 {
 	struct smp_cmd_ident_addr_info *info = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_conn *hcon = conn->hcon;
 	bdaddr_t rpa;
 
@@ -1143,7 +1160,8 @@ distribute:
 static int smp_cmd_sign_info(struct l2cap_conn *conn, struct sk_buff *skb)
 {
 	struct smp_cmd_sign_info *rp = (void *) skb->data;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_dev *hdev = conn->hcon->hdev;
 	struct smp_csrk *csrk;
 
@@ -1168,15 +1186,15 @@ static int smp_cmd_sign_info(struct l2cap_conn *conn, struct sk_buff *skb)
 		memcpy(csrk->val, rp->csrk, sizeof(csrk->val));
 	}
 	smp->csrk = csrk;
-	if (!(smp->remote_key_dist & SMP_DIST_SIGN))
-		smp_distribute_keys(conn);
+	smp_distribute_keys(conn);
 	hci_dev_unlock(hdev);
 
 	return 0;
 }
 
-int smp_sig_channel(struct l2cap_conn *conn, struct sk_buff *skb)
+static int smp_recv_cb(struct l2cap_chan *chan, struct sk_buff *skb)
 {
+	struct l2cap_conn *conn = chan->conn;
 	struct hci_conn *hcon = conn->hcon;
 	__u8 code, reason;
 	int err = 0;
@@ -1207,7 +1225,7 @@ int smp_sig_channel(struct l2cap_conn *conn, struct sk_buff *skb)
 	 * returns an error).
 	 */
 	if (code != SMP_CMD_PAIRING_REQ && code != SMP_CMD_SECURITY_REQ &&
-	    !conn->smp_chan) {
+	    !test_bit(HCI_CONN_LE_SMP_PEND, &hcon->flags)) {
 		BT_ERR("Unexpected SMP command 0x%02x. Disconnecting.", code);
 		kfree_skb(skb);
 		return -EOPNOTSUPP;
@@ -1278,7 +1296,8 @@ done:
 
 static void smp_notify_keys(struct l2cap_conn *conn)
 {
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_conn *hcon = conn->hcon;
 	struct hci_dev *hdev = hcon->hdev;
 	struct smp_cmd_pairing *req = (void *) &smp->preq[1];
@@ -1345,7 +1364,8 @@ static void smp_notify_keys(struct l2cap_conn *conn)
 int smp_distribute_keys(struct l2cap_conn *conn)
 {
 	struct smp_cmd_pairing *req, *rsp;
-	struct smp_chan *smp = conn->smp_chan;
+	struct l2cap_chan *chan = conn->smp;
+	struct smp_chan *smp = chan->data;
 	struct hci_conn *hcon = conn->hcon;
 	struct hci_dev *hdev = hcon->hdev;
 	__u8 *keydist;
@@ -1455,4 +1475,163 @@ int smp_distribute_keys(struct l2cap_conn *conn)
 	smp_chan_destroy(conn);
 
 	return 0;
+}
+
+static void smp_teardown_cb(struct l2cap_chan *chan, int err)
+{
+	struct l2cap_conn *conn = chan->conn;
+
+	BT_DBG("chan %p", chan);
+
+	if (test_and_clear_bit(HCI_CONN_LE_SMP_PEND, &conn->hcon->flags)) {
+		cancel_delayed_work_sync(&conn->security_timer);
+		smp_chan_destroy(conn);
+	}
+
+	conn->smp = NULL;
+	l2cap_chan_put(chan);
+}
+
+static void smp_ready_cb(struct l2cap_chan *chan)
+{
+	struct l2cap_conn *conn = chan->conn;
+
+	BT_DBG("chan %p", chan);
+
+	conn->smp = chan;
+	l2cap_chan_hold(chan);
+}
+
+static struct sk_buff *smp_alloc_skb_cb(struct l2cap_chan *chan,
+					unsigned long hdr_len,
+					unsigned long len, int nb)
+{
+	struct sk_buff *skb;
+
+	skb = bt_skb_alloc(hdr_len + len, GFP_KERNEL);
+	if (!skb)
+		return ERR_PTR(-ENOMEM);
+
+	skb->priority = HCI_PRIO_MAX;
+	bt_cb(skb)->chan = chan;
+
+	return skb;
+}
+
+static const struct l2cap_ops smp_chan_ops = {
+	.name			= "Security Manager",
+	.ready			= smp_ready_cb,
+	.recv			= smp_recv_cb,
+	.alloc_skb		= smp_alloc_skb_cb,
+	.teardown		= smp_teardown_cb,
+
+	.new_connection		= l2cap_chan_no_new_connection,
+	.state_change		= l2cap_chan_no_state_change,
+	.close			= l2cap_chan_no_close,
+	.defer			= l2cap_chan_no_defer,
+	.suspend		= l2cap_chan_no_suspend,
+	.resume			= l2cap_chan_no_resume,
+	.set_shutdown		= l2cap_chan_no_set_shutdown,
+	.get_sndtimeo		= l2cap_chan_no_get_sndtimeo,
+	.memcpy_fromiovec	= l2cap_chan_no_memcpy_fromiovec,
+};
+
+static inline struct l2cap_chan *smp_new_conn_cb(struct l2cap_chan *pchan)
+{
+	struct l2cap_chan *chan;
+
+	BT_DBG("pchan %p", pchan);
+
+	chan = l2cap_chan_create();
+	if (!chan)
+		return NULL;
+
+	chan->chan_type	= pchan->chan_type;
+	chan->ops	= &smp_chan_ops;
+	chan->scid	= pchan->scid;
+	chan->dcid	= chan->scid;
+	chan->imtu	= pchan->imtu;
+	chan->omtu	= pchan->omtu;
+	chan->mode	= pchan->mode;
+
+	BT_DBG("created chan %p", chan);
+
+	return chan;
+}
+
+static const struct l2cap_ops smp_root_chan_ops = {
+	.name			= "Security Manager Root",
+	.new_connection		= smp_new_conn_cb,
+
+	/* None of these are implemented for the root channel */
+	.close			= l2cap_chan_no_close,
+	.alloc_skb		= l2cap_chan_no_alloc_skb,
+	.recv			= l2cap_chan_no_recv,
+	.state_change		= l2cap_chan_no_state_change,
+	.teardown		= l2cap_chan_no_teardown,
+	.ready			= l2cap_chan_no_ready,
+	.defer			= l2cap_chan_no_defer,
+	.suspend		= l2cap_chan_no_suspend,
+	.resume			= l2cap_chan_no_resume,
+	.set_shutdown		= l2cap_chan_no_set_shutdown,
+	.get_sndtimeo		= l2cap_chan_no_get_sndtimeo,
+	.memcpy_fromiovec	= l2cap_chan_no_memcpy_fromiovec,
+};
+
+int smp_register(struct hci_dev *hdev)
+{
+	struct l2cap_chan *chan;
+	struct crypto_blkcipher	*tfm_aes;
+
+	BT_DBG("%s", hdev->name);
+
+	tfm_aes = crypto_alloc_blkcipher("ecb(aes)", 0, CRYPTO_ALG_ASYNC);
+	if (IS_ERR(tfm_aes)) {
+		int err = PTR_ERR(tfm_aes);
+		BT_ERR("Unable to create crypto context");
+		return err;
+	}
+
+	chan = l2cap_chan_create();
+	if (!chan) {
+		crypto_free_blkcipher(tfm_aes);
+		return -ENOMEM;
+	}
+
+	chan->data = tfm_aes;
+
+	l2cap_add_scid(chan, L2CAP_CID_SMP);
+
+	l2cap_chan_set_defaults(chan);
+
+	bacpy(&chan->src, &hdev->bdaddr);
+	chan->src_type = BDADDR_LE_PUBLIC;
+	chan->state = BT_LISTEN;
+	chan->mode = L2CAP_MODE_BASIC;
+	chan->imtu = L2CAP_DEFAULT_MTU;
+	chan->ops = &smp_root_chan_ops;
+
+	hdev->smp_data = chan;
+
+	return 0;
+}
+
+void smp_unregister(struct hci_dev *hdev)
+{
+	struct l2cap_chan *chan = hdev->smp_data;
+	struct crypto_blkcipher *tfm_aes;
+
+	if (!chan)
+		return;
+
+	BT_DBG("%s chan %p", hdev->name, chan);
+
+	tfm_aes = chan->data;
+	if (tfm_aes) {
+		chan->data = NULL;
+		crypto_free_blkcipher(tfm_aes);
+	}
+
+	hdev->smp_data = NULL;
+	l2cap_chan_put(chan);
 }
