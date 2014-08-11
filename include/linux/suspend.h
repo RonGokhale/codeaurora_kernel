@@ -34,10 +34,10 @@ static inline void pm_restore_console(void)
 typedef int __bitwise suspend_state_t;
 
 #define PM_SUSPEND_ON		((__force suspend_state_t) 0)
-#define PM_SUSPEND_FREEZE	((__force suspend_state_t) 1)
-#define PM_SUSPEND_STANDBY	((__force suspend_state_t) 2)
-#define PM_SUSPEND_MEM		((__force suspend_state_t) 3)
-#define PM_SUSPEND_MIN		PM_SUSPEND_FREEZE
+#define PM_IDLE_SLEEP	((__force suspend_state_t) 1)
+#define PM_SUSPEND_SHALLOW	((__force suspend_state_t) 2)
+#define PM_SUSPEND_DEEP	((__force suspend_state_t) 3)
+#define PM_SUSPEND_MIN		PM_IDLE_SLEEP
 #define PM_SUSPEND_MAX		((__force suspend_state_t) 4)
 
 enum suspend_stat_step {
@@ -105,8 +105,8 @@ static inline void dpm_save_failed_step(enum suspend_stat_step step)
  *	Valid (ie. supported) states are advertised in /sys/power/state.  Note
  *	that it still may be impossible to enter given system sleep state if the
  *	conditions aren't right.
- *	There is the %suspend_valid_only_mem function available that can be
- *	assigned to this if the platform only supports mem sleep.
+ *	There is the %suspend_valid_only_deep function available that
+ *	can be assigned to this if the platform only supports mem sleep.
  *
  * @begin: Initialise a transition to given system sleep state.
  *	@begin() is executed right prior to suspending devices.  The information
@@ -187,7 +187,7 @@ struct platform_suspend_ops {
 	void (*recover)(void);
 };
 
-struct platform_freeze_ops {
+struct platform_idle_sleep_ops {
 	int (*begin)(void);
 	void (*end)(void);
 };
@@ -198,9 +198,9 @@ struct platform_freeze_ops {
  * @ops: The new suspend operations to set.
  */
 extern void suspend_set_ops(const struct platform_suspend_ops *ops);
-extern int suspend_valid_only_mem(suspend_state_t state);
-extern void freeze_set_ops(const struct platform_freeze_ops *ops);
-extern void freeze_wake(void);
+extern int suspend_valid_only_deep(suspend_state_t state);
+extern void idle_sleep_set_ops(const struct platform_idle_sleep_ops *ops);
+extern void suspend_to_idle_wake(void);
 
 /**
  * arch_suspend_disable_irqs - disable IRQs for suspend
@@ -222,12 +222,12 @@ extern void arch_suspend_enable_irqs(void);
 
 extern int pm_suspend(suspend_state_t state);
 #else /* !CONFIG_SUSPEND */
-#define suspend_valid_only_mem	NULL
+#define suspend_valid_only_deep	NULL
 
 static inline void suspend_set_ops(const struct platform_suspend_ops *ops) {}
 static inline int pm_suspend(suspend_state_t state) { return -ENOSYS; }
-static inline void freeze_set_ops(const struct platform_freeze_ops *ops) {}
-static inline void freeze_wake(void) {}
+static inline void idle_sleep_set_ops(const struct platform_idle_sleep_ops *ops) {}
+static inline void suspend_to_idle_wake(void) {}
 #endif /* !CONFIG_SUSPEND */
 
 /* struct pbe is used for creating lists of pages that should be restored

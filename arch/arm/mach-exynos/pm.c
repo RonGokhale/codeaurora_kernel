@@ -389,7 +389,7 @@ static const struct platform_suspend_ops exynos_suspend_ops = {
 	.enter		= exynos_suspend_enter,
 	.prepare	= exynos_suspend_prepare,
 	.finish		= exynos_suspend_finish,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 void __init exynos_pm_init(void)

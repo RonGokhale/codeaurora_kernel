@@ -342,7 +342,7 @@ static int imx6q_suspend_finish(unsigned long val)
 static int imx6q_pm_enter(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		imx6q_set_lpm(STOP_POWER_ON);
 		imx6q_set_int_mem_clk_lpm(true);
 		imx_gpc_pre_suspend(false);
@@ -355,7 +355,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 		imx_gpc_post_resume();
 		imx6q_set_lpm(WAIT_CLOCKED);
 		break;
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		imx6q_set_lpm(STOP_POWER_OFF);
 		imx6q_set_int_mem_clk_lpm(false);
 		imx6q_enable_wb(true);
@@ -388,7 +388,7 @@ static int imx6q_pm_enter(suspend_state_t state)
 
 static int imx6q_pm_valid(suspend_state_t state)
 {
-	return (state == PM_SUSPEND_STANDBY || state == PM_SUSPEND_MEM);
+	return (state == PM_SUSPEND_SHALLOW || state == PM_SUSPEND_DEEP);
 }
 
 static const struct platform_suspend_ops imx6q_pm_ops = {

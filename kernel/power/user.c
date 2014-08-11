@@ -337,7 +337,7 @@ static long snapshot_ioctl(struct file *filp, unsigned int cmd,
 		 * Tasks are frozen and the notifiers have been called with
 		 * PM_HIBERNATION_PREPARE
 		 */
-		error = suspend_devices_and_enter(PM_SUSPEND_MEM);
+		error = suspend_devices_and_enter(PM_SUSPEND_DEEP);
 		data->ready = false;
 		break;
 

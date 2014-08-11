@@ -435,7 +435,7 @@ static int sec_pmic_suspend(struct device *dev)
 	switch (sec_pmic->device_type) {
 	case S2MPS14X:
 	case S2MPU02:
-		regulator_suspend_prepare(PM_SUSPEND_MEM);
+		regulator_suspend_prepare(PM_SUSPEND_DEEP);
 		break;
 	default:
 		break;

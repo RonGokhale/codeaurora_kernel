@@ -46,7 +46,7 @@ static int highbank_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops highbank_pm_ops = {
 	.enter = highbank_pm_enter,
-	.valid = suspend_valid_only_mem,
+	.valid = suspend_valid_only_deep,
 };
 
 void __init highbank_pm_init(void)

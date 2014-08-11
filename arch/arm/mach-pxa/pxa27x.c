@@ -247,7 +247,7 @@ static struct clk_lookup pxa27x_clkregs[] = {
 #define RESTORE(x)	x = sleep_save[SLEEP_SAVE_##x]
 
 /*
- * allow platforms to override default PWRMODE setting used for PM_SUSPEND_MEM
+ * allow platforms to override default PWRMODE setting used for PM_SUSPEND_DEEP
  */
 static unsigned int pwrmode = PWRMODE_SLEEP;
 
@@ -312,10 +312,10 @@ void pxa27x_cpu_pm_enter(suspend_state_t state)
 	RCSR = RCSR_HWR | RCSR_WDR | RCSR_SMR | RCSR_GPR;
 
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		pxa_cpu_standby();
 		break;
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_DEEP:
 		cpu_suspend(pwrmode, pxa27x_finish_suspend);
 #ifndef CONFIG_IWMMXT
 		asm volatile("mar acc0, %Q0, %R0" : "=r" (acc0));
@@ -326,7 +326,7 @@ void pxa27x_cpu_pm_enter(suspend_state_t state)
 
 static int pxa27x_cpu_pm_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_MEM || state == PM_SUSPEND_STANDBY;
+	return state == PM_SUSPEND_DEEP || state == PM_SUSPEND_SHALLOW;
 }
 
 static int pxa27x_cpu_pm_prepare(void)

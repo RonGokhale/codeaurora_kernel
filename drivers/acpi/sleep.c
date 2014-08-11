@@ -464,8 +464,8 @@ static inline void acpi_sleep_dmi_check(void) {}
 #ifdef CONFIG_SUSPEND
 static u32 acpi_suspend_states[] = {
 	[PM_SUSPEND_ON] = ACPI_STATE_S0,
-	[PM_SUSPEND_STANDBY] = ACPI_STATE_S1,
-	[PM_SUSPEND_MEM] = ACPI_STATE_S3,
+	[PM_SUSPEND_SHALLOW] = ACPI_STATE_S1,
+	[PM_SUSPEND_DEEP] = ACPI_STATE_S3,
 	[PM_SUSPEND_MAX] = ACPI_STATE_S5
 };
 
@@ -572,8 +572,8 @@ static int acpi_suspend_state_valid(suspend_state_t pm_state)
 
 	switch (pm_state) {
 	case PM_SUSPEND_ON:
-	case PM_SUSPEND_STANDBY:
-	case PM_SUSPEND_MEM:
+	case PM_SUSPEND_SHALLOW:
+	case PM_SUSPEND_DEEP:
 		acpi_state = acpi_suspend_states[pm_state];
 
 		return sleep_states[acpi_state];
@@ -620,20 +620,20 @@ static const struct platform_suspend_ops acpi_suspend_ops_old = {
 	.recover = acpi_pm_finish,
 };
 
-static int acpi_freeze_begin(void)
+static int acpi_idle_sleep_begin(void)
 {
 	acpi_scan_lock_acquire();
 	return 0;
 }
 
-static void acpi_freeze_end(void)
+static void acpi_idle_sleep_end(void)
 {
 	acpi_scan_lock_release();
 }
 
-static const struct platform_freeze_ops acpi_freeze_ops = {
-	.begin = acpi_freeze_begin,
-	.end = acpi_freeze_end,
+static const struct platform_idle_sleep_ops acpi_idle_sleep_ops = {
+	.begin = acpi_idle_sleep_begin,
+	.end = acpi_idle_sleep_end,
 };
 
 static void acpi_sleep_suspend_setup(void)
@@ -646,7 +646,7 @@ static void acpi_sleep_suspend_setup(void)
 
 	suspend_set_ops(old_suspend_ordering ?
 		&acpi_suspend_ops_old : &acpi_suspend_ops);
-	freeze_set_ops(&acpi_freeze_ops);
+	idle_sleep_set_ops(&acpi_idle_sleep_ops);
 }
 
 #else /* !CONFIG_SUSPEND */
@@ -792,8 +792,8 @@ static inline void acpi_sleep_hibernate_setup(void) {}
 int acpi_suspend(u32 acpi_state)
 {
 	suspend_state_t states[] = {
-		[1] = PM_SUSPEND_STANDBY,
-		[3] = PM_SUSPEND_MEM,
+		[1] = PM_SUSPEND_SHALLOW,
+		[3] = PM_SUSPEND_DEEP,
 		[5] = PM_SUSPEND_MAX
 	};
 

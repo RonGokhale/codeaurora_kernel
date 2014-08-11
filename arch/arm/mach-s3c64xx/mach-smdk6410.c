@@ -427,7 +427,7 @@ static struct regulator_init_data wm8350_dcdc3_data = {
 			 .mode = REGULATOR_MODE_NORMAL,
 			 .enabled = 1,
 		},
-		.initial_state = PM_SUSPEND_MEM,
+		.initial_state = PM_SUSPEND_DEEP,
 	},
 };
 

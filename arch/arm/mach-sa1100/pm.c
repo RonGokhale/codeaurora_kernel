@@ -115,7 +115,7 @@ static int sa11x0_pm_enter(suspend_state_t state)
 
 static const struct platform_suspend_ops sa11x0_pm_ops = {
 	.enter		= sa11x0_pm_enter,
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 };
 
 int __init sa11x0_pm_init(void)

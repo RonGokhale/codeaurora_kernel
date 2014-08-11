@@ -164,7 +164,7 @@ static int ux500_suspend_enter(suspend_state_t state)
 
 static int ux500_suspend_valid(suspend_state_t state)
 {
-	return state == PM_SUSPEND_MEM || state == PM_SUSPEND_STANDBY;
+	return state == PM_SUSPEND_DEEP || state == PM_SUSPEND_SHALLOW;
 }
 
 static const struct platform_suspend_ops ux500_suspend_ops = {

@@ -240,7 +240,7 @@ static void pxa910_pm_finish(void)
 
 static int pxa910_pm_valid(suspend_state_t state)
 {
-	return ((state == PM_SUSPEND_STANDBY) || (state == PM_SUSPEND_MEM));
+	return state == PM_SUSPEND_SHALLOW || (state == PM_SUSPEND_DEEP;
 }
 
 static const struct platform_suspend_ops pxa910_pm_ops = {

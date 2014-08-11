@@ -26,7 +26,7 @@ struct mpc52xx_suspend mpc52xx_suspend;
 static int mpc52xx_pm_valid(suspend_state_t state)
 {
 	switch (state) {
-	case PM_SUSPEND_STANDBY:
+	case PM_SUSPEND_SHALLOW:
 		return 1;
 	default:
 		return 0;

@@ -157,7 +157,7 @@ static ssize_t store_hibernate(struct device *dev,
 	stream_id = simple_strtoul(buf, NULL, 16);
 
 	do {
-		rc = pseries_suspend_begin(PM_SUSPEND_MEM);
+		rc = pseries_suspend_begin(PM_SUSPEND_DEEP);
 		if (rc == -EAGAIN)
 			ssleep(1);
 	} while (rc == -EAGAIN);
@@ -174,7 +174,7 @@ static ssize_t store_hibernate(struct device *dev,
 		}
 
 		stop_topology_update();
-		rc = pm_suspend(PM_SUSPEND_MEM);
+		rc = pm_suspend(PM_SUSPEND_DEEP);
 		start_topology_update();
 
 		/* Take down CPUs not online prior to suspend */
@@ -223,7 +223,7 @@ static struct bus_type suspend_subsys = {
 };
 
 static const struct platform_suspend_ops pseries_suspend_ops = {
-	.valid		= suspend_valid_only_mem,
+	.valid		= suspend_valid_only_deep,
 	.begin		= pseries_suspend_begin,
 	.prepare_late	= pseries_prepare_late,
 	.enter		= pseries_suspend_enter,
