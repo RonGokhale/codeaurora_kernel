@@ -183,6 +183,8 @@ struct audio_client {
 	int (*fptr_cache_ops)(struct audio_buffer *abuff, int cache_op);
 };
 
+struct param_outband;
+
 void q6asm_audio_client_free(struct audio_client *ac);
 
 struct audio_client *q6asm_audio_client_alloc(app_cb cb, void *priv);
@@ -366,10 +368,11 @@ int q6asm_equalizer(struct audio_client *ac, void *eq);
 /* Send Volume Command */
 int q6asm_set_volume(struct audio_client *ac, int volume);
 
+/* DTS Eagle Params */
 int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, int size,
-			void *data);
-int q6asm_dts_eagle_get(struct audio_client *ac, int param_id,
-			int size, void *data);
+			void *data, struct param_outband *po, int m_id);
+int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
+			void *data, struct param_outband *po, int m_id);
 
 /* Set SoftPause Params */
 int q6asm_set_softpause(struct audio_client *ac,

@@ -6838,9 +6838,11 @@ struct srs_trumedia_params {
 /* SRS TruMedia end */
 
 /* DTS Eagle */
-#define AUDPROC_MODULE_ID_DTS_HPX_PREMIX 0x0001077C
-#define AUDPROC_MODULE_ID_DTS_HPX_POSTMIX 0x0001077B
-#define ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX 0x00010DED
+#define AUDPROC_MODULE_ID_DTS_HPX_PREMIX	0x0001077C
+#define AUDPROC_MODULE_ID_DTS_HPX_POSTMIX	0x0001077B
+#define ASM_STREAM_POSTPROC_TOPO_ID_DTS_HPX	0x00010DED
+#define POPP_HPX_PREMIX_PLUS_TOPOLOGY		0x11000000
+#define POPP_HPX_MASTER_TOPOLOGY		0x11000001
 struct asm_dts_eagle_param {
 	struct apr_hdr	hdr;
 	struct asm_stream_cmd_set_pp_params_v2 param;

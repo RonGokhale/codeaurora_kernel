@@ -30,16 +30,16 @@
 #include <sound/tlv.h>
 #include <sound/asound.h>
 #include <sound/pcm_params.h>
+#include <sound/q6core.h>
 #include <linux/slab.h>
+#include <sound/msm-dts-eagle.h>
 
 #include "msm-pcm-routing-v2.h"
 #include "msm-qti-pp-config.h"
 #include "msm-dts-srs-tm-config.h"
 #include "msm-dolby-dap-config.h"
 #include "q6voice.h"
-#include "q6core.h"
 #include "audio_cal_utils.h"
-#include "msm-dts-eagle.h"
 
 static int get_cal_path(int path_type);
 
@@ -4954,6 +4954,8 @@ static int msm_routing_probe(struct snd_soc_platform *platform)
 	msm_dts_srs_tm_add_controls(platform);
 
 	msm_dolby_dap_add_controls(platform);
+
+	msm_dts_eagle_add_controls(platform);
 
 	return 0;
 }
