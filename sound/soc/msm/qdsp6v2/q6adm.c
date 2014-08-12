@@ -25,7 +25,7 @@
 #include "audio_cal_utils.h"
 
 #include <sound/asound.h>
-#include "msm-dts-eagle.h"
+#include <sound/msm-dts-eagle.h>
 
 #define TIMEOUT_MS 1000
 
@@ -37,8 +37,6 @@
 #define CMD_OB_HDR_SZ  12 /*size of header needed for passing data out of band*/
 
 #define ULL_SUPPORTED_SAMPLE_RATE 48000
-
-#define CMD_GET_HDR_SZ 16
 
 enum {
 	ADM_CUSTOM_TOP_CAL = 0,
@@ -219,8 +217,8 @@ int adm_dts_eagle_set(int port_id, int copp_idx, int param_id,
 	struct adm_cmd_set_pp_params_v5	admp;
 	int p_idx, ret = 0, *ob_params;
 
-	pr_debug("DTS_EAGLE_ADM: %s - port id %i, copp idx %i, param id 0x%X\n",
-		__func__, port_id, copp_idx, param_id);
+	pr_debug("DTS_EAGLE_ADM: %s - port id %i, copp idx %i, param id 0x%X size %d\n",
+		__func__, port_id, copp_idx, param_id, size);
 
 	port_id = afe_convert_virtual_to_portid(port_id);
 	p_idx = adm_validate_and_get_port_index(port_id);
@@ -322,7 +320,7 @@ int adm_dts_eagle_get(int port_id, int copp_idx, int param_id,
 
 	size = (size+3) & 0xFFFFFFFC;
 
-	ob_params = (int *)this_adm.outband_memmap.kvaddr;
+	ob_params = (int *)(this_adm.outband_memmap.kvaddr);
 	if (ob_params == NULL) {
 		pr_err("DTS_EAGLE_ADM: %s - NULL memmap. Non Eagle topology selected?",
 				__func__);
@@ -1046,13 +1044,17 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 				break;
 			if (data->payload_size > (4 * sizeof(uint32_t))) {
 				int idx = ADM_GET_PARAMETER_LENGTH*copp_idx;
-				adm_get_parameters[idx] = payload[3];
+				adm_get_parameters[idx] = payload[3] >> 2;
 				pr_debug("GET_PP PARAM:received parameter length: %x\n",
-						adm_get_parameters[0]);
+						adm_get_parameters[idx]);
 				/* storing param size then params */
-				for (i = 0; i < payload[3]; i++)
+				for (i = 0; i < adm_get_parameters[idx]; i++) {
 					adm_get_parameters[idx+1+i] =
 								payload[4+i];
+					pr_debug("ADM GET ack val %i = %i\n",
+						 idx+1+i,
+						 adm_get_parameters[idx+1+i]);
+				}
 			}
 			atomic_set(&this_adm.copp.stat[port_idx][copp_idx], 1);
 			wake_up(&this_adm.copp.wait[port_idx][copp_idx]);
@@ -1885,7 +1887,12 @@ int adm_close(int port_id, int perf_mode, int copp_idx)
 		pr_debug("%s: Closing ADM port_idx:%d copp_idx:%d copp_id:0x%x\n",
 			 __func__, port_idx, copp_idx, copp_id);
 
-		if ((!perf_mode) && (this_adm.outband_memmap.paddr != 0)) {
+		if ((perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) &&
+		    (this_adm.outband_memmap.paddr != 0) &&
+		    ((atomic_read(&this_adm.copp.topology[port_idx][copp_idx])
+			== ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) ||
+		     (atomic_read(&this_adm.copp.topology[port_idx][copp_idx])
+			== ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1))) {
 			atomic_set(&this_adm.mem_map_cal_index, ADM_DTS_EAGLE);
 			ret = adm_memory_unmap_regions();
 			if (ret < 0) {
@@ -2239,7 +2246,7 @@ static int adm_init_cal_data(void)
 
 		{{DTS_EAGLE_CAL_TYPE,
 		{NULL, NULL, NULL, NULL, NULL, NULL} },
-		{NULL, NULL, cal_utils_match_only_block} }
+		{NULL, NULL, cal_utils_match_buf_num} }
 	};
 	pr_debug("%s\n", __func__);
 

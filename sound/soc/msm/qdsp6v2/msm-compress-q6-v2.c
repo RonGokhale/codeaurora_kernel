@@ -40,11 +40,11 @@
 #include <sound/compress_params.h>
 #include <sound/compress_offload.h>
 #include <sound/compress_driver.h>
+#include <sound/msm-audio-effects-q6-v2.h>
+#include <sound/msm-dts-eagle.h>
 
 #include "msm-pcm-routing-v2.h"
 #include "audio_ocmem.h"
-#include "msm-audio-effects-q6-v2.h"
-#include "msm-dts-eagle.h"
 
 #define DSP_PP_BUFFERING_IN_MSEC	25
 #define PARTIAL_DRAIN_ACK_EARLY_BY_MSEC	150
@@ -1875,6 +1875,7 @@ static int msm_compr_audio_effects_config_get(struct snd_kcontrol *kcontrol,
 		msm_dts_eagle_handle_asm(NULL, (void *)&values[1],
 					 true, true, prtd->audio_client, NULL);
 	}
+
 	return 0;
 }
 

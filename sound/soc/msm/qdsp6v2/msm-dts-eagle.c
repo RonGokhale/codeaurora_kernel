@@ -10,8 +10,6 @@
  * GNU General Public License for more details.
  */
 
-#define DEBUG
-
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -30,10 +28,10 @@
 #include <sound/q6audio-v2.h>
 #include <sound/audio_effects.h>
 #include <sound/hwdep.h>
+#include <sound/msm-dts-eagle.h>
+#include <sound/q6core.h>
 
 #include "msm-pcm-routing-v2.h"
-#include "msm-dts-eagle.h"
-#include "q6core.h"
 
 #define ION_MEM_SIZE  131072
 #define DEPC_MAX_SIZE 524288
@@ -677,7 +675,7 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 			     struct param_outband *po)
 {
 	struct dts_eagle_param_desc depd_;
-	__s32 offset, ret = 0, i, mod = for_pre ? MPRE : MPST;
+	__s32 offset, ret = 0, isALSA = 0, i, mod = for_pre ? MPRE : MPST;
 
 	pr_debug("DTS_EAGLE_DRIVER_ASM: %s called (set pre-param)\n", __func__);
 
@@ -690,6 +688,7 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 		depd->offset = (__s32)*arg_++;
 		depd->device = (__u32)*arg_++;
 		buf = (char *)arg_;
+		isALSA = 1;
 	}
 
 	if (depd->size & 3) {
@@ -699,11 +698,11 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 	}
 
 	if (get) {
-		void *buf, *buf_m = NULL;
+		void *buf_, *buf_m = NULL;
 		pr_debug("DTS_EAGLE_DRIVER_ASM: get requested\n");
 		if (depd->offset == -1) {
 			pr_debug("DTS_EAGLE_DRIVER_ASM: get from dsp requested\n");
-			buf = buf_m = kzalloc(depd->size, GFP_KERNEL);
+			buf_ = buf_m = kzalloc(depd->size, GFP_KERNEL);
 			if (!buf_m) {
 				pr_err("DTS_EAGLE_DRIVER_ASM: out of memory\n");
 				return -ENOMEM;
@@ -712,12 +711,14 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 						       po, mod) < 0) {
 				pr_debug("DTS_EAGLE_DRIVER_ASM: asm failed, trying core\n");
 				if (core_dts_eagle_get(depd->id, depd->size,
-						       buf) < 0) {
+						       buf_m) < 0) {
 					pr_err("DTS_EAGLE_DRIVER_ASM: get from qdsp failed (topology not eagle or closed)\n");
 					ret = -EFAULT;
 					goto DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT;
 				}
 			}
+			pr_debug("DTS_EAGLE_DRIVER_ASM: get result: param id 0x%x value %d size %d\n",
+				 depd->id, *(int *)buf_m, depd->size);
 		} else {
 			__u32 tgt = _get_cb_for_dev(depd->device);
 			offset = _c_bl[tgt][CBD_OFFSG] + depd->offset;
@@ -726,14 +727,14 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 					depd->size, offset);
 				return -EINVAL;
 			}
-			buf = (__u32 *)&_depc[offset];
+			buf_ = (__u32 *)&_depc[offset];
 		}
-		if (depd == NULL) {
-			__u32 *pbuf = (__u32 *)buf;
+		if (isALSA) {
+			__u32 *pbuf = (__u32 *)buf_;
 			for (i = 0; i < (depd->size >> 2); i++)
 				*(long *)buf++ = (long)*pbuf++;
 		} else {
-			memcpy(buf, &_depc[offset], depd->size);
+			memcpy(buf, buf_, depd->size);
 		}
 DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT:
 		kfree(buf_m);
@@ -746,7 +747,7 @@ DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT:
 					depd->size, offset, _depc_size);
 			return -EINVAL;
 		}
-		if (depd == NULL) {
+		if (isALSA) {
 			__u32 *pbuf = (__u32 *)(&_depc[offset]);
 			for (i = 0; i < (depd->size >> 2); i++)
 				*pbuf++ = (__u32)*(long *)buf++;
@@ -798,6 +799,8 @@ int msm_dts_eagle_handle_adm(struct dts_eagle_param_desc *depd, char *buf,
 				return ret;
 			}
 		}
+		pr_debug("DTS_EAGLE_DRIVER_ADM: get result: param id 0x%x value %d size %d\n",
+			 depd->id, *(int *)buf, depd->size);
 	} else if (_is_port_open_and_eagle(pid)) {
 		cidx = adm_validate_and_get_port_index(pid);
 		ret = adm_dts_eagle_set(pid, _cidx[cidx], depd->id,
@@ -973,19 +976,19 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 			cb, CB_COUNT-1);
 			return -EINVAL;
 		}
-		if ((b[CBD_OFFSG]+b[CBD_OFFS1]+b[CBD_SZ1]) >= _depc_size ||
-			(b[CBD_OFFSG]+b[CBD_OFFS2]+b[CBD_SZ2]) >= _depc_size ||
-			(b[CBD_OFFSG]+b[CBD_OFFS3]+b[CBD_SZ3]) >= _depc_size) {
-			pr_err("DTS_EAGLE_DRIVER_IOCTL: cache block bounds out of range\n");
-			return -EINVAL;
-		}
-		memcpy(_c_bl[cb], b, sizeof(_c_bl[cb]));
 		pr_debug("DTS_EAGLE_DRIVER_IOCTL: cache block %i set: devices 0x%X, global offset %u, offsets 1:%u 2:%u 3:%u, cmds/sizes 0:0x%X %u 1:0x%X %u 2:0x%X %u 3:0x%X %u\n",
 		cb, _c_bl[cb][CBD_DEV_MASK], _c_bl[cb][CBD_OFFSG],
 		_c_bl[cb][CBD_OFFS1], _c_bl[cb][CBD_OFFS2],
 		_c_bl[cb][CBD_OFFS3], _c_bl[cb][CBD_CMD0], _c_bl[cb][CBD_SZ0],
 		_c_bl[cb][CBD_CMD1], _c_bl[cb][CBD_SZ1], _c_bl[cb][CBD_CMD2],
 		_c_bl[cb][CBD_SZ2], _c_bl[cb][CBD_CMD3], _c_bl[cb][CBD_SZ3]);
+		if ((b[CBD_OFFSG]+b[CBD_OFFS1]+b[CBD_SZ1]) > _depc_size ||
+			(b[CBD_OFFSG]+b[CBD_OFFS2]+b[CBD_SZ2]) > _depc_size ||
+			(b[CBD_OFFSG]+b[CBD_OFFS3]+b[CBD_SZ3]) > _depc_size) {
+			pr_err("DTS_EAGLE_DRIVER_IOCTL: cache block bounds out of range\n");
+			return -EINVAL;
+		}
+		memcpy(_c_bl[cb], b, sizeof(_c_bl[cb]));
 		break;
 	}
 	case DTS_EAGLE_IOCTL_SET_ACTIVE_DEVICE: {
