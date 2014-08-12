@@ -691,6 +691,27 @@ static int btree_io_failed_hook(struct page *page, int failed_mirror)
 	return -EIO;	/* we fixed nothing */
 }
 
+static inline void do_end_workqueue_fn(struct end_io_wq *end_io_wq)
+{
+	struct bio *bio = end_io_wq->bio;
+
+	bio->bi_private = end_io_wq->private;
+	bio->bi_end_io = end_io_wq->end_io;
+	bio_endio_nodec(bio, end_io_wq->error);
+	kfree(end_io_wq);
+}
+
+static void dio_end_workqueue_fn(struct work_struct *work)
+{
+	struct btrfs_work *bwork;
+	struct end_io_wq *end_io_wq;
+
+	bwork = container_of(work, struct btrfs_work, normal_work);
+	end_io_wq = container_of(bwork, struct end_io_wq, work);
+
+	do_end_workqueue_fn(end_io_wq);
+}
+
 static void end_workqueue_bio(struct bio *bio, int err)
 {
 	struct end_io_wq *end_io_wq = bio->bi_private;
@@ -698,7 +719,12 @@ static void end_workqueue_bio(struct bio *bio, int err)
 
 	fs_info = end_io_wq->info;
 	end_io_wq->error = err;
-	btrfs_init_work(&end_io_wq->work, end_workqueue_fn, NULL, NULL);
+
+	if (likely(end_io_wq->metadata != BTRFS_WQ_ENDIO_DIO_REPAIR))
+		btrfs_init_work(&end_io_wq->work, end_workqueue_fn, NULL,
+				NULL);
+	else
+		INIT_WORK(&end_io_wq->work.normal_work, dio_end_workqueue_fn);
 
 	if (bio->bi_rw & REQ_WRITE) {
 		if (end_io_wq->metadata == BTRFS_WQ_ENDIO_METADATA)
@@ -714,7 +740,9 @@ static void end_workqueue_bio(struct bio *bio, int err)
 			btrfs_queue_work(fs_info->endio_write_workers,
 					 &end_io_wq->work);
 	} else {
-		if (end_io_wq->metadata == BTRFS_WQ_ENDIO_RAID56)
+		if (unlikely(end_io_wq->metadata == BTRFS_WQ_ENDIO_DIO_REPAIR))
+			queue_work(system_wq, &end_io_wq->work.normal_work);
+		else if (end_io_wq->metadata == BTRFS_WQ_ENDIO_RAID56)
 			btrfs_queue_work(fs_info->endio_raid56_workers,
 					 &end_io_wq->work);
 		else if (end_io_wq->metadata)
@@ -738,6 +766,7 @@ int btrfs_bio_wq_end_io(struct btrfs_fs_info *info, struct bio *bio,
 			int metadata)
 {
 	struct end_io_wq *end_io_wq;
+
 	end_io_wq = kmalloc(sizeof(*end_io_wq), GFP_NOFS);
 	if (!end_io_wq)
 		return -ENOMEM;
@@ -1726,18 +1755,10 @@ static int setup_bdi(struct btrfs_fs_info *info, struct backing_dev_info *bdi)
  */
 static void end_workqueue_fn(struct btrfs_work *work)
 {
-	struct bio *bio;
 	struct end_io_wq *end_io_wq;
-	int error;
 
 	end_io_wq = container_of(work, struct end_io_wq, work);
-	bio = end_io_wq->bio;
-
-	error = end_io_wq->error;
-	bio->bi_private = end_io_wq->private;
-	bio->bi_end_io = end_io_wq->end_io;
-	kfree(end_io_wq);
-	bio_endio_nodec(bio, error);
+	do_end_workqueue_fn(end_io_wq);
 }
 
 static int cleaner_kthread(void *arg)
