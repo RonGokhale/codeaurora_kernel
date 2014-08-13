@@ -80,6 +80,16 @@ static DEFINE_RAW_SPINLOCK(irq_controller_lock);
 #define NR_GIC_CPU_IF 8
 static u8 gic_cpu_map[NR_GIC_CPU_IF] __read_mostly;
 
+#ifdef CONFIG_BL_SWITCHER
+/* Synchronize switching CPU interface and sending SGIs */
+static DEFINE_RAW_SPINLOCK(gic_sgi_lock);
+#define sgi_map_lock(flags) raw_spin_lock_irqsave(&gic_sgi_lock, flags)
+#define sgi_map_unlock(flags) raw_spin_unlock_irqrestore(&gic_sgi_lock, flags)
+#else
+#define sgi_map_lock(flags) (void)(flags)
+#define sgi_map_unlock(flags) (void)(flags)
+#endif
+
 /*
  * Supported arch specific GIC irq extension.
  * Default make them NULL.
@@ -605,7 +615,7 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	int cpu;
 	unsigned long flags, map = 0;
 
-	raw_spin_lock_irqsave(&irq_controller_lock, flags);
+	sgi_map_lock(flags);
 
 	/* Convert our logical CPU mask into a physical one. */
 	for_each_cpu(cpu, mask)
@@ -620,7 +630,7 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	/* this always happens on GIC0 */
 	writel_relaxed(map << 16 | irq, gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);
 
-	raw_spin_unlock_irqrestore(&irq_controller_lock, flags);
+	sgi_map_unlock(flags);
 }
 #endif
 
@@ -710,6 +720,15 @@ void gic_migrate_target(unsigned int new_cpu_id)
 	}
 
 	raw_spin_unlock(&irq_controller_lock);
+
+	raw_spin_lock(&gic_sgi_lock);
+	/*
+	 * Ensure that the gic_cpu_map update above is seen in
+	 * gic_raise_softirq() before we redirect any pending SGIs that
+	 * may have been raised for the outgoing CPU (cur_cpu_id)
+	 */
+	smp_mb__after_unlock_lock();
+	raw_spin_unlock(&gic_sgi_lock);
 
 	/*
 	 * Now let's migrate and clear any potential SGIs that might be
