@@ -15,6 +15,8 @@
  *
  * Transparent decompression of files on an iso9660 filesystem
  */
+#define DEBUG
+#define pr_fmt(fmt) "zisofs: " fmt
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -110,7 +112,7 @@ static loff_t zisofs_uncompress_block(struct inode *inode, loff_t block_start,
 			*errp = -ENOMEM;
 		else
 			*errp = -EIO;
-		printk(KERN_DEBUG "zisofs: zisofs_inflateInit returned %d\n",
+		pr_debug("zisofs_inflateInit returned %d\n",
 			       zerr);
 		goto z_eio;
 	}
@@ -154,7 +156,7 @@ static loff_t zisofs_uncompress_block(struct inode *inode, loff_t block_start,
 				if (zerr == Z_MEM_ERROR)
 					*errp = -ENOMEM;
 				else {
-					printk(KERN_DEBUG
+					pr_debug(
 					       "zisofs: zisofs_inflate returned"
 					       " %d, inode = %lu,"
 					       " page idx = %d, bh idx = %d,"
