@@ -677,7 +677,7 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 	struct dts_eagle_param_desc depd_;
 	__s32 offset, ret = 0, isALSA = 0, i, mod = for_pre ? MPRE : MPST;
 
-	pr_debug("DTS_EAGLE_DRIVER_ASM: %s called (set pre-param)\n", __func__);
+	pr_debug("DTS_EAGLE_DRIVER_ASM: %s called\n", __func__);
 
 	/* special handling for ALSA route, to accommodate 64 bit platforms */
 	if (depd == NULL) {
@@ -709,13 +709,9 @@ int msm_dts_eagle_handle_asm(struct dts_eagle_param_desc *depd, char *buf,
 			} else if (q6asm_dts_eagle_get(ac, depd->id,
 						       depd->size, buf_m,
 						       po, mod) < 0) {
-				pr_debug("DTS_EAGLE_DRIVER_ASM: asm failed, trying core\n");
-				if (core_dts_eagle_get(depd->id, depd->size,
-						       buf_m) < 0) {
-					pr_err("DTS_EAGLE_DRIVER_ASM: get from qdsp failed (topology not eagle or closed)\n");
-					ret = -EFAULT;
-					goto DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT;
-				}
+				pr_err("DTS_EAGLE_DRIVER_ASM: asm failed\n");
+				ret = -EFAULT;
+				goto DTS_EAGLE_IOCTL_GET_PARAM_PRE_EXIT;
 			}
 			pr_debug("DTS_EAGLE_DRIVER_ASM: get result: param id 0x%x value %d size %d\n",
 				 depd->id, *(int *)buf_m, depd->size);
@@ -774,12 +770,15 @@ int msm_dts_eagle_handle_adm(struct dts_eagle_param_desc *depd, char *buf,
 {
 	__u32 pid = _get_pid_from_dev(depd->device), cidx;
 	__s32 ret = 0;
+
+	pr_debug("DTS_EAGLE_DRIVER_ADM: %s called\n", __func__);
+
 	if (_isNTDevice(depd->device)) {
 		pr_debug("DTS_EAGLE_DRIVER_ADM: NT Route detected\n");
 		ret = msm_dts_eagle_handle_asm(depd, buf, for_pre, get,
 					       _getNTDeviceAC(), &_po_NT);
 		if (ret < 0) {
-			pr_debug("DTS_EAGLE_DRIVER_ADM: NT Route set failed with id = 0x%X, size = %i, offset = %i, device = %i\n",
+			pr_err("DTS_EAGLE_DRIVER_ADM: NT Route set failed with id = 0x%X, size = %i, offset = %i, device = %i\n",
 				depd->id, depd->size, depd->offset,
 				depd->device);
 		}
@@ -790,14 +789,9 @@ int msm_dts_eagle_handle_adm(struct dts_eagle_param_desc *depd, char *buf,
 			 pid);
 		if (adm_dts_eagle_get(pid, _cidx[cidx], depd->id,
 				      buf, depd->size) < 0) {
-			pr_debug("DTS_EAGLE_DRIVER_ADM: get from qdsp via adm with port id 0x%X failed, trying core\n",
+			pr_err("DTS_EAGLE_DRIVER_ADM: get from qdsp via adm with port id 0x%X failed\n",
 				 pid);
-			if (core_dts_eagle_get(depd->id, depd->size,
-						buf) < 0) {
-				pr_err("DTS_EAGLE_DRIVER_ADM: get from qdsp failed\n");
-				ret = -EFAULT;
-				return ret;
-			}
+			return -EFAULT;
 		}
 		pr_debug("DTS_EAGLE_DRIVER_ADM: get result: param id 0x%x value %d size %d\n",
 			 depd->id, *(int *)buf, depd->size);
@@ -876,7 +870,7 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 	}
 	case DTS_EAGLE_IOCTL_GET_PARAM: {
 		struct dts_eagle_param_desc depd;
-		__s32 offset = 0, for_pre = 0;
+		__s32 offset = 0, for_pre = 0, get_from_core = 0;
 		void *buf, *buf_m = NULL;
 		pr_debug("DTS_EAGLE_DRIVER_IOCTL: %s called, control 0x%X (get param)\n",
 			__func__, cmd);
@@ -889,6 +883,11 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 			pr_debug("DTS_EAGLE_DRIVER_IOCTL: using for premix.\n");
 			for_pre = 1;
 		}
+		if (depd.device & DTS_EAGLE_FLAG_IOCTL_GETFROMCORE) {
+			pr_debug("DTS_EAGLE_DRIVER_IOCTL: 'get from core' requested.\n");
+			get_from_core = 1;
+			depd.offset = -1;
+		}
 		depd.device &= DTS_EAGLE_FLAG_IOCTL_MASK;
 		if (depd.offset == -1) {
 			buf = buf_m = kzalloc(depd.size, GFP_KERNEL);
@@ -896,8 +895,13 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 				pr_err("DTS_EAGLE_DRIVER_IOCTL: out of memory\n");
 				return -ENOMEM;
 			}
-			ret = msm_dts_eagle_handle_adm(&depd, buf,
-						       for_pre, true);
+			if (get_from_core) {
+				ret = core_dts_eagle_get(depd.id, depd.size,
+							 buf);
+			} else {
+				ret = msm_dts_eagle_handle_adm(&depd, buf,
+								for_pre, true);
+			}
 		} else {
 			__u32 cb = _get_cb_for_dev(depd.device);
 			offset = _c_bl[cb][CBD_OFFSG] + depd.offset;
@@ -908,9 +912,12 @@ int msm_dts_eagle_ioctl(unsigned int cmd, unsigned long arg)
 			}
 			buf = (void *)&_depc[offset];
 		}
-		if (copy_to_user((void *)(((char *)arg)+sizeof(depd)),
+		if (ret < 0) {
+			pr_err("DTS_EAGLE_DRIVER_IOCTL: error %i getting data",
+				ret);
+		} else if (copy_to_user((void *)(((char *)arg)+sizeof(depd)),
 						  buf, depd.size)) {
-			pr_err("DTS_EAGLE_DRIVER_IOCTL: error getting param\n");
+			pr_err("DTS_EAGLE_DRIVER_IOCTL: error copying get data\n");
 			ret = -EFAULT;
 		}
 		kfree(buf_m);

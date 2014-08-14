@@ -100,6 +100,7 @@ static int topology_map_handle;
 
 struct generic_get_data_ {
 	int valid;
+	int is_inband;
 	int size_in_ints;
 	int ints[];
 };
@@ -1515,15 +1516,19 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 				__func__, payload[0]);
 		} else if (generic_get_data) {
 			generic_get_data->valid = 1;
-			generic_get_data->size_in_ints = payload[3] >> 2;
-			for (i = 0; i < generic_get_data->size_in_ints; i++) {
-				generic_get_data->ints[i] = payload[4+i];
-				pr_debug("DTS_EAGLE_ASM: %s - ASM callback val %i = %i\n",
-					 __func__, i,
-					 generic_get_data->ints[i]);
+			if (generic_get_data->is_inband) {
+				pr_debug("DTS_EAGLE_ASM: %s - payload[1] = 0x%x, payload[2]=0x%x, payload[3]=0x%x\n",
+				  __func__, payload[1], payload[2], payload[3]);
+				generic_get_data->size_in_ints = payload[3]>>2;
+				for (i = 0; i < payload[3]>>2; i++) {
+					generic_get_data->ints[i] =
+								   payload[4+i];
+					pr_debug("DTS_EAGLE_ASM: %s - ASM callback val %i = %i\n",
+						 __func__, i, payload[4+i]);
+				}
+				pr_debug("ASM callback size in ints = %i\n",
+					 generic_get_data->size_in_ints);
 			}
-			pr_debug("DTS_EAGLE_ASM: %s callback size in ints = %i\n",
-				 __func__, generic_get_data->size_in_ints);
 			if (atomic_read(&ac->cmd_state) && wakeup_flag) {
 				atomic_set(&ac->cmd_state, 0);
 				wake_up(&ac->cmd_wait);
@@ -3641,7 +3646,7 @@ fail_cmd:
 int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, int size,
 			void *data, struct param_outband *po, int m_id)
 {
-	int rc = 0, *ob_params;
+	int rc = 0, *ob_params = NULL;
 	int sz = sizeof(struct asm_dts_eagle_param) + (po ? 0 : size);
 	struct asm_dts_eagle_param *ad;
 
@@ -3657,6 +3662,8 @@ int q6asm_dts_eagle_set(struct audio_client *ac, int param_id, int size,
 			__func__, sz);
 		return -ENOMEM;
 	}
+	pr_debug("DTS_EAGLE_ASM - %s: ac %p param_id 0x%x size %d data %p m_id 0x%x\n",
+		__func__, ac, param_id, size, data, m_id);
 	q6asm_add_hdr_async(ac, &ad->hdr, sz, 1);
 	ad->hdr.opcode = ASM_STREAM_CMD_SET_PP_PARAMS_V2;
 	ad->param.data_payload_addr_lsw = 0;
@@ -3733,7 +3740,7 @@ int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
 			void *data, struct param_outband *po, int m_id)
 {
 	struct asm_dts_eagle_param_get *ad;
-	int rc = 0, *ob_params;
+	int rc = 0, *ob_params = NULL;
 	int sz = sizeof(struct asm_dts_eagle_param) + CMD_GET_HDR_SZ +
 		 (po ? 0 : size);
 
@@ -3748,7 +3755,8 @@ int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
 			__func__, sz);
 		return -ENOMEM;
 	}
-
+	pr_debug("DTS_EAGLE_ASM - %s: ac %p param_id 0x%x size %d data %p m_id 0x%x\n",
+		__func__, ac, param_id, size, data, m_id);
 	q6asm_add_hdr(ac, &ad->hdr, sz, TRUE);
 	ad->hdr.opcode = ASM_STREAM_CMD_GET_PP_PARAMS_V2;
 	ad->param.data_payload_addr_lsw = 0;
@@ -3759,6 +3767,15 @@ int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
 	ad->param.param_max_size = size + CMD_GET_HDR_SZ;
 	ad->param.reserved = 0;
 	atomic_set(&ac->cmd_state, 1);
+
+	generic_get_data = kzalloc(size + sizeof(struct generic_get_data_),
+				   GFP_KERNEL);
+	if (!generic_get_data) {
+		pr_err("DTS_EAGLE_ASM - %s: error allocating mem of size %i\n",
+			__func__, size);
+		rc = -ENOMEM;
+		goto fail_cmd;
+	}
 
 	if (po) {
 		struct list_head *ptr, *next;
@@ -3790,17 +3807,10 @@ int q6asm_dts_eagle_get(struct audio_client *ac, int param_id, int size,
 		*ob_params++ = m_id;
 		*ob_params++ = param_id;
 		*ob_params++ = size;
+		generic_get_data->is_inband = 0;
 	} else {
 		pr_debug("DTS_EAGLE_ASM - %s: using in band\n", __func__);
-	}
-
-	generic_get_data = kzalloc(size + sizeof(struct generic_get_data_),
-				   GFP_KERNEL);
-	if (!generic_get_data) {
-		pr_err("DTS_EAGLE_ASM - %s: error allocating mem of size %i\n",
-			__func__, size);
-		rc = -ENOMEM;
-		goto fail_cmd;
+		generic_get_data->is_inband = 1;
 	}
 
 	rc = apr_send_pkt(ac->apr, (uint32_t *)ad);
