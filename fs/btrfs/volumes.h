@@ -36,37 +36,38 @@ struct btrfs_device {
 	struct list_head dev_list;
 	struct list_head dev_alloc_list;
 	struct btrfs_fs_devices *fs_devices;
+
 	struct btrfs_root *dev_root;
 
+	struct rcu_string *name;
+
+	u64 generation;
+
+	spinlock_t io_lock ____cacheline_aligned;
+	int running_pending;
 	/* regular prio bios */
 	struct btrfs_pending_bios pending_bios;
 	/* WRITE_SYNC bios */
 	struct btrfs_pending_bios pending_sync_bios;
 
-	u64 generation;
-	int running_pending;
+	struct block_device *bdev;
+
+	/* the mode sent to blkdev_get */
+	fmode_t mode;
+
 	int writeable;
 	int in_fs_metadata;
 	int missing;
 	int can_discard;
 	int is_tgtdev_for_dev_replace;
 
-	spinlock_t io_lock;
-	/* the mode sent to blkdev_get */
-	fmode_t mode;
-
-	struct block_device *bdev;
-
-
-	struct rcu_string *name;
-
 	/* the internal btrfs device id */
 	u64 devid;
 
-	/* size of the device */
+	/* size of the device in memory */
 	u64 total_bytes;
 
-	/* size of the disk */
+	/* size of the device on disk */
 	u64 disk_total_bytes;
 
 	/* bytes used */
@@ -82,7 +83,6 @@ struct btrfs_device {
 
 	/* minimal io size for this device */
 	u32 sector_size;
-
 
 	/* physical drive uuid (or lvm uuid) */
 	u8 uuid[BTRFS_UUID_SIZE];
@@ -107,20 +107,18 @@ struct btrfs_device {
 	struct radix_tree_root reada_zones;
 	struct radix_tree_root reada_extents;
 
-
 	/* disk I/O failure stats. For detailed description refer to
 	 * enum btrfs_dev_stat_values in ioctl.h */
 	int dev_stats_valid;
-	int dev_stats_dirty; /* counters need to be written to disk */
+
+	/* Counter to record the change of device stats */
+	atomic_t dev_stats_ccnt;
 	atomic_t dev_stat_values[BTRFS_DEV_STAT_VALUES_MAX];
 };
 
 struct btrfs_fs_devices {
 	u8 fsid[BTRFS_FSID_SIZE]; /* FS specific uuid */
 
-	/* the device with this id has the most recent copy of the super */
-	u64 latest_devid;
-	u64 latest_trans;
 	u64 num_devices;
 	u64 open_devices;
 	u64 rw_devices;
@@ -167,8 +165,9 @@ struct btrfs_fs_devices {
  */
 typedef void (btrfs_io_bio_end_io_t) (struct btrfs_io_bio *bio, int err);
 struct btrfs_io_bio {
-	unsigned long mirror_num;
-	unsigned long stripe_index;
+	unsigned int mirror_num;
+	unsigned int stripe_index;
+	u64 logical;
 	u8 *csum;
 	u8 csum_inline[BTRFS_BIO_INLINE_CSUM_SIZE];
 	u8 *csum_allocated;
@@ -360,11 +359,18 @@ unsigned long btrfs_full_stripe_len(struct btrfs_root *root,
 int btrfs_finish_chunk_alloc(struct btrfs_trans_handle *trans,
 				struct btrfs_root *extent_root,
 				u64 chunk_offset, u64 chunk_size);
+
+static inline int btrfs_dev_stats_dirty(struct btrfs_device *dev)
+{
+	return atomic_read(&dev->dev_stats_ccnt);
+}
+
 static inline void btrfs_dev_stat_inc(struct btrfs_device *dev,
 				      int index)
 {
 	atomic_inc(dev->dev_stat_values + index);
-	dev->dev_stats_dirty = 1;
+	smp_mb__before_atomic();
+	atomic_inc(&dev->dev_stats_ccnt);
 }
 
 static inline int btrfs_dev_stat_read(struct btrfs_device *dev,
@@ -379,7 +385,8 @@ static inline int btrfs_dev_stat_read_and_reset(struct btrfs_device *dev,
 	int ret;
 
 	ret = atomic_xchg(dev->dev_stat_values + index, 0);
-	dev->dev_stats_dirty = 1;
+	smp_mb__before_atomic();
+	atomic_inc(&dev->dev_stats_ccnt);
 	return ret;
 }
 
@@ -387,7 +394,8 @@ static inline void btrfs_dev_stat_set(struct btrfs_device *dev,
 				      int index, unsigned long val)
 {
 	atomic_set(dev->dev_stat_values + index, val);
-	dev->dev_stats_dirty = 1;
+	smp_mb__before_atomic();
+	atomic_inc(&dev->dev_stats_ccnt);
 }
 
 static inline void btrfs_dev_stat_reset(struct btrfs_device *dev,
