@@ -1,0 +1,15 @@
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.16
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 19583ca584d6f574384e17fe7613dfaeadcdc4a6
+HEAD is now at 19583ca584d6 Linux 3.16
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-update-this-cpu-ops.patch
+Applying: doc: this_cpu_ops.txt: Update description of this_cpu_ops
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-docbook-drm-rename-stub-drv.patch
+Applying: Documentation: DocBook: Rename drm_stub.c to drm_drv.c cause 'make xmldocs' failed
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + 5abe4967df51...a14f5a7404c5 master     -> rd-docs/master  (forced update)
