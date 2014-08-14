@@ -165,7 +165,7 @@ struct page *follow_page_mask(struct vm_area_struct *vma,
 	if (pud_huge(*pud) && vma->vm_flags & VM_HUGETLB) {
 		if (flags & FOLL_GET)
 			return NULL;
-		page = follow_huge_pud(mm, address, pud, flags & FOLL_WRITE);
+		page = follow_huge_pud(mm, address, pud);
 		return page;
 	}
 	if (unlikely(pud_bad(*pud)))
