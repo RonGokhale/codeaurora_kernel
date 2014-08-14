@@ -1480,6 +1480,14 @@ static int o2net_set_nodelay(struct socket *sock)
 	return ret;
 }
 
+static int o2net_set_usertimeout(struct socket *sock)
+{
+	int user_timeout = O2NET_TCP_USER_TIMEOUT;
+
+	return kernel_setsockopt(sock, SOL_TCP, TCP_USER_TIMEOUT,
+				(char *)&user_timeout, sizeof(user_timeout));
+}
+
 static void o2net_initialize_handshake(void)
 {
 	o2net_hand->o2hb_heartbeat_timeout_ms = cpu_to_be32(
@@ -1647,6 +1655,12 @@ static void o2net_start_connect(struct work_struct *work)
 	ret = o2net_set_nodelay(sc->sc_sock);
 	if (ret) {
 		mlog(ML_ERROR, "setting TCP_NODELAY failed with %d\n", ret);
+		goto out;
+	}
+
+	ret = o2net_set_usertimeout(sock);
+	if (ret) {
+		mlog(ML_ERROR, "set TCP_USER_TIMEOUT failed with %d\n", ret);
 		goto out;
 	}
 
@@ -1828,6 +1842,12 @@ static int o2net_accept_one(struct socket *sock, int *more)
 	ret = o2net_set_nodelay(new_sock);
 	if (ret) {
 		mlog(ML_ERROR, "setting TCP_NODELAY failed with %d\n", ret);
+		goto out;
+	}
+
+	ret = o2net_set_usertimeout(new_sock);
+	if (ret) {
+		mlog(ML_ERROR, "set TCP_USER_TIMEOUT failed with %d\n", ret);
 		goto out;
 	}
 
