@@ -3192,7 +3192,8 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * so no worry about deadlock.
 	 */
 	page = pte_page(entry);
-	get_page(page);
+	if (!get_page_unless_zero(page))
+		goto out_put_pagecache;
 	if (page != pagecache_page)
 		lock_page(page);
 
@@ -3218,15 +3219,14 @@ int hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 
 out_ptl:
 	spin_unlock(ptl);
-
+	if (page != pagecache_page)
+		unlock_page(page);
+	put_page(page);
+out_put_pagecache:
 	if (pagecache_page) {
 		unlock_page(pagecache_page);
 		put_page(pagecache_page);
 	}
-	if (page != pagecache_page)
-		unlock_page(page);
-	put_page(page);
-
 out_mutex:
 	mutex_unlock(&htlb_fault_mutex_table[hash]);
 	return ret;
@@ -3358,7 +3358,13 @@ unsigned long hugetlb_change_protection(struct vm_area_struct *vma,
 			spin_unlock(ptl);
 			continue;
 		}
-		if (!huge_pte_none(huge_ptep_get(ptep))) {
+		pte = huge_ptep_get(ptep);
+		if (unlikely(is_hugetlb_entry_migration(pte) ||
+			     is_hugetlb_entry_hwpoisoned(pte))) {
+			spin_unlock(ptl);
+			continue;
+		}
+		if (!huge_pte_none(pte)) {
 			pte = huge_ptep_get_and_clear(mm, address, ptep);
 			pte = pte_mkhuge(huge_pte_modify(pte, newprot));
 			pte = arch_make_huge_pte(pte, vma, NULL, 0);
@@ -3654,8 +3660,7 @@ pte_t *huge_pte_offset(struct mm_struct *mm, unsigned long addr)
 }
 
 struct page *
-follow_huge_pmd(struct mm_struct *mm, unsigned long address,
-		pmd_t *pmd, int write)
+follow_huge_pmd(struct mm_struct *mm, unsigned long address, pmd_t *pmd)
 {
 	struct page *page;
 
@@ -3666,8 +3671,7 @@ follow_huge_pmd(struct mm_struct *mm, unsigned long address,
 }
 
 struct page *
-follow_huge_pud(struct mm_struct *mm, unsigned long address,
-		pud_t *pud, int write)
+follow_huge_pud(struct mm_struct *mm, unsigned long address, pud_t *pud)
 {
 	struct page *page;
 
@@ -3681,14 +3685,48 @@ follow_huge_pud(struct mm_struct *mm, unsigned long address,
 
 /* Can be overriden by architectures */
 struct page * __weak
-follow_huge_pud(struct mm_struct *mm, unsigned long address,
-	       pud_t *pud, int write)
+follow_huge_pud(struct mm_struct *mm, unsigned long address, pud_t *pud)
 {
 	BUG();
 	return NULL;
 }
 
 #endif /* CONFIG_ARCH_WANT_GENERAL_HUGETLB */
+
+/*
+ * This function calls the architecture dependent variant follow_huge_pmd()
+ * with holding page table lock depending on FOLL_GET.
+ * Whether hugepage migration is supported or not, follow() can be called
+ * with FOLL_GET from do_move_page_to_node_array(), so we need do this in
+ * common code.
+ * Should be called under read mmap_sem.
+ */
+struct page *follow_huge_pmd_lock(struct vm_area_struct *vma,
+				unsigned long address, pmd_t *pmd, int flags)
+{
+	struct page *page;
+	spinlock_t *ptl;
+
+	if (flags & FOLL_GET)
+		ptl = huge_pte_lock(hstate_vma(vma), vma->vm_mm, (pte_t *)pmd);
+
+	page = follow_huge_pmd(vma->vm_mm, address, pmd);
+
+	if (flags & FOLL_GET) {
+		/*
+		 * Refcount on tail pages are not well-defined and
+		 * shouldn't be taken. The caller should handle a NULL
+		 * return when trying to follow tail pages.
+		 */
+		if (PageHead(page))
+			get_page(page);
+		else
+			page = NULL;
+		spin_unlock(ptl);
+	}
+
+	return page;
+}
 
 #ifdef CONFIG_MEMORY_FAILURE
 
