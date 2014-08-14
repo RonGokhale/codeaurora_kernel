@@ -181,6 +181,12 @@ smb2_check_message(char *buf, unsigned int length)
 		/* server can return one byte more */
 		if (clc_len == 4 + len + 1)
 			return 0;
+
+		/* MacOS server pads after SMB2.1 write response with 3 bytes */
+		/* of junk. Allow server to pad up to 15 bytes of junk at end */
+		if ((clc_len < 4 + len) && (clc_len > 4 + len - 16))
+			return 0;
+
 		return 1;
 	}
 	return 0;
