@@ -562,12 +562,27 @@ static int btrfs_dev_replace_finishing(struct btrfs_fs_info *fs_info,
 	if (fs_info->fs_devices->latest_bdev == src_device->bdev)
 		fs_info->fs_devices->latest_bdev = tgt_device->bdev;
 	list_add(&tgt_device->dev_alloc_list, &fs_info->fs_devices->alloc_list);
+	if (src_device->fs_devices->seeding)
+		fs_info->fs_devices->rw_devices++;
 
 	/* replace the sysfs entry */
 	btrfs_kobj_rm_device(fs_info, src_device);
 	btrfs_kobj_add_device(fs_info, tgt_device);
 
 	btrfs_rm_dev_replace_blocked(fs_info);
+
+	/*
+	 * if we are replacing a seed device with a writable device
+	 * then FS won't be a seeding FS any more.
+	 */
+	if (src_device->fs_devices->seeding && !src_device->writeable) {
+		fs_info->fs_devices->rw_devices++;
+		fs_info->fs_devices->num_devices++;
+		fs_info->fs_devices->open_devices++;
+
+		fs_info->fs_devices->seeding = 0;
+		fs_info->fs_devices->seed = NULL;
+	}
 
 	btrfs_rm_dev_replace_srcdev(fs_info, src_device);
 
