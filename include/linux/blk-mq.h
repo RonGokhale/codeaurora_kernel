@@ -130,6 +130,8 @@ enum {
 	BLK_MQ_F_TAG_SHARED	= 1 << 1,
 	BLK_MQ_F_SG_MERGE	= 1 << 2,
 	BLK_MQ_F_SYSFS_UP	= 1 << 3,
+	BLK_MQ_F_WQ_CONTEXT	= 1 << 4,	/* ->queue_rq() must run from
+						 * a blocking context */
 
 	BLK_MQ_S_STOPPED	= 0,
 	BLK_MQ_S_TAG_ACTIVE	= 1,

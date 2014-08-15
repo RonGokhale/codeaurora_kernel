@@ -803,6 +803,9 @@ void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async)
 	if (unlikely(test_bit(BLK_MQ_S_STOPPED, &hctx->state)))
 		return;
 
+	if (hctx->flags & BLK_MQ_F_WQ_CONTEXT)
+		async = true;
+
 	if (!async && cpumask_test_cpu(smp_processor_id(), hctx->cpumask))
 		__blk_mq_run_hw_queue(hctx);
 	else if (hctx->queue->nr_hw_queues == 1)
@@ -1173,7 +1176,7 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 		goto run_queue;
 	}
 
-	if (is_sync) {
+	if (is_sync && !(data.hctx->flags & BLK_MQ_F_WQ_CONTEXT)) {
 		int ret;
 
 		blk_mq_bio_to_request(rq, bio);
