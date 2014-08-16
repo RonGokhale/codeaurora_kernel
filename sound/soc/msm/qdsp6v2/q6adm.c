@@ -1617,8 +1617,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode,
 		}
 	}
 
-	if ((topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0 ||
-	     topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1) &&
+	if (topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0 &&
 	    !perf_mode) {
 		int res;
 		atomic_set(&this_adm.mem_map_cal_index, ADM_DTS_EAGLE);
@@ -1827,12 +1826,9 @@ int adm_matrix_map(int path, struct route_payload payload_map, int perf_mode)
 		for (i = 0; i < payload_map.num_copps; i++) {
 			port_idx = afe_get_port_index(payload_map.port_id[i]);
 			copp_idx = payload_map.copp_idx[i];
-			if ((atomic_read(
+			if (atomic_read(
 				&this_adm.copp.topology[port_idx][copp_idx]) ==
-				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) ||
-			    (atomic_read(
-				&this_adm.copp.topology[port_idx][copp_idx]) ==
-				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1))
+				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0)
 				continue;
 			rtac_add_adm_device(payload_map.port_id[i],
 					    atomic_read(&this_adm.copp.id
@@ -1887,12 +1883,10 @@ int adm_close(int port_id, int perf_mode, int copp_idx)
 		pr_debug("%s: Closing ADM port_idx:%d copp_idx:%d copp_id:0x%x\n",
 			 __func__, port_idx, copp_idx, copp_id);
 
-		if ((perf_mode != ULTRA_LOW_LATENCY_PCM_MODE) &&
-		    (this_adm.outband_memmap.paddr != 0) &&
-		    ((atomic_read(&this_adm.copp.topology[port_idx][copp_idx])
-			== ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) ||
-		     (atomic_read(&this_adm.copp.topology[port_idx][copp_idx])
-			== ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_1))) {
+		if (perf_mode != ULTRA_LOW_LATENCY_PCM_MODE &&
+		    this_adm.outband_memmap.paddr != 0 &&
+		    atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) ==
+			ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) {
 			atomic_set(&this_adm.mem_map_cal_index, ADM_DTS_EAGLE);
 			ret = adm_memory_unmap_regions();
 			if (ret < 0) {
