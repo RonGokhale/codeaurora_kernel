@@ -54,6 +54,63 @@ EEH_SHOW_ATTR(eeh_mode,            mode,            "0x%x");
 EEH_SHOW_ATTR(eeh_config_addr,     config_addr,     "0x%x");
 EEH_SHOW_ATTR(eeh_pe_config_addr,  pe_config_addr,  "0x%x");
 
+static ssize_t eeh_pe_state_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct eeh_dev *edev = pci_dev_to_eeh_dev(pdev);
+	int state;
+
+	if (!edev || !edev->pe)
+		return 0;
+
+	state = eeh_ops->get_state(edev->pe, NULL);
+	return sprintf(buf, "PHB#%d-PE#%d: 0x%08x 0x%08x\n",
+		       edev->pe->phb->global_number,
+		       edev->pe->addr, state, edev->pe->state);
+}
+
+static ssize_t eeh_pe_state_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t count)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct eeh_dev *edev = pci_dev_to_eeh_dev(pdev);
+	int ret;
+
+	if (!edev || !edev->pe)
+		return 0;
+
+	/* Nothing to do if it's not frozen */
+	if (!(edev->pe->state & EEH_PE_ISOLATED))
+		return 0;
+
+	/* Enable MMIO */
+	ret = eeh_pci_enable(edev->pe, EEH_OPT_THAW_MMIO);
+	if (ret) {
+		pr_warn("%s: Failure %d enabling MMIO for PHB#%d-PE#%d\n",
+			__func__, ret, edev->pe->phb->global_number,
+			edev->pe->addr);
+		return 0;
+	}
+
+	/* Enable DMA */
+	ret = eeh_pci_enable(edev->pe, EEH_OPT_THAW_DMA);
+	if (ret) {
+		pr_warn("%s: Failure %d enabling DMA for PHB#%d-PE#%d\n",
+			__func__, ret, edev->pe->phb->global_number,
+			edev->pe->addr);
+		return 0;
+	}
+
+	/* Clear software state */
+	eeh_pe_state_clear(edev->pe, EEH_PE_ISOLATED);
+
+	return count;
+}
+
+static DEVICE_ATTR_RW(eeh_pe_state);
+
 void eeh_sysfs_add_device(struct pci_dev *pdev)
 {
 	struct eeh_dev *edev = pci_dev_to_eeh_dev(pdev);
@@ -68,9 +125,10 @@ void eeh_sysfs_add_device(struct pci_dev *pdev)
 	rc += device_create_file(&pdev->dev, &dev_attr_eeh_mode);
 	rc += device_create_file(&pdev->dev, &dev_attr_eeh_config_addr);
 	rc += device_create_file(&pdev->dev, &dev_attr_eeh_pe_config_addr);
+	rc += device_create_file(&pdev->dev, &dev_attr_eeh_pe_state);
 
 	if (rc)
-		printk(KERN_WARNING "EEH: Unable to create sysfs entries\n");
+		pr_warn("EEH: Unable to create sysfs entries\n");
 	else if (edev)
 		edev->mode |= EEH_DEV_SYSFS;
 }
@@ -92,6 +150,7 @@ void eeh_sysfs_remove_device(struct pci_dev *pdev)
 	device_remove_file(&pdev->dev, &dev_attr_eeh_mode);
 	device_remove_file(&pdev->dev, &dev_attr_eeh_config_addr);
 	device_remove_file(&pdev->dev, &dev_attr_eeh_pe_config_addr);
+	device_remove_file(&pdev->dev, &dev_attr_eeh_pe_state);
 
 	if (edev)
 		edev->mode &= ~EEH_DEV_SYSFS;
