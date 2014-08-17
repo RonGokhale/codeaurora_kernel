@@ -907,7 +907,8 @@ tcon_exit:
 tcon_error_exit:
 	if (rsp->hdr.Status == STATUS_BAD_NETWORK_NAME) {
 		cifs_dbg(VFS, "BAD_NETWORK_NAME: %s\n", tree);
-		tcon->bad_network_name = true;
+		if (tcon)
+			tcon->bad_network_name = true;
 	}
 	goto tcon_exit;
 }
@@ -1224,7 +1225,9 @@ SMB2_ioctl(const unsigned int xid, struct cifs_tcon *tcon, u64 persistent_fid,
 
 	cifs_dbg(FYI, "SMB2 IOCTL\n");
 
-	*out_data = NULL;
+	if (out_data != NULL)
+		*out_data = NULL;
+
 	/* zero out returned data len, in case of error */
 	if (plen)
 		*plen = 0;
