@@ -384,3 +384,5 @@ ENTRY(sys_call_table)
 	.long sys_sched_setattr
 	.long sys_sched_getattr
 	.long sys_renameat2
+	.long sys_seccomp
+	.long sys_getrandom		/* 385 */
