@@ -587,13 +587,53 @@ long diagchar_ioctl(struct file *filp,
 	uint16_t support_list = 0;
 	struct diag_dci_client_tbl *dci_params;
 	struct diag_dci_health_stats stats;
-
-	if (iocmd == DIAG_IOCTL_COMMAND_REG) {
-		struct bindpkt_params_per_process pkt_params;
-		struct bindpkt_params *params;
-		struct bindpkt_params *head_params;
-		if (copy_from_user(&pkt_params, (void *)ioarg,
-			   sizeof(struct bindpkt_params_per_process))) {
+	struct bindpkt_params_per_process pkt_params;
+	struct bindpkt_params *params;
+	struct bindpkt_params *head_params;
+	if (copy_from_user(&pkt_params, (void *)ioarg,
+		   sizeof(struct bindpkt_params_per_process))) {
+		return -EFAULT;
+	}
+	if ((UINT_MAX/sizeof(struct bindpkt_params)) <
+						 pkt_params.count) {
+		pr_warn("diag: integer overflow while multiply\n");
+		return -EFAULT;
+	}
+	head_params = kzalloc(pkt_params.count*sizeof(
+		struct bindpkt_params), GFP_KERNEL);
+	if (ZERO_OR_NULL_PTR(head_params)) {
+		pr_err("diag: unable to alloc memory\n");
+		return -ENOMEM;
+	} else
+		params = head_params;
+	if (copy_from_user(params, pkt_params.params,
+		   pkt_params.count*sizeof(struct bindpkt_params))) {
+		kfree(head_params);
+		return -EFAULT;
+	}
+	mutex_lock(&driver->diagchar_mutex);
+	for (i = 0; i < diag_max_reg; i++) {
+		if (driver->table[i].process_id == 0) {
+			diag_add_reg(i, params, &success,
+						 &count_entries);
+			if (pkt_params.count > count_entries) {
+				params++;
+			} else {
+				kfree(head_params);
+				mutex_unlock(&driver->diagchar_mutex);
+				return success;
+			}
+		}
+	}
+	if (i < diag_threshold_reg) {
+		/* Increase table size by amount required */
+		if (pkt_params.count >= count_entries) {
+			interim_count = pkt_params.count -
+						 count_entries;
+		} else {
+			pr_warn("diag: error in params count\n");
+			kfree(head_params);
+			mutex_unlock(&driver->diagchar_mutex);
 			return -EFAULT;
 		}
 		if ((UINT32_MAX/sizeof(struct bindpkt_params)) <

@@ -85,14 +85,15 @@ int diag_process_smd_cntl_read_data(struct diag_smd_info *smd_info, void *buf,
 			range = buf+HDR_SIZ+
 					sizeof(struct diag_ctrl_msg);
 			pkt_params->count = msg->count_entries;
-			temp = kzalloc(pkt_params->count * sizeof(struct
-					 bindpkt_params), GFP_KERNEL);
-			if (temp == NULL) {
+			pkt_params->params = kzalloc(pkt_params->count *
+				sizeof(struct bindpkt_params), GFP_KERNEL);
+			if (ZERO_OR_NULL_PTR(pkt_params->params)) {
 				pr_alert("diag: In %s, Memory alloc fail\n",
 					__func__);
 				kfree(pkt_params);
 				return flag;
 			}
+			temp = pkt_params->params;
 			for (j = 0; j < pkt_params->count; j++) {
 				temp->cmd_code = msg->cmd_code;
 				temp->subsys_id = msg->subsysid;
