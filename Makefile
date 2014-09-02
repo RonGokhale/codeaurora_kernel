@@ -367,6 +367,11 @@ USERINCLUDE    := \
 		-Iinclude/generated/uapi \
                 -include $(srctree)/include/linux/kconfig.h
 
+ifneq ($(WIFIVERSION),)
+USERINCLUDE	:= -I$(srctree)/include/wireless$(WIFIVERSION)/uapi \
+		$(USERINCLUDE)
+endif
+
 # Use LINUXINCLUDE when you must reference the include/ directory.
 # Needed to be compatible with the O= option
 LINUXINCLUDE    := \
@@ -375,6 +380,13 @@ LINUXINCLUDE    := \
 		$(if $(KBUILD_SRC), -I$(srctree)/include) \
 		-Iinclude \
 		$(USERINCLUDE)
+
+# This is used to prepend the include path in case we're building with
+# a different wifi stack than the native one.
+ifneq ($(WIFIVERSION),)
+LINUXINCLUDE	:= -I$(srctree)/include/wireless$(WIFIVERSION) \
+		$(LINUXINCLUDE)
+endif
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
