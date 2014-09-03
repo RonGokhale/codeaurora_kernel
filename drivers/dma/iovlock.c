@@ -107,8 +107,11 @@ struct dma_pinned_list *dma_pin_iovec_pages(struct iovec *iov, size_t len)
 			NULL);
 		up_read(&current->mm->mmap_sem);
 
-		if (ret != page_list->nr_pages)
+		if (ret != page_list->nr_pages) {
+			for (i = 0; i < ret; i++)
+				put_page(page_list->pages[i]);
 			goto unpin;
+		}
 
 		local_list->nr_iovecs = i + 1;
 	}
