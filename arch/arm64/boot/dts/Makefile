@@ -5,9 +5,5 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra132-ryu-p1.dtb
 dtb-$(CONFIG_ARCH_TEGRA) += tegra132-ryu-p3.dtb
 dtb-$(CONFIG_ARCH_TEGRA) += tegra132-ryu-p4.dtb
 
-targets += dtbs dtbs_install
-targets += $(dtb-y)
-
-dtbs: $(addprefix $(obj)/, $(dtb-y))
-
-clean-files := *.dtb
+always		:= $(dtb-y)
+clean-files	:= *.dtb
