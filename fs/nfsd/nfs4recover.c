@@ -1265,6 +1265,22 @@ nfsd4_umh_cltrack_init(struct net *net)
 }
 
 static void
+nfsd4_cltrack_upcall_lock(struct nfs4_client *clp)
+{
+	wait_on_bit_lock(&clp->cl_flags, NFSD4_CLIENT_UPCALL_LOCK,
+			 TASK_UNINTERRUPTIBLE);
+}
+
+static void
+nfsd4_cltrack_upcall_unlock(struct nfs4_client *clp)
+{
+	smp_mb__before_atomic();
+	clear_bit(NFSD4_CLIENT_UPCALL_LOCK, &clp->cl_flags);
+	smp_mb__after_atomic();
+	wake_up_bit(&clp->cl_flags, NFSD4_CLIENT_UPCALL_LOCK);
+}
+
+static void
 nfsd4_umh_cltrack_create(struct nfs4_client *clp)
 {
 	char *hexid, *reclaim_complete, *grace_start;
@@ -1275,9 +1291,14 @@ nfsd4_umh_cltrack_create(struct nfs4_client *clp)
 		dprintk("%s: can't allocate memory for upcall!\n", __func__);
 		return;
 	}
+
 	reclaim_complete = nfsd4_cltrack_reclaim_complete(clp);
 	grace_start = nfsd4_cltrack_grace_start(nn->boot_time);
+
+	nfsd4_cltrack_upcall_lock(clp);
 	nfsd4_umh_cltrack_upcall("create", hexid, reclaim_complete, grace_start);
+	nfsd4_cltrack_upcall_unlock(clp);
+
 	kfree(reclaim_complete);
 	kfree(grace_start);
 	kfree(hexid);
@@ -1293,7 +1314,11 @@ nfsd4_umh_cltrack_remove(struct nfs4_client *clp)
 		dprintk("%s: can't allocate memory for upcall!\n", __func__);
 		return;
 	}
+
+	nfsd4_cltrack_upcall_lock(clp);
 	nfsd4_umh_cltrack_upcall("remove", hexid, NULL, NULL);
+	nfsd4_cltrack_upcall_unlock(clp);
+
 	kfree(hexid);
 }
 
@@ -1309,7 +1334,11 @@ nfsd4_umh_cltrack_check(struct nfs4_client *clp)
 		return -ENOMEM;
 	}
 	legacy = nfsd4_cltrack_legacy_recdir(&clp->cl_name);
+
+	nfsd4_cltrack_upcall_lock(clp);
 	ret = nfsd4_umh_cltrack_upcall("check", hexid, legacy, NULL);
+	nfsd4_cltrack_upcall_unlock(clp);
+
 	kfree(legacy);
 	kfree(hexid);
 	return ret;
