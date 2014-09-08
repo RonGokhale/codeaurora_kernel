@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/videodev2.h>
 #include <linux/log2.h>
+#include <linux/sizes.h>
 
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
@@ -834,10 +835,10 @@ static int set_srcdst_params(struct vpe_ctx *ctx)
 					VPDMA_STRIDE_ALIGN);
 		mv_buf_size = bytes_per_line * s_q_data->height;
 
-		ctx->deinterlacing = 1;
+		ctx->deinterlacing = true;
 		src_h <<= 1;
 	} else {
-		ctx->deinterlacing = 0;
+		ctx->deinterlacing = false;
 		mv_buf_size = 0;
 	}
 
