@@ -348,7 +348,7 @@ int tw68_video_start_dma(struct tw68_dev *dev, struct tw68_buf *buf)
 	 *  a new address can be set.
 	 */
 	tw_clearl(TW68_DMAC, TW68_DMAP_EN);
-	tw_writel(TW68_DMAP_SA, cpu_to_le32(buf->dma));
+	tw_writel(TW68_DMAP_SA, buf->dma);
 	/* Clear any pending interrupts */
 	tw_writel(TW68_INTSTAT, dev->board_virqmask);
 	/* Enable the risc engine and the fifo */
@@ -361,22 +361,13 @@ int tw68_video_start_dma(struct tw68_dev *dev, struct tw68_buf *buf)
 
 /* ------------------------------------------------------------------ */
 
-/* nr of (tw68-)pages for the given buffer size */
-static int tw68_buffer_pages(int size)
-{
-	size  = PAGE_ALIGN(size);
-	size += PAGE_SIZE; /* for non-page-aligned buffers */
-	size /= 4096;
-	return size;
-}
-
 /* calc max # of buffers from size (must not exceed the 4MB virtual
  * address space per DMA channel) */
 static int tw68_buffer_count(unsigned int size, unsigned int count)
 {
 	unsigned int maxcount;
 
-	maxcount = 1024 / tw68_buffer_pages(size);
+	maxcount = (4 * 1024 * 1024) / roundup(size, PAGE_SIZE);
 	if (count > maxcount)
 		count = maxcount;
 	return count;
