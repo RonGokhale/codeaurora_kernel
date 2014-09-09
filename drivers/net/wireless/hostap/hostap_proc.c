@@ -181,7 +181,7 @@ static int prism2_bss_list_proc_show(struct seq_file *m, void *v)
 		   bss->bssid, bss->last_update,
 		   bss->count, bss->capab_info);
 
-	seq_printf(m, "%*pE", bss->ssid_len, bss->ssid);
+	seq_printf(m, "%*pE", (int)bss->ssid_len, bss->ssid);
 
 	seq_putc(m, '\t');
 	seq_printf(m, "%*phN", (int)bss->ssid_len, bss->ssid);
