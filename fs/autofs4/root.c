@@ -463,7 +463,7 @@ static int autofs4_d_manage(struct dentry *dentry, bool rcu_walk)
 			return 0;
 		if (d_mountpoint(dentry))
 			return 0;
-		inode = rcu_dereference(dentry->d_inode);
+		inode = ACCESS_ONCE(dentry->d_inode);
 		if (inode && S_ISLNK(inode->i_mode))
 			return -EISDIR;
 		if (list_empty(&dentry->d_subdirs))
