@@ -381,7 +381,7 @@ static ssize_t show_zones_online_to(struct device *dev,
 	unsigned long start_pfn, end_pfn;
 	unsigned long nr_pages = PAGES_PER_SECTION * sections_per_block;
 	struct page *first_page;
-	struct zone *zone, *zone_prev;
+	struct zone *zone;
 
 	start_pfn = section_nr_to_pfn(mem->start_section_nr);
 	end_pfn = start_pfn + nr_pages;
