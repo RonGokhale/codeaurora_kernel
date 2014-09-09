@@ -1371,14 +1371,22 @@ F:	arch/arm/mach-shmobile/
 F:	drivers/sh/
 
 ARM/SOCFPGA ARCHITECTURE
-M:	Dinh Nguyen <dinguyen@altera.com>
+M:	Dinh Nguyen <dinguyen@opensource.altera.com>
 S:	Maintained
 F:	arch/arm/mach-socfpga/
+W:	http://www.rocketboards.org
+T:	git://git.rocketboards.org/linux-socfpga.git
+T:	git://git.rocketboards.org/linux-socfpga-next.git
 
 ARM/SOCFPGA CLOCK FRAMEWORK SUPPORT
-M:	Dinh Nguyen <dinguyen@altera.com>
+M:	Dinh Nguyen <dinguyen@opensource.altera.com>
 S:	Maintained
 F:	drivers/clk/socfpga/
+
+ARM/SOCFPGA EDAC SUPPORT
+M:	Thor Thayer <tthayer@opensource.altera.com>
+S:	Maintained
+F:	drivers/edac/altera_edac.
 
 ARM/STI ARCHITECTURE
 M:	Srinivas Kandagatla <srinivas.kandagatla@gmail.com>
@@ -10069,9 +10077,9 @@ F:	Documentation/x86/
 F:	arch/x86/
 
 X86 PLATFORM DRIVERS
-M:	Matthew Garrett <matthew.garrett@nebula.com>
+M:	Darren Hart <dvhart@infradead.org>
 L:	platform-driver-x86@vger.kernel.org
-T:	git git://cavan.codon.org.uk/platform-drivers-x86.git
+T:	git git://git.infradead.org/users/dvhart/linux-platform-drivers-x86.git
 S:	Maintained
 F:	drivers/platform/x86/
 
