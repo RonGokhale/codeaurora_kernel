@@ -347,6 +347,7 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 			     u8 *data, size_t *len, u8 *lqi)
 {
 	u8 *buf = lp->buf;
+	u8 plen;
 	int status;
 	struct spi_message msg;
 	struct spi_transfer xfer_head = {
@@ -381,8 +382,9 @@ static int adf7242_read_fbuf(struct adf7242_local *lp,
 	status = spi_sync(lp->spi, &msg);
 
 	if (!status && lqi) {
-		*lqi = data[buf[2] - 1];
-		*len = buf[2];	/* PHR */
+		plen = buf[2] & 0x7F;
+		*lqi = data[plen - 1];
+		*len = plen;	/* PHR */
 	}
 
 	mutex_unlock(&lp->bmux);
@@ -861,10 +863,16 @@ static irqreturn_t adf7242_isr(int irq, void *data)
 
 	adf7242_write_reg(lp, REG_IRQ1_SRC1, irq1);
 
+	if (!(irq1 & (IRQ_RX_PKT_RCVD | lp->tx_irq)))
+		dev_err(&lp->spi->dev, "%s :ERROR IRQ1 = 0x%X\n", __func__, irq1);
+
+#if 0
 	if ((irq1 & IRQ_RX_PKT_RCVD) &&
 		((lp->mode & ADF_IEEE802154_REPORT_ACK) ||
 		!(irq1 & lp->tx_irq))) {
-
+#else
+	if (irq1 & IRQ_RX_PKT_RCVD) {
+#endif
 		/* Wait until ACK is processed */
 		if ((lp->mode & ADF_IEEE802154_HW_AACK) &&
 		    ((stat & RC_STATUS_MASK) != RC_STATUS_PHY_RDY))
@@ -961,7 +969,7 @@ static int adf7242_hw_init(struct adf7242_local *lp)
 				   RX_AUTO_ACK_EN | CSMA_CA_RX_TURNAROUND : 0));
 	}
 
-	adf7242_write_reg(lp, REG_PKT_CFG, lp->mode ? ADDON_EN : 0);
+	adf7242_write_reg(lp, REG_PKT_CFG, (lp->mode ? ADDON_EN : 0) | BIT(2));
 
 	adf7242_write_reg(lp, REG_EXTPA_MSC, 0xF1);
 	adf7242_write_reg(lp, REG_RXFE_CFG, 0x1D);
@@ -993,11 +1001,25 @@ static ssize_t adf7242_show(struct device *dev,
 			    struct device_attribute *devattr, char *buf)
 {
 	struct adf7242_local *lp = dev_get_drvdata(dev);
-	u8 stat;
+	u8 stat, irq1;
+	size_t len;
 
 	adf7242_status(lp, &stat);
 
-	return sprintf(buf, "STATUS = %X:\n%s\n%s%s%s%s%s\n", stat,
+	adf7242_read_reg(lp, REG_IRQ1_SRC1, &irq1);
+
+	len = sprintf(buf, "IRQ1 = %X:\n%s%s%s%s%s%s%s%s\n", irq1,
+	    irq1 & IRQ_CCA_COMPLETE ? "IRQ_CCA_COMPLETE\n" : "",
+	    irq1 & IRQ_SFD_RX ? "IRQ_SFD_RX\n" : "",
+	    irq1 & IRQ_SFD_TX ? "IRQ_SFD_TX\n" : "",
+	    irq1 & IRQ_RX_PKT_RCVD ? "IRQ_RX_PKT_RCVD\n" : "",
+	    irq1 & IRQ_TX_PKT_SENT ? "IRQ_TX_PKT_SENT\n" : "",
+	    irq1 & IRQ_CSMA_CA ? "IRQ_CSMA_CA\n" : "",
+	    irq1 & IRQ_FRAME_VALID ? "IRQ_FRAME_VALID\n" : "",
+	    irq1 & IRQ_ADDRESS_VALID ? "IRQ_ADDRESS_VALID\n" : "");
+
+
+	len += sprintf(buf + len, "STATUS = %X:\n%s\n%s%s%s%s%s\n", stat,
 		       stat & STAT_RC_READY ? "RC_READY" : "RC_BUSY",
 		       (stat & 0xf) == RC_STATUS_IDLE ? "RC_STATUS_IDLE" : "",
 		       (stat & 0xf) == RC_STATUS_MEAS ? "RC_STATUS_MEAS" : "",
@@ -1006,6 +1028,7 @@ static ssize_t adf7242_show(struct device *dev,
 		       (stat & 0xf) == RC_STATUS_RX ? "RC_STATUS_RX" : "",
 		       (stat & 0xf) == RC_STATUS_TX ? "RC_STATUS_TX" : "");
 
+	return len;
 }
 
 static DEVICE_ATTR(status, 0664, adf7242_show, NULL);
