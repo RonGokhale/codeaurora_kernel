@@ -16,6 +16,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-kconfig-cleanups-for-v3.18
 	at91/cleanup
 		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+	at91/cleanup2
+		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
 
 next/soc
 	patch
@@ -37,6 +39,10 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-clk-for-v3.18
 	integrator/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator.git tags/integrator-for-v3.18-1
+	renesas/r8a7740-multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-r8a7740-multiplatform-for-v3.18
+	renesas/renesas-soc3-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-soc3-for-v3.18
 
 next/boards
 	renesas/boards
@@ -59,10 +65,14 @@ next/dt
 		git://github.com/at91linux/linux-at91.git tags/at91-dt2
 	davinci/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.18/dt
+	socfpga/dt
+		git://git.rocketboards.org/linux-socfpga-next socfpga_update_for_v3.18
 
 next/drivers
 	at91/drivers
 		git://github.com/at91linux/linux-at91.git tags/at91-drivers2
+	socfpga/edac
+		git://git.rocketboards.org/linux-socfpga-next socfpga_driver_for_v3.18
 
 next/defconfig
 	patch
@@ -75,13 +85,7 @@ next/defconfig
 		git://github.com/at91linux/linux-at91.git tags/at91-defconfig
 
 fixes
-	<no branch> (3bc4d037c6791c5089a04845995410aac4fdb514)
-		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-fixes-3.17
 	patch
-		ARM: dts: Enable PMIC interrupts on ODROID
-		ARM: dts: ODROID i2c improvements
-	<no branch> (495bccf3917b04c6727d720b56620e265c693ace)
-		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.17-2
-	patch
-		ARM: edma: Fix configuration parsing for SoCs with multiple eDMA3 CC
+		ARM: pxa: fix section mismatch warning for pxa_timer_nodt_init
+		ARM: OMAP: Fix Kconfig warning for omap1
 
