@@ -293,5 +293,11 @@ static inline bool balloon_compaction_check(void)
 {
 	return false;
 }
+
+static inline bool __is_movable_balloon_page(struct page *page)
+{
+	return false;
+}
+
 #endif /* CONFIG_BALLOON_COMPACTION */
 #endif /* _LINUX_BALLOON_COMPACTION_H */
