@@ -6,6 +6,8 @@ next/fixes-non-critical
 		ARM: cns3xxx: fix allmodconfig panic in pci driver
 	renesas/maintainers
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-maintainers-for-v3.18
+	patch
+		ARM: LPC32xx: Fix reset function
 
 next/cleanup
 	patch
@@ -83,6 +85,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-defconfig3-for-v3.18
 	at91/defconfig
 		git://github.com/at91linux/linux-at91.git tags/at91-defconfig
+	lpc32xx/defconfig
+		git://git.antcom.de/linux-2.6 lpc32xx/defconfig
 
 fixes
 	patch
