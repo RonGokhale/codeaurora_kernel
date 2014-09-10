@@ -248,8 +248,17 @@ retry:
 
 	/* update fsync_mark if its inode nat entry is still alive */
 	e = __lookup_nat_cache(nm_i, ni->ino);
-	if (e)
+	if (e) {
+		/*
+		 * CP | inode(x) | dnode(F)
+		 *  -> CP | inode(x) | dnode(F) | inode(DF)
+		 */
+		if (!e->checkpointed && !e->fsync_done &&
+				ni->ino != ni->nid && fsync_done)
+			goto skip;
 		e->fsync_done = fsync_done;
+	}
+skip:
 	write_unlock(&nm_i->nat_tree_lock);
 }
 
