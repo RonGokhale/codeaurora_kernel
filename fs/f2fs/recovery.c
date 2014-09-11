@@ -180,7 +180,7 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 		page = get_meta_page(sbi, blkaddr);
 
 		ra_meta_pages(sbi, next_blkaddr_of_node(page),
-				MAX_BIO_BLOCKS(max_hw_blocks(sbi)), META_POR);
+					MAX_BIO_BLOCKS(sbi), META_POR);
 
 		if (cp_ver != cpver_of_node(page))
 			break;
@@ -444,7 +444,7 @@ static int recover_data(struct f2fs_sb_info *sbi,
 		page = get_meta_page(sbi, blkaddr);
 
 		ra_meta_pages(sbi, next_blkaddr_of_node(page),
-				MAX_BIO_BLOCKS(max_hw_blocks(sbi)), META_POR);
+					MAX_BIO_BLOCKS(sbi), META_POR);
 
 		if (cp_ver != cpver_of_node(page)) {
 			f2fs_put_page(page, 1);
