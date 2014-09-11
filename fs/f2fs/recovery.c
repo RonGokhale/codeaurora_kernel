@@ -173,7 +173,7 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 {
 	unsigned long long cp_ver = cur_cp_version(F2FS_CKPT(sbi));
 	struct curseg_info *curseg;
-	struct page *page;
+	struct page *page = NULL;
 	block_t blkaddr;
 	int err = 0;
 
@@ -181,20 +181,19 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 	curseg = CURSEG_I(sbi, CURSEG_WARM_NODE);
 	blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
-	/* read node page */
-	page = alloc_page(GFP_F2FS_ZERO);
-	if (!page)
-		return -ENOMEM;
-	lock_page(page);
-
 	while (1) {
 		struct fsync_inode_entry *entry;
 
-		err = f2fs_submit_page_bio(sbi, page, blkaddr, READ_SYNC);
-		if (err)
-			return err;
+		if (blkaddr < SM_I(sbi)->main_blkaddr ||
+					blkaddr > TOTAL_BLKS(sbi))
+			break;
 
-		lock_page(page);
+		page = get_meta_page(sbi, blkaddr);
+		if (IS_ERR(page))
+			return PTR_ERR(page);
+
+		ra_meta_pages(sbi, next_blkaddr_of_node(page),
+				MAX_BIO_BLOCKS(max_hw_blocks(sbi)), META_POR);
 
 		if (cp_ver != cpver_of_node(page))
 			break;
@@ -243,11 +242,9 @@ static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head)
 next:
 		/* check next segment */
 		blkaddr = next_blkaddr_of_node(page);
+		f2fs_put_page(page, 1);
 	}
-
-	unlock_page(page);
-	__free_pages(page, 0);
-
+	f2fs_put_page(page, 1);
 	return err;
 }
 
@@ -427,7 +424,7 @@ static int recover_data(struct f2fs_sb_info *sbi,
 {
 	unsigned long long cp_ver = cur_cp_version(F2FS_CKPT(sbi));
 	struct curseg_info *curseg;
-	struct page *page;
+	struct page *page = NULL;
 	int err = 0;
 	block_t blkaddr;
 
@@ -435,21 +432,19 @@ static int recover_data(struct f2fs_sb_info *sbi,
 	curseg = CURSEG_I(sbi, type);
 	blkaddr = NEXT_FREE_BLKADDR(sbi, curseg);
 
-	/* read node page */
-	page = alloc_page(GFP_F2FS_ZERO);
-	if (!page)
-		return -ENOMEM;
-
-	lock_page(page);
-
 	while (1) {
 		struct fsync_inode_entry *entry;
 
-		err = f2fs_submit_page_bio(sbi, page, blkaddr, READ_SYNC);
-		if (err)
-			return err;
+		if (blkaddr < SM_I(sbi)->main_blkaddr ||
+					blkaddr > TOTAL_BLKS(sbi))
+			break;
 
-		lock_page(page);
+		page = get_meta_page(sbi, blkaddr);
+		if (IS_ERR(page))
+			return PTR_ERR(page);
+
+		ra_meta_pages(sbi, next_blkaddr_of_node(page),
+				MAX_BIO_BLOCKS(max_hw_blocks(sbi)), META_POR);
 
 		if (cp_ver != cpver_of_node(page))
 			break;
@@ -477,11 +472,9 @@ static int recover_data(struct f2fs_sb_info *sbi,
 next:
 		/* check next segment */
 		blkaddr = next_blkaddr_of_node(page);
+		f2fs_put_page(page, 1);
 	}
-
-	unlock_page(page);
-	__free_pages(page, 0);
-
+	f2fs_put_page(page, 1);
 	if (!err)
 		allocate_new_segments(sbi);
 	return err;
@@ -526,6 +519,10 @@ int recover_fsync_data(struct f2fs_sb_info *sbi)
 out:
 	destroy_fsync_dnodes(&inode_list);
 	kmem_cache_destroy(fsync_entry_slab);
+
+	/* truncate meta pages to be used by the recovery */
+	truncate_inode_pages_range(META_MAPPING(sbi),
+		SM_I(sbi)->main_blkaddr << PAGE_CACHE_SHIFT, -1);
 
 	if (err) {
 		truncate_inode_pages_final(NODE_MAPPING(sbi));
