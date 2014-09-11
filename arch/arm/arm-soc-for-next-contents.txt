@@ -20,6 +20,8 @@ next/cleanup
 		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
 	at91/cleanup2
 		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+	renesas/pm-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-pm-cleanups-for-v3.18
 
 next/soc
 	patch
@@ -45,6 +47,8 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-r8a7740-multiplatform-for-v3.18
 	renesas/renesas-soc3-for-v3.18
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-soc3-for-v3.18
+	renesas/dt-timers2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-timers2-for-v3.18
 
 next/boards
 	renesas/boards
@@ -57,7 +61,7 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.18-rockchip-dma
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-for-v3.18
-	renesas/dt
+	renesas/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt2-for-v3.18
 	renesas/dt3
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt3-for-v3.18
@@ -69,6 +73,8 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.18/dt
 	socfpga/dt
 		git://git.rocketboards.org/linux-socfpga-next socfpga_update_for_v3.18
+	renesas/dt4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt4-for-v3.18
 
 next/drivers
 	at91/drivers
