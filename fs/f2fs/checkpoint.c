@@ -72,7 +72,7 @@ out:
 	return page;
 }
 
-static inline int get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
+static inline block_t get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
 {
 	switch (type) {
 	case META_NAT:
@@ -82,6 +82,8 @@ static inline int get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
 	case META_SSA:
 	case META_CP:
 		return 0;
+	case META_POR:
+		return SM_I(sbi)->main_blkaddr + sbi->user_block_count;
 	default:
 		BUG();
 	}
@@ -90,12 +92,13 @@ static inline int get_max_meta_blks(struct f2fs_sb_info *sbi, int type)
 /*
  * Readahead CP/NAT/SIT/SSA pages
  */
-int ra_meta_pages(struct f2fs_sb_info *sbi, int start, int nrpages, int type)
+int ra_meta_pages(struct f2fs_sb_info *sbi, block_t start, int nrpages, int type)
 {
 	block_t prev_blk_addr = 0;
 	struct page *page;
-	int blkno = start;
-	int max_blks = get_max_meta_blks(sbi, type);
+	block_t blkno = start;
+	block_t max_blks = get_max_meta_blks(sbi, type);
+	block_t min_blks = SM_I(sbi)->seg0_blkaddr;
 
 	struct f2fs_io_info fio = {
 		.type = META,
@@ -125,7 +128,9 @@ int ra_meta_pages(struct f2fs_sb_info *sbi, int start, int nrpages, int type)
 			break;
 		case META_SSA:
 		case META_CP:
-			/* get ssa/cp block addr */
+		case META_POR:
+			if (blkno >= max_blks || blkno < min_blks)
+				goto out;
 			blk_addr = blkno;
 			break;
 		default:
