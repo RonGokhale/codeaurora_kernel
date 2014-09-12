@@ -5190,12 +5190,29 @@ retry:
 	return setup_ok ? 0 : -EINVAL;
 }
 
+static bool pipe_config_supports_ips(struct drm_i915_private *dev_priv,
+				     struct intel_crtc_config *pipe_config)
+{
+	if (pipe_config->pipe_bpp > 24)
+		return false;
+
+	/* HSW can handle pixel rate up to cdclk? */
+	if (IS_HASWELL(dev_priv->dev))
+		return true;
+
+	return ilk_pipe_pixel_rate(pipe_config) <=
+		intel_ddi_get_cdclk_freq(dev_priv) * 95 / 100;
+}
+
 static void hsw_compute_ips_config(struct intel_crtc *crtc,
 				   struct intel_crtc_config *pipe_config)
 {
+	struct drm_device *dev = crtc->base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	pipe_config->ips_enabled = i915.enable_ips &&
-				   hsw_crtc_supports_ips(crtc) &&
-				   pipe_config->pipe_bpp <= 24;
+		hsw_crtc_supports_ips(crtc) &&
+		pipe_config_supports_ips(dev_priv, pipe_config);
 }
 
 static int intel_crtc_compute_config(struct intel_crtc *crtc,
