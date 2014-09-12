@@ -627,14 +627,16 @@ static int __add_dirty_inode(struct inode *inode, struct dir_inode_entry *new)
 	return 0;
 }
 
-void set_dirty_dir_page(struct inode *inode, struct page *page)
+void update_dirty_page(struct inode *inode, struct page *page)
 {
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	struct dir_inode_entry *new;
 	int ret = 0;
 
-	if (!S_ISDIR(inode->i_mode))
+	if (!S_ISDIR(inode->i_mode)) {
+		inode_inc_dirty_pages(inode);
 		return;
+	}
 
 	new = f2fs_kmem_cache_alloc(inode_entry_slab, GFP_NOFS);
 	new->inode = inode;
@@ -642,7 +644,7 @@ void set_dirty_dir_page(struct inode *inode, struct page *page)
 
 	spin_lock(&sbi->dir_inode_lock);
 	ret = __add_dirty_inode(inode, new);
-	inode_inc_dirty_dents(inode);
+	inode_inc_dirty_pages(inode);
 	SetPagePrivate(page);
 	spin_unlock(&sbi->dir_inode_lock);
 
@@ -677,7 +679,7 @@ void remove_dirty_dir_inode(struct inode *inode)
 		return;
 
 	spin_lock(&sbi->dir_inode_lock);
-	if (get_dirty_dents(inode) ||
+	if (get_dirty_pages(inode) ||
 			!is_inode_flag_set(F2FS_I(inode), FI_DIRTY_DIR)) {
 		spin_unlock(&sbi->dir_inode_lock);
 		return;
