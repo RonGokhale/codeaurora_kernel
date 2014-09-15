@@ -35,6 +35,7 @@
 #include "elantech.h"
 #include "sentelic.h"
 #include "cypress_ps2.h"
+#include "focaltech.h"
 
 #define DRIVER_DESC	"PS/2 mouse driver"
 
@@ -462,6 +463,20 @@ static int psmouse_poll(struct psmouse *psmouse)
 			   PSMOUSE_CMD_POLL | (psmouse->pktsize << 8));
 }
 
+/*
+ * psmouse_matches_pnp_id - check if psmouse matches one of the passed in ids.
+ */
+bool psmouse_matches_pnp_id(struct psmouse *psmouse, const char * const ids[])
+{
+	int i;
+
+	if (!strncmp(psmouse->ps2dev.serio->firmware_id, "PNP:", 4))
+		for (i = 0; ids[i]; i++)
+			if (strstr(psmouse->ps2dev.serio->firmware_id, ids[i]))
+				return true;
+
+	return false;
+}
 
 /*
  * Genius NetMouse magic init.
@@ -707,6 +722,14 @@ static int psmouse_extensions(struct psmouse *psmouse,
 			      unsigned int max_proto, bool set_properties)
 {
 	bool synaptics_hardware = false;
+
+/* Always check for focaltech, this is safe as it uses pnp-id matching */
+	if (psmouse_do_detect(focaltech_detect, psmouse, set_properties) == 0) {
+		if (!set_properties || focaltech_init(psmouse) == 0) {
+			/* Not supported yet, use bare protocol */
+			return PSMOUSE_PS2;
+		}
+	}
 
 /*
  * We always check for lifebook because it does not disturb mouse
