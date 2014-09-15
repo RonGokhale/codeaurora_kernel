@@ -78,6 +78,11 @@ static const struct be_ethtool_stat et_stats[] = {
 	 * fifo must never overflow.
 	 */
 	{DRVSTAT_INFO(rxpp_fifo_overflow_drop)},
+	/* Received packets dropped when the RX block runs out of space in
+	 * one of its input FIFOs. This could happen due a long burst of
+	 * minimum-sized (64b) frames in the receive path.
+	 * This counter may also be erroneously incremented rarely.
+	 */
 	{DRVSTAT_INFO(rx_input_fifo_overflow_drop)},
 	{DRVSTAT_INFO(rx_ip_checksum_errs)},
 	{DRVSTAT_INFO(rx_tcp_checksum_errs)},
@@ -114,6 +119,8 @@ static const struct be_ethtool_stat et_stats[] = {
 	 * is more than 9018 bytes
 	 */
 	{DRVSTAT_INFO(rx_drops_mtu)},
+	/* Number of dma mapping errors */
+	{DRVSTAT_INFO(dma_map_errors)},
 	/* Number of packets dropped due to random early drop function */
 	{DRVSTAT_INFO(eth_red_drops)},
 	{DRVSTAT_INFO(be_on_die_temperature)},
@@ -152,6 +159,34 @@ static const struct be_ethtool_stat et_rx_stats[] = {
  */
 static const struct be_ethtool_stat et_tx_stats[] = {
 	{DRVSTAT_TX_INFO(tx_compl)}, /* If moving this member see above note */
+	/* This counter is incremented when the HW encounters an error while
+	 * parsing the packet header of an outgoing TX request. This counter is
+	 * applicable only for BE2, BE3 and Skyhawk based adapters.
+	 */
+	{DRVSTAT_TX_INFO(tx_hdr_parse_err)},
+	/* This counter is incremented when an error occurs in the DMA
+	 * operation associated with the TX request from the host to the device.
+	 */
+	{DRVSTAT_TX_INFO(tx_dma_err)},
+	/* This counter is incremented when MAC or VLAN spoof checking is
+	 * enabled on the interface and the TX request fails the spoof check
+	 * in HW.
+	 */
+	{DRVSTAT_TX_INFO(tx_spoof_check_err)},
+	/* This counter is incremented when the HW encounters an error while
+	 * performing TSO offload. This counter is applicable only for Lancer
+	 * adapters.
+	 */
+	{DRVSTAT_TX_INFO(tx_tso_err)},
+	/* This counter is incremented when the HW detects Q-in-Q style VLAN
+	 * tagging in a packet and such tagging is not expected on the outgoing
+	 * interface. This counter is applicable only for Lancer adapters.
+	 */
+	{DRVSTAT_TX_INFO(tx_qinq_err)},
+	/* This counter is incremented when the HW detects parity errors in the
+	 * packet data. This counter is applicable only for Lancer adapters.
+	 */
+	{DRVSTAT_TX_INFO(tx_internal_parity_err)},
 	{DRVSTAT_TX_INFO(tx_bytes)},
 	{DRVSTAT_TX_INFO(tx_pkts)},
 	/* Number of skbs queued for trasmission by the driver */
@@ -440,18 +475,27 @@ static int be_get_sset_count(struct net_device *netdev, int stringset)
 	}
 }
 
-static u32 be_get_port_type(u32 phy_type, u32 dac_cable_len)
+static u32 be_get_port_type(struct be_adapter *adapter)
 {
 	u32 port;
 
-	switch (phy_type) {
+	switch (adapter->phy.interface_type) {
 	case PHY_TYPE_BASET_1GB:
 	case PHY_TYPE_BASEX_1GB:
 	case PHY_TYPE_SGMII:
 		port = PORT_TP;
 		break;
 	case PHY_TYPE_SFP_PLUS_10GB:
-		port = dac_cable_len ? PORT_DA : PORT_FIBRE;
+		if (adapter->phy.cable_type & SFP_PLUS_COPPER_CABLE)
+			port = PORT_DA;
+		else
+			port = PORT_FIBRE;
+		break;
+	case PHY_TYPE_QSFP:
+		if (adapter->phy.cable_type & QSFP_PLUS_CR4_CABLE)
+			port = PORT_DA;
+		else
+			port = PORT_FIBRE;
 		break;
 	case PHY_TYPE_XFP_10GB:
 	case PHY_TYPE_SFP_1GB:
@@ -467,11 +511,11 @@ static u32 be_get_port_type(u32 phy_type, u32 dac_cable_len)
 	return port;
 }
 
-static u32 convert_to_et_setting(u32 if_type, u32 if_speeds)
+static u32 convert_to_et_setting(struct be_adapter *adapter, u32 if_speeds)
 {
 	u32 val = 0;
 
-	switch (if_type) {
+	switch (adapter->phy.interface_type) {
 	case PHY_TYPE_BASET_1GB:
 	case PHY_TYPE_BASEX_1GB:
 	case PHY_TYPE_SGMII:
@@ -494,6 +538,20 @@ static u32 convert_to_et_setting(u32 if_type, u32 if_speeds)
 		val |= SUPPORTED_Backplane |
 				SUPPORTED_10000baseKR_Full;
 		break;
+	case PHY_TYPE_QSFP:
+		if (if_speeds & BE_SUPPORTED_SPEED_40GBPS) {
+			switch (adapter->phy.cable_type) {
+			case QSFP_PLUS_CR4_CABLE:
+				val |= SUPPORTED_40000baseCR4_Full;
+				break;
+			case QSFP_PLUS_LR4_CABLE:
+				val |= SUPPORTED_40000baseLR4_Full;
+				break;
+			default:
+				val |= SUPPORTED_40000baseSR4_Full;
+				break;
+			}
+		}
 	case PHY_TYPE_SFP_PLUS_10GB:
 	case PHY_TYPE_XFP_10GB:
 	case PHY_TYPE_SFP_1GB:
@@ -534,8 +592,6 @@ static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 	int status;
 	u32 auto_speeds;
 	u32 fixed_speeds;
-	u32 dac_cable_len;
-	u16 interface_type;
 
 	if (adapter->phy.link_speed < 0) {
 		status = be_cmd_link_status_query(adapter, &link_speed,
@@ -546,21 +602,19 @@ static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 
 		status = be_cmd_get_phy_info(adapter);
 		if (!status) {
-			interface_type = adapter->phy.interface_type;
 			auto_speeds = adapter->phy.auto_speeds_supported;
 			fixed_speeds = adapter->phy.fixed_speeds_supported;
-			dac_cable_len = adapter->phy.dac_cable_len;
+
+			be_cmd_query_cable_type(adapter);
 
 			ecmd->supported =
-				convert_to_et_setting(interface_type,
+				convert_to_et_setting(adapter,
 						      auto_speeds |
 						      fixed_speeds);
 			ecmd->advertising =
-				convert_to_et_setting(interface_type,
-						      auto_speeds);
+				convert_to_et_setting(adapter, auto_speeds);
 
-			ecmd->port = be_get_port_type(interface_type,
-						      dac_cable_len);
+			ecmd->port = be_get_port_type(adapter);
 
 			if (adapter->phy.auto_speeds_supported) {
 				ecmd->supported |= SUPPORTED_Autoneg;
@@ -641,7 +695,7 @@ be_set_pauseparam(struct net_device *netdev, struct ethtool_pauseparam *ecmd)
 	status = be_cmd_set_flow_control(adapter,
 					 adapter->tx_fc, adapter->rx_fc);
 	if (status)
-		dev_warn(&adapter->pdev->dev, "Pause param set failed.\n");
+		dev_warn(&adapter->pdev->dev, "Pause param set failed\n");
 
 	return be_cmd_status(status);
 }
@@ -1154,6 +1208,58 @@ static int be_set_rxfh(struct net_device *netdev, const u32 *indir,
 	return 0;
 }
 
+static int be_get_module_info(struct net_device *netdev,
+			      struct ethtool_modinfo *modinfo)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+	u8 page_data[PAGE_DATA_LEN];
+	int status;
+
+	if (!check_privilege(adapter, MAX_PRIVILEGES))
+		return -EOPNOTSUPP;
+
+	status = be_cmd_read_port_transceiver_data(adapter, TR_PAGE_A0,
+						   page_data);
+	if (!status) {
+		if (!page_data[SFP_PLUS_SFF_8472_COMP]) {
+			modinfo->type = ETH_MODULE_SFF_8079;
+			modinfo->eeprom_len = PAGE_DATA_LEN;
+		} else {
+			modinfo->type = ETH_MODULE_SFF_8472;
+			modinfo->eeprom_len = 2 * PAGE_DATA_LEN;
+		}
+	}
+	return be_cmd_status(status);
+}
+
+static int be_get_module_eeprom(struct net_device *netdev,
+				struct ethtool_eeprom *eeprom, u8 *data)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+	int status;
+
+	if (!check_privilege(adapter, MAX_PRIVILEGES))
+		return -EOPNOTSUPP;
+
+	status = be_cmd_read_port_transceiver_data(adapter, TR_PAGE_A0,
+						   data);
+	if (status)
+		goto err;
+
+	if (eeprom->offset + eeprom->len > PAGE_DATA_LEN) {
+		status = be_cmd_read_port_transceiver_data(adapter,
+							   TR_PAGE_A2,
+							   data +
+							   PAGE_DATA_LEN);
+		if (status)
+			goto err;
+	}
+	if (eeprom->offset)
+		memcpy(data, data + eeprom->offset, eeprom->len);
+err:
+	return be_cmd_status(status);
+}
+
 const struct ethtool_ops be_ethtool_ops = {
 	.get_settings = be_get_settings,
 	.get_drvinfo = be_get_drvinfo,
@@ -1185,5 +1291,7 @@ const struct ethtool_ops be_ethtool_ops = {
 	.get_rxfh = be_get_rxfh,
 	.set_rxfh = be_set_rxfh,
 	.get_channels = be_get_channels,
-	.set_channels = be_set_channels
+	.set_channels = be_set_channels,
+	.get_module_info = be_get_module_info,
+	.get_module_eeprom = be_get_module_eeprom
 };
