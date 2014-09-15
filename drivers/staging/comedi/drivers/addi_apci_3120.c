@@ -44,7 +44,7 @@ static const struct addi_board apci3120_boardtypes[] = {
 static irqreturn_t v_ADDI_Interrupt(int irq, void *d)
 {
 	struct comedi_device *dev = d;
-	const struct addi_board *this_board = comedi_board(dev);
+	const struct addi_board *this_board = dev->board_ptr;
 
 	this_board->interrupt(irq, d);
 	return IRQ_RETVAL(1);
@@ -195,11 +195,10 @@ static void apci3120_detach(struct comedi_device *dev)
 {
 	struct addi_private *devpriv = dev->private;
 
+	if (dev->iobase)
+		apci3120_reset(dev);
+	comedi_pci_detach(dev);
 	if (devpriv) {
-		if (dev->iobase)
-			apci3120_reset(dev);
-		if (dev->irq)
-			free_irq(dev->irq, dev);
 		if (devpriv->ul_DmaBufferVirtual[0]) {
 			free_pages((unsigned long)devpriv->
 				ul_DmaBufferVirtual[0],
@@ -211,7 +210,6 @@ static void apci3120_detach(struct comedi_device *dev)
 				devpriv->ui_DmaBufferPages[1]);
 		}
 	}
-	comedi_pci_disable(dev);
 }
 
 static struct comedi_driver apci3120_driver = {
