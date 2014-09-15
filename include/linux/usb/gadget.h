@@ -345,12 +345,13 @@ static inline int usb_ep_queue(struct usb_ep *ep,
  * @ep:the endpoint associated with the request
  * @req:the request being canceled
  *
- * if the request is still active on the endpoint, it is dequeued and its
+ * If the request is still active on the endpoint, it is dequeued and its
  * completion routine is called (with status -ECONNRESET); else a negative
- * error code is returned.
+ * error code is returned. This is guaranteed to happen before the call to
+ * usb_ep_dequeue() returns.
  *
- * note that some hardware can't clear out write fifos (to unlink the request
- * at the head of the queue) except as part of disconnecting from usb.  such
+ * Note that some hardware can't clear out write fifos (to unlink the request
+ * at the head of the queue) except as part of disconnecting from usb. Such
  * restrictions prevent drivers from supporting configuration changes,
  * even to configuration zero (a "chapter 9" requirement).
  */
@@ -816,6 +817,8 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
  *	Called in a context that permits sleeping.
  * @suspend: Invoked on USB suspend.  May be called in_interrupt.
  * @resume: Invoked on USB resume.  May be called in_interrupt.
+ * @reset: Invoked on USB bus reset. It is mandatory for all gadget drivers
+ *	and should be called in_interrupt.
  * @driver: Driver model state for this driver.
  *
  * Devices are disabled till a gadget driver successfully bind()s, which
@@ -873,6 +876,7 @@ struct usb_gadget_driver {
 	void			(*disconnect)(struct usb_gadget *);
 	void			(*suspend)(struct usb_gadget *);
 	void			(*resume)(struct usb_gadget *);
+	void			(*reset)(struct usb_gadget *);
 
 	/* FIXME support safe rmmod */
 	struct device_driver	driver;
