@@ -36,6 +36,7 @@
 #include <linux/nfs.h>
 
 #include "netns.h"
+#include "procfs.h"
 
 #define NLMDBG_FACILITY		NLMDBG_SVC
 #define LOCKD_BUFSIZE		(1024 + NLMSVC_XDRSIZE)
@@ -619,8 +620,15 @@ static int __init init_nlm(void)
 	err = register_pernet_subsys(&lockd_net_ops);
 	if (err)
 		goto err_pernet;
+
+	err = lockd_create_procfs();
+	if (err)
+		goto err_procfs;
+
 	return 0;
 
+err_procfs:
+	unregister_pernet_subsys(&lockd_net_ops);
 err_pernet:
 #ifdef CONFIG_SYSCTL
 	unregister_sysctl_table(nlm_sysctl_table);
@@ -633,6 +641,7 @@ static void __exit exit_nlm(void)
 {
 	/* FIXME: delete all NLM clients */
 	nlm_shutdown_hosts();
+	lockd_remove_procfs();
 	unregister_pernet_subsys(&lockd_net_ops);
 #ifdef CONFIG_SYSCTL
 	unregister_sysctl_table(nlm_sysctl_table);
