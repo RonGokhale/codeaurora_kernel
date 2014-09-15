@@ -167,8 +167,10 @@ static void davinci_spi_rx_buf_u16(u32 data, struct davinci_spi *dspi)
 static u32 davinci_spi_tx_buf_u8(struct davinci_spi *dspi)
 {
 	u32 data = 0;
+
 	if (dspi->tx) {
 		const u8 *tx = dspi->tx;
+
 		data = *tx++;
 		dspi->tx = tx;
 	}
@@ -178,8 +180,10 @@ static u32 davinci_spi_tx_buf_u8(struct davinci_spi *dspi)
 static u32 davinci_spi_tx_buf_u16(struct davinci_spi *dspi)
 {
 	u32 data = 0;
+
 	if (dspi->tx) {
 		const u16 *tx = dspi->tx;
+
 		data = *tx++;
 		dspi->tx = tx;
 	}
@@ -397,24 +401,21 @@ static int davinci_spi_setup(struct spi_device *spi)
 	struct spi_master *master = spi->master;
 	struct device_node *np = spi->dev.of_node;
 	bool internal_cs = true;
-	unsigned long flags = GPIOF_DIR_OUT;
 
 	dspi = spi_master_get_devdata(spi->master);
 	pdata = &dspi->pdata;
 
-	flags |= (spi->mode & SPI_CS_HIGH) ? GPIOF_INIT_LOW : GPIOF_INIT_HIGH;
-
 	if (!(spi->mode & SPI_NO_CS)) {
 		if (np && (master->cs_gpios != NULL) && (spi->cs_gpio >= 0)) {
-			retval = gpio_request_one(spi->cs_gpio,
-						  flags, dev_name(&spi->dev));
+			retval = gpio_direction_output(
+				      spi->cs_gpio, !(spi->mode & SPI_CS_HIGH));
 			internal_cs = false;
 		} else if (pdata->chip_sel &&
 			   spi->chip_select < pdata->num_chipselect &&
 			   pdata->chip_sel[spi->chip_select] != SPI_INTERN_CS) {
 			spi->cs_gpio = pdata->chip_sel[spi->chip_select];
-			retval = gpio_request_one(spi->cs_gpio,
-						  flags, dev_name(&spi->dev));
+			retval = gpio_direction_output(
+				      spi->cs_gpio, !(spi->mode & SPI_CS_HIGH));
 			internal_cs = false;
 		}
 
@@ -441,8 +442,6 @@ static int davinci_spi_setup(struct spi_device *spi)
 
 static void davinci_spi_cleanup(struct spi_device *spi)
 {
-	if (spi->cs_gpio >= 0)
-		gpio_free(spi->cs_gpio);
 }
 
 static int davinci_spi_check_error(struct davinci_spi *dspi, int int_status)
@@ -967,6 +966,27 @@ static int davinci_spi_probe(struct platform_device *pdev)
 	if (dspi->version == SPI_VERSION_2)
 		dspi->bitbang.flags |= SPI_READY;
 
+	if (pdev->dev.of_node) {
+		int i;
+
+		for (i = 0; i < pdata->num_chipselect; i++) {
+			int cs_gpio = of_get_named_gpio(pdev->dev.of_node,
+							"cs-gpios", i);
+
+			if (cs_gpio == -EPROBE_DEFER) {
+				ret = cs_gpio;
+				goto free_clk;
+			}
+
+			if (gpio_is_valid(cs_gpio)) {
+				ret = devm_gpio_request(&pdev->dev, cs_gpio,
+							dev_name(&pdev->dev));
+				if (ret)
+					goto free_clk;
+			}
+		}
+	}
+
 	r = platform_get_resource(pdev, IORESOURCE_DMA, 0);
 	if (r)
 		dma_rx_chan = r->start;
@@ -985,8 +1005,8 @@ static int davinci_spi_probe(struct platform_device *pdev)
 			goto free_clk;
 
 		dev_info(&pdev->dev, "DMA: supported\n");
-		dev_info(&pdev->dev, "DMA: RX channel: %pa, TX channel: %pa, "
-				"event queue: %d\n", &dma_rx_chan, &dma_tx_chan,
+		dev_info(&pdev->dev, "DMA: RX channel: %pa, TX channel: %pa, event queue: %d\n",
+				&dma_rx_chan, &dma_tx_chan,
 				pdata->dma_event_q);
 	}
 
