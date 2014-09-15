@@ -2320,8 +2320,7 @@ static void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 			conn->sec_level = conn->pending_sec_level;
 		}
 	} else {
-		mgmt_auth_failed(hdev, &conn->dst, conn->type, conn->dst_type,
-				 ev->status);
+		mgmt_auth_failed(conn, ev->status);
 	}
 
 	clear_bit(HCI_CONN_AUTH_PEND, &conn->flags);
@@ -3900,8 +3899,7 @@ static void hci_simple_pair_complete_evt(struct hci_dev *hdev,
 	 * event gets always produced as initiator and is also mapped to
 	 * the mgmt_auth_failed event */
 	if (!test_bit(HCI_CONN_AUTH_PEND, &conn->flags) && ev->status)
-		mgmt_auth_failed(hdev, &conn->dst, conn->type, conn->dst_type,
-				 ev->status);
+		mgmt_auth_failed(conn, ev->status);
 
 	hci_conn_drop(conn);
 
@@ -4193,15 +4191,15 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 		conn->dst_type = irk->addr_type;
 	}
 
-	if (conn->dst_type == ADDR_LE_DEV_PUBLIC)
-		addr_type = BDADDR_LE_PUBLIC;
-	else
-		addr_type = BDADDR_LE_RANDOM;
-
 	if (ev->status) {
 		hci_le_conn_failed(conn, ev->status);
 		goto unlock;
 	}
+
+	if (conn->dst_type == ADDR_LE_DEV_PUBLIC)
+		addr_type = BDADDR_LE_PUBLIC;
+	else
+		addr_type = BDADDR_LE_RANDOM;
 
 	/* Drop the connection if the device is blocked */
 	if (hci_bdaddr_list_lookup(&hdev->blacklist, &conn->dst, addr_type)) {
@@ -4225,11 +4223,13 @@ static void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	hci_proto_connect_cfm(conn, ev->status);
 
-	params = hci_conn_params_lookup(hdev, &conn->dst, conn->dst_type);
+	params = hci_pend_le_action_lookup(&hdev->pend_le_conns, &conn->dst,
+					   conn->dst_type);
 	if (params) {
 		list_del_init(&params->action);
 		if (params->conn) {
 			hci_conn_drop(params->conn);
+			hci_conn_put(params->conn);
 			params->conn = NULL;
 		}
 	}
@@ -4321,7 +4321,7 @@ static void check_pending_le_conn(struct hci_dev *hdev, bdaddr_t *addr,
 		 * the parameters get removed and keep the reference
 		 * count consistent once the connection is established.
 		 */
-		params->conn = conn;
+		params->conn = hci_conn_get(conn);
 		return;
 	}
 

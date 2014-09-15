@@ -387,7 +387,9 @@ u32 ath_calcrxfilter(struct ath_softc *sc)
 	if (sc->hw->conf.radar_enabled)
 		rfilt |= ATH9K_RX_FILTER_PHYRADAR | ATH9K_RX_FILTER_PHYERR;
 
-	if (sc->rx.rxfilter & FIF_PROBE_REQ)
+	spin_lock_bh(&sc->chan_lock);
+
+	if (sc->cur_chan->rxfilter & FIF_PROBE_REQ)
 		rfilt |= ATH9K_RX_FILTER_PROBEREQ;
 
 	/*
@@ -398,24 +400,24 @@ u32 ath_calcrxfilter(struct ath_softc *sc)
 	if (sc->sc_ah->is_monitoring)
 		rfilt |= ATH9K_RX_FILTER_PROM;
 
-	if (sc->rx.rxfilter & FIF_CONTROL)
+	if (sc->cur_chan->rxfilter & FIF_CONTROL)
 		rfilt |= ATH9K_RX_FILTER_CONTROL;
 
 	if ((sc->sc_ah->opmode == NL80211_IFTYPE_STATION) &&
-	    (sc->nvifs <= 1) &&
-	    !(sc->rx.rxfilter & FIF_BCN_PRBRESP_PROMISC))
+	    (sc->cur_chan->nvifs <= 1) &&
+	    !(sc->cur_chan->rxfilter & FIF_BCN_PRBRESP_PROMISC))
 		rfilt |= ATH9K_RX_FILTER_MYBEACON;
 	else
 		rfilt |= ATH9K_RX_FILTER_BEACON;
 
 	if ((sc->sc_ah->opmode == NL80211_IFTYPE_AP) ||
-	    (sc->rx.rxfilter & FIF_PSPOLL))
+	    (sc->cur_chan->rxfilter & FIF_PSPOLL))
 		rfilt |= ATH9K_RX_FILTER_PSPOLL;
 
-	if (conf_is_ht(&sc->hw->conf))
+	if (sc->cur_chandef.width != NL80211_CHAN_WIDTH_20_NOHT)
 		rfilt |= ATH9K_RX_FILTER_COMP_BAR;
 
-	if (sc->nvifs > 1 || (sc->rx.rxfilter & FIF_OTHER_BSS)) {
+	if (sc->cur_chan->nvifs > 1 || (sc->cur_chan->rxfilter & FIF_OTHER_BSS)) {
 		/* This is needed for older chips */
 		if (sc->sc_ah->hw_version.macVersion <= AR_SREV_VERSION_9160)
 			rfilt |= ATH9K_RX_FILTER_PROM;
@@ -429,18 +431,20 @@ u32 ath_calcrxfilter(struct ath_softc *sc)
 	    test_bit(ATH_OP_SCANNING, &common->op_flags))
 		rfilt |= ATH9K_RX_FILTER_BEACON;
 
+	spin_unlock_bh(&sc->chan_lock);
+
 	return rfilt;
 
 }
 
-int ath_startrecv(struct ath_softc *sc)
+void ath_startrecv(struct ath_softc *sc)
 {
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_rxbuf *bf, *tbf;
 
 	if (ah->caps.hw_caps & ATH9K_HW_CAP_EDMA) {
 		ath_edma_start_recv(sc);
-		return 0;
+		return;
 	}
 
 	if (list_empty(&sc->rx.rxbuf))
@@ -463,8 +467,6 @@ int ath_startrecv(struct ath_softc *sc)
 start_recv:
 	ath_opmode_init(sc);
 	ath9k_hw_startpcureceive(ah, sc->cur_chan->offchannel);
-
-	return 0;
 }
 
 static void ath_flushrecv(struct ath_softc *sc)
@@ -867,8 +869,13 @@ static int ath9k_rx_skb_preprocess(struct ath_softc *sc,
 	 * everything but the rate is checked here, the rate check is done
 	 * separately to avoid doing two lookups for a rate for each frame.
 	 */
-	if (!ath9k_cmn_rx_accept(common, hdr, rx_status, rx_stats, decrypt_error, sc->rx.rxfilter))
+	spin_lock_bh(&sc->chan_lock);
+	if (!ath9k_cmn_rx_accept(common, hdr, rx_status, rx_stats, decrypt_error,
+				 sc->cur_chan->rxfilter)) {
+		spin_unlock_bh(&sc->chan_lock);
 		return -EINVAL;
+	}
+	spin_unlock_bh(&sc->chan_lock);
 
 	if (ath_is_mybeacon(common, hdr)) {
 		RX_STAT_INC(rx_beacons);

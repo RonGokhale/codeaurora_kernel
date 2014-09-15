@@ -224,16 +224,11 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 	struct ath_common *common = ath9k_hw_common(ah);
 	unsigned long flags;
 
-	if (ath_startrecv(sc) != 0) {
-		ath_err(common, "Unable to restart recv logic\n");
-		return false;
-	}
-
+	ath9k_calculate_summary_state(sc, sc->cur_chan);
+	ath_startrecv(sc);
 	ath9k_cmn_update_txpow(ah, sc->curtxpow,
 			       sc->cur_chan->txpower, &sc->curtxpow);
-
 	clear_bit(ATH_OP_HW_RESET, &common->op_flags);
-	ath9k_calculate_summary_state(sc, sc->cur_chan);
 
 	if (!sc->cur_chan->offchannel && start) {
 		/* restore per chanctx TSF timer */
@@ -916,8 +911,6 @@ static void ath9k_vif_iter(struct ath9k_vif_iter_data *iter_data,
 	switch (vif->type) {
 	case NL80211_IFTYPE_AP:
 		iter_data->naps++;
-		if (vif->bss_conf.enable_beacon)
-			iter_data->beacons = true;
 		break;
 	case NL80211_IFTYPE_STATION:
 		iter_data->nstations++;
@@ -1021,6 +1014,7 @@ void ath9k_calculate_summary_state(struct ath_softc *sc,
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
 	struct ath9k_vif_iter_data iter_data;
+	struct ath_beacon_config *cur_conf;
 
 	ath_chanctx_check_active(sc, ctx);
 
@@ -1037,8 +1031,11 @@ void ath9k_calculate_summary_state(struct ath_softc *sc,
 	ath_hw_setbssidmask(common);
 
 	if (iter_data.naps > 0) {
+		cur_conf = &ctx->beacon;
 		ath9k_hw_set_tsfadjust(ah, true);
 		ah->opmode = NL80211_IFTYPE_AP;
+		if (cur_conf->enable_beacon)
+			iter_data.beacons = true;
 	} else {
 		ath9k_hw_set_tsfadjust(ah, false);
 
@@ -1067,8 +1064,8 @@ void ath9k_calculate_summary_state(struct ath_softc *sc,
 	if (ah->opmode == NL80211_IFTYPE_STATION) {
 		bool changed = (iter_data.primary_sta != ctx->primary_sta);
 
-		iter_data.beacons = true;
 		if (iter_data.primary_sta) {
+			iter_data.beacons = true;
 			ath9k_set_assoc_state(sc, iter_data.primary_sta,
 					      changed);
 			if (!ctx->primary_sta ||
@@ -1107,6 +1104,20 @@ void ath9k_calculate_summary_state(struct ath_softc *sc,
 	ath9k_ps_restore(sc);
 }
 
+static void ath9k_assign_hw_queues(struct ieee80211_hw *hw,
+				   struct ieee80211_vif *vif)
+{
+	int i;
+
+	for (i = 0; i < IEEE80211_NUM_ACS; i++)
+		vif->hw_queue[i] = i;
+
+	if (vif->type == NL80211_IFTYPE_AP)
+		vif->cab_queue = hw->queues - 2;
+	else
+		vif->cab_queue = IEEE80211_INVAL_HW_QUEUE;
+}
+
 static int ath9k_add_interface(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif)
 {
@@ -1115,12 +1126,11 @@ static int ath9k_add_interface(struct ieee80211_hw *hw,
 	struct ath_common *common = ath9k_hw_common(ah);
 	struct ath_vif *avp = (void *)vif->drv_priv;
 	struct ath_node *an = &avp->mcast_node;
-	int i;
 
 	mutex_lock(&sc->mutex);
 
 	if (config_enabled(CONFIG_ATH9K_TX99)) {
-		if (sc->nvifs >= 1) {
+		if (sc->cur_chan->nvifs >= 1) {
 			mutex_unlock(&sc->mutex);
 			return -EOPNOTSUPP;
 		}
@@ -1128,7 +1138,7 @@ static int ath9k_add_interface(struct ieee80211_hw *hw,
 	}
 
 	ath_dbg(common, CONFIG, "Attach a VIF of type: %d\n", vif->type);
-	sc->nvifs++;
+	sc->cur_chan->nvifs++;
 
 	if (ath9k_uses_beacons(vif->type))
 		ath9k_beacon_assign_slot(sc, vif);
@@ -1138,12 +1148,8 @@ static int ath9k_add_interface(struct ieee80211_hw *hw,
 		avp->chanctx = sc->cur_chan;
 		list_add_tail(&avp->list, &avp->chanctx->vifs);
 	}
-	for (i = 0; i < IEEE80211_NUM_ACS; i++)
-		vif->hw_queue[i] = i;
-	if (vif->type == NL80211_IFTYPE_AP)
-		vif->cab_queue = hw->queues - 2;
-	else
-		vif->cab_queue = IEEE80211_INVAL_HW_QUEUE;
+
+	ath9k_assign_hw_queues(hw, vif);
 
 	an->sc = sc;
 	an->sta = NULL;
@@ -1163,7 +1169,6 @@ static int ath9k_change_interface(struct ieee80211_hw *hw,
 	struct ath_softc *sc = hw->priv;
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	struct ath_vif *avp = (void *)vif->drv_priv;
-	int i;
 
 	mutex_lock(&sc->mutex);
 
@@ -1183,14 +1188,7 @@ static int ath9k_change_interface(struct ieee80211_hw *hw,
 	if (ath9k_uses_beacons(vif->type))
 		ath9k_beacon_assign_slot(sc, vif);
 
-	for (i = 0; i < IEEE80211_NUM_ACS; i++)
-		vif->hw_queue[i] = i;
-
-	if (vif->type == NL80211_IFTYPE_AP)
-		vif->cab_queue = hw->queues - 2;
-	else
-		vif->cab_queue = IEEE80211_INVAL_HW_QUEUE;
-
+	ath9k_assign_hw_queues(hw, vif);
 	ath9k_calculate_summary_state(sc, avp->chanctx);
 
 	mutex_unlock(&sc->mutex);
@@ -1210,7 +1208,7 @@ static void ath9k_remove_interface(struct ieee80211_hw *hw,
 
 	ath9k_p2p_remove_vif(sc, vif);
 
-	sc->nvifs--;
+	sc->cur_chan->nvifs--;
 	sc->tx99_vif = NULL;
 	if (!ath9k_is_chanctx_enabled())
 		list_del(&avp->list);
@@ -1430,7 +1428,10 @@ static void ath9k_configure_filter(struct ieee80211_hw *hw,
 	changed_flags &= SUPPORTED_FILTERS;
 	*total_flags &= SUPPORTED_FILTERS;
 
-	sc->rx.rxfilter = *total_flags;
+	spin_lock_bh(&sc->chan_lock);
+	sc->cur_chan->rxfilter = *total_flags;
+	spin_unlock_bh(&sc->chan_lock);
+
 	ath9k_ps_wakeup(sc);
 	rfilt = ath_calcrxfilter(sc);
 	ath9k_hw_setrxfilter(sc->sc_ah, rfilt);
@@ -1695,9 +1696,9 @@ static void ath9k_bss_info_changed(struct ieee80211_hw *hw,
 	if ((changed & BSS_CHANGED_BEACON_ENABLED) ||
 	    (changed & BSS_CHANGED_BEACON_INT) ||
 	    (changed & BSS_CHANGED_BEACON_INFO)) {
+		ath9k_beacon_config(sc, vif, changed);
 		if (changed & BSS_CHANGED_BEACON_ENABLED)
 			ath9k_calculate_summary_state(sc, avp->chanctx);
-		ath9k_beacon_config(sc, vif, changed);
 	}
 
 	if ((avp->chanctx == sc->cur_chan) &&

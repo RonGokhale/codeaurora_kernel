@@ -314,7 +314,6 @@ struct ath_rx {
 	bool discard_next;
 	u32 *rxlink;
 	u32 num_pkts;
-	unsigned int rxfilter;
 	struct list_head rxbuf;
 	struct ath_descdma rxdma;
 	struct ath_rx_edma rx_edma[ATH9K_RX_QUEUE_MAX];
@@ -350,6 +349,9 @@ struct ath_chanctx {
 	bool active;
 	bool assigned;
 	bool switch_after_beacon;
+
+	short nvifs;
+	unsigned int rxfilter;
 };
 
 enum ath_chanctx_event {
@@ -376,6 +378,9 @@ enum ath_chanctx_state {
 struct ath_chanctx_sched {
 	bool beacon_pending;
 	bool offchannel_pending;
+	bool wait_switch;
+	bool force_noa_update;
+	bool extend_absence;
 	enum ath_chanctx_state state;
 	u8 beacon_miss;
 
@@ -527,7 +532,7 @@ static inline void ath_chanctx_check_active(struct ath_softc *sc,
 #endif /* CONFIG_ATH9K_CHANNEL_CONTEXT */
 
 int ath_reset_internal(struct ath_softc *sc, struct ath9k_channel *hchan);
-int ath_startrecv(struct ath_softc *sc);
+void ath_startrecv(struct ath_softc *sc);
 bool ath_stoprecv(struct ath_softc *sc);
 u32 ath_calcrxfilter(struct ath_softc *sc);
 int ath_rx_init(struct ath_softc *sc, int nbufs);
@@ -572,6 +577,8 @@ void ath9k_release_buffered_frames(struct ieee80211_hw *hw,
 /* VIFs */
 /********/
 
+#define P2P_DEFAULT_CTWIN 10
+
 struct ath_vif {
 	struct list_head list;
 
@@ -590,8 +597,10 @@ struct ath_vif {
 	u32 offchannel_start;
 	u32 offchannel_duration;
 
-	u32 periodic_noa_start;
-	u32 periodic_noa_duration;
+	/* These are used for both periodic and one-shot */
+	u32 noa_start;
+	u32 noa_duration;
+	bool periodic_noa;
 };
 
 struct ath9k_vif_iter_data {
@@ -960,7 +969,6 @@ struct ath_softc {
 	bool ps_enabled;
 	bool ps_idle;
 	short nbcnvifs;
-	short nvifs;
 	unsigned long ps_usecount;
 
 	struct ath_rx rx;
