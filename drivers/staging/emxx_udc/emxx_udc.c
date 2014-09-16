@@ -77,14 +77,14 @@ struct nbu2ss_udc udc_controller;
 /* Read */
 static inline u32 _nbu2ss_readl(void *address)
 {
-	return __raw_readl(address) ;
+	return __raw_readl(address);
 }
 
 /*-------------------------------------------------------------------------*/
 /* Write */
 static inline void _nbu2ss_writel(void *address, u32 udata)
 {
-	__raw_writel(udata, address) ;
+	__raw_writel(udata, address);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -92,7 +92,8 @@ static inline void _nbu2ss_writel(void *address, u32 udata)
 static inline void _nbu2ss_bitset(void *address, u32 udata)
 {
 	u32	reg_dt = __raw_readl(address) | (udata);
-	__raw_writel(reg_dt, address) ;
+
+	__raw_writel(reg_dt, address);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -100,7 +101,8 @@ static inline void _nbu2ss_bitset(void *address, u32 udata)
 static inline void _nbu2ss_bitclr(void *address, u32 udata)
 {
 	u32	reg_dt = __raw_readl(address) & ~(udata);
-	__raw_writel(reg_dt, address) ;
+
+	__raw_writel(reg_dt, address);
 }
 
 #ifdef UDC_DEBUG_DUMP
@@ -471,8 +473,6 @@ static void _nbu2ss_ep_in_end(
 
 		_nbu2ss_bitset(&preg->EP_REGS[num].EP_CONTROL, EPn_AUTO);
 	}
-
-	return;
 }
 
 #ifdef USE_DMA
@@ -1396,8 +1396,6 @@ static void _nbu2ss_set_endpoint_stall(
 			}
 		}
 	}
-
-	return;
 }
 
 
@@ -2045,8 +2043,6 @@ static inline void _nbu2ss_epn_out_int(
 	result = _nbu2ss_epn_out_transfer(udc, ep, req);
 	if (result <= 0)
 		_nbu2ss_ep_done(ep, req, result);
-
-	return;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -2084,8 +2080,6 @@ static inline void _nbu2ss_epn_in_dma_int(
 			_nbu2ss_epn_in_int(udc, ep, req);
 		}
 	}
-
-	return;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -2206,8 +2200,6 @@ static void _nbu2ss_ep0_enable(struct nbu2ss_udc *udc)
 {
 	_nbu2ss_bitset(&udc->p_regs->EP0_CONTROL, (EP0_AUTO | EP0_BCLR));
 	_nbu2ss_writel(&udc->p_regs->EP0_INT_ENA, EP0_INT_EN_BIT);
-
-	return;
 }
 
 #if 0
@@ -2220,8 +2212,6 @@ static void _nbu2ss_ep0_disable(struct nbu2ss_udc *udc)
 			, (EP0_BCLR | EP0_INAK | EP0_ONAK | EP0_BCLR));
 
 	_nbu2ss_bitclr(&udc->p_regs->EP0_CONTROL, EP0_AUTO);
-
-	return;
 }
 #endif
 
@@ -2479,8 +2469,6 @@ static inline void _nbu2ss_check_vbus(struct nbu2ss_udc *udc)
 				_nbu2ss_pullup(udc, 1);
 		}
 	}
-
-	return;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -3232,20 +3220,20 @@ static const struct usb_gadget_ops nbu2ss_gadget_ops = {
 	.ioctl			= nbu2ss_gad_ioctl,
 };
 
-static char g_ep0_name[] = "ep0";
-static char g_ep1_name[] = "ep1-bulk";
-static char g_ep2_name[] = "ep2-bulk";
-static char g_ep3_name[] = "ep3in-int";
-static char g_ep4_name[] = "ep4-iso";
-static char g_ep5_name[] = "ep5-iso";
-static char g_ep6_name[] = "ep6-bulk";
-static char g_ep7_name[] = "ep7-bulk";
-static char g_ep8_name[] = "ep8in-int";
-static char g_ep9_name[] = "ep9-iso";
-static char g_epa_name[] = "epa-iso";
-static char g_epb_name[] = "epb-bulk";
-static char g_epc_name[] = "epc-nulk";
-static char g_epd_name[] = "epdin-int";
+static const char g_ep0_name[] = "ep0";
+static const char g_ep1_name[] = "ep1-bulk";
+static const char g_ep2_name[] = "ep2-bulk";
+static const char g_ep3_name[] = "ep3in-int";
+static const char g_ep4_name[] = "ep4-iso";
+static const char g_ep5_name[] = "ep5-iso";
+static const char g_ep6_name[] = "ep6-bulk";
+static const char g_ep7_name[] = "ep7-bulk";
+static const char g_ep8_name[] = "ep8in-int";
+static const char g_ep9_name[] = "ep9-iso";
+static const char g_epa_name[] = "epa-iso";
+static const char g_epb_name[] = "epb-bulk";
+static const char g_epc_name[] = "epc-nulk";
+static const char g_epd_name[] = "epdin-int";
 
 static char *gp_ep_name[NUM_ENDPOINTS] = {
 	g_ep0_name,
