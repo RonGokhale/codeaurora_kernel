@@ -43,6 +43,7 @@ my $configuration_file = ".checkpatch.conf";
 my $max_line_length = 80;
 my $ignore_perl_version = 0;
 my $minimum_perl_version = 5.10.0;
+my $min_conf_desc_length = 4;
 
 sub help {
 	my ($exitcode) = @_;
@@ -63,6 +64,7 @@ Options:
   --types TYPE(,TYPE2...)    show only these comma separated message types
   --ignore TYPE(,TYPE2...)   ignore various comma separated message types
   --max-line-length=n        set the maximum line length, if exceeded, warn
+  --min-conf-desc-length=n   set the min description length, if shorter, warn
   --show-types               show the message "types" in the output
   --root=PATH                PATH to the kernel tree root
   --no-summary               suppress the per-file summary
@@ -131,6 +133,7 @@ GetOptions(
 	'types=s'	=> \@use,
 	'show-types!'	=> \$show_types,
 	'max-line-length=i' => \$max_line_length,
+	'min-conf-desc-length=i' => \$min_conf_desc_length,
 	'root=s'	=> \$root,
 	'summary!'	=> \$summary,
 	'mailback!'	=> \$mailback,
@@ -425,7 +428,9 @@ foreach my $entry (@mode_permission_funcs) {
 
 our $allowed_asm_includes = qr{(?x:
 	irq|
-	memory
+	memory|
+	time|
+	reboot
 )};
 # memory.h: ARM has a custom one
 
@@ -2283,8 +2288,10 @@ sub process {
 				}
 				$length++;
 			}
-			WARN("CONFIG_DESCRIPTION",
-			     "please write a paragraph that describes the config symbol fully\n" . $herecurr) if ($is_start && $is_end && $length < 4);
+			if ($is_start && $is_end && $length < $min_conf_desc_length) {
+				WARN("CONFIG_DESCRIPTION",
+				     "please write a paragraph that describes the config symbol fully\n" . $herecurr);
+			}
 			#print "is_start<$is_start> is_end<$is_end> length<$length>\n";
 		}
 
@@ -2341,7 +2348,7 @@ sub process {
 		}
 
 # check we are in a valid source file if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c|s|S|pl|sh)$/);
+		next if ($realfile !~ /\.(h|c|s|S|pl|sh|dtsi|dts)$/);
 
 #line length limit
 		if ($line =~ /^\+/ && $prevrawline !~ /\/\*\*/ &&
@@ -2402,7 +2409,7 @@ sub process {
 		}
 
 # check we are in a valid source file C or perl if not then ignore this hunk
-		next if ($realfile !~ /\.(h|c|pl)$/);
+		next if ($realfile !~ /\.(h|c|pl|dtsi|dts)$/);
 
 # at the beginning of a line any tabs must come first and anything
 # more than 8 must use tabs.
@@ -2424,7 +2431,7 @@ sub process {
 				"please, no space before tabs\n" . $herevet) &&
 			    $fix) {
 				while ($fixed[$fixlinenr] =~
-					   s/(^\+.*) {8,8}+\t/$1\t\t/) {}
+					   s/(^\+.*) {8,8}\t/$1\t\t/) {}
 				while ($fixed[$fixlinenr] =~
 					   s/(^\+.*) +\t/$1\t/) {}
 			}
@@ -3752,7 +3759,6 @@ sub process {
 			if (ERROR("SPACING",
 				  "space prohibited before that close parenthesis ')'\n" . $herecurr) &&
 			    $fix) {
-				print("fixlinenr: <$fixlinenr> fixed[fixlinenr]: <$fixed[$fixlinenr]>\n");
 				$fixed[$fixlinenr] =~
 				    s/\s+\)/\)/;
 			}
@@ -4126,7 +4132,7 @@ sub process {
 					      "Macros with multiple statements should be enclosed in a do - while loop\n" . "$herectx");
 				} else {
 					ERROR("COMPLEX_MACRO",
-					      "Macros with complex values should be enclosed in parenthesis\n" . "$herectx");
+					      "Macros with complex values should be enclosed in parentheses\n" . "$herectx");
 				}
 			}
 
@@ -4336,6 +4342,12 @@ sub process {
 		if ($line =~ /\bvolatile\b/ && $line !~ /$asm_volatile/) {
 			WARN("VOLATILE",
 			     "Use of volatile is usually wrong: see Documentation/volatile-considered-harmful.txt\n" . $herecurr);
+		}
+
+# concatenated string without spaces between elements
+		if ($line =~ /"X+"[A-Z_]+/ || $line =~ /[A-Z_]+"X+"/) {
+			CHK("CONCATENATED_STRING",
+			    "Concatenated strings should use spaces between elements\n" . $herecurr);
 		}
 
 # warn about #if 0
