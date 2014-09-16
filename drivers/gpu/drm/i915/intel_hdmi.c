@@ -864,10 +864,15 @@ static enum drm_mode_status
 intel_hdmi_mode_valid(struct drm_connector *connector,
 		      struct drm_display_mode *mode)
 {
-	if (mode->clock > hdmi_portclock_limit(intel_attached_hdmi(connector),
-					       true))
+	int clock = mode->clock;
+
+	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
+		clock *= 2;
+
+	if (clock > hdmi_portclock_limit(intel_attached_hdmi(connector),
+					 true))
 		return MODE_CLOCK_HIGH;
-	if (mode->clock < 20000)
+	if (clock < 20000)
 		return MODE_CLOCK_LOW;
 
 	if (mode->flags & DRM_MODE_FLAG_DBLSCAN)
@@ -885,7 +890,7 @@ static bool hdmi_12bpc_possible(struct intel_crtc *crtc)
 	if (HAS_GMCH_DISPLAY(dev))
 		return false;
 
-	list_for_each_entry(encoder, &dev->mode_config.encoder_list, base.head) {
+	for_each_intel_encoder(dev, encoder) {
 		if (encoder->new_crtc != crtc)
 			continue;
 
@@ -919,6 +924,10 @@ bool intel_hdmi_compute_config(struct intel_encoder *encoder,
 			intel_hdmi->color_range = HDMI_COLOR_RANGE_16_235;
 		else
 			intel_hdmi->color_range = 0;
+	}
+
+	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK) {
+		pipe_config->pixel_multiplier = 2;
 	}
 
 	if (intel_hdmi->color_range)
@@ -1260,6 +1269,8 @@ static void chv_hdmi_pre_pll_enable(struct intel_encoder *encoder)
 	enum pipe pipe = intel_crtc->pipe;
 	u32 val;
 
+	intel_hdmi_prepare(encoder);
+
 	mutex_lock(&dev_priv->dpio_lock);
 
 	/* program left/right clock distribution */
@@ -1429,8 +1440,8 @@ static void chv_hdmi_pre_enable(struct intel_encoder *encoder)
 
 	for (i = 0; i < 4; i++) {
 		val = vlv_dpio_read(dev_priv, pipe, CHV_TX_DW2(ch, i));
-		val &= ~DPIO_SWING_MARGIN_MASK;
-		val |= 102 << DPIO_SWING_MARGIN_SHIFT;
+		val &= ~DPIO_SWING_MARGIN000_MASK;
+		val |= 102 << DPIO_SWING_MARGIN000_SHIFT;
 		vlv_dpio_write(dev_priv, pipe, CHV_TX_DW2(ch, i), val);
 	}
 
