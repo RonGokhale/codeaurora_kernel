@@ -680,6 +680,7 @@ static int __i915_drm_thaw(struct drm_device *dev, bool restore_gtt_mappings)
 		}
 		mutex_unlock(&dev->struct_mutex);
 
+		/* We need working interrupts for modeset enabling ... */
 		intel_runtime_pm_restore_interrupts(dev);
 
 		intel_modeset_init_hw(dev);
@@ -844,7 +845,13 @@ int i915_reset(struct drm_device *dev)
 			!dev_priv->ums.mm_suspended) {
 		dev_priv->ums.mm_suspended = 0;
 
+		/* Used to prevent gem_check_wedged returning -EAGAIN during gpu reset */
+		dev_priv->gpu_error.reload_in_reset = true;
+
 		ret = i915_gem_init_hw(dev);
+
+		dev_priv->gpu_error.reload_in_reset = false;
+
 		mutex_unlock(&dev->struct_mutex);
 		if (ret) {
 			DRM_ERROR("Failed hw init on reset %d\n", ret);
@@ -865,8 +872,6 @@ int i915_reset(struct drm_device *dev)
 		 */
 		if (INTEL_INFO(dev)->gen > 5)
 			intel_reset_gt_powersave(dev);
-
-		intel_hpd_init(dev);
 	} else {
 		mutex_unlock(&dev->struct_mutex);
 	}
@@ -1456,13 +1461,29 @@ static int intel_runtime_suspend(struct device *device)
 	dev_priv->pm.suspended = true;
 
 	/*
-	 * current versions of firmware which depend on this opregion
-	 * notification have repurposed the D1 definition to mean
-	 * "runtime suspended" vs. what you would normally expect (D3)
-	 * to distinguish it from notifications that might be sent
-	 * via the suspend path.
+	 * FIXME: We really should find a document that references the arguments
+	 * used below!
 	 */
-	intel_opregion_notify_adapter(dev, PCI_D1);
+	if (IS_HASWELL(dev)) {
+		/*
+		 * current versions of firmware which depend on this opregion
+		 * notification have repurposed the D1 definition to mean
+		 * "runtime suspended" vs. what you would normally expect (D3)
+		 * to distinguish it from notifications that might be sent via
+		 * the suspend path.
+		 */
+		intel_opregion_notify_adapter(dev, PCI_D1);
+	} else {
+		/*
+		 * On Broadwell, if we use PCI_D1 the PCH DDI ports will stop
+		 * being detected, and the call we do at intel_runtime_resume()
+		 * won't be able to restore them. Since PCI_D3hot matches the
+		 * actual specification and appears to be working, use it. Let's
+		 * assume the other non-Haswell platforms will stay the same as
+		 * Broadwell.
+		 */
+		intel_opregion_notify_adapter(dev, PCI_D3hot);
+	}
 
 	DRM_DEBUG_KMS("Device suspended\n");
 	return 0;
@@ -1685,6 +1706,8 @@ static void __exit i915_exit(void)
 module_init(i915_init);
 module_exit(i915_exit);
 
-MODULE_AUTHOR(DRIVER_AUTHOR);
+MODULE_AUTHOR("Tungsten Graphics, Inc.");
+MODULE_AUTHOR("Intel Corporation");
+
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_LICENSE("GPL and additional rights");
