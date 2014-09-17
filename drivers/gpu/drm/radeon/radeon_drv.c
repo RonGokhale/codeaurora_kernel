@@ -114,6 +114,9 @@ int radeon_gem_object_open(struct drm_gem_object *obj,
 				struct drm_file *file_priv);
 void radeon_gem_object_close(struct drm_gem_object *obj,
 				struct drm_file *file_priv);
+struct dma_buf *radeon_gem_prime_export(struct drm_device *dev,
+					struct drm_gem_object *gobj,
+					int flags);
 extern int radeon_get_crtc_scanoutpos(struct drm_device *dev, int crtc,
 				      unsigned int flags,
 				      int *vpos, int *hpos, ktime_t *stime,
@@ -325,6 +328,7 @@ static struct drm_driver driver_old = {
 	.preclose = radeon_driver_preclose,
 	.postclose = radeon_driver_postclose,
 	.lastclose = radeon_driver_lastclose,
+	.set_busid = drm_pci_set_busid,
 	.unload = radeon_driver_unload,
 	.suspend = radeon_suspend,
 	.resume = radeon_resume,
@@ -549,6 +553,7 @@ static struct drm_driver kms_driver = {
 	.preclose = radeon_driver_preclose_kms,
 	.postclose = radeon_driver_postclose_kms,
 	.lastclose = radeon_driver_lastclose_kms,
+	.set_busid = drm_pci_set_busid,
 	.unload = radeon_driver_unload_kms,
 	.get_vblank_counter = radeon_get_vblank_counter_kms,
 	.enable_vblank = radeon_enable_vblank_kms,
@@ -574,7 +579,7 @@ static struct drm_driver kms_driver = {
 
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
-	.gem_prime_export = drm_gem_prime_export,
+	.gem_prime_export = radeon_gem_prime_export,
 	.gem_prime_import = drm_gem_prime_import,
 	.gem_prime_pin = radeon_gem_prime_pin,
 	.gem_prime_unpin = radeon_gem_prime_unpin,
