@@ -1960,7 +1960,6 @@ out_unwind:
 	while (--i >= 0)
 		blk_mq_free_rq_map(set, set->tags[i], i);
 
-	set->tags = NULL;
 	return -ENOMEM;
 }
 
