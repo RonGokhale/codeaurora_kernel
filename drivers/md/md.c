@@ -784,6 +784,9 @@ int sync_page_io(struct md_rdev *rdev, sector_t sector, int size,
 
 	bio->bi_bdev = (metadata_op && rdev->meta_bdev) ?
 		rdev->meta_bdev : rdev->bdev;
+	size = roundup(size, bdev_logical_block_size(bio->bi_bdev));
+	if (size > PAGE_SIZE)
+		return -EINVAL;
 	if (metadata_op)
 		bio->bi_iter.bi_sector = sector + rdev->sb_start;
 	else if (rdev->mddev->reshape_position != MaxSector &&
