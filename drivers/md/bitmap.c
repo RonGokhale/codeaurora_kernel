@@ -145,8 +145,7 @@ static int read_sb_page(struct mddev *mddev, loff_t offset,
 
 		target = offset + index * (PAGE_SIZE/512);
 
-		if (sync_page_io(rdev, target,
-				 roundup(size, bdev_logical_block_size(rdev->bdev)),
+		if (sync_page_io(rdev, target, size,
 				 page, READ, true)) {
 			page->index = index;
 			return 0;
