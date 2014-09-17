@@ -229,8 +229,6 @@ static inline int inet_is_local_reserved_port(struct net *net, int port)
 }
 #endif
 
-extern int sysctl_ip_nonlocal_bind;
-
 /* From inetpeer.c */
 extern int inet_peer_threshold;
 extern int inet_peer_minttl;
@@ -362,6 +360,14 @@ static inline void inet_set_txhash(struct sock *sk)
 	keys.port16[1] = inet->inet_dport;
 
 	sk->sk_txhash = flow_hash_from_keys(&keys);
+}
+
+static inline __wsum inet_gro_compute_pseudo(struct sk_buff *skb, int proto)
+{
+	const struct iphdr *iph = skb_gro_network_header(skb);
+
+	return csum_tcpudp_nofold(iph->saddr, iph->daddr,
+				  skb_gro_len(skb), proto, 0);
 }
 
 /*
