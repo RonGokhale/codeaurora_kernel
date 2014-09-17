@@ -118,7 +118,7 @@ static void msm_pcm_routing_deinit_pp(int port_id, int topology)
 		pr_debug("%s: DOLBY_ADM_COPP_TOPOLOGY_ID\n", __func__);
 		msm_dolby_dap_deinit(port_id);
 		break;
-	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0:
+	case ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX:
 		pr_debug("%s: DTS_EAGLE_COPP_TOPOLOGY_ID\n", __func__);
 		msm_dts_eagle_deinit_post(port_id, topology);
 		break;

@@ -1617,7 +1617,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode,
 		}
 	}
 
-	if (topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0 &&
+	if (topology == ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX &&
 	    !perf_mode) {
 		int res;
 		atomic_set(&this_adm.mem_map_cal_index, ADM_DTS_EAGLE);
@@ -1828,7 +1828,7 @@ int adm_matrix_map(int path, struct route_payload payload_map, int perf_mode)
 			copp_idx = payload_map.copp_idx[i];
 			if (atomic_read(
 				&this_adm.copp.topology[port_idx][copp_idx]) ==
-				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0)
+				ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX)
 				continue;
 			rtac_add_adm_device(payload_map.port_id[i],
 					    atomic_read(&this_adm.copp.id
@@ -1886,7 +1886,7 @@ int adm_close(int port_id, int perf_mode, int copp_idx)
 		if (perf_mode != ULTRA_LOW_LATENCY_PCM_MODE &&
 		    this_adm.outband_memmap.paddr != 0 &&
 		    atomic_read(&this_adm.copp.topology[port_idx][copp_idx]) ==
-			ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX_0) {
+			ADM_CMD_COPP_OPEN_TOPOLOGY_ID_DTS_HPX) {
 			atomic_set(&this_adm.mem_map_cal_index, ADM_DTS_EAGLE);
 			ret = adm_memory_unmap_regions();
 			if (ret < 0) {

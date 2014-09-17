@@ -326,8 +326,13 @@ static int _is_port_open_and_eagle(int pid)
 
 static int _isNTDevice(__u32 device)
 {
-	if (device >= (1 << AUDIO_DEVICE_OUT_BLUETOOTH_SCO) &&
-	    device <= (1 << AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER)) {
+	if (device &
+	    ((1 << AUDIO_DEVICE_OUT_BLUETOOTH_SCO) |
+	     (1 << AUDIO_DEVICE_OUT_BLUETOOTH_SCO_HEADSET) |
+	     (1 << AUDIO_DEVICE_OUT_BLUETOOTH_SCO_CARKIT) |
+	     (1 << AUDIO_DEVICE_OUT_BLUETOOTH_A2DP) |
+	     (1 << AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES) |
+	     (1 << AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_SPEAKER))) {
 		return 1;
 	}
 	return 0;
@@ -529,9 +534,6 @@ static int _enable_post_put_control(struct snd_kcontrol *kcontrol,
 	int flag = ucontrol->value.integer.value[0];
 	struct msm_pcm_routing_bdai_data msm_bedai;
 	pr_debug("%s flag %d\n", __func__, flag);
-
-	if ((_is_hpx_enabled && flag) || (!_is_hpx_enabled && !flag))
-		return 0;
 
 	_is_hpx_enabled = flag ? true : false;
 	msm_pcm_routing_acquire_lock();
