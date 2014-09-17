@@ -1955,8 +1955,8 @@ void composite_dev_cleanup(struct usb_composite_dev *cdev)
 		usb_ep_free_request(cdev->gadget->ep0, cdev->os_desc_req);
 	}
 	if (cdev->req) {
-		kfree(cdev->req->buf);
 		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
+		kfree(cdev->req->buf);
 		usb_ep_free_request(cdev->gadget->ep0, cdev->req);
 	}
 	cdev->next_string_id = 0;
@@ -2073,6 +2073,7 @@ static const struct usb_gadget_driver composite_driver_template = {
 	.unbind		= composite_unbind,
 
 	.setup		= composite_setup,
+	.reset		= composite_disconnect,
 	.disconnect	= composite_disconnect,
 
 	.suspend	= composite_suspend,
