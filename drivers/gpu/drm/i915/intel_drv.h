@@ -34,6 +34,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_dp_mst_helper.h>
+#include <drm/drm_rect.h>
 
 /**
  * _wait_for - magic (register) wait macro
@@ -236,6 +237,17 @@ typedef struct dpll {
 	int	m;
 	int	p;
 } intel_clock_t;
+
+struct intel_plane_state {
+	struct drm_crtc *crtc;
+	struct drm_framebuffer *fb;
+	struct drm_rect src;
+	struct drm_rect dst;
+	struct drm_rect clip;
+	struct drm_rect orig_src;
+	struct drm_rect orig_dst;
+	bool visible;
+};
 
 struct intel_plane_config {
 	bool tiled;
@@ -841,7 +853,11 @@ int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 enum transcoder intel_pipe_to_cpu_transcoder(struct drm_i915_private *dev_priv,
 					     enum pipe pipe);
-void intel_wait_for_vblank(struct drm_device *dev, int pipe);
+static inline void
+intel_wait_for_vblank(struct drm_device *dev, int pipe)
+{
+	drm_wait_one_vblank(dev, pipe);
+}
 int ironlake_get_lanes_required(int target_clock, int link_bw, int bpp);
 void vlv_wait_port_ready(struct drm_i915_private *dev_priv,
 			 struct intel_digital_port *dport);
