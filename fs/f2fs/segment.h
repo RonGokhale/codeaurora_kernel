@@ -437,8 +437,9 @@ static inline int reserved_sections(struct f2fs_sb_info *sbi)
 
 static inline bool need_SSR(struct f2fs_sb_info *sbi)
 {
-	return (prefree_segments(sbi) / sbi->segs_per_sec)
-			+ free_sections(sbi) < overprovision_sections(sbi);
+	int node_secs = get_blocktype_secs(sbi, F2FS_DIRTY_NODES);
+	return (prefree_segments(sbi) / sbi->segs_per_sec) +
+		free_sections(sbi) < (reserved_sections(sbi) + node_secs);
 }
 
 static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
