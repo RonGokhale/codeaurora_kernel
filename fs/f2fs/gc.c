@@ -423,6 +423,12 @@ next_step:
 		if (IS_ERR(node_page))
 			continue;
 
+		/* block may become invalid during get_node_page */
+		if (check_valid_map(sbi, segno, off) == 0) {
+			f2fs_put_page(node_page, 1);
+			continue;
+		}
+
 		/* set page dirty and write it */
 		if (gc_type == FG_GC) {
 			f2fs_wait_on_page_writeback(node_page, NODE);
@@ -531,7 +537,7 @@ static void move_data_page(struct inode *inode, struct page *page, int gc_type)
 		f2fs_wait_on_page_writeback(page, DATA);
 
 		if (clear_page_dirty_for_io(page))
-			inode_dec_dirty_dents(inode);
+			inode_dec_dirty_pages(inode);
 		set_cold_data(page);
 		do_write_data_page(page, &fio);
 		clear_cold_data(page);
