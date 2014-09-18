@@ -37,7 +37,8 @@ extern void cgroup_exit(struct task_struct *p);
 extern int cgroupstats_build(struct cgroupstats *stats,
 				struct dentry *dentry);
 
-extern int proc_cgroup_show(struct seq_file *, void *);
+extern int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
+			    struct pid *pid, struct task_struct *tsk);
 
 /* define the enumeration of all cgroup subsystems */
 #define SUBSYS(_x) _x ## _cgrp_id,
@@ -234,13 +235,6 @@ struct cgroup {
 	struct list_head e_csets[CGROUP_SUBSYS_COUNT];
 
 	/*
-	 * Linked list running through all cgroups that can
-	 * potentially be reaped by the release agent. Protected by
-	 * release_list_lock
-	 */
-	struct list_head release_list;
-
-	/*
 	 * list of pidlists, up to two for each namespace (one for procs, one
 	 * for tasks); created on demand.
 	 */
@@ -249,6 +243,9 @@ struct cgroup {
 
 	/* used to wait for offlining of csses */
 	wait_queue_head_t offline_waitq;
+
+	/* used to schedule release agent */
+	struct work_struct release_agent_work;
 };
 
 #define MAX_CGROUP_ROOT_NAMELEN 64
