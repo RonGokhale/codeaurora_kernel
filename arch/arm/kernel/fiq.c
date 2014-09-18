@@ -53,6 +53,7 @@
 	})
 
 static unsigned long no_fiq_insn;
+static struct pt_regs def_fiq_regs;
 
 /* Default reacquire function
  * - we always relinquish FIQ control
@@ -60,8 +61,15 @@ static unsigned long no_fiq_insn;
  */
 static int fiq_def_op(void *ref, int relinquish)
 {
-	if (!relinquish)
+	if (!relinquish) {
+		/* Restore default handler and registers */
+		local_fiq_disable();
+		set_fiq_regs(&dfl_fiq_regs);
 		set_fiq_handler(&no_fiq_insn, sizeof(no_fiq_insn));
+		local_fiq_enable();
+
+		/* FIXME: notify irq controller to standard enable FIQs */
+	}
 
 	return 0;
 }
@@ -151,5 +159,6 @@ void __init init_FIQ(int start)
 {
 	unsigned offset = FIQ_OFFSET;
 	no_fiq_insn = *(unsigned long *)(0xffff0000 + offset);
+	get_fiq_regs(&dfl_fiq_regs);
 	fiq_start = start;
 }
