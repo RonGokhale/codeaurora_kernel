@@ -1081,6 +1081,7 @@ void intel_runtime_pm_put(struct drm_i915_private *dev_priv);
 void intel_init_runtime_pm(struct drm_i915_private *dev_priv);
 void intel_fini_runtime_pm(struct drm_i915_private *dev_priv);
 void ilk_wm_get_hw_state(struct drm_device *dev);
+uint32_t ilk_pipe_pixel_rate(const struct intel_crtc_config *pipe_config);
 
 
 /* intel_sdvo.c */
