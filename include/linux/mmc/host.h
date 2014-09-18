@@ -139,6 +139,13 @@ struct mmc_host_ops {
 	int	(*select_drive_strength)(unsigned int max_dtr, int host_drv, int card_drv);
 	void	(*hw_reset)(struct mmc_host *host);
 	void	(*card_event)(struct mmc_host *host);
+
+	/*
+	 * Optional callback to support controllers with HW issues for multiple
+	 * I/O. Returns the number of supported blocks for the request.
+	 */
+	int	(*multi_io_quirk)(struct mmc_card *card,
+				  unsigned int direction, int blk_size);
 };
 
 struct mmc_card;
@@ -265,7 +272,6 @@ struct mmc_host {
 
 #define MMC_CAP2_BOOTPART_NOACC	(1 << 0)	/* Boot partition no access */
 #define MMC_CAP2_FULL_PWR_CYCLE	(1 << 2)	/* Can do full power cycle */
-#define MMC_CAP2_NO_MULTI_READ	(1 << 3)	/* Multiblock reads don't work */
 #define MMC_CAP2_HS200_1_8V_SDR	(1 << 5)        /* can support */
 #define MMC_CAP2_HS200_1_2V_SDR	(1 << 6)        /* can support */
 #define MMC_CAP2_HS200		(MMC_CAP2_HS200_1_8V_SDR | \
@@ -364,6 +370,9 @@ struct mmc_host {
 	unsigned int		actual_clock;	/* Actual HC clock rate */
 
 	unsigned int		slotno;	/* used for sdio acpi binding */
+
+	int			dsr_req;	/* DSR value is valid */
+	u32			dsr;	/* optional driver stage (DSR) value */
 
 	unsigned long		private[0] ____cacheline_aligned;
 };
