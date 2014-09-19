@@ -820,10 +820,9 @@ static void ext4_put_super(struct super_block *sb)
 	percpu_counter_destroy(&sbi->s_freeinodes_counter);
 	percpu_counter_destroy(&sbi->s_dirs_counter);
 	percpu_counter_destroy(&sbi->s_dirtyclusters_counter);
-	percpu_counter_destroy(&sbi->s_extent_cache_cnt);
 	brelse(sbi->s_sbh);
 #ifdef CONFIG_QUOTA
-	for (i = 0; i < MAXQUOTAS; i++)
+	for (i = 0; i < EXT4_MAXQUOTAS; i++)
 		kfree(sbi->s_qf_names[i]);
 #endif
 
@@ -885,6 +884,7 @@ static struct inode *ext4_alloc_inode(struct super_block *sb)
 	ext4_es_init_tree(&ei->i_es_tree);
 	rwlock_init(&ei->i_es_lock);
 	INIT_LIST_HEAD(&ei->i_es_lru);
+	ei->i_es_all_nr = 0;
 	ei->i_es_lru_nr = 0;
 	ei->i_touch_when = 0;
 	ei->i_reserved_data_blocks = 0;
@@ -1712,13 +1712,6 @@ static int parse_options(char *options, struct super_block *sb,
 					"not specified");
 			return 0;
 		}
-	} else {
-		if (sbi->s_jquota_fmt) {
-			ext4_msg(sb, KERN_ERR, "journaled quota format "
-					"specified with no journaling "
-					"enabled");
-			return 0;
-		}
 	}
 #endif
 	if (test_opt(sb, DIOREAD_NOLOCK)) {
@@ -2191,7 +2184,7 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 	if (EXT4_SB(sb)->s_mount_state & EXT4_ERROR_FS) {
 		/* don't clear list on RO mount w/ errors */
 		if (es->s_last_orphan && !(s_flags & MS_RDONLY)) {
-			jbd_debug(1, "Errors on filesystem, "
+			ext4_msg(sb, KERN_INFO, "Errors on filesystem, "
 				  "clearing orphan list.\n");
 			es->s_last_orphan = 0;
 		}
@@ -2207,7 +2200,7 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 	/* Needed for iput() to work correctly and not trash data */
 	sb->s_flags |= MS_ACTIVE;
 	/* Turn on quotas so that they are updated correctly */
-	for (i = 0; i < MAXQUOTAS; i++) {
+	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
 		if (EXT4_SB(sb)->s_qf_names[i]) {
 			int ret = ext4_quota_on_mount(sb, i);
 			if (ret < 0)
@@ -2263,7 +2256,7 @@ static void ext4_orphan_cleanup(struct super_block *sb,
 		       PLURAL(nr_truncates));
 #ifdef CONFIG_QUOTA
 	/* Turn quotas off */
-	for (i = 0; i < MAXQUOTAS; i++) {
+	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
 		if (sb_dqopt(sb)->files[i])
 			dquot_quota_off(sb, i);
 	}
@@ -2548,6 +2541,16 @@ static ssize_t sbi_ui_store(struct ext4_attr *a,
 	return count;
 }
 
+static ssize_t es_ui_show(struct ext4_attr *a,
+			   struct ext4_sb_info *sbi, char *buf)
+{
+
+	unsigned int *ui = (unsigned int *) (((char *) sbi->s_es) +
+			   a->u.offset);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", *ui);
+}
+
 static ssize_t reserved_clusters_show(struct ext4_attr *a,
 				  struct ext4_sb_info *sbi, char *buf)
 {
@@ -2601,14 +2604,29 @@ static struct ext4_attr ext4_attr_##_name = {			\
 		.offset = offsetof(struct ext4_sb_info, _elname),\
 	},							\
 }
+
+#define EXT4_ATTR_OFFSET_ES(_name,_mode,_show,_store,_elname)		\
+static struct ext4_attr ext4_attr_##_name = {				\
+	.attr = {.name = __stringify(_name), .mode = _mode },		\
+	.show	= _show,						\
+	.store	= _store,						\
+	.u = {								\
+		.offset = offsetof(struct ext4_super_block, _elname),	\
+	},								\
+}
+
 #define EXT4_ATTR(name, mode, show, store) \
 static struct ext4_attr ext4_attr_##name = __ATTR(name, mode, show, store)
 
 #define EXT4_INFO_ATTR(name) EXT4_ATTR(name, 0444, NULL, NULL)
 #define EXT4_RO_ATTR(name) EXT4_ATTR(name, 0444, name##_show, NULL)
 #define EXT4_RW_ATTR(name) EXT4_ATTR(name, 0644, name##_show, name##_store)
+
+#define EXT4_RO_ATTR_ES_UI(name, elname)	\
+	EXT4_ATTR_OFFSET_ES(name, 0444, es_ui_show, NULL, elname)
 #define EXT4_RW_ATTR_SBI_UI(name, elname)	\
 	EXT4_ATTR_OFFSET(name, 0644, sbi_ui_show, sbi_ui_store, elname)
+
 #define ATTR_LIST(name) &ext4_attr_##name.attr
 #define EXT4_DEPRECATED_ATTR(_name, _val)	\
 static struct ext4_attr ext4_attr_##_name = {			\
@@ -2641,6 +2659,9 @@ EXT4_RW_ATTR_SBI_UI(warning_ratelimit_interval_ms, s_warning_ratelimit_state.int
 EXT4_RW_ATTR_SBI_UI(warning_ratelimit_burst, s_warning_ratelimit_state.burst);
 EXT4_RW_ATTR_SBI_UI(msg_ratelimit_interval_ms, s_msg_ratelimit_state.interval);
 EXT4_RW_ATTR_SBI_UI(msg_ratelimit_burst, s_msg_ratelimit_state.burst);
+EXT4_RO_ATTR_ES_UI(errors_count, s_error_count);
+EXT4_RO_ATTR_ES_UI(first_error_time, s_first_error_time);
+EXT4_RO_ATTR_ES_UI(last_error_time, s_last_error_time);
 
 static struct attribute *ext4_attrs[] = {
 	ATTR_LIST(delayed_allocation_blocks),
@@ -2664,6 +2685,9 @@ static struct attribute *ext4_attrs[] = {
 	ATTR_LIST(warning_ratelimit_burst),
 	ATTR_LIST(msg_ratelimit_interval_ms),
 	ATTR_LIST(msg_ratelimit_burst),
+	ATTR_LIST(errors_count),
+	ATTR_LIST(first_error_time),
+	ATTR_LIST(last_error_time),
 	NULL,
 };
 
@@ -2723,9 +2747,25 @@ static void ext4_feat_release(struct kobject *kobj)
 	complete(&ext4_feat->f_kobj_unregister);
 }
 
+static ssize_t ext4_feat_show(struct kobject *kobj,
+			      struct attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "supported\n");
+}
+
+/*
+ * We can not use ext4_attr_show/store because it relies on the kobject
+ * being embedded in the ext4_sb_info structure which is definitely not
+ * true in this case.
+ */
+static const struct sysfs_ops ext4_feat_ops = {
+	.show	= ext4_feat_show,
+	.store	= NULL,
+};
+
 static struct kobj_type ext4_feat_ktype = {
 	.default_attrs	= ext4_feat_attrs,
-	.sysfs_ops	= &ext4_attr_ops,
+	.sysfs_ops	= &ext4_feat_ops,
 	.release	= ext4_feat_release,
 };
 
@@ -3190,6 +3230,10 @@ static int set_journal_csum_feature_set(struct super_block *sb)
 		incompat = 0;
 	}
 
+	jbd2_journal_clear_features(sbi->s_journal,
+			JBD2_FEATURE_COMPAT_CHECKSUM, 0,
+			JBD2_FEATURE_INCOMPAT_CSUM_V3 |
+			JBD2_FEATURE_INCOMPAT_CSUM_V2);
 	if (test_opt(sb, JOURNAL_ASYNC_COMMIT)) {
 		ret = jbd2_journal_set_features(sbi->s_journal,
 				compat, 0,
@@ -3202,11 +3246,8 @@ static int set_journal_csum_feature_set(struct super_block *sb)
 		jbd2_journal_clear_features(sbi->s_journal, 0, 0,
 				JBD2_FEATURE_INCOMPAT_ASYNC_COMMIT);
 	} else {
-		jbd2_journal_clear_features(sbi->s_journal,
-				JBD2_FEATURE_COMPAT_CHECKSUM, 0,
-				JBD2_FEATURE_INCOMPAT_ASYNC_COMMIT |
-				JBD2_FEATURE_INCOMPAT_CSUM_V3 |
-				JBD2_FEATURE_INCOMPAT_CSUM_V2);
+		jbd2_journal_clear_features(sbi->s_journal, 0, 0,
+				JBD2_FEATURE_INCOMPAT_ASYNC_COMMIT);
 	}
 
 	return ret;
@@ -3436,7 +3477,7 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		logical_sb_block = sb_block;
 	}
 
-	if (!(bh = sb_bread(sb, logical_sb_block))) {
+	if (!(bh = sb_bread_unmovable(sb, logical_sb_block))) {
 		ext4_msg(sb, KERN_ERR, "unable to read superblock");
 		goto out_fail;
 	}
@@ -3519,8 +3560,8 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		set_opt(sb, ERRORS_CONT);
 	else
 		set_opt(sb, ERRORS_RO);
-	if (def_mount_opts & EXT4_DEFM_BLOCK_VALIDITY)
-		set_opt(sb, BLOCK_VALIDITY);
+	/* block_validity enabled by default; disable with noblock_validity */
+	set_opt(sb, BLOCK_VALIDITY);
 	if (def_mount_opts & EXT4_DEFM_DISCARD)
 		set_opt(sb, DISCARD);
 
@@ -3646,7 +3687,7 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 		brelse(bh);
 		logical_sb_block = sb_block * EXT4_MIN_BLOCK_SIZE;
 		offset = do_div(logical_sb_block, blocksize);
-		bh = sb_bread(sb, logical_sb_block);
+		bh = sb_bread_unmovable(sb, logical_sb_block);
 		if (!bh) {
 			ext4_msg(sb, KERN_ERR,
 			       "Can't read superblock on 2nd try");
@@ -3868,7 +3909,7 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 
 	for (i = 0; i < db_count; i++) {
 		block = descriptor_loc(sb, logical_sb_block, i);
-		sbi->s_group_desc[i] = sb_bread(sb, block);
+		sbi->s_group_desc[i] = sb_bread_unmovable(sb, block);
 		if (!sbi->s_group_desc[i]) {
 			ext4_msg(sb, KERN_ERR,
 			       "can't read group descriptor %d", i);
@@ -3890,12 +3931,8 @@ static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 	sbi->s_err_report.data = (unsigned long) sb;
 
 	/* Register extent status tree shrinker */
-	ext4_es_register_shrinker(sbi);
-
-	if ((err = percpu_counter_init(&sbi->s_extent_cache_cnt, 0)) != 0) {
-		ext4_msg(sb, KERN_ERR, "insufficient memory");
+	if (ext4_es_register_shrinker(sbi))
 		goto failed_mount3;
-	}
 
 	sbi->s_stripe = ext4_get_stripe_size(sbi);
 	sbi->s_extent_max_zeroout_kb = 32;
@@ -4225,10 +4262,9 @@ failed_mount_wq:
 		jbd2_journal_destroy(sbi->s_journal);
 		sbi->s_journal = NULL;
 	}
-failed_mount3:
 	ext4_es_unregister_shrinker(sbi);
+failed_mount3:
 	del_timer_sync(&sbi->s_err_report);
-	percpu_counter_destroy(&sbi->s_extent_cache_cnt);
 	if (sbi->s_mmp_tsk)
 		kthread_stop(sbi->s_mmp_tsk);
 failed_mount2:
@@ -4243,7 +4279,7 @@ failed_mount:
 		remove_proc_entry(sb->s_id, ext4_proc_root);
 	}
 #ifdef CONFIG_QUOTA
-	for (i = 0; i < MAXQUOTAS; i++)
+	for (i = 0; i < EXT4_MAXQUOTAS; i++)
 		kfree(sbi->s_qf_names[i]);
 #endif
 	ext4_blkdev_remove(sbi);
@@ -4367,6 +4403,15 @@ static journal_t *ext4_get_dev_journal(struct super_block *sb,
 	      EXT4_FEATURE_INCOMPAT_JOURNAL_DEV)) {
 		ext4_msg(sb, KERN_ERR, "external journal has "
 					"bad superblock");
+		brelse(bh);
+		goto out_bdev;
+	}
+
+	if ((le32_to_cpu(es->s_feature_ro_compat) &
+	     EXT4_FEATURE_RO_COMPAT_METADATA_CSUM) &&
+	    es->s_checksum != ext4_superblock_csum(sb, es)) {
+		ext4_msg(sb, KERN_ERR, "external journal has "
+				       "corrupt superblock");
 		brelse(bh);
 		goto out_bdev;
 	}
@@ -4770,7 +4815,7 @@ struct ext4_mount_options {
 	u32 s_min_batch_time, s_max_batch_time;
 #ifdef CONFIG_QUOTA
 	int s_jquota_fmt;
-	char *s_qf_names[MAXQUOTAS];
+	char *s_qf_names[EXT4_MAXQUOTAS];
 #endif
 };
 
@@ -4800,7 +4845,7 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 	old_opts.s_max_batch_time = sbi->s_max_batch_time;
 #ifdef CONFIG_QUOTA
 	old_opts.s_jquota_fmt = sbi->s_jquota_fmt;
-	for (i = 0; i < MAXQUOTAS; i++)
+	for (i = 0; i < EXT4_MAXQUOTAS; i++)
 		if (sbi->s_qf_names[i]) {
 			old_opts.s_qf_names[i] = kstrdup(sbi->s_qf_names[i],
 							 GFP_KERNEL);
@@ -4961,7 +5006,7 @@ static int ext4_remount(struct super_block *sb, int *flags, char *data)
 
 #ifdef CONFIG_QUOTA
 	/* Release old quota file names */
-	for (i = 0; i < MAXQUOTAS; i++)
+	for (i = 0; i < EXT4_MAXQUOTAS; i++)
 		kfree(old_opts.s_qf_names[i]);
 	if (enable_quota) {
 		if (sb_any_quota_suspended(sb))
@@ -4990,7 +5035,7 @@ restore_opts:
 	sbi->s_max_batch_time = old_opts.s_max_batch_time;
 #ifdef CONFIG_QUOTA
 	sbi->s_jquota_fmt = old_opts.s_jquota_fmt;
-	for (i = 0; i < MAXQUOTAS; i++) {
+	for (i = 0; i < EXT4_MAXQUOTAS; i++) {
 		kfree(sbi->s_qf_names[i]);
 		sbi->s_qf_names[i] = old_opts.s_qf_names[i];
 	}
@@ -5193,7 +5238,7 @@ static int ext4_quota_enable(struct super_block *sb, int type, int format_id,
 {
 	int err;
 	struct inode *qf_inode;
-	unsigned long qf_inums[MAXQUOTAS] = {
+	unsigned long qf_inums[EXT4_MAXQUOTAS] = {
 		le32_to_cpu(EXT4_SB(sb)->s_es->s_usr_quota_inum),
 		le32_to_cpu(EXT4_SB(sb)->s_es->s_grp_quota_inum)
 	};
@@ -5221,13 +5266,13 @@ static int ext4_quota_enable(struct super_block *sb, int type, int format_id,
 static int ext4_enable_quotas(struct super_block *sb)
 {
 	int type, err = 0;
-	unsigned long qf_inums[MAXQUOTAS] = {
+	unsigned long qf_inums[EXT4_MAXQUOTAS] = {
 		le32_to_cpu(EXT4_SB(sb)->s_es->s_usr_quota_inum),
 		le32_to_cpu(EXT4_SB(sb)->s_es->s_grp_quota_inum)
 	};
 
 	sb_dqopt(sb)->flags |= DQUOT_QUOTA_SYS_FILE;
-	for (type = 0; type < MAXQUOTAS; type++) {
+	for (type = 0; type < EXT4_MAXQUOTAS; type++) {
 		if (qf_inums[type]) {
 			err = ext4_quota_enable(sb, type, QFMT_VFS_V1,
 						DQUOT_USAGE_ENABLED);
@@ -5305,7 +5350,6 @@ static ssize_t ext4_quota_read(struct super_block *sb, int type, char *data,
 {
 	struct inode *inode = sb_dqopt(sb)->files[type];
 	ext4_lblk_t blk = off >> EXT4_BLOCK_SIZE_BITS(sb);
-	int err = 0;
 	int offset = off & (sb->s_blocksize - 1);
 	int tocopy;
 	size_t toread;
@@ -5320,9 +5364,9 @@ static ssize_t ext4_quota_read(struct super_block *sb, int type, char *data,
 	while (toread > 0) {
 		tocopy = sb->s_blocksize - offset < toread ?
 				sb->s_blocksize - offset : toread;
-		bh = ext4_bread(NULL, inode, blk, 0, &err);
-		if (err)
-			return err;
+		bh = ext4_bread(NULL, inode, blk, 0);
+		if (IS_ERR(bh))
+			return PTR_ERR(bh);
 		if (!bh)	/* A hole? */
 			memset(data, 0, tocopy);
 		else
@@ -5343,8 +5387,7 @@ static ssize_t ext4_quota_write(struct super_block *sb, int type,
 {
 	struct inode *inode = sb_dqopt(sb)->files[type];
 	ext4_lblk_t blk = off >> EXT4_BLOCK_SIZE_BITS(sb);
-	int err = 0;
-	int offset = off & (sb->s_blocksize - 1);
+	int err, offset = off & (sb->s_blocksize - 1);
 	struct buffer_head *bh;
 	handle_t *handle = journal_current_handle();
 
@@ -5365,14 +5408,16 @@ static ssize_t ext4_quota_write(struct super_block *sb, int type,
 		return -EIO;
 	}
 
-	bh = ext4_bread(handle, inode, blk, 1, &err);
+	bh = ext4_bread(handle, inode, blk, 1);
+	if (IS_ERR(bh))
+		return PTR_ERR(bh);
 	if (!bh)
 		goto out;
 	BUFFER_TRACE(bh, "get write access");
 	err = ext4_journal_get_write_access(handle, bh);
 	if (err) {
 		brelse(bh);
-		goto out;
+		return err;
 	}
 	lock_buffer(bh);
 	memcpy(bh->b_data+offset, data, len);
@@ -5381,8 +5426,6 @@ static ssize_t ext4_quota_write(struct super_block *sb, int type,
 	err = ext4_handle_dirty_metadata(handle, NULL, bh);
 	brelse(bh);
 out:
-	if (err)
-		return err;
 	if (inode->i_size < off + len) {
 		i_size_write(inode, off + len);
 		EXT4_I(inode)->i_disksize = inode->i_size;
