@@ -190,8 +190,6 @@ struct mga_device {
 	resource_size_t			rmmio_size;
 	void __iomem			*rmmio;
 
-	drm_local_map_t			*framebuffer;
-
 	struct mga_mc			mc;
 	struct mga_mode_info		mode_info;
 
@@ -224,7 +222,7 @@ struct mgag200_bo {
 	struct ttm_placement placement;
 	struct ttm_bo_kmap_obj kmap;
 	struct drm_gem_object gem;
-	u32 placements[3];
+	struct ttm_place placements[3];
 	int pin_count;
 };
 #define gem_to_mga_bo(gobj) container_of((gobj), struct mgag200_bo, gem)
