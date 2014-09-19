@@ -126,8 +126,6 @@ static void blk_flush_restore_request(struct request *rq)
 	/* make @rq a normal request */
 	rq->cmd_flags &= ~REQ_FLUSH_SEQ;
 	rq->end_io = rq->flush.saved_end_io;
-
-	blk_clear_rq_complete(rq);
 }
 
 static bool blk_flush_queue_rq(struct request *rq, bool add_front)
@@ -202,7 +200,7 @@ static bool blk_flush_complete_seq(struct request *rq, unsigned int seq,
 		list_del_init(&rq->flush.list);
 		blk_flush_restore_request(rq);
 		if (q->mq_ops)
-			blk_mq_end_io(rq, error);
+			blk_mq_end_request(rq, error);
 		else
 			__blk_end_request_all(rq, error);
 		break;
@@ -378,7 +376,7 @@ void blk_insert_flush(struct request *rq)
 	 */
 	if (!policy) {
 		if (q->mq_ops)
-			blk_mq_end_io(rq, 0);
+			blk_mq_end_request(rq, 0);
 		else
 			__blk_end_bidi_request(rq, 0, 0, 0);
 		return;
