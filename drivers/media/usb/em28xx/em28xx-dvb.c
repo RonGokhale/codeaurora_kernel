@@ -856,7 +856,9 @@ static const struct m88ds3103_config pctv_461e_m88ds3103_config = {
 	.clock = 27000000,
 	.i2c_wr_max = 33,
 	.clock_out = 0,
-	.ts_mode = M88DS3103_TS_PARALLEL_16,
+	.ts_mode = M88DS3103_TS_PARALLEL,
+	.ts_clk = 16000,
+	.ts_clk_pol = 1,
 	.agc = 0x99,
 };
 
@@ -1533,6 +1535,7 @@ static int em28xx_dvb_init(struct em28xx *dev)
 			/* attach demod */
 			si2168_config.i2c_adapter = &adapter;
 			si2168_config.fe = &dvb->fe[0];
+			si2168_config.ts_mode = SI2168_TS_PARALLEL;
 			memset(&info, 0, sizeof(struct i2c_board_info));
 			strlcpy(info.type, "si2168", I2C_NAME_SIZE);
 			info.addr = 0x64;
