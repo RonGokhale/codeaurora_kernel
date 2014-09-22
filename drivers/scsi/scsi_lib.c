@@ -1846,6 +1846,8 @@ static int scsi_mq_prep_fn(struct request *req)
 		next_rq->special = bidi_sdb;
 	}
 
+	blk_mq_start_request(req);
+
 	return scsi_setup_cmnd(sdev, req);
 }
 
@@ -1880,11 +1882,14 @@ static int scsi_queue_rq(struct blk_mq_hw_ctx *hctx, struct request *req,
 	if (!scsi_host_queue_ready(q, shost, sdev))
 		goto out_dec_target_busy;
 
+
 	if (!(req->cmd_flags & REQ_DONTPREP)) {
 		ret = prep_to_mq(scsi_mq_prep_fn(req));
 		if (ret)
 			goto out_dec_host_busy;
 		req->cmd_flags |= REQ_DONTPREP;
+	} else {
+		blk_mq_start_request(req);
 	}
 
 	scsi_init_cmd_errh(cmd);

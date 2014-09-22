@@ -473,7 +473,11 @@ static void blk_mq_requeue_work(struct work_struct *work)
 		blk_mq_insert_request(rq, false, false, false);
 	}
 
-	blk_mq_run_queues(q, false);
+	/*
+	 * Use the start variant of queue running here, so that running
+	 * the requeue work will kick stopped queues.
+	 */
+	blk_mq_start_hw_queues(q);
 }
 
 void blk_mq_add_to_requeue_list(struct request *rq, bool at_head)
@@ -526,7 +530,7 @@ struct blk_mq_timeout_data {
 	unsigned int next_set;
 };
 
-static void blk_mq_rq_timed_out(struct request *req, bool reserved)
+void blk_mq_rq_timed_out(struct request *req, bool reserved)
 {
 	struct blk_mq_ops *ops = req->q->mq_ops;
 	enum blk_eh_timer_return ret = BLK_EH_RESET_TIMER;
@@ -1946,7 +1950,6 @@ out_unwind:
 	while (--i >= 0)
 		blk_mq_free_rq_map(set, set->tags[i], i);
 
-	set->tags = NULL;
 	return -ENOMEM;
 }
 
