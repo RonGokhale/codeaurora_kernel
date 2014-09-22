@@ -25,10 +25,6 @@
 	__routine = genpd->dev_ops.callback; 			\
 	if (__routine) {					\
 		__ret = __routine(dev); 			\
-	} else {						\
-		__routine = dev_gpd_data(dev)->ops.callback;	\
-		if (__routine) 					\
-			__ret = __routine(dev);			\
 	}							\
 	__ret;							\
 })
@@ -69,8 +65,6 @@ static struct generic_pm_domain *pm_genpd_lookup_name(const char *domain_name)
 	mutex_unlock(&gpd_list_lock);
 	return genpd;
 }
-
-#ifdef CONFIG_PM
 
 struct generic_pm_domain *dev_to_genpd(struct device *dev)
 {
@@ -285,8 +279,6 @@ int pm_genpd_name_poweron(const char *domain_name)
 	return genpd ? pm_genpd_poweron(genpd) : -EINVAL;
 }
 
-#endif /* CONFIG_PM */
-
 #ifdef CONFIG_PM_RUNTIME
 
 static int genpd_start_dev_no_timing(struct generic_pm_domain *genpd,
@@ -430,7 +422,7 @@ static bool genpd_abort_poweroff(struct generic_pm_domain *genpd)
  * Queue up the execution of pm_genpd_poweroff() unless it's already been done
  * before.
  */
-void genpd_queue_power_off_work(struct generic_pm_domain *genpd)
+static void genpd_queue_power_off_work(struct generic_pm_domain *genpd)
 {
 	queue_work(pm_wq, &genpd->power_off_work);
 }
@@ -619,8 +611,6 @@ static int pm_genpd_runtime_suspend(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	might_sleep_if(!genpd->dev_irq_safe);
-
 	stop_ok = genpd->gov ? genpd->gov->stop_ok : NULL;
 	if (stop_ok && !stop_ok(dev))
 		return -EBUSY;
@@ -664,8 +654,6 @@ static int pm_genpd_runtime_resume(struct device *dev)
 	genpd = dev_to_genpd(dev);
 	if (IS_ERR(genpd))
 		return -EINVAL;
-
-	might_sleep_if(!genpd->dev_irq_safe);
 
 	/* If power.irq_safe, the PM domain is never powered off. */
 	if (dev->power.irq_safe)
@@ -733,6 +721,13 @@ void pm_genpd_poweroff_unused(void)
 	mutex_unlock(&gpd_list_lock);
 }
 
+static int __init genpd_poweroff_unused(void)
+{
+	pm_genpd_poweroff_unused();
+	return 0;
+}
+late_initcall(genpd_poweroff_unused);
+
 #else
 
 static inline int genpd_dev_pm_qos_notifier(struct notifier_block *nb,
@@ -740,6 +735,9 @@ static inline int genpd_dev_pm_qos_notifier(struct notifier_block *nb,
 {
 	return NOTIFY_DONE;
 }
+
+static inline void
+genpd_queue_power_off_work(struct generic_pm_domain *genpd) {}
 
 static inline void genpd_power_off_work_fn(struct work_struct *work) {}
 
@@ -772,46 +770,6 @@ static bool genpd_dev_active_wakeup(struct generic_pm_domain *genpd,
 				    struct device *dev)
 {
 	return GENPD_DEV_CALLBACK(genpd, bool, active_wakeup, dev);
-}
-
-static int genpd_suspend_dev(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, suspend, dev);
-}
-
-static int genpd_suspend_late(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, suspend_late, dev);
-}
-
-static int genpd_resume_early(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, resume_early, dev);
-}
-
-static int genpd_resume_dev(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, resume, dev);
-}
-
-static int genpd_freeze_dev(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, freeze, dev);
-}
-
-static int genpd_freeze_late(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, freeze_late, dev);
-}
-
-static int genpd_thaw_early(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, thaw_early, dev);
-}
-
-static int genpd_thaw_dev(struct generic_pm_domain *genpd, struct device *dev)
-{
-	return GENPD_DEV_CALLBACK(genpd, int, thaw, dev);
 }
 
 /**
@@ -995,7 +953,7 @@ static int pm_genpd_suspend(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_suspend_dev(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_suspend(dev);
 }
 
 /**
@@ -1016,7 +974,7 @@ static int pm_genpd_suspend_late(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_suspend_late(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_suspend_late(dev);
 }
 
 /**
@@ -1103,7 +1061,7 @@ static int pm_genpd_resume_early(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_resume_early(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_resume_early(dev);
 }
 
 /**
@@ -1124,7 +1082,7 @@ static int pm_genpd_resume(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_resume_dev(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_resume(dev);
 }
 
 /**
@@ -1145,7 +1103,7 @@ static int pm_genpd_freeze(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_freeze_dev(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_freeze(dev);
 }
 
 /**
@@ -1167,7 +1125,7 @@ static int pm_genpd_freeze_late(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_freeze_late(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_freeze_late(dev);
 }
 
 /**
@@ -1231,7 +1189,7 @@ static int pm_genpd_thaw_early(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_thaw_early(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_thaw_early(dev);
 }
 
 /**
@@ -1252,7 +1210,7 @@ static int pm_genpd_thaw(struct device *dev)
 	if (IS_ERR(genpd))
 		return -EINVAL;
 
-	return genpd->suspend_power_off ? 0 : genpd_thaw_dev(genpd, dev);
+	return genpd->suspend_power_off ? 0 : pm_generic_thaw(dev);
 }
 
 /**
@@ -1344,13 +1302,13 @@ static void pm_genpd_complete(struct device *dev)
 }
 
 /**
- * pm_genpd_syscore_switch - Switch power during system core suspend or resume.
+ * genpd_syscore_switch - Switch power during system core suspend or resume.
  * @dev: Device that normally is marked as "always on" to switch power for.
  *
  * This routine may only be called during the system core (syscore) suspend or
  * resume phase for devices whose "always on" flags are set.
  */
-void pm_genpd_syscore_switch(struct device *dev, bool suspend)
+static void genpd_syscore_switch(struct device *dev, bool suspend)
 {
 	struct generic_pm_domain *genpd;
 
@@ -1366,7 +1324,18 @@ void pm_genpd_syscore_switch(struct device *dev, bool suspend)
 		genpd->suspended_count--;
 	}
 }
-EXPORT_SYMBOL_GPL(pm_genpd_syscore_switch);
+
+void pm_genpd_syscore_poweroff(struct device *dev)
+{
+	genpd_syscore_switch(dev, true);
+}
+EXPORT_SYMBOL_GPL(pm_genpd_syscore_poweroff);
+
+void pm_genpd_syscore_poweron(struct device *dev)
+{
+	genpd_syscore_switch(dev, false);
+}
+EXPORT_SYMBOL_GPL(pm_genpd_syscore_poweron);
 
 #else
 
@@ -1744,112 +1713,6 @@ int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 }
 
 /**
- * pm_genpd_add_callbacks - Add PM domain callbacks to a given device.
- * @dev: Device to add the callbacks to.
- * @ops: Set of callbacks to add.
- * @td: Timing data to add to the device along with the callbacks (optional).
- *
- * Every call to this routine should be balanced with a call to
- * __pm_genpd_remove_callbacks() and they must not be nested.
- */
-int pm_genpd_add_callbacks(struct device *dev, struct gpd_dev_ops *ops,
-			   struct gpd_timing_data *td)
-{
-	struct generic_pm_domain_data *gpd_data_new, *gpd_data = NULL;
-	int ret = 0;
-
-	if (!(dev && ops))
-		return -EINVAL;
-
-	gpd_data_new = __pm_genpd_alloc_dev_data(dev);
-	if (!gpd_data_new)
-		return -ENOMEM;
-
-	pm_runtime_disable(dev);
-	device_pm_lock();
-
-	ret = dev_pm_get_subsys_data(dev);
-	if (ret)
-		goto out;
-
-	spin_lock_irq(&dev->power.lock);
-
-	if (dev->power.subsys_data->domain_data) {
-		gpd_data = to_gpd_data(dev->power.subsys_data->domain_data);
-	} else {
-		gpd_data = gpd_data_new;
-		dev->power.subsys_data->domain_data = &gpd_data->base;
-	}
-	gpd_data->refcount++;
-	gpd_data->ops = *ops;
-	if (td)
-		gpd_data->td = *td;
-
-	spin_unlock_irq(&dev->power.lock);
-
- out:
-	device_pm_unlock();
-	pm_runtime_enable(dev);
-
-	if (gpd_data != gpd_data_new)
-		__pm_genpd_free_dev_data(dev, gpd_data_new);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(pm_genpd_add_callbacks);
-
-/**
- * __pm_genpd_remove_callbacks - Remove PM domain callbacks from a given device.
- * @dev: Device to remove the callbacks from.
- * @clear_td: If set, clear the device's timing data too.
- *
- * This routine can only be called after pm_genpd_add_callbacks().
- */
-int __pm_genpd_remove_callbacks(struct device *dev, bool clear_td)
-{
-	struct generic_pm_domain_data *gpd_data = NULL;
-	bool remove = false;
-	int ret = 0;
-
-	if (!(dev && dev->power.subsys_data))
-		return -EINVAL;
-
-	pm_runtime_disable(dev);
-	device_pm_lock();
-
-	spin_lock_irq(&dev->power.lock);
-
-	if (dev->power.subsys_data->domain_data) {
-		gpd_data = to_gpd_data(dev->power.subsys_data->domain_data);
-		gpd_data->ops = (struct gpd_dev_ops){ NULL };
-		if (clear_td)
-			gpd_data->td = (struct gpd_timing_data){ 0 };
-
-		if (--gpd_data->refcount == 0) {
-			dev->power.subsys_data->domain_data = NULL;
-			remove = true;
-		}
-	} else {
-		ret = -EINVAL;
-	}
-
-	spin_unlock_irq(&dev->power.lock);
-
-	device_pm_unlock();
-	pm_runtime_enable(dev);
-
-	if (ret)
-		return ret;
-
-	dev_pm_put_subsys_data(dev);
-	if (remove)
-		__pm_genpd_free_dev_data(dev, gpd_data);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(__pm_genpd_remove_callbacks);
-
-/**
  * pm_genpd_attach_cpuidle - Connect the given PM domain with cpuidle.
  * @genpd: PM domain to be connected with cpuidle.
  * @state: cpuidle state this domain can disable/enable.
@@ -1977,10 +1840,6 @@ static int pm_genpd_default_save_state(struct device *dev)
 {
 	int (*cb)(struct device *__dev);
 
-	cb = dev_gpd_data(dev)->ops.save_state;
-	if (cb)
-		return cb(dev);
-
 	if (dev->type && dev->type->pm)
 		cb = dev->type->pm->runtime_suspend;
 	else if (dev->class && dev->class->pm)
@@ -2004,10 +1863,6 @@ static int pm_genpd_default_restore_state(struct device *dev)
 {
 	int (*cb)(struct device *__dev);
 
-	cb = dev_gpd_data(dev)->ops.restore_state;
-	if (cb)
-		return cb(dev);
-
 	if (dev->type && dev->type->pm)
 		cb = dev->type->pm->runtime_resume;
 	else if (dev->class && dev->class->pm)
@@ -2022,109 +1877,6 @@ static int pm_genpd_default_restore_state(struct device *dev)
 
 	return cb ? cb(dev) : 0;
 }
-
-#ifdef CONFIG_PM_SLEEP
-
-/**
- * pm_genpd_default_suspend - Default "device suspend" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_suspend(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.suspend;
-
-	return cb ? cb(dev) : pm_generic_suspend(dev);
-}
-
-/**
- * pm_genpd_default_suspend_late - Default "late device suspend" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_suspend_late(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.suspend_late;
-
-	return cb ? cb(dev) : pm_generic_suspend_late(dev);
-}
-
-/**
- * pm_genpd_default_resume_early - Default "early device resume" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_resume_early(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.resume_early;
-
-	return cb ? cb(dev) : pm_generic_resume_early(dev);
-}
-
-/**
- * pm_genpd_default_resume - Default "device resume" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_resume(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.resume;
-
-	return cb ? cb(dev) : pm_generic_resume(dev);
-}
-
-/**
- * pm_genpd_default_freeze - Default "device freeze" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_freeze(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.freeze;
-
-	return cb ? cb(dev) : pm_generic_freeze(dev);
-}
-
-/**
- * pm_genpd_default_freeze_late - Default "late device freeze" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_freeze_late(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.freeze_late;
-
-	return cb ? cb(dev) : pm_generic_freeze_late(dev);
-}
-
-/**
- * pm_genpd_default_thaw_early - Default "early device thaw" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_thaw_early(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.thaw_early;
-
-	return cb ? cb(dev) : pm_generic_thaw_early(dev);
-}
-
-/**
- * pm_genpd_default_thaw - Default "device thaw" for PM domians.
- * @dev: Device to handle.
- */
-static int pm_genpd_default_thaw(struct device *dev)
-{
-	int (*cb)(struct device *__dev) = dev_gpd_data(dev)->ops.thaw;
-
-	return cb ? cb(dev) : pm_generic_thaw(dev);
-}
-
-#else /* !CONFIG_PM_SLEEP */
-
-#define pm_genpd_default_suspend	NULL
-#define pm_genpd_default_suspend_late	NULL
-#define pm_genpd_default_resume_early	NULL
-#define pm_genpd_default_resume		NULL
-#define pm_genpd_default_freeze		NULL
-#define pm_genpd_default_freeze_late	NULL
-#define pm_genpd_default_thaw_early	NULL
-#define pm_genpd_default_thaw		NULL
-
-#endif /* !CONFIG_PM_SLEEP */
 
 /**
  * pm_genpd_init - Initialize a generic I/O PM domain object.
@@ -2177,14 +1929,6 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 	genpd->domain.ops.complete = pm_genpd_complete;
 	genpd->dev_ops.save_state = pm_genpd_default_save_state;
 	genpd->dev_ops.restore_state = pm_genpd_default_restore_state;
-	genpd->dev_ops.suspend = pm_genpd_default_suspend;
-	genpd->dev_ops.suspend_late = pm_genpd_default_suspend_late;
-	genpd->dev_ops.resume_early = pm_genpd_default_resume_early;
-	genpd->dev_ops.resume = pm_genpd_default_resume;
-	genpd->dev_ops.freeze = pm_genpd_default_freeze;
-	genpd->dev_ops.freeze_late = pm_genpd_default_freeze_late;
-	genpd->dev_ops.thaw_early = pm_genpd_default_thaw_early;
-	genpd->dev_ops.thaw = pm_genpd_default_thaw;
 	mutex_lock(&gpd_list_lock);
 	list_add(&genpd->gpd_list_node, &gpd_list);
 	mutex_unlock(&gpd_list_lock);
