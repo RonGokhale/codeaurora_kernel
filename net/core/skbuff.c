@@ -3491,32 +3491,66 @@ int sock_queue_err_skb(struct sock *sk, struct sk_buff *skb)
 }
 EXPORT_SYMBOL(sock_queue_err_skb);
 
-void __skb_tstamp_tx(struct sk_buff *orig_skb,
-		     struct skb_shared_hwtstamps *hwtstamps,
-		     struct sock *sk, int tstype)
+struct sk_buff *sock_dequeue_err_skb(struct sock *sk)
 {
-	struct sock_exterr_skb *serr;
-	struct sk_buff *skb;
-	int err;
+	struct sk_buff_head *q = &sk->sk_error_queue;
+	struct sk_buff *skb, *skb_next;
+	int err = 0;
 
-	if (!sk)
-		return;
+	spin_lock_bh(&q->lock);
+	skb = __skb_dequeue(q);
+	if (skb && (skb_next = skb_peek(q)))
+		err = SKB_EXT_ERR(skb_next)->ee.ee_errno;
+	spin_unlock_bh(&q->lock);
 
-	if (hwtstamps) {
-		*skb_hwtstamps(orig_skb) =
-			*hwtstamps;
-	} else {
-		/*
-		 * no hardware time stamps available,
-		 * so keep the shared tx_flags and only
-		 * store software time stamp
-		 */
-		orig_skb->tstamp = ktime_get_real();
+	sk->sk_err = err;
+	if (err)
+		sk->sk_error_report(sk);
+
+	return skb;
+}
+EXPORT_SYMBOL(sock_dequeue_err_skb);
+
+/**
+ * skb_clone_sk - create clone of skb, and take reference to socket
+ * @skb: the skb to clone
+ *
+ * This function creates a clone of a buffer that holds a reference on
+ * sk_refcnt.  Buffers created via this function are meant to be
+ * returned using sock_queue_err_skb, or free via kfree_skb.
+ *
+ * When passing buffers allocated with this function to sock_queue_err_skb
+ * it is necessary to wrap the call with sock_hold/sock_put in order to
+ * prevent the socket from being released prior to being enqueued on
+ * the sk_error_queue.
+ */
+struct sk_buff *skb_clone_sk(struct sk_buff *skb)
+{
+	struct sock *sk = skb->sk;
+	struct sk_buff *clone;
+
+	if (!sk || !atomic_inc_not_zero(&sk->sk_refcnt))
+		return NULL;
+
+	clone = skb_clone(skb, GFP_ATOMIC);
+	if (!clone) {
+		sock_put(sk);
+		return NULL;
 	}
 
-	skb = skb_clone(orig_skb, GFP_ATOMIC);
-	if (!skb)
-		return;
+	clone->sk = sk;
+	clone->destructor = sock_efree;
+
+	return clone;
+}
+EXPORT_SYMBOL(skb_clone_sk);
+
+static void __skb_complete_tx_timestamp(struct sk_buff *skb,
+					struct sock *sk,
+					int tstype)
+{
+	struct sock_exterr_skb *serr;
+	int err;
 
 	serr = SKB_EXT_ERR(skb);
 	memset(serr, 0, sizeof(*serr));
@@ -3533,6 +3567,42 @@ void __skb_tstamp_tx(struct sk_buff *orig_skb,
 
 	if (err)
 		kfree_skb(skb);
+}
+
+void skb_complete_tx_timestamp(struct sk_buff *skb,
+			       struct skb_shared_hwtstamps *hwtstamps)
+{
+	struct sock *sk = skb->sk;
+
+	/* take a reference to prevent skb_orphan() from freeing the socket */
+	sock_hold(sk);
+
+	*skb_hwtstamps(skb) = *hwtstamps;
+	__skb_complete_tx_timestamp(skb, sk, SCM_TSTAMP_SND);
+
+	sock_put(sk);
+}
+EXPORT_SYMBOL_GPL(skb_complete_tx_timestamp);
+
+void __skb_tstamp_tx(struct sk_buff *orig_skb,
+		     struct skb_shared_hwtstamps *hwtstamps,
+		     struct sock *sk, int tstype)
+{
+	struct sk_buff *skb;
+
+	if (!sk)
+		return;
+
+	if (hwtstamps)
+		*skb_hwtstamps(orig_skb) = *hwtstamps;
+	else
+		orig_skb->tstamp = ktime_get_real();
+
+	skb = skb_clone(orig_skb, GFP_ATOMIC);
+	if (!skb)
+		return;
+
+	__skb_complete_tx_timestamp(skb, sk, tstype);
 }
 EXPORT_SYMBOL_GPL(__skb_tstamp_tx);
 
@@ -3558,9 +3628,14 @@ void skb_complete_wifi_ack(struct sk_buff *skb, bool acked)
 	serr->ee.ee_errno = ENOMSG;
 	serr->ee.ee_origin = SO_EE_ORIGIN_TXSTATUS;
 
+	/* take a reference to prevent skb_orphan() from freeing the socket */
+	sock_hold(sk);
+
 	err = sock_queue_err_skb(sk, skb);
 	if (err)
 		kfree_skb(skb);
+
+	sock_put(sk);
 }
 EXPORT_SYMBOL_GPL(skb_complete_wifi_ack);
 
@@ -3861,7 +3936,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
 		return false;
 
 	if (len <= skb_tailroom(to)) {
-		BUG_ON(skb_copy_bits(from, 0, skb_put(to, len), len));
+		if (len)
+			BUG_ON(skb_copy_bits(from, 0, skb_put(to, len), len));
 		*delta_truesize = 0;
 		return true;
 	}
@@ -4026,3 +4102,81 @@ err_free:
 	return NULL;
 }
 EXPORT_SYMBOL(skb_vlan_untag);
+
+/**
+ * alloc_skb_with_frags - allocate skb with page frags
+ *
+ * header_len: size of linear part
+ * data_len: needed length in frags
+ * max_page_order: max page order desired.
+ * errcode: pointer to error code if any
+ * gfp_mask: allocation mask
+ *
+ * This can be used to allocate a paged skb, given a maximal order for frags.
+ */
+struct sk_buff *alloc_skb_with_frags(unsigned long header_len,
+				     unsigned long data_len,
+				     int max_page_order,
+				     int *errcode,
+				     gfp_t gfp_mask)
+{
+	int npages = (data_len + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+	unsigned long chunk;
+	struct sk_buff *skb;
+	struct page *page;
+	gfp_t gfp_head;
+	int i;
+
+	*errcode = -EMSGSIZE;
+	/* Note this test could be relaxed, if we succeed to allocate
+	 * high order pages...
+	 */
+	if (npages > MAX_SKB_FRAGS)
+		return NULL;
+
+	gfp_head = gfp_mask;
+	if (gfp_head & __GFP_WAIT)
+		gfp_head |= __GFP_REPEAT;
+
+	*errcode = -ENOBUFS;
+	skb = alloc_skb(header_len, gfp_head);
+	if (!skb)
+		return NULL;
+
+	skb->truesize += npages << PAGE_SHIFT;
+
+	for (i = 0; npages > 0; i++) {
+		int order = max_page_order;
+
+		while (order) {
+			if (npages >= 1 << order) {
+				page = alloc_pages(gfp_mask |
+						   __GFP_COMP |
+						   __GFP_NOWARN |
+						   __GFP_NORETRY,
+						   order);
+				if (page)
+					goto fill_page;
+				/* Do not retry other high order allocations */
+				order = 1;
+				max_page_order = 0;
+			}
+			order--;
+		}
+		page = alloc_page(gfp_mask);
+		if (!page)
+			goto failure;
+fill_page:
+		chunk = min_t(unsigned long, data_len,
+			      PAGE_SIZE << order);
+		skb_fill_page_desc(skb, i, page, 0, chunk);
+		data_len -= chunk;
+		npages -= 1 << order;
+	}
+	return skb;
+
+failure:
+	kfree_skb(skb);
+	return NULL;
+}
+EXPORT_SYMBOL(alloc_skb_with_frags);

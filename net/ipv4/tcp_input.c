@@ -1888,21 +1888,21 @@ static inline void tcp_reset_reno_sack(struct tcp_sock *tp)
 	tp->sacked_out = 0;
 }
 
-static void tcp_clear_retrans_partial(struct tcp_sock *tp)
+void tcp_clear_retrans(struct tcp_sock *tp)
 {
 	tp->retrans_out = 0;
 	tp->lost_out = 0;
-
 	tp->undo_marker = 0;
 	tp->undo_retrans = -1;
-}
-
-void tcp_clear_retrans(struct tcp_sock *tp)
-{
-	tcp_clear_retrans_partial(tp);
-
 	tp->fackets_out = 0;
 	tp->sacked_out = 0;
+}
+
+static inline void tcp_init_undo(struct tcp_sock *tp)
+{
+	tp->undo_marker = tp->snd_una;
+	/* Retransmission still in flight may cause DSACKs later. */
+	tp->undo_retrans = tp->retrans_out ? : -1;
 }
 
 /* Enter Loss state. If we detect SACK reneging, forget all SACK information
@@ -1925,17 +1925,17 @@ void tcp_enter_loss(struct sock *sk)
 		tp->prior_ssthresh = tcp_current_ssthresh(sk);
 		tp->snd_ssthresh = icsk->icsk_ca_ops->ssthresh(sk);
 		tcp_ca_event(sk, CA_EVENT_LOSS);
+		tcp_init_undo(tp);
 	}
 	tp->snd_cwnd	   = 1;
 	tp->snd_cwnd_cnt   = 0;
 	tp->snd_cwnd_stamp = tcp_time_stamp;
 
-	tcp_clear_retrans_partial(tp);
+	tp->retrans_out = 0;
+	tp->lost_out = 0;
 
 	if (tcp_is_reno(tp))
 		tcp_reset_reno_sack(tp);
-
-	tp->undo_marker = tp->snd_una;
 
 	skb = tcp_write_queue_head(sk);
 	is_reneg = skb && (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_ACKED);
@@ -1949,9 +1949,6 @@ void tcp_enter_loss(struct sock *sk)
 	tcp_for_write_queue(skb, sk) {
 		if (skb == tcp_send_head(sk))
 			break;
-
-		if (TCP_SKB_CB(skb)->sacked & TCPCB_SACKED_RETRANS)
-			tp->undo_marker = 0;
 
 		TCP_SKB_CB(skb)->sacked &= (~TCPCB_TAGBITS)|TCPCB_SACKED_ACKED;
 		if (!(TCP_SKB_CB(skb)->sacked&TCPCB_SACKED_ACKED) || is_reneg) {
@@ -2671,8 +2668,7 @@ static void tcp_enter_recovery(struct sock *sk, bool ece_ack)
 	NET_INC_STATS_BH(sock_net(sk), mib_idx);
 
 	tp->prior_ssthresh = 0;
-	tp->undo_marker = tp->snd_una;
-	tp->undo_retrans = tp->retrans_out ? : -1;
+	tcp_init_undo(tp);
 
 	if (inet_csk(sk)->icsk_ca_state < TCP_CA_CWR) {
 		if (!ece_ack)
@@ -2971,7 +2967,8 @@ void tcp_rearm_rto(struct sock *sk)
 		if (icsk->icsk_pending == ICSK_TIME_EARLY_RETRANS ||
 		    icsk->icsk_pending == ICSK_TIME_LOSS_PROBE) {
 			struct sk_buff *skb = tcp_write_queue_head(sk);
-			const u32 rto_time_stamp = TCP_SKB_CB(skb)->when + rto;
+			const u32 rto_time_stamp =
+				tcp_skb_timestamp(skb) + rto;
 			s32 delta = (s32)(rto_time_stamp - tcp_time_stamp);
 			/* delta may not be positive if the socket is locked
 			 * when the retrans timer fires and is rescheduled.
@@ -4096,7 +4093,7 @@ static void tcp_ofo_queue(struct sock *sk)
 		__skb_unlink(skb, &tp->out_of_order_queue);
 		__skb_queue_tail(&sk->sk_receive_queue, skb);
 		tp->rcv_nxt = TCP_SKB_CB(skb)->end_seq;
-		if (tcp_hdr(skb)->fin)
+		if (TCP_SKB_CB(skb)->tcp_flags & TCPHDR_FIN)
 			tcp_fin(sk);
 	}
 }
@@ -4146,9 +4143,6 @@ static bool tcp_try_coalesce(struct sock *sk,
 
 	*fragstolen = false;
 
-	if (tcp_hdr(from)->fin)
-		return false;
-
 	/* Its possible this segment overlaps with prior segment in queue */
 	if (TCP_SKB_CB(from)->seq != TCP_SKB_CB(to)->end_seq)
 		return false;
@@ -4161,6 +4155,7 @@ static bool tcp_try_coalesce(struct sock *sk,
 	NET_INC_STATS_BH(sock_net(sk), LINUX_MIB_TCPRCVCOALESCE);
 	TCP_SKB_CB(to)->end_seq = TCP_SKB_CB(from)->end_seq;
 	TCP_SKB_CB(to)->ack_seq = TCP_SKB_CB(from)->ack_seq;
+	TCP_SKB_CB(to)->tcp_flags |= TCP_SKB_CB(from)->tcp_flags;
 	return true;
 }
 
@@ -4309,23 +4304,18 @@ static int __must_check tcp_queue_rcv(struct sock *sk, struct sk_buff *skb, int 
 
 int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 {
-	struct sk_buff *skb = NULL;
-	struct tcphdr *th;
+	struct sk_buff *skb;
 	bool fragstolen;
 
 	if (size == 0)
 		return 0;
 
-	skb = alloc_skb(size + sizeof(*th), sk->sk_allocation);
+	skb = alloc_skb(size, sk->sk_allocation);
 	if (!skb)
 		goto err;
 
-	if (tcp_try_rmem_schedule(sk, skb, size + sizeof(*th)))
+	if (tcp_try_rmem_schedule(sk, skb, skb->truesize))
 		goto err_free;
-
-	th = (struct tcphdr *)skb_put(skb, sizeof(*th));
-	skb_reset_transport_header(skb);
-	memset(th, 0, sizeof(*th));
 
 	if (memcpy_fromiovec(skb_put(skb, size), msg->msg_iov, size))
 		goto err_free;
@@ -4334,7 +4324,7 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
 	TCP_SKB_CB(skb)->end_seq = TCP_SKB_CB(skb)->seq + size;
 	TCP_SKB_CB(skb)->ack_seq = tcp_sk(sk)->snd_una - 1;
 
-	if (tcp_queue_rcv(sk, skb, sizeof(*th), &fragstolen)) {
+	if (tcp_queue_rcv(sk, skb, 0, &fragstolen)) {
 		WARN_ON_ONCE(fragstolen); /* should not happen */
 		__kfree_skb(skb);
 	}
@@ -4516,7 +4506,7 @@ restart:
 		 * - bloated or contains data before "start" or
 		 *   overlaps to the next one.
 		 */
-		if (!tcp_hdr(skb)->syn && !tcp_hdr(skb)->fin &&
+		if (!(TCP_SKB_CB(skb)->tcp_flags & (TCPHDR_SYN | TCPHDR_FIN)) &&
 		    (tcp_win_from_space(skb->truesize) > skb->len ||
 		     before(TCP_SKB_CB(skb)->seq, start))) {
 			end_of_skbs = false;
@@ -4535,30 +4525,18 @@ restart:
 		/* Decided to skip this, advance start seq. */
 		start = TCP_SKB_CB(skb)->end_seq;
 	}
-	if (end_of_skbs || tcp_hdr(skb)->syn || tcp_hdr(skb)->fin)
+	if (end_of_skbs ||
+	    (TCP_SKB_CB(skb)->tcp_flags & (TCPHDR_SYN | TCPHDR_FIN)))
 		return;
 
 	while (before(start, end)) {
+		int copy = min_t(int, SKB_MAX_ORDER(0, 0), end - start);
 		struct sk_buff *nskb;
-		unsigned int header = skb_headroom(skb);
-		int copy = SKB_MAX_ORDER(header, 0);
 
-		/* Too big header? This can happen with IPv6. */
-		if (copy < 0)
-			return;
-		if (end - start < copy)
-			copy = end - start;
-		nskb = alloc_skb(copy + header, GFP_ATOMIC);
+		nskb = alloc_skb(copy, GFP_ATOMIC);
 		if (!nskb)
 			return;
 
-		skb_set_mac_header(nskb, skb_mac_header(skb) - skb->head);
-		skb_set_network_header(nskb, (skb_network_header(skb) -
-					      skb->head));
-		skb_set_transport_header(nskb, (skb_transport_header(skb) -
-						skb->head));
-		skb_reserve(nskb, header);
-		memcpy(nskb->head, skb->head, header);
 		memcpy(nskb->cb, skb->cb, sizeof(skb->cb));
 		TCP_SKB_CB(nskb)->seq = TCP_SKB_CB(nskb)->end_seq = start;
 		__skb_queue_before(list, skb, nskb);
@@ -4582,8 +4560,7 @@ restart:
 				skb = tcp_collapse_one(sk, skb, list);
 				if (!skb ||
 				    skb == tail ||
-				    tcp_hdr(skb)->syn ||
-				    tcp_hdr(skb)->fin)
+				    (TCP_SKB_CB(skb)->tcp_flags & (TCPHDR_SYN | TCPHDR_FIN)))
 					return;
 			}
 		}
@@ -5910,7 +5887,7 @@ int tcp_conn_request(struct request_sock_ops *rsk_ops,
 	struct request_sock *req;
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct dst_entry *dst = NULL;
-	__u32 isn = TCP_SKB_CB(skb)->when;
+	__u32 isn = TCP_SKB_CB(skb)->tcp_tw_isn;
 	bool want_cookie = false, fastopen;
 	struct flowi fl;
 	struct tcp_fastopen_cookie foc = { .len = -1 };
