@@ -30,7 +30,7 @@
 #include "mxl5007t.h"
 #include "tda18218.h"
 #include "fc2580.h"
-#include "tuner_it913x.h"
+#include "it913x.h"
 
 struct reg_val {
 	u32 reg;
@@ -61,9 +61,11 @@ struct state {
 	u16 chip_type;
 	u8 dual_mode:1;
 	u16 eeprom_addr;
+	u8 af9033_i2c_addr[2];
 	struct af9033_config af9033_config[2];
-
 	struct af9033_ops ops;
+	#define AF9035_I2C_CLIENT_MAX 4
+	struct i2c_client *i2c_client[AF9035_I2C_CLIENT_MAX];
 };
 
 static const u32 clock_lut_af9035[] = {
