@@ -7,6 +7,7 @@
 #include <linux/fault-inject.h>
 
 #include "blk.h"
+#include "blk-mq.h"
 
 #ifdef CONFIG_FAIL_IO_TIMEOUT
 
