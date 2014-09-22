@@ -29,6 +29,8 @@
 #include <asm/debugreg.h>
 #include <asm/nmi.h>
 
+#include "process-io.h"
+
 /*
  * per-CPU TSS segments. Threads are completely 'soft' on Linux,
  * no more per-task TSS's. The TSS size is kept cacheline-aligned
@@ -102,23 +104,7 @@ void arch_task_cache_init(void)
 void exit_thread(void)
 {
 	struct task_struct *me = current;
-	struct thread_struct *t = &me->thread;
-	unsigned long *bp = t->io_bitmap_ptr;
-
-	if (bp) {
-		struct tss_struct *tss = &per_cpu(init_tss, get_cpu());
-
-		t->io_bitmap_ptr = NULL;
-		clear_thread_flag(TIF_IO_BITMAP);
-		/*
-		 * Careful, clear this in the TSS too:
-		 */
-		memset(tss->io_bitmap, 0xff, t->io_bitmap_max);
-		t->io_bitmap_max = 0;
-		put_cpu();
-		kfree(bp);
-	}
-
+	exit_thread_io(me);
 	drop_fpu(me);
 }
 
@@ -223,19 +209,7 @@ void __switch_to_xtra(struct task_struct *prev_p, struct task_struct *next_p,
 			hard_enable_TSC();
 	}
 
-	if (test_tsk_thread_flag(next_p, TIF_IO_BITMAP)) {
-		/*
-		 * Copy the relevant range of the IO bitmap.
-		 * Normally this is 128 bytes or less:
-		 */
-		memcpy(tss->io_bitmap, next->io_bitmap_ptr,
-		       max(prev->io_bitmap_max, next->io_bitmap_max));
-	} else if (test_tsk_thread_flag(prev_p, TIF_IO_BITMAP)) {
-		/*
-		 * Clear any possible leftover bits:
-		 */
-		memset(tss->io_bitmap, 0xff, prev->io_bitmap_max);
-	}
+	switch_io_bitmap(tss, prev_p, next_p);
 	propagate_user_return_notify(prev_p, next_p);
 }
 

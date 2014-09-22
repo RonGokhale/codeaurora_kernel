@@ -16,9 +16,12 @@
 #include <linux/types.h>
 
 /* Common in X86_32 and X86_64 */
+
+#ifdef CONFIG_X86_IOPORT
 /* kernel/ioport.c */
 asmlinkage long sys_ioperm(unsigned long, unsigned long, int);
 asmlinkage long sys_iopl(unsigned int);
+#endif /* CONFIG_X86_IOPORT */
 
 /* kernel/ldt.c */
 asmlinkage int sys_modify_ldt(int, void __user *, unsigned long);

@@ -136,6 +136,7 @@ config X86
 	select HAVE_ACPI_APEI if ACPI
 	select HAVE_ACPI_APEI_NMI if ACPI
 	select ACPI_LEGACY_TABLES_LOOKUP if ACPI
+	select X86_FEATURE_NAMES if PROC_FS
 
 config INSTRUCTION_DECODER
 	def_bool y
@@ -312,6 +313,17 @@ config SMP
 	  <http://www.tldp.org/docs.html#howto>.
 
 	  If you don't know what to do here, say N.
+
+config X86_FEATURE_NAMES
+	bool "Processor feature human-readable names" if EMBEDDED
+	default y
+	---help---
+	  This option compiles in a table of x86 feature bits and corresponding
+	  names.  This is required to support /proc/cpuinfo and a few kernel
+	  messages.  You can disable this to save space, at the expense of
+	  making those few kernel messages show numeric feature bits instead.
+
+	  If in doubt, say Y.
 
 config X86_X2APIC
 	bool "Support x2apic"
@@ -941,6 +953,16 @@ config X86_ESPFIX32
 config X86_ESPFIX64
 	def_bool y
 	depends on X86_16BIT && X86_64
+
+config X86_IOPORT
+	bool "iopl and ioperm system calls"
+	default y
+	---help---
+	  This option enables the iopl and ioperm system calls, which allow
+	  privileged userspace processes to directly access I/O ports. This
+	  is used by software that drives hardware directly from userspace
+	  without using a kernel driver. Unless you intend to run such
+	  software, you can safely say N here.
 
 config TOSHIBA
 	tristate "Toshiba Laptop support"
