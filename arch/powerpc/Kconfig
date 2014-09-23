@@ -147,6 +147,7 @@ config PPC
 	select ARCH_USE_CMPXCHG_LOCKREF if PPC64
 	select HAVE_ARCH_AUDITSYSCALL
 	select ARCH_SUPPORTS_ATOMIC_RMW
+	select HAVE_PERF_EVENTS_NMI if PPC64
 
 config GENERIC_CSUM
 	def_bool CPU_LITTLE_ENDIAN
@@ -182,7 +183,7 @@ config SCHED_OMIT_FRAME_POINTER
 
 config ARCH_MAY_HAVE_PC_FDC
 	bool
-	default !PPC_PSERIES || PCI
+	default PCI
 
 config PPC_OF
 	def_bool y

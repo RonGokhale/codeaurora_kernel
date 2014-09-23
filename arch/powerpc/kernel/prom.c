@@ -386,8 +386,9 @@ static int __init early_init_dt_scan_cpus(unsigned long node,
 	return 0;
 }
 
-int __init early_init_dt_scan_chosen_ppc(unsigned long node, const char *uname,
-					 int depth, void *data)
+static int __init early_init_dt_scan_chosen_ppc(unsigned long node,
+						const char *uname,
+						int depth, void *data)
 {
 	const unsigned long *lprop; /* All these set by kernel, so no need to convert endian */
 
@@ -640,6 +641,10 @@ void __init early_init_devtree(void *params)
 	phys_addr_t limit;
 
 	DBG(" -> early_init_devtree(%p)\n", params);
+
+	/* Too early to BUG_ON(), do it by hand */
+	if (!early_init_dt_verify(params))
+		panic("BUG: Failed verifying flat device tree, bad version?");
 
 	/* Setup flat device-tree pointer */
 	initial_boot_params = params;
