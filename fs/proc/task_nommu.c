@@ -268,8 +268,9 @@ static const struct seq_operations proc_tid_maps_ops = {
 static int maps_open(struct inode *inode, struct file *file,
 		     const struct seq_operations *ops)
 {
-	struct proc_maps_private *priv = __seq_open_private(file, ops,
-					 sizeof(struct proc_maps_private));
+	struct proc_maps_private *priv;
+
+	priv = __seq_open_private(file, ops, sizeof(struct proc_maps_private));
 	if (!priv)
 		return -ENOMEM;
 
