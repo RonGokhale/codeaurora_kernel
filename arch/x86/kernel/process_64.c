@@ -50,6 +50,8 @@
 #include <asm/debugreg.h>
 #include <asm/switch_to.h>
 
+#include "process-io.h"
+
 asmlinkage extern void ret_from_fork(void);
 
 __visible DEFINE_PER_CPU(unsigned long, old_rsp);
@@ -154,7 +156,6 @@ static inline u32 read_32bit_tls(struct task_struct *t, int tls)
 int copy_thread(unsigned long clone_flags, unsigned long sp,
 		unsigned long arg, struct task_struct *p)
 {
-	int err;
 	struct pt_regs *childregs;
 	struct task_struct *me = current;
 
@@ -163,7 +164,7 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	p->thread.sp = (unsigned long) childregs;
 	p->thread.usersp = me->thread.usersp;
 	set_tsk_thread_flag(p, TIF_FORK);
-	p->thread.io_bitmap_ptr = NULL;
+	clear_thread_io_bitmap(p);
 
 	savesegment(gs, p->thread.gsindex);
 	p->thread.gs = p->thread.gsindex ? 0 : me->thread.gs;
@@ -191,21 +192,11 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 	if (sp)
 		childregs->sp = sp;
 
-	err = -ENOMEM;
-	if (unlikely(test_tsk_thread_flag(me, TIF_IO_BITMAP))) {
-		p->thread.io_bitmap_ptr = kmemdup(me->thread.io_bitmap_ptr,
-						  IO_BITMAP_BYTES, GFP_KERNEL);
-		if (!p->thread.io_bitmap_ptr) {
-			p->thread.io_bitmap_max = 0;
-			return -ENOMEM;
-		}
-		set_tsk_thread_flag(p, TIF_IO_BITMAP);
-	}
-
 	/*
 	 * Set a new TLS for the child thread?
 	 */
 	if (clone_flags & CLONE_SETTLS) {
+		int err;
 #ifdef CONFIG_IA32_EMULATION
 		if (test_thread_flag(TIF_IA32))
 			err = do_set_thread_area(p, -1,
@@ -214,16 +205,10 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 #endif
 			err = do_arch_prctl(p, ARCH_SET_FS, childregs->r8);
 		if (err)
-			goto out;
-	}
-	err = 0;
-out:
-	if (err && p->thread.io_bitmap_ptr) {
-		kfree(p->thread.io_bitmap_ptr);
-		p->thread.io_bitmap_max = 0;
+			return err;
 	}
 
-	return err;
+	return copy_io_bitmap(me, p);
 }
 
 static void

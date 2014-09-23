@@ -255,11 +255,17 @@ struct x86_hw_tss {
 /*
  * IO-bitmap sizes:
  */
+#ifdef CONFIG_X86_IOPORT
 #define IO_BITMAP_BITS			65536
+#else
+#define IO_BITMAP_BITS			0
+#endif
 #define IO_BITMAP_BYTES			(IO_BITMAP_BITS/8)
 #define IO_BITMAP_LONGS			(IO_BITMAP_BYTES/sizeof(long))
-#define IO_BITMAP_OFFSET		offsetof(struct tss_struct, io_bitmap)
 #define INVALID_IO_BITMAP_OFFSET	0x8000
+
+/* Segment limits point to the last valid byte, hence the -1 */
+#define TSS_LIMIT	(offsetof(struct tss_struct, stack) - 1)
 
 struct tss_struct {
 	/*
@@ -267,6 +273,7 @@ struct tss_struct {
 	 */
 	struct x86_hw_tss	x86_tss;
 
+#ifdef CONFIG_X86_IOPORT
 	/*
 	 * The extra 1 is there because the CPU will access an
 	 * additional byte beyond the end of the IO permission
@@ -274,6 +281,7 @@ struct tss_struct {
 	 * be within the limit.
 	 */
 	unsigned long		io_bitmap[IO_BITMAP_LONGS + 1];
+#endif /* CONFIG_X86_IOPORT */
 
 	/*
 	 * .. and then another 0x100 bytes for the emergency kernel stack:
@@ -283,6 +291,24 @@ struct tss_struct {
 } ____cacheline_aligned;
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct tss_struct, init_tss);
+
+static inline void init_tss_io(struct tss_struct *t)
+{
+#ifdef CONFIG_X86_IOPORT
+	int i;
+
+	t->x86_tss.io_bitmap_base = offsetof(struct tss_struct, io_bitmap);
+
+	/*
+	 * <= is required because the CPU will access up to
+	 * 8 bits beyond the end of the IO permission bitmap.
+	 */
+	for (i = 0; i <= IO_BITMAP_LONGS; i++)
+		t->io_bitmap[i] = ~0UL;
+#else
+	t->x86_tss.io_bitmap_base = INVALID_IO_BITMAP_OFFSET;
+#endif
+}
 
 /*
  * Save the original ist values for checking stack pointers during debugging
@@ -508,11 +534,13 @@ struct thread_struct {
 	unsigned int		saved_fs;
 	unsigned int		saved_gs;
 #endif
+#ifdef CONFIG_X86_IOPORT
 	/* IO permissions: */
 	unsigned long		*io_bitmap_ptr;
 	unsigned long		iopl;
 	/* Max allowed port in the bitmap, in bytes: */
 	unsigned		io_bitmap_max;
+#endif /* CONFIG_X86_IOPORT */
 	/*
 	 * fpu_counter contains the number of consecutive context switches
 	 * that the FPU is used. If this is over a threshold, the lazy fpu
@@ -524,6 +552,7 @@ struct thread_struct {
 	unsigned char fpu_counter;
 };
 
+#ifdef CONFIG_X86_IOPORT
 /*
  * Set IOPL bits in EFLAGS from given mask
  */
@@ -542,6 +571,7 @@ static inline void native_set_iopl_mask(unsigned mask)
 		      : "i" (~X86_EFLAGS_IOPL), "r" (mask));
 #endif
 }
+#endif /* CONFIG_X86_IOPORT */
 
 static inline void
 native_load_sp0(struct tss_struct *tss, struct thread_struct *thread)
@@ -840,12 +870,8 @@ static inline void spin_lock_prefetch(const void *x)
 #define STACK_TOP		TASK_SIZE
 #define STACK_TOP_MAX		STACK_TOP
 
-#define INIT_THREAD  {							  \
-	.sp0			= sizeof(init_stack) + (long)&init_stack, \
-	.vm86_info		= NULL,					  \
-	.sysenter_cs		= __KERNEL_CS,				  \
-	.io_bitmap_ptr		= NULL,					  \
-}
+#ifdef CONFIG_X86_IOPORT
+#define INIT_THREAD_IO .io_bitmap_ptr = NULL,
 
 /*
  * Note that the .io_bitmap member must be extra-big. This is because
@@ -853,6 +879,19 @@ static inline void spin_lock_prefetch(const void *x)
  * permission bitmap. The extra byte must be all 1 bits, and must
  * be within the limit.
  */
+#define INIT_TSS_IO .io_bitmap = { [0 ... IO_BITMAP_LONGS] = ~0 },
+#else
+#define INIT_THREAD_IO
+#define INIT_TSS_IO
+#endif
+
+#define INIT_THREAD  {							  \
+	.sp0			= sizeof(init_stack) + (long)&init_stack, \
+	.vm86_info		= NULL,					  \
+	.sysenter_cs		= __KERNEL_CS,				  \
+	INIT_THREAD_IO							  \
+}
+
 #define INIT_TSS  {							  \
 	.x86_tss = {							  \
 		.sp0		= sizeof(init_stack) + (long)&init_stack, \
@@ -860,7 +899,7 @@ static inline void spin_lock_prefetch(const void *x)
 		.ss1		= __KERNEL_CS,				  \
 		.io_bitmap_base	= INVALID_IO_BITMAP_OFFSET,		  \
 	 },								  \
-	.io_bitmap		= { [0 ... IO_BITMAP_LONGS] = ~0 },	  \
+	INIT_TSS_IO							  \
 }
 
 extern unsigned long thread_saved_pc(struct task_struct *tsk);
