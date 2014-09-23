@@ -325,17 +325,6 @@ static int rk808_rtc_resume(struct device *dev)
 static SIMPLE_DEV_PM_OPS(rk808_rtc_pm_ops,
 	rk808_rtc_suspend, rk808_rtc_resume);
 
-/* 2014.1.1 12:00:00 Saturday */
-static struct rtc_time tm_def = {
-	.tm_wday = 6,
-	.tm_year = 114,
-	.tm_mon = 0,
-	.tm_mday = 1,
-	.tm_hour = 12,
-	.tm_min = 0,
-	.tm_sec = 0,
-};
-
 static int rk808_rtc_probe(struct platform_device *pdev)
 {
 	struct rk808 *rk808 = dev_get_drvdata(pdev->dev.parent);
@@ -376,10 +365,8 @@ static int rk808_rtc_probe(struct platform_device *pdev)
 		return ret;
 	}
 	ret = rtc_valid_tm(&tm);
-	if (ret) {
-		dev_warn(&pdev->dev, "invalid date/time and init time\n");
-		rk808_rtc_set_time(&pdev->dev, &tm_def);
-	}
+	if (ret)
+		dev_warn(&pdev->dev, "invalid date/time\n");
 
 	device_init_wakeup(&pdev->dev, 1);
 
