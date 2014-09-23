@@ -835,8 +835,8 @@ void __init init_cma_reserved_pageblock(struct page *page)
 		set_page_refcounted(page);
 		__free_pages(page, pageblock_order);
 	}
-
 	adjust_managed_page_count(page, pageblock_nr_pages);
+	memblock_free(page_to_phys(page), pageblock_nr_pages << PAGE_SHIFT);
 }
 #endif
 
