@@ -136,9 +136,8 @@ u8 stg_efuse_read_1byte(struct ieee80211_hw *hw, u16 address)
 		}
 		data = rtl_read_byte(rtlpriv, rtlpriv->cfg->maps[EFUSE_CTRL]);
 		return data;
-	} else {
-		return 0xFF;
 	}
+	return 0xFF;
 }
 EXPORT_SYMBOL(stg_efuse_read_1byte);
 
@@ -151,8 +150,7 @@ void efuse92e_write_1byte(struct ieee80211_hw *hw, u16 address, u8 value)
 	const u32 efuse_real_content_len =
 		rtlpriv->cfg->maps[EFUSE_REAL_CONTENT_SIZE];
 
-	RT_TRACE(COMP_EFUSE, DBG_LOUD,
-		 ("Addr=%x Data =%x\n", address, value));
+	RT_TRACE(COMP_EFUSE, DBG_LOUD, "Addr=%x Data =%x\n", address, value);
 
 	if (address < efuse_real_content_len) {
 		rtl_write_byte(rtlpriv, rtlpriv->cfg->maps[EFUSE_CTRL], value);
@@ -242,8 +240,8 @@ void read92e_efuse(struct ieee80211_hw *hw, u16 _offset, u16 _size_byte,
 
 	if ((_offset + _size_byte) > rtlpriv->cfg->maps[EFUSE_HWSET_MAX_SIZE]) {
 		RT_TRACE(COMP_EFUSE, DBG_LOUD,
-			 ("read92e_efuse(): Invalid offset(%#x) with read bytes(%#x)!!\n",
-			 _offset, _size_byte));
+			 "read92e_efuse(): Invalid offset(%#x) with read bytes(%#x)!!\n",
+			 _offset, _size_byte);
 		return;
 	}
 
@@ -411,8 +409,8 @@ bool efuse92e_shadow_update_chk(struct ieee80211_hw *hw)
 		bresult = false;
 
 	RT_TRACE(COMP_EFUSE, DBG_LOUD,
-		 ("efuse92e_shadow_update_chk(): totalbytes(%#x), hdr_num(%#x), words_need(%#x), efuse_used(%d)\n",
-		  totalbytes, hdr_num, words_need, efuse_used));
+		 "efuse92e_shadow_update_chk(): totalbytes(%#x), hdr_num(%#x), words_need(%#x), efuse_used(%d)\n",
+		 totalbytes, hdr_num, words_need, efuse_used);
 
 	return bresult;
 }
@@ -448,7 +446,7 @@ bool efuse92e_shadow_update(struct ieee80211_hw *hw)
 	u8 word_en = 0x0F;
 	u8 first_pg = false;
 
-	RT_TRACE(COMP_EFUSE, DBG_LOUD, ("\n"));
+	RT_TRACE(COMP_EFUSE, DBG_LOUD, "\n");
 
 	if (!efuse92e_shadow_update_chk(hw)) {
 		efuse_read_all_map(hw, &rtlefuse->efuse_map[EFUSE_INIT_MAP][0]);
@@ -456,8 +454,7 @@ bool efuse92e_shadow_update(struct ieee80211_hw *hw)
 		       &rtlefuse->efuse_map[EFUSE_INIT_MAP][0],
 		       rtlpriv->cfg->maps[EFUSE_HWSET_MAX_SIZE]);
 
-		RT_TRACE(COMP_EFUSE, DBG_LOUD,
-			 ("efuse out of capacity!!\n"));
+		RT_TRACE(COMP_EFUSE, DBG_LOUD, "efuse out of capacity!!\n");
 		return false;
 	}
 	efuse_power_switch(hw, true, true);
@@ -485,6 +482,7 @@ bool efuse92e_shadow_update(struct ieee80211_hw *hw)
 
 		if (word_en != 0x0F) {
 			u8 tmpdata[8];
+
 			memcpy(tmpdata,
 			       (&rtlefuse->efuse_map[EFUSE_MODIFY_MAP][base]),
 			       8);
@@ -494,7 +492,7 @@ bool efuse92e_shadow_update(struct ieee80211_hw *hw)
 			if (!efuse_pg_packet_write(hw, (u8) offset, word_en,
 						   tmpdata)) {
 				RT_TRACE(COMP_ERR, DBG_WARNING,
-					 ("PG section(%#x) fail!!\n", offset));
+					 "PG section(%#x) fail!!\n", offset);
 				break;
 			}
 		}
@@ -507,7 +505,7 @@ bool efuse92e_shadow_update(struct ieee80211_hw *hw)
 	       &rtlefuse->efuse_map[EFUSE_INIT_MAP][0],
 	       rtlpriv->cfg->maps[EFUSE_HWSET_MAX_SIZE]);
 
-	RT_TRACE(COMP_EFUSE, DBG_LOUD, ("\n"));
+	RT_TRACE(COMP_EFUSE, DBG_LOUD, "\n");
 	return true;
 }
 
@@ -640,8 +638,7 @@ static int efuse_one_byte_write(struct ieee80211_hw *hw, u16 addr, u8 data)
 	u8 tmpidx = 0;
 	bool bresult;
 
-	RT_TRACE(COMP_EFUSE, DBG_LOUD,
-		 ("Addr = %x Data=%x\n", addr, data));
+	RT_TRACE(COMP_EFUSE, DBG_LOUD, "Addr = %x Data=%x\n", addr, data);
 
 	rtl_write_byte(rtlpriv,
 		       rtlpriv->cfg->maps[EFUSE_CTRL] + 1, (u8) (addr & 0xff));
@@ -670,6 +667,7 @@ static int efuse_one_byte_write(struct ieee80211_hw *hw, u16 addr, u8 data)
 static void efuse_read_all_map(struct ieee80211_hw *hw, u8 *efuse)
 {
 	struct rtl_priv *rtlpriv = rtl_priv(hw);
+
 	efuse_power_switch(hw, false, true);
 	read92e_efuse(hw, 0, rtlpriv->cfg->maps[EFUSE_HWSET_MAX_SIZE], efuse);
 	efuse_power_switch(hw, false, false);
@@ -752,8 +750,7 @@ static int efuse_pg_packet_read(struct ieee80211_hw *hw, u8 offset, u8 *data)
 	    (data[4] == 0xff) && (data[5] == 0xff) &&
 	    (data[6] == 0xff) && (data[7] == 0xff))
 		return false;
-	else
-		return true;
+	return true;
 }
 
 static void efuse_write_data_case1(struct ieee80211_hw *hw, u16 *efuse_addr,
@@ -818,6 +815,7 @@ static void efuse_write_data_case1(struct ieee80211_hw *hw, u16 *efuse_addr,
 				if (0x0F != (badworden & 0x0F))	{
 					u8 reorg_offset = offset;
 					u8 reorg_worden = badworden;
+
 					efuse_pg_packet_write(hw, reorg_offset,
 							      reorg_worden,
 							      originaldata);
@@ -907,6 +905,7 @@ static void efuse_write_data_case2(struct ieee80211_hw *hw, u16 *efuse_addr,
 			if (0x0F != (badworden & 0x0F)) {
 				u8 reorg_offset = tmp_pkt.offset;
 				u8 reorg_worden = badworden;
+
 				efuse_pg_packet_write(hw, reorg_offset,
 						      reorg_worden,
 						      originaldata);
@@ -1021,7 +1020,7 @@ static int efuse_pg_packet_write(struct ieee80211_hw *hw,
 	if (efuse_addr >= (EFUSE_MAX_SIZE -
 		rtlpriv->cfg->maps[EFUSE_OOB_PROTECT_BYTES_LEN])) {
 		RT_TRACE(COMP_EFUSE, DBG_LOUD,
-			 ("efuse_addr(%#x) Out of size!!\n", efuse_addr));
+			 "efuse_addr(%#x) Out of size!!\n", efuse_addr);
 	}
 
 	return true;
@@ -1061,8 +1060,8 @@ static u8 efuse_word_enable_data_write(struct ieee80211_hw *hw,
 	u8 tmpdata[8];
 
 	memset(tmpdata, 0xff, PGPKT_DATA_SIZE);
-	RT_TRACE(COMP_EFUSE, DBG_LOUD,
-		 ("word_en = %x efuse_addr=%x\n", word_en, efuse_addr));
+	RT_TRACE(COMP_EFUSE, DBG_LOUD, "word_en = %x efuse_addr=%x\n",
+		 word_en, efuse_addr);
 
 	if (!(word_en & BIT(0))) {
 		tmpaddr = start_addr;
@@ -1221,6 +1220,7 @@ static u16 efuse_get_current_size(struct ieee80211_hw *hw)
 static u8 efuse_calculate_word_cnts(u8 word_en)
 {
 	u8 word_cnts = 0;
+
 	if (!(word_en & BIT(0)))
 		word_cnts++;
 	if (!(word_en & BIT(1)))
