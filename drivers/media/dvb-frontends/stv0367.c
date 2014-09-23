@@ -59,7 +59,6 @@ struct stv0367cab_state {
 	int locked;			/* channel found		*/
 	u32 freq_khz;			/* found frequency (in kHz)	*/
 	u32 symbol_rate;		/* found symbol rate (in Bds)	*/
-	enum stv0367cab_mod modulation;	/* modulation			*/
 	fe_spectral_inversion_t	spect_inv; /* Spectrum Inversion	*/
 };
 
@@ -2997,7 +2996,6 @@ enum stv0367_cab_signal_type stv0367cab_algo(struct stv0367_state *state,
 
 	if (QAMFEC_Lock) {
 		signalType = FE_CAB_DATAOK;
-		cab_state->modulation = p->modulation;
 		cab_state->spect_inv = stv0367_readbits(state,
 							F367CAB_QUAD_INV);
 #if 0
@@ -3163,7 +3161,7 @@ static int stv0367cab_get_frontend(struct dvb_frontend *fe)
 	case FE_CAB_MOD_QAM128:
 		p->modulation = QAM_128;
 		break;
-	case QAM_256:
+	case FE_CAB_MOD_QAM256:
 		p->modulation = QAM_256;
 		break;
 	default:
