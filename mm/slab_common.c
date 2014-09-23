@@ -53,7 +53,7 @@ static int __init setup_slab_nomerge(char *str)
 }
 
 #ifdef CONFIG_SLUB
-__setup("slub_nomerge", setup_slab_nomerge);
+__setup_param("slub_nomerge", slub_nomerge, setup_slab_nomerge, 0);
 #endif
 
 __setup("slab_nomerge", setup_slab_nomerge);
