@@ -775,7 +775,7 @@ int security_file_fcntl(struct file *file, unsigned int cmd, unsigned long arg)
 	return security_ops->file_fcntl(file, cmd, arg);
 }
 
-int security_file_set_fowner(struct file *file)
+void security_file_set_fowner(struct file *file)
 {
 	return security_ops->file_set_fowner(file);
 }
