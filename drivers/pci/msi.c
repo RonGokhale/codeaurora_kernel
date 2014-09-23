@@ -306,13 +306,6 @@ void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
 	*msg = entry->msg;
 }
 
-void get_cached_msi_msg(unsigned int irq, struct msi_msg *msg)
-{
-	struct msi_desc *entry = irq_get_msi_desc(irq);
-
-	__get_cached_msi_msg(entry, msg);
-}
-
 void __write_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
 {
 	if (entry->dev->current_state != PCI_D0) {
