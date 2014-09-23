@@ -283,6 +283,7 @@ static const struct pci_device_id cxgb4_pci_tbl[] = {
 	CH_DEVICE(0x5083, 4),
 	CH_DEVICE(0x5084, 4),
 	CH_DEVICE(0x5085, 4),
+	CH_DEVICE(0x5086, 4),
 	CH_DEVICE(0x5401, 4),
 	CH_DEVICE(0x5402, 4),
 	CH_DEVICE(0x5403, 4),
@@ -310,6 +311,7 @@ static const struct pci_device_id cxgb4_pci_tbl[] = {
 	CH_DEVICE(0x5483, 4),
 	CH_DEVICE(0x5484, 4),
 	CH_DEVICE(0x5485, 4),
+	CH_DEVICE(0x5486, 4),
 	{ 0, }
 };
 
@@ -4390,7 +4392,6 @@ static int cxgb4_inet6addr_handler(struct notifier_block *this,
 		 * bond. We need to find such different adapters and add clip
 		 * in all of them only once.
 		 */
-		read_lock(&bond->lock);
 		bond_for_each_slave(bond, slave, iter) {
 			if (!first_pdev) {
 				ret = clip_add(slave->dev, ifa, event);
@@ -4404,7 +4405,6 @@ static int cxgb4_inet6addr_handler(struct notifier_block *this,
 				   to_pci_dev(slave->dev->dev.parent))
 					ret = clip_add(slave->dev, ifa, event);
 		}
-		read_unlock(&bond->lock);
 	} else
 		ret = clip_add(ifa->idev->dev, ifa, event);
 
