@@ -296,7 +296,7 @@ void read_msi_msg(unsigned int irq, struct msi_msg *msg)
 	__read_msi_msg(entry, msg);
 }
 
-void __get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
+void get_cached_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
 {
 	/* Assert that the cache is valid, assuming that
 	 * valid messages are not all-zeroes. */
