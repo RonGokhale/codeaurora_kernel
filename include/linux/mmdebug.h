@@ -30,12 +30,12 @@ void dump_mm(const struct mm_struct *mm);
 		}							\
 	} while (0)
 #define VM_BUG_ON_MM(cond, mm)						\
-        do {								\
-                if (unlikely(cond)) {					\
-                        dump_mm(mm);					\
-                        BUG();						\
-                }							\
-        } while (0)
+	do {								\
+		if (unlikely(cond)) {					\
+			dump_mm(mm);					\
+			BUG();						\
+		}							\
+	} while (0)
 #define VM_WARN_ON(cond) WARN_ON(cond)
 #define VM_WARN_ON_ONCE(cond) WARN_ON_ONCE(cond)
 #define VM_WARN_ONCE(cond, format...) WARN_ONCE(cond, format)
