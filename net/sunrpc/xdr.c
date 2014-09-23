@@ -524,9 +524,10 @@ static __be32 *xdr_get_next_encode_buffer(struct xdr_stream *xdr,
 	frag2bytes = nbytes - frag1bytes;
 	if (xdr->iov)
 		xdr->iov->iov_len += frag1bytes;
-	else
+	else {
 		xdr->buf->page_len += frag1bytes;
-	xdr->page_ptr++;
+		xdr->page_ptr++;
+	}
 	xdr->iov = NULL;
 	/*
 	 * If the last encode didn't end exactly on a page boundary, the
@@ -638,10 +639,8 @@ void xdr_truncate_encode(struct xdr_stream *xdr, size_t len)
 		/* xdr->iov should already be NULL */
 		return;
 	}
-	if (fraglen) {
+	if (fraglen)
 		xdr->end = head->iov_base + head->iov_len;
-		xdr->page_ptr--;
-	}
 	/* (otherwise assume xdr->end is already set) */
 	head->iov_len = len;
 	buf->len = len;
