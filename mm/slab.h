@@ -37,6 +37,8 @@ struct kmem_cache {
 #include <linux/slub_def.h>
 #endif
 
+#include <linux/memcontrol.h>
+
 /*
  * State of the slab allocator.
  *
@@ -267,8 +269,6 @@ static inline void memcg_uncharge_slab(struct kmem_cache *s, int order)
 {
 }
 #endif
-
-#include <linux/memcontrol.h>
 
 static inline struct kmem_cache *cache_from_obj(struct kmem_cache *s, void *x)
 {
