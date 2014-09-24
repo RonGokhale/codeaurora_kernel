@@ -56,6 +56,7 @@ struct raid_dev {
 #define DMPF_REGION_SIZE       0x100
 #define DMPF_RAID10_COPIES     0x200
 #define DMPF_RAID10_FORMAT     0x400
+#define DMPF_ALLOW_DISCARD     0x800
 
 struct raid_set {
 	struct dm_target *ti;
@@ -475,6 +476,8 @@ too_many:
  *                                      will form the "stripe"
  *    [[no]sync]			Force or prevent recovery of the
  *                                      entire array
+ *    [devices_handle_discard_safely]	Allow discards on RAID4/5/6; useful if RAID
+ *					member device(s) properly support TRIM/UNMAP
  *    [rebuild <idx>]			Rebuild the drive indicated by the index
  *    [daemon_sleep <ms>]		Time between bitmap daemon work to
  *                                      clear bits
@@ -557,6 +560,10 @@ static int parse_raid_params(struct raid_set *rs, char **argv,
 		if (!strcasecmp(argv[i], "sync")) {
 			rs->md.recovery_cp = 0;
 			rs->print_flags |= DMPF_SYNC;
+			continue;
+		}
+		if (!strcasecmp(argv[i], "devices_handle_discard_safely")) {
+			rs->print_flags |= DMPF_ALLOW_DISCARD;
 			continue;
 		}
 
@@ -1150,23 +1157,45 @@ static int analyse_superblocks(struct dm_target *ti, struct raid_set *rs)
 }
 
 /*
- * Enable/disable discard support on RAID set depending on RAID level.
+ * Enable/disable discard support on RAID set depending on
+ * RAID level and discard properties of underlying RAID members.
  */
 static void configure_discard_support(struct dm_target *ti, struct raid_set *rs)
 {
+	int i;
+	bool raid456;
+
 	/* Assume discards not supported until after checks below. */
 	ti->discards_supported = false;
 
 	/* RAID level 4,5,6 require discard_zeroes_data for data integrity! */
-	if (rs->md.level == 4 || rs->md.level == 5 || rs->md.level == 6)
-		return; /* discard_zeroes_data cannot be trusted as reliable */
+	raid456 = (rs->md.level == 4 || rs->md.level == 5 || rs->md.level == 6);
 
+	for (i = 0; i < rs->md.raid_disks; i++) {
+		struct request_queue *q = bdev_get_queue(rs->dev[i].rdev.bdev);
+
+		if (!q || !blk_queue_discard(q))
+			return;
+
+		if (raid456) {
+			if (!q->limits.discard_zeroes_data)
+				return;
+			if (!(rs->print_flags & DMPF_ALLOW_DISCARD)) {
+				DMERR("raid456 discard support disabled due to discard_zeroes_data uncertainty.");
+				DMERR("set 'devices_handle_discard_safely' parameter to override.");
+				return;
+			}
+		}
+	}
+
+	/* All RAID members properly support discards */
 	ti->discards_supported = true;
 
 	/*
 	 * RAID1 and RAID10 personalities require bio splitting,
+	 * RAID0/4/5/6 don't and process large discard bios properly.
 	 */
-	ti->split_discard_bios = true;
+	ti->split_discard_bios = !!(rs->md.level == 1 || rs->md.level == 10);
 	ti->num_discard_bios = 1;
 }
 
@@ -1442,6 +1471,8 @@ static void raid_status(struct dm_target *ti, status_type_t type,
 			DMEMIT(" sync");
 		if (rs->print_flags & DMPF_NOSYNC)
 			DMEMIT(" nosync");
+		if (rs->print_flags & DMPF_ALLOW_DISCARD)
+			DMEMIT(" devices_handle_discard_safely");
 
 		for (i = 0; i < rs->md.raid_disks; i++)
 			if ((rs->print_flags & DMPF_REBUILD) &&
