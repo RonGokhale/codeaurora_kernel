@@ -235,8 +235,8 @@ static int qm1d1c0042_set_params(struct dvb_frontend *fe)
 	 * sd = b          (b >= 0)
 	 *      1<<22 + b  (b < 0)
 	 */
-	b = (s32)div64_s64(((s64) freq) << 20,
-			   state->cfg.xtal_freq - (((s64) a) << 20));
+	b = (s32)div64_s64(((s64) freq) << 20, state->cfg.xtal_freq)
+			   - (((s64) a) << 20);
 
 	if (b >= 0)
 		sd = b;
