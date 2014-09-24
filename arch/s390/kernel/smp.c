@@ -787,10 +787,6 @@ void __init smp_prepare_boot_cpu(void)
 	set_cpu_online(0, true);
 }
 
-void __init smp_cpus_done(unsigned int max_cpus)
-{
-}
-
 void __init smp_setup_processor_id(void)
 {
 	S390_lowcore.cpu_nr = 0;
