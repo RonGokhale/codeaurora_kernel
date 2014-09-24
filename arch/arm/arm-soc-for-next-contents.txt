@@ -1,72 +1,86 @@
-
 next/fixes-non-critical
 	davinci/board
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.18/board
 	patch
 		ARM: cns3xxx: fix allmodconfig panic in pci driver
+		ARM: spear: Remove references to PLAT_SPEAR_SINGLE
 	renesas/maintainers
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-maintainers-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-maintainers-for-v3.18
 	patch
 		ARM: LPC32xx: Fix reset function
+	omap/fixes-non-urgent
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fixes-v3.18-not-urgent
+	mvebu/fixes-3.17
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.17
 
 next/cleanup
 	patch
 		ARM: clps711x: Switch CLPS711X subarch to use clk and clocksource driver
-	msm-cleanup
+	msm/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/msm-cleanup-for-arm-soc
 	renesas/kconfig-cleanups
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-kconfig-cleanups-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-kconfig-cleanups-for-v3.18
 	at91/cleanup
 		git://github.com/at91linux/linux-at91 tags/at91-cleanup
 	at91/cleanup2
-		git://github.com/at91linux/linux-at91 tags/at91-cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup2
 	renesas/pm-cleanup
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-pm-cleanups-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pm-cleanups-for-v3.18
 	patch
 		ARM: sunxi: Remove sun4i reboot code from mach directory
+		ARM: make arrays containing machine compatible strings const
 
 next/soc
 	patch
-		ARM: clps711x: Add SOC BUS support
 		ARM: clps711x: edb7211: Use new PWM driver for backlight
+		ARM: clps711x: Add SOC BUS support
 	renesas/soc
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-soc-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-for-v3.18
 	renesas/init-delay
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-init-delay-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-init-delay-for-v3.18
+		contains renesas/boards
 	renesas/soc2
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-soc2-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc2-for-v3.18
 	renesas/r8a7740-ccf-and-timers
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-r8a7740-ccf-and-timers-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7740-ccf-and-timers-for-v3.18
 	renesas/dt-timers
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-timers-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-timers-for-v3.18
 	renesas/cleanup
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-cleanup-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.18
 	renesas/clk
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-clk-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clk-for-v3.18
 	integrator/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-for-v3.18-1
 	renesas/r8a7740-multiplatform
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-r8a7740-multiplatform-for-v3.18
-	renesas/renesas-soc3-for-v3.18
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-soc3-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a7740-multiplatform-for-v3.18
+	renesas/soc3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.18
 	renesas/dt-timers2
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-timers2-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-timers2-for-v3.18
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/soc-for-v3.18
+	renesas/clk2
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clk2-for-v3.18
+	hisi/d01
+		git://github.com/hisilicon/linux-hisi tags/D01-for-3.18
+	patch
+		ARM: debug: fix alphanumerical order on debug uarts
 
 next/boards
 	renesas/boards
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-boards-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.18
 
 next/dt
 	rockchip/dts1
-		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.15-rockchip-fixes1
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-dts1
 	rockchip/dma
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-dma
 	renesas/dt
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-for-v3.18
 	renesas/dt2
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt2-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.18
 	renesas/dt3
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt3-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt3-for-v3.18
 	at91/dt
 		git://github.com/at91linux/linux-at91 tags/at91-dt
 	at91/dt2
@@ -74,30 +88,49 @@ next/dt
 	davinci/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.18/dt
 	socfpga/dt
-		git://git.rocketboards.org/linux-socfpga-next socfpga_update_for_v3.18
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_update_for_v3.18
 	renesas/dt4
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt4-for-v3.18
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt4-for-v3.18
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/dt-for-v3.18
+	qcom/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.18
+	qcom/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.18-2
+	rockchip/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-dts2-v2
 
 next/drivers
 	at91/drivers
-		git://github.com/at91linux/linux-at91 tags/at91-drivers2
+		git://github.com/at91linux/linux-at91 tags/at91-drivers
+		contains at91/cleanup
+		contains at91/dt
 	socfpga/edac
-		git://git.rocketboards.org/linux-socfpga-next socfpga_driver_for_v3.18
+		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_driver_for_v3.18
+	at91/drivers2
+		git://github.com/at91linux/linux-at91 tags/at91-drivers2
+	omap/intc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/intc-for-v3.18
+		contains omap/fixes-non-urgent
+	omap/mailbox
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/mailbox-for-v3.18
 
 next/defconfig
 	patch
 		ARM: multi_v7_defconfig: Enable Zynq/Xilinx drivers
-		ARM: configs: Enable cpufreq-cpu0 for multi_v7_defconfig
-		ARM: configs: Remove REGULATOR_VIRTUAL_CONSUMER from defconfigs
-	renesas/defconfig3
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-defconfig3-for-v3.18
-	at91/defconfig
-		git://github.com/at91linux/linux-at91 tags/at91-defconfig
-	lpc32xx/defconfig
-		git://git.antcom.de/linux-2.6 lpc32xx/defconfig
 
 fixes
 	patch
-		ARM: pxa: fix section mismatch warning for pxa_timer_nodt_init
 		ARM: OMAP: Fix Kconfig warning for omap1
+		ARM: pxa: fix section mismatch warning for pxa_timer_nodt_init
+		ARM: DT: imx53: fix lvds channel 1 port
+		ARM: imx: fix .is_enabled() of shared gate clock
+	<no branch> (99897500e54560397054aa238c771fa8284d0eb2)
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/fixes-v3.17-rc4
+	<no branch> (41fc619dd5584d438d1eb673bd82a722d627ad85)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fixes-v3.17-rc4
+	<no branch> (7db143b89137de06ed289cf8b302f3bbbc5baa1f)
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fix-v3.17-io-chain-v3
+	patch
+		drivers/soc: qcom: do not disable the iface clock in probe
 
