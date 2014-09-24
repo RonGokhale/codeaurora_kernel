@@ -10,6 +10,7 @@
 #include "symbol.h"
 #include "cache.h"
 #include "header.h"
+#include "debug.h"
 #include <api/fs/debugfs.h>
 #include "parse-events-bison.h"
 #define YY_EXTRA_TYPE int
@@ -642,7 +643,18 @@ int parse_events_add_pmu(struct list_head *list, int *idx,
 	if (!pmu)
 		return -EINVAL;
 
-	memset(&attr, 0, sizeof(attr));
+	if (pmu->default_config) {
+		memcpy(&attr, pmu->default_config,
+		       sizeof(struct perf_event_attr));
+	} else {
+		memset(&attr, 0, sizeof(attr));
+	}
+
+	if (!head_config) {
+		attr.type = pmu->type;
+		evsel = __add_event(list, idx, &attr, NULL, pmu->cpus);
+		return evsel ? 0 : -ENOMEM;
+	}
 
 	if (perf_pmu__check_alias(pmu, head_config, &unit, &scale))
 		return -EINVAL;
@@ -1006,9 +1018,11 @@ void print_tracepoint_events(const char *subsys_glob, const char *event_glob,
 	struct dirent *sys_next, *evt_next, sys_dirent, evt_dirent;
 	char evt_path[MAXPATHLEN];
 	char dir_path[MAXPATHLEN];
+	char sbuf[STRERR_BUFSIZE];
 
 	if (debugfs_valid_mountpoint(tracing_events_path)) {
-		printf("  [ Tracepoints not available: %s ]\n", strerror(errno));
+		printf("  [ Tracepoints not available: %s ]\n",
+			strerror_r(errno, sbuf, sizeof(sbuf)));
 		return;
 	}
 
