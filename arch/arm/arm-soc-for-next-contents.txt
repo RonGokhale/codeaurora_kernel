@@ -1,7 +1,7 @@
 
 next/fixes-non-critical
 	davinci/board
-		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.18/board
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.18/board
 	patch
 		ARM: cns3xxx: fix allmodconfig panic in pci driver
 	renesas/maintainers
@@ -13,13 +13,13 @@ next/cleanup
 	patch
 		ARM: clps711x: Switch CLPS711X subarch to use clk and clocksource driver
 	msm-cleanup
-		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson.git tags/msm-cleanup-for-arm-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/msm-cleanup-for-arm-soc
 	renesas/kconfig-cleanups
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-kconfig-cleanups-for-v3.18
 	at91/cleanup
-		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup
 	at91/cleanup2
-		git://github.com/at91linux/linux-at91.git tags/at91-cleanup
+		git://github.com/at91linux/linux-at91 tags/at91-cleanup
 	renesas/pm-cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-pm-cleanups-for-v3.18
 	patch
@@ -44,7 +44,7 @@ next/soc
 	renesas/clk
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-clk-for-v3.18
 	integrator/soc
-		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator.git tags/integrator-for-v3.18-1
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-for-v3.18-1
 	renesas/r8a7740-multiplatform
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-r8a7740-multiplatform-for-v3.18
 	renesas/renesas-soc3-for-v3.18
@@ -58,9 +58,9 @@ next/boards
 
 next/dt
 	rockchip/dts1
-		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.15-rockchip-fixes1
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.15-rockchip-fixes1
 	rockchip/dma
-		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip.git tags/v3.18-rockchip-dma
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-dma
 	renesas/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt-for-v3.18
 	renesas/dt2
@@ -68,11 +68,11 @@ next/dt
 	renesas/dt3
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-dt3-for-v3.18
 	at91/dt
-		git://github.com/at91linux/linux-at91.git tags/at91-dt
+		git://github.com/at91linux/linux-at91 tags/at91-dt
 	at91/dt2
-		git://github.com/at91linux/linux-at91.git tags/at91-dt2
+		git://github.com/at91linux/linux-at91 tags/at91-dt2
 	davinci/dt
-		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci.git tags/davinci-for-v3.18/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.18/dt
 	socfpga/dt
 		git://git.rocketboards.org/linux-socfpga-next socfpga_update_for_v3.18
 	renesas/dt4
@@ -80,7 +80,7 @@ next/dt
 
 next/drivers
 	at91/drivers
-		git://github.com/at91linux/linux-at91.git tags/at91-drivers2
+		git://github.com/at91linux/linux-at91 tags/at91-drivers2
 	socfpga/edac
 		git://git.rocketboards.org/linux-socfpga-next socfpga_driver_for_v3.18
 
@@ -92,7 +92,7 @@ next/defconfig
 	renesas/defconfig3
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas renesas-defconfig3-for-v3.18
 	at91/defconfig
-		git://github.com/at91linux/linux-at91.git tags/at91-defconfig
+		git://github.com/at91linux/linux-at91 tags/at91-defconfig
 	lpc32xx/defconfig
 		git://git.antcom.de/linux-2.6 lpc32xx/defconfig
 
