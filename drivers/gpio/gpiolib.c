@@ -308,10 +308,9 @@ static void gpiochip_irqchip_remove(struct gpio_chip *gpiochip);
  *
  * A gpio_chip with any GPIOs still requested may not be removed.
  */
-int gpiochip_remove(struct gpio_chip *chip)
+void gpiochip_remove(struct gpio_chip *chip)
 {
 	unsigned long	flags;
-	int		status = 0;
 	unsigned	id;
 
 	acpi_gpiochip_remove(chip);
@@ -323,24 +322,15 @@ int gpiochip_remove(struct gpio_chip *chip)
 	of_gpiochip_remove(chip);
 
 	for (id = 0; id < chip->ngpio; id++) {
-		if (test_bit(FLAG_REQUESTED, &chip->desc[id].flags)) {
-			status = -EBUSY;
-			break;
-		}
+		if (test_bit(FLAG_REQUESTED, &chip->desc[id].flags))
+			dev_crit(chip->dev, "REMOVING GPIOCHIP WITH GPIOS STILL REQUESTED\n");
 	}
-	if (status == 0) {
-		for (id = 0; id < chip->ngpio; id++)
-			chip->desc[id].chip = NULL;
+	for (id = 0; id < chip->ngpio; id++)
+		chip->desc[id].chip = NULL;
 
-		list_del(&chip->list);
-	}
-
+	list_del(&chip->list);
 	spin_unlock_irqrestore(&gpio_lock, flags);
-
-	if (status == 0)
-		gpiochip_unexport(chip);
-
-	return status;
+	gpiochip_unexport(chip);
 }
 EXPORT_SYMBOL_GPL(gpiochip_remove);
 
@@ -447,7 +437,7 @@ static int gpiochip_irq_map(struct irq_domain *d, unsigned int irq,
 	irq_set_lockdep_class(irq, &gpiochip_irq_lock_class);
 	irq_set_chip_and_handler(irq, chip->irqchip, chip->irq_handler);
 	/* Chips that can sleep need nested thread handlers */
-	if (chip->can_sleep)
+	if (chip->can_sleep && !chip->irq_not_threaded)
 		irq_set_nested_thread(irq, 1);
 #ifdef CONFIG_ARM
 	set_irq_flags(irq, IRQF_VALID);
@@ -895,12 +885,22 @@ EXPORT_SYMBOL_GPL(gpiochip_is_requested);
  * allows the GPIO chip module to be unloaded as needed (we assume that the
  * GPIO chip driver handles freeing the GPIOs it has requested).
  */
-int gpiochip_request_own_desc(struct gpio_desc *desc, const char *label)
+struct gpio_desc *gpiochip_request_own_desc(struct gpio_chip *chip, u16 hwnum,
+					    const char *label)
 {
-	if (!desc || !desc->chip)
-		return -EINVAL;
+	struct gpio_desc *desc = gpiochip_get_desc(chip, hwnum);
+	int err;
 
-	return __gpiod_request(desc, label);
+	if (IS_ERR(desc)) {
+		chip_err(chip, "failed to get GPIO descriptor\n");
+		return desc;
+	}
+
+	err = __gpiod_request(desc, label);
+	if (err < 0)
+		return ERR_PTR(err);
+
+	return desc;
 }
 EXPORT_SYMBOL_GPL(gpiochip_request_own_desc);
 
@@ -1652,7 +1652,7 @@ struct gpio_desc *__must_check __gpiod_get_index(struct device *dev,
 	 * a result. In that case, use platform lookup as a fallback.
 	 */
 	if (!desc || desc == ERR_PTR(-ENOENT)) {
-		dev_dbg(dev, "using lookup tables for GPIO lookup");
+		dev_dbg(dev, "using lookup tables for GPIO lookup\n");
 		desc = gpiod_find(dev, con_id, idx, &lookupflags);
 	}
 
