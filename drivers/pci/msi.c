@@ -249,7 +249,7 @@ void default_restore_msi_irqs(struct pci_dev *dev)
 	}
 }
 
-void __read_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
+void read_msi_msg(struct msi_desc *entry, struct msi_msg *msg)
 {
 	BUG_ON(entry->dev->current_state != PCI_D0);
 
