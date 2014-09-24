@@ -8,6 +8,7 @@
 
 #include <linux/kernel.h>
 #include <linux/io.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_qos.h>
@@ -1833,7 +1834,7 @@ int pm_genpd_name_detach_cpuidle(const char *name)
 /* Default device callbacks for generic PM domains. */
 
 /**
- * pm_genpd_default_save_state - Default "save device state" for PM domians.
+ * pm_genpd_default_save_state - Default "save device state" for PM domains.
  * @dev: Device to handle.
  */
 static int pm_genpd_default_save_state(struct device *dev)
@@ -1856,7 +1857,7 @@ static int pm_genpd_default_save_state(struct device *dev)
 }
 
 /**
- * pm_genpd_default_restore_state - Default PM domians "restore device state".
+ * pm_genpd_default_restore_state - Default PM domains "restore device state".
  * @dev: Device to handle.
  */
 static int pm_genpd_default_restore_state(struct device *dev)
@@ -1933,3 +1934,448 @@ void pm_genpd_init(struct generic_pm_domain *genpd,
 	list_add(&genpd->gpd_list_node, &gpd_list);
 	mutex_unlock(&gpd_list_lock);
 }
+
+#ifdef CONFIG_PM_GENERIC_DOMAINS_OF
+/*
+ * Device Tree based PM domain providers.
+ *
+ * The code below implements generic device tree based PM domain providers that
+ * bind device tree nodes with generic PM domains registered in the system.
+ *
+ * Any driver that registers generic PM domains and needs to support binding of
+ * devices to these domains is supposed to register a PM domain provider, which
+ * maps a PM domain specifier retrieved from the device tree to a PM domain.
+ *
+ * Two simple mapping functions have been provided for convenience:
+ *  - __of_genpd_xlate_simple() for 1:1 device tree node to PM domain mapping.
+ *  - __of_genpd_xlate_onecell() for mapping of multiple PM domains per node by
+ *    index.
+ */
+
+/**
+ * struct of_genpd_provider - PM domain provider registration structure
+ * @link: Entry in global list of PM domain providers
+ * @node: Pointer to device tree node of PM domain provider
+ * @xlate: Provider-specific xlate callback mapping a set of specifier cells
+ *         into a PM domain.
+ * @data: context pointer to be passed into @xlate callback
+ */
+struct of_genpd_provider {
+	struct list_head link;
+	struct device_node *node;
+	genpd_xlate_t xlate;
+	void *data;
+};
+
+/* List of registered PM domain providers. */
+static LIST_HEAD(of_genpd_providers);
+/* Mutex to protect the list above. */
+static DEFINE_MUTEX(of_genpd_mutex);
+
+/**
+ * __of_genpd_xlate_simple() - Xlate function for direct node-domain mapping
+ * @genpdspec: OF phandle args to map into a PM domain
+ * @data: xlate function private data - pointer to struct generic_pm_domain
+ *
+ * This is a generic xlate function that can be used to model PM domains that
+ * have their own device tree nodes. The private data of xlate function needs
+ * to be a valid pointer to struct generic_pm_domain.
+ */
+struct generic_pm_domain *__of_genpd_xlate_simple(
+					struct of_phandle_args *genpdspec,
+					void *data)
+{
+	if (genpdspec->args_count != 0)
+		return ERR_PTR(-EINVAL);
+	return data;
+}
+EXPORT_SYMBOL_GPL(__of_genpd_xlate_simple);
+
+/**
+ * __of_genpd_xlate_onecell() - Xlate function using a single index.
+ * @genpdspec: OF phandle args to map into a PM domain
+ * @data: xlate function private data - pointer to struct genpd_onecell_data
+ *
+ * This is a generic xlate function that can be used to model simple PM domain
+ * controllers that have one device tree node and provide multiple PM domains.
+ * A single cell is used as an index into an array of PM domains specified in
+ * the genpd_onecell_data struct when registering the provider.
+ */
+struct generic_pm_domain *__of_genpd_xlate_onecell(
+					struct of_phandle_args *genpdspec,
+					void *data)
+{
+	struct genpd_onecell_data *genpd_data = data;
+	unsigned int idx = genpdspec->args[0];
+
+	if (genpdspec->args_count != 1)
+		return ERR_PTR(-EINVAL);
+
+	if (idx >= genpd_data->num_domains) {
+		pr_err("%s: invalid domain index %u\n", __func__, idx);
+		return ERR_PTR(-EINVAL);
+	}
+
+	if (!genpd_data->domains[idx])
+		return ERR_PTR(-ENOENT);
+
+	return genpd_data->domains[idx];
+}
+EXPORT_SYMBOL_GPL(__of_genpd_xlate_onecell);
+
+/**
+ * __of_genpd_add_provider() - Register a PM domain provider for a node
+ * @np: Device node pointer associated with the PM domain provider.
+ * @xlate: Callback for decoding PM domain from phandle arguments.
+ * @data: Context pointer for @xlate callback.
+ */
+int __of_genpd_add_provider(struct device_node *np, genpd_xlate_t xlate,
+			void *data)
+{
+	struct of_genpd_provider *cp;
+
+	cp = kzalloc(sizeof(*cp), GFP_KERNEL);
+	if (!cp)
+		return -ENOMEM;
+
+	cp->node = of_node_get(np);
+	cp->data = data;
+	cp->xlate = xlate;
+
+	mutex_lock(&of_genpd_mutex);
+	list_add(&cp->link, &of_genpd_providers);
+	mutex_unlock(&of_genpd_mutex);
+	pr_debug("Added domain provider from %s\n", np->full_name);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(__of_genpd_add_provider);
+
+/**
+ * of_genpd_del_provider() - Remove a previously registered PM domain provider
+ * @np: Device node pointer associated with the PM domain provider
+ */
+void of_genpd_del_provider(struct device_node *np)
+{
+	struct of_genpd_provider *cp;
+
+	mutex_lock(&of_genpd_mutex);
+	list_for_each_entry(cp, &of_genpd_providers, link) {
+		if (cp->node == np) {
+			list_del(&cp->link);
+			of_node_put(cp->node);
+			kfree(cp);
+			break;
+		}
+	}
+	mutex_unlock(&of_genpd_mutex);
+}
+EXPORT_SYMBOL_GPL(of_genpd_del_provider);
+
+/**
+ * of_genpd_get_from_provider() - Look-up PM domain
+ * @genpdspec: OF phandle args to use for look-up
+ *
+ * Looks for a PM domain provider under the node specified by @genpdspec and if
+ * found, uses xlate function of the provider to map phandle args to a PM
+ * domain.
+ *
+ * Returns a valid pointer to struct generic_pm_domain on success or ERR_PTR()
+ * on failure.
+ */
+static struct generic_pm_domain *of_genpd_get_from_provider(
+					struct of_phandle_args *genpdspec)
+{
+	struct generic_pm_domain *genpd = ERR_PTR(-ENOENT);
+	struct of_genpd_provider *provider;
+
+	mutex_lock(&of_genpd_mutex);
+
+	/* Check if we have such a provider in our array */
+	list_for_each_entry(provider, &of_genpd_providers, link) {
+		if (provider->node == genpdspec->np)
+			genpd = provider->xlate(genpdspec, provider->data);
+		if (!IS_ERR(genpd))
+			break;
+	}
+
+	mutex_unlock(&of_genpd_mutex);
+
+	return genpd;
+}
+
+/**
+ * genpd_dev_pm_detach - Detach a device from its PM domain.
+ * @dev: Device to attach.
+ * @power_off: Currently not used
+ *
+ * Try to locate a corresponding generic PM domain, which the device was
+ * attached to previously. If such is found, the device is detached from it.
+ */
+static void genpd_dev_pm_detach(struct device *dev, bool power_off)
+{
+	struct generic_pm_domain *pd = NULL, *gpd;
+	int ret = 0;
+
+	if (!dev->pm_domain)
+		return;
+
+	mutex_lock(&gpd_list_lock);
+	list_for_each_entry(gpd, &gpd_list, gpd_list_node) {
+		if (&gpd->domain == dev->pm_domain) {
+			pd = gpd;
+			break;
+		}
+	}
+	mutex_unlock(&gpd_list_lock);
+
+	if (!pd)
+		return;
+
+	dev_dbg(dev, "removing from PM domain %s\n", pd->name);
+
+	while (1) {
+		ret = pm_genpd_remove_device(pd, dev);
+		if (ret != -EAGAIN)
+			break;
+		cond_resched();
+	}
+
+	if (ret < 0) {
+		dev_err(dev, "failed to remove from PM domain %s: %d",
+			pd->name, ret);
+		return;
+	}
+
+	/* Check if PM domain can be powered off after removing this device. */
+	genpd_queue_power_off_work(pd);
+}
+
+/**
+ * genpd_dev_pm_attach - Attach a device to its PM domain using DT.
+ * @dev: Device to attach.
+ *
+ * Parse device's OF node to find a PM domain specifier. If such is found,
+ * attaches the device to retrieved pm_domain ops.
+ *
+ * Both generic and legacy Samsung-specific DT bindings are supported to keep
+ * backwards compatibility with existing DTBs.
+ *
+ * Returns 0 on successfully attached PM domain or negative error code.
+ */
+int genpd_dev_pm_attach(struct device *dev)
+{
+	struct of_phandle_args pd_args;
+	struct generic_pm_domain *pd;
+	int ret;
+
+	if (!dev->of_node)
+		return -ENODEV;
+
+	if (dev->pm_domain)
+		return -EEXIST;
+
+	ret = of_parse_phandle_with_args(dev->of_node, "power-domains",
+					"#power-domain-cells", 0, &pd_args);
+	if (ret < 0) {
+		if (ret != -ENOENT)
+			return ret;
+
+		/*
+		 * Try legacy Samsung-specific bindings
+		 * (for backwards compatibility of DT ABI)
+		 */
+		pd_args.args_count = 0;
+		pd_args.np = of_parse_phandle(dev->of_node,
+						"samsung,power-domain", 0);
+		if (!pd_args.np)
+			return -ENOENT;
+	}
+
+	pd = of_genpd_get_from_provider(&pd_args);
+	if (IS_ERR(pd)) {
+		dev_dbg(dev, "%s() failed to find PM domain: %ld\n",
+			__func__, PTR_ERR(pd));
+		of_node_put(dev->of_node);
+		return PTR_ERR(pd);
+	}
+
+	dev_dbg(dev, "adding to PM domain %s\n", pd->name);
+
+	while (1) {
+		ret = pm_genpd_add_device(pd, dev);
+		if (ret != -EAGAIN)
+			break;
+		cond_resched();
+	}
+
+	if (ret < 0) {
+		dev_err(dev, "failed to add to PM domain %s: %d",
+			pd->name, ret);
+		of_node_put(dev->of_node);
+		return ret;
+	}
+
+	dev->pm_domain->detach = genpd_dev_pm_detach;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(genpd_dev_pm_attach);
+#endif
+
+
+/***        debugfs support        ***/
+
+#ifdef CONFIG_PM_ADVANCED_DEBUG
+#include <linux/pm.h>
+#include <linux/device.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
+#include <linux/init.h>
+#include <linux/kobject.h>
+static struct dentry *pm_genpd_debugfs_dir;
+
+/*
+ * TODO: This function is a slightly modified version of rtpm_status_show
+ * from sysfs.c, but dependencies between PM_GENERIC_DOMAINS and PM_RUNTIME
+ * are too loose to generalize it.
+ */
+#ifdef CONFIG_PM_RUNTIME
+static void rtpm_status_str(struct seq_file *s, struct device *dev)
+{
+	static const char * const status_lookup[] = {
+		[RPM_ACTIVE] = "active",
+		[RPM_RESUMING] = "resuming",
+		[RPM_SUSPENDED] = "suspended",
+		[RPM_SUSPENDING] = "suspending"
+	};
+	const char *p = "";
+
+	if (dev->power.runtime_error)
+		p = "error";
+	else if (dev->power.disable_depth)
+		p = "unsupported";
+	else if (dev->power.runtime_status < ARRAY_SIZE(status_lookup))
+		p = status_lookup[dev->power.runtime_status];
+	else
+		WARN_ON(1);
+
+	seq_puts(s, p);
+}
+#else
+static void rtpm_status_str(struct seq_file *s, struct device *dev)
+{
+	seq_puts(s, "active");
+}
+#endif
+
+static int pm_genpd_summary_one(struct seq_file *s,
+		struct generic_pm_domain *gpd)
+{
+	static const char * const status_lookup[] = {
+		[GPD_STATE_ACTIVE] = "on",
+		[GPD_STATE_WAIT_MASTER] = "wait-master",
+		[GPD_STATE_BUSY] = "busy",
+		[GPD_STATE_REPEAT] = "off-in-progress",
+		[GPD_STATE_POWER_OFF] = "off"
+	};
+	struct pm_domain_data *pm_data;
+	const char *kobj_path;
+	struct gpd_link *link;
+	int ret;
+
+	ret = mutex_lock_interruptible(&gpd->lock);
+	if (ret)
+		return -ERESTARTSYS;
+
+	if (WARN_ON(gpd->status >= ARRAY_SIZE(status_lookup)))
+		goto exit;
+	seq_printf(s, "%-30s  %-15s  ", gpd->name, status_lookup[gpd->status]);
+
+	/*
+	 * Modifications on the list require holding locks on both
+	 * master and slave, so we are safe.
+	 * Also gpd->name is immutable.
+	 */
+	list_for_each_entry(link, &gpd->master_links, master_node) {
+		seq_printf(s, "%s", link->slave->name);
+		if (!list_is_last(&link->master_node, &gpd->master_links))
+			seq_puts(s, ", ");
+	}
+
+	list_for_each_entry(pm_data, &gpd->dev_list, list_node) {
+		kobj_path = kobject_get_path(&pm_data->dev->kobj, GFP_KERNEL);
+		if (kobj_path == NULL)
+			continue;
+
+		seq_printf(s, "\n    %-50s  ", kobj_path);
+		rtpm_status_str(s, pm_data->dev);
+		kfree(kobj_path);
+	}
+
+	seq_puts(s, "\n");
+exit:
+	mutex_unlock(&gpd->lock);
+
+	return 0;
+}
+
+static int pm_genpd_summary_show(struct seq_file *s, void *data)
+{
+	struct generic_pm_domain *gpd;
+	int ret = 0;
+
+	seq_puts(s, "    domain                      status         slaves\n");
+	seq_puts(s, "           /device                                      runtime status\n");
+	seq_puts(s, "----------------------------------------------------------------------\n");
+
+	ret = mutex_lock_interruptible(&gpd_list_lock);
+	if (ret)
+		return -ERESTARTSYS;
+
+	list_for_each_entry(gpd, &gpd_list, gpd_list_node) {
+		ret = pm_genpd_summary_one(s, gpd);
+		if (ret)
+			break;
+	}
+	mutex_unlock(&gpd_list_lock);
+
+	return ret;
+}
+
+static int pm_genpd_summary_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pm_genpd_summary_show, NULL);
+}
+
+static const struct file_operations pm_genpd_summary_fops = {
+	.open = pm_genpd_summary_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int __init pm_genpd_debug_init(void)
+{
+	struct dentry *d;
+
+	pm_genpd_debugfs_dir = debugfs_create_dir("pm_genpd", NULL);
+
+	if (!pm_genpd_debugfs_dir)
+		return -ENOMEM;
+
+	d = debugfs_create_file("pm_genpd_summary", S_IRUGO,
+			pm_genpd_debugfs_dir, NULL, &pm_genpd_summary_fops);
+	if (!d)
+		return -ENOMEM;
+
+	return 0;
+}
+late_initcall(pm_genpd_debug_init);
+
+static void __exit pm_genpd_debug_exit(void)
+{
+	debugfs_remove_recursive(pm_genpd_debugfs_dir);
+}
+__exitcall(pm_genpd_debug_exit);
+#endif /* CONFIG_PM_ADVANCED_DEBUG */
