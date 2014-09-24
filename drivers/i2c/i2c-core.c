@@ -166,7 +166,7 @@ static acpi_status acpi_i2c_add_device(acpi_handle handle, u32 level,
  * namespace. When a device is found it will be added to the Linux device
  * model and bound to the corresponding ACPI handle.
  */
-void acpi_i2c_register_devices(struct i2c_adapter *adap)
+static void acpi_i2c_register_devices(struct i2c_adapter *adap)
 {
 	acpi_handle handle;
 	acpi_status status;
@@ -184,6 +184,10 @@ void acpi_i2c_register_devices(struct i2c_adapter *adap)
 	if (ACPI_FAILURE(status))
 		dev_warn(&adap->dev, "failed to enumerate I2C slaves\n");
 }
+
+#else /* CONFIG_ACPI */
+static inline void acpi_i2c_register_devices(struct i2c_adapter *adap) { }
+#endif /* CONFIG_ACPI */
 
 #ifdef CONFIG_ACPI_I2C_OPREGION
 static int acpi_gsb_i2c_read_bytes(struct i2c_client *client,
@@ -365,7 +369,7 @@ acpi_i2c_space_handler(u32 function, acpi_physical_address command,
 }
 
 
-int acpi_i2c_install_space_handler(struct i2c_adapter *adapter)
+static int acpi_i2c_install_space_handler(struct i2c_adapter *adapter)
 {
 	acpi_handle handle = ACPI_HANDLE(adapter->dev.parent);
 	struct acpi_i2c_handler_data *data;
@@ -401,7 +405,7 @@ int acpi_i2c_install_space_handler(struct i2c_adapter *adapter)
 	return 0;
 }
 
-void acpi_i2c_remove_space_handler(struct i2c_adapter *adapter)
+static void acpi_i2c_remove_space_handler(struct i2c_adapter *adapter)
 {
 	acpi_handle handle = ACPI_HANDLE(adapter->dev.parent);
 	struct acpi_i2c_handler_data *data;
@@ -420,8 +424,13 @@ void acpi_i2c_remove_space_handler(struct i2c_adapter *adapter)
 
 	acpi_bus_detach_private_data(handle);
 }
-#endif
-#endif /* CONFIG_ACPI */
+#else /* CONFIG_ACPI_I2C_OPREGION */
+static inline void acpi_i2c_remove_space_handler(struct i2c_adapter *adapter)
+{ }
+
+static inline int acpi_i2c_install_space_handler(struct i2c_adapter *adapter)
+{ return 0; }
+#endif /* CONFIG_ACPI_I2C_OPREGION */
 
 /* ------------------------------------------------------------------------- */
 
