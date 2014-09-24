@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -127,8 +127,9 @@ void diagmem_exit(struct diagchar_dev *driver, int pool_type)
 		if (diag_hsic[index].diag_hsic_pool &&
 				(diag_hsic[index].hsic_inited == 0)) {
 			if (diag_hsic[index].count_hsic_pool == 0) {
-				mempool_destroy(driver->diag_hdlc_pool);
-				driver->diag_hdlc_pool = NULL;
+				mempool_destroy(
+					diag_hsic[index].diag_hsic_pool);
+				diag_hsic[index].diag_hsic_pool = NULL;
 			} else if (pool_type == POOL_TYPE_ALL)
 				pr_err("Unable to destroy HDLC mempool for ch %d"
 								, index);
