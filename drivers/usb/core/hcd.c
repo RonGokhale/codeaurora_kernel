@@ -1272,7 +1272,7 @@ EXPORT_SYMBOL_GPL(usb_hcd_unlink_urb_from_ep);
  * The usb core itself is however optimized for host controllers that can dma
  * using regular system memory - like pci devices doing bus mastering.
  *
- * To support host controllers with limited dma capabilites we provide dma
+ * To support host controllers with limited dma capabilities we provide dma
  * bounce buffers. This feature can be enabled using the HCD_LOCAL_MEM flag.
  * For this to work properly the host controller code must first use the
  * function dma_declare_coherent_memory() to point out which memory area
@@ -2301,7 +2301,7 @@ EXPORT_SYMBOL_GPL(usb_hcd_resume_root_hub);
  * Context: in_interrupt()
  *
  * Starts enumeration, with an immediate reset followed later by
- * khubd identifying and possibly configuring the device.
+ * hub_wq identifying and possibly configuring the device.
  * This is needed by OTG controller drivers, where it helps meet
  * HNP protocol timing requirements for starting a port reset.
  *
@@ -2320,7 +2320,7 @@ int usb_bus_start_enum(struct usb_bus *bus, unsigned port_num)
 	if (port_num && hcd->driver->start_port_reset)
 		status = hcd->driver->start_port_reset(hcd, port_num);
 
-	/* run khubd shortly after (first) root port reset finishes;
+	/* allocate hub_wq shortly after (first) root port reset finishes;
 	 * it may issue others, until at least 50 msecs have passed.
 	 */
 	if (status == 0)
@@ -2383,20 +2383,20 @@ void usb_hc_died (struct usb_hcd *hcd)
 	if (hcd->rh_registered) {
 		clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
 
-		/* make khubd clean up old urbs and devices */
+		/* make hub_wq clean up old urbs and devices */
 		usb_set_device_state (hcd->self.root_hub,
 				USB_STATE_NOTATTACHED);
-		usb_kick_khubd (hcd->self.root_hub);
+		usb_kick_hub_wq(hcd->self.root_hub);
 	}
 	if (usb_hcd_is_primary_hcd(hcd) && hcd->shared_hcd) {
 		hcd = hcd->shared_hcd;
 		if (hcd->rh_registered) {
 			clear_bit(HCD_FLAG_POLL_RH, &hcd->flags);
 
-			/* make khubd clean up old urbs and devices */
+			/* make hub_wq clean up old urbs and devices */
 			usb_set_device_state(hcd->self.root_hub,
 					USB_STATE_NOTATTACHED);
-			usb_kick_khubd(hcd->self.root_hub);
+			usb_kick_hub_wq(hcd->self.root_hub);
 		}
 	}
 	spin_unlock_irqrestore (&hcd_root_hub_lock, flags);
@@ -2655,7 +2655,7 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 
 	/* HC is in reset state, but accessible.  Now do the one-time init,
-	 * bottom up so that hcds can customize the root hubs before khubd
+	 * bottom up so that hcds can customize the root hubs before hub_wq
 	 * starts talking to them.  (Note, bus id is assigned early too.)
 	 */
 	if ((retval = hcd_buffer_create(hcd)) != 0) {
