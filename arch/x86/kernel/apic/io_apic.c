@@ -3150,7 +3150,7 @@ msi_set_affinity(struct irq_data *data, const struct cpumask *mask, bool force)
 	if (ret)
 		return ret;
 
-	__get_cached_msi_msg(data->msi_desc, &msg);
+	get_cached_msi_msg(data->msi_desc, &msg);
 
 	msg.data &= ~MSI_DATA_VECTOR_MASK;
 	msg.data |= MSI_DATA_VECTOR(cfg->vector);
