@@ -137,7 +137,6 @@ struct scrub_ctx {
 	int			pages_per_rd_bio;
 	u32			sectorsize;
 	u32			nodesize;
-	u32			leafsize;
 
 	int			is_dev_replace;
 	struct scrub_wr_ctx	wr_ctx;
@@ -438,7 +437,6 @@ struct scrub_ctx *scrub_setup_ctx(struct btrfs_device *dev, int is_dev_replace)
 	}
 	sctx->first_free = 0;
 	sctx->nodesize = dev->dev_root->nodesize;
-	sctx->leafsize = dev->dev_root->leafsize;
 	sctx->sectorsize = dev->dev_root->sectorsize;
 	atomic_set(&sctx->bios_in_flight, 0);
 	atomic_set(&sctx->workers_pending, 0);
@@ -681,9 +679,9 @@ static int scrub_fixup_readpage(u64 inum, u64 offset, u64 root, void *fixup_ctx)
 			ret = -EIO;
 			goto out;
 		}
-		fs_info = BTRFS_I(inode)->root->fs_info;
-		ret = repair_io_failure(fs_info, offset, PAGE_SIZE,
+		ret = repair_io_failure(inode, offset, PAGE_SIZE,
 					fixup->logical, page,
+					offset - page_offset(page),
 					fixup->mirror_num);
 		unlock_page(page);
 		corrected = !ret;
@@ -1361,6 +1359,16 @@ static void scrub_recheck_block(struct btrfs_fs_info *fs_info,
 	return;
 }
 
+static inline int scrub_check_fsid(u8 fsid[],
+				   struct scrub_page *spage)
+{
+	struct btrfs_fs_devices *fs_devices = spage->dev->fs_devices;
+	int ret;
+
+	ret = memcmp(fsid, fs_devices->fsid, BTRFS_UUID_SIZE);
+	return !ret;
+}
+
 static void scrub_recheck_block_checksum(struct btrfs_fs_info *fs_info,
 					 struct scrub_block *sblock,
 					 int is_metadata, int have_csum,
@@ -1380,7 +1388,7 @@ static void scrub_recheck_block_checksum(struct btrfs_fs_info *fs_info,
 		h = (struct btrfs_header *)mapped_buffer;
 
 		if (sblock->pagev[0]->logical != btrfs_stack_header_bytenr(h) ||
-		    memcmp(h->fsid, fs_info->fsid, BTRFS_UUID_SIZE) ||
+		    !scrub_check_fsid(h->fsid, sblock->pagev[0]) ||
 		    memcmp(h->chunk_tree_uuid, fs_info->chunk_tree_uuid,
 			   BTRFS_UUID_SIZE)) {
 			sblock->header_error = 1;
@@ -1751,14 +1759,13 @@ static int scrub_checksum_tree_block(struct scrub_block *sblock)
 	if (sblock->pagev[0]->generation != btrfs_stack_header_generation(h))
 		++fail;
 
-	if (memcmp(h->fsid, fs_info->fsid, BTRFS_UUID_SIZE))
+	if (!scrub_check_fsid(h->fsid, sblock->pagev[0]))
 		++fail;
 
 	if (memcmp(h->chunk_tree_uuid, fs_info->chunk_tree_uuid,
 		   BTRFS_UUID_SIZE))
 		++fail;
 
-	WARN_ON(sctx->nodesize != sctx->leafsize);
 	len = sctx->nodesize - BTRFS_CSUM_SIZE;
 	mapped_size = PAGE_SIZE - BTRFS_CSUM_SIZE;
 	p = ((u8 *)mapped_buffer) + BTRFS_CSUM_SIZE;
@@ -1791,8 +1798,6 @@ static int scrub_checksum_super(struct scrub_block *sblock)
 {
 	struct btrfs_super_block *s;
 	struct scrub_ctx *sctx = sblock->sctx;
-	struct btrfs_root *root = sctx->dev_root;
-	struct btrfs_fs_info *fs_info = root->fs_info;
 	u8 calculated_csum[BTRFS_CSUM_SIZE];
 	u8 on_disk_csum[BTRFS_CSUM_SIZE];
 	struct page *page;
@@ -1817,7 +1822,7 @@ static int scrub_checksum_super(struct scrub_block *sblock)
 	if (sblock->pagev[0]->generation != btrfs_super_generation(s))
 		++fail_gen;
 
-	if (memcmp(s->fsid, fs_info->fsid, BTRFS_UUID_SIZE))
+	if (!scrub_check_fsid(s->fsid, sblock->pagev[0]))
 		++fail_cor;
 
 	len = BTRFS_SUPER_INFO_SIZE - BTRFS_CSUM_SIZE;
@@ -2196,7 +2201,6 @@ static int scrub_extent(struct scrub_ctx *sctx, u64 logical, u64 len,
 		sctx->stat.data_bytes_scrubbed += len;
 		spin_unlock(&sctx->stat_lock);
 	} else if (flags & BTRFS_EXTENT_FLAG_TREE_BLOCK) {
-		WARN_ON(sctx->nodesize != sctx->leafsize);
 		blocksize = sctx->nodesize;
 		spin_lock(&sctx->stat_lock);
 		sctx->stat.tree_extents_scrubbed++;
@@ -2487,7 +2491,7 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 			btrfs_item_key_to_cpu(l, &key, slot);
 
 			if (key.type == BTRFS_METADATA_ITEM_KEY)
-				bytes = root->leafsize;
+				bytes = root->nodesize;
 			else
 				bytes = key.offset;
 
@@ -2714,7 +2718,7 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 		if (found_key.objectid != scrub_dev->devid)
 			break;
 
-		if (btrfs_key_type(&found_key) != BTRFS_DEV_EXTENT_KEY)
+		if (found_key.type != BTRFS_DEV_EXTENT_KEY)
 			break;
 
 		if (found_key.offset >= end)
@@ -2828,11 +2832,16 @@ static noinline_for_stack int scrub_supers(struct scrub_ctx *sctx,
 	if (test_bit(BTRFS_FS_STATE_ERROR, &root->fs_info->fs_state))
 		return -EIO;
 
-	gen = root->fs_info->last_trans_committed;
+	/* Seed devices of a new filesystem has their own generation. */
+	if (scrub_dev->fs_devices != root->fs_info->fs_devices)
+		gen = scrub_dev->generation;
+	else
+		gen = root->fs_info->last_trans_committed;
 
 	for (i = 0; i < BTRFS_SUPER_MIRROR_MAX; i++) {
 		bytenr = btrfs_sb_offset(i);
-		if (bytenr + BTRFS_SUPER_INFO_SIZE > scrub_dev->total_bytes)
+		if (bytenr + BTRFS_SUPER_INFO_SIZE >
+		    scrub_dev->commit_total_bytes)
 			break;
 
 		ret = scrub_pages(sctx, bytenr, BTRFS_SUPER_INFO_SIZE, bytenr,
@@ -2909,17 +2918,6 @@ int btrfs_scrub_dev(struct btrfs_fs_info *fs_info, u64 devid, u64 start,
 
 	if (btrfs_fs_closing(fs_info))
 		return -EINVAL;
-
-	/*
-	 * check some assumptions
-	 */
-	if (fs_info->chunk_root->nodesize != fs_info->chunk_root->leafsize) {
-		btrfs_err(fs_info,
-			   "scrub: size assumption nodesize == leafsize (%d == %d) fails",
-		       fs_info->chunk_root->nodesize,
-		       fs_info->chunk_root->leafsize);
-		return -EINVAL;
-	}
 
 	if (fs_info->chunk_root->nodesize > BTRFS_STRIPE_LEN) {
 		/*
