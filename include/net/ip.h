@@ -229,8 +229,6 @@ static inline int inet_is_local_reserved_port(struct net *net, int port)
 }
 #endif
 
-extern int sysctl_ip_nonlocal_bind;
-
 /* From inetpeer.c */
 extern int inet_peer_threshold;
 extern int inet_peer_minttl;
@@ -362,6 +360,14 @@ static inline void inet_set_txhash(struct sock *sk)
 	keys.port16[1] = inet->inet_dport;
 
 	sk->sk_txhash = flow_hash_from_keys(&keys);
+}
+
+static inline __wsum inet_gro_compute_pseudo(struct sk_buff *skb, int proto)
+{
+	const struct iphdr *iph = skb_gro_network_header(skb);
+
+	return csum_tcpudp_nofold(iph->saddr, iph->daddr,
+				  skb_gro_len(skb), proto, 0);
 }
 
 /*
@@ -541,6 +547,10 @@ void ip_icmp_error(struct sock *sk, struct sk_buff *skb, int err, __be16 port,
 		   u32 info, u8 *payload);
 void ip_local_error(struct sock *sk, int err, __be32 daddr, __be16 dport,
 		    u32 info);
+
+bool icmp_global_allow(void);
+extern int sysctl_icmp_msgs_per_sec;
+extern int sysctl_icmp_msgs_burst;
 
 #ifdef CONFIG_PROC_FS
 int ip_misc_proc_init(void);
