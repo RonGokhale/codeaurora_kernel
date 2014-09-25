@@ -266,7 +266,8 @@ SMB3_request_interfaces(const unsigned int xid, struct cifs_tcon *tcon)
 			NULL /* no data input */, 0 /* no data input */,
 			(char **)&out_buf, &ret_data_len);
 
-	if ((rc == 0)  && (ret_data_len > 0)) {
+	/* Need >= 24 bytes to get LinkSpeed from network_interface_info buf */
+	if ((rc == 0)  && (ret_data_len >= 24)) {
 		/* Dump info on first interface */
 		cifs_dbg(FYI, "Adapter Capability 0x%x\t",
 			le32_to_cpu(out_buf->Capability));
