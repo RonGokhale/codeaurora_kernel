@@ -278,7 +278,7 @@ static int st_rc_probe(struct platform_device *pdev)
 		rc_dev->rx_base = rc_dev->base;
 
 
-	rc_dev->rstc = reset_control_get(dev, NULL);
+	rc_dev->rstc = reset_control_get_optional(dev, NULL);
 	if (IS_ERR(rc_dev->rstc))
 		rc_dev->rstc = NULL;
 
@@ -376,8 +376,9 @@ static int st_rc_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(st_rc_pm_ops, st_rc_suspend, st_rc_resume);
 #endif
+
+static SIMPLE_DEV_PM_OPS(st_rc_pm_ops, st_rc_suspend, st_rc_resume);
 
 #ifdef CONFIG_OF
 static struct of_device_id st_rc_match[] = {
@@ -391,11 +392,8 @@ MODULE_DEVICE_TABLE(of, st_rc_match);
 static struct platform_driver st_rc_driver = {
 	.driver = {
 		.name = IR_ST_NAME,
-		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(st_rc_match),
-#ifdef CONFIG_PM
 		.pm     = &st_rc_pm_ops,
-#endif
 	},
 	.probe = st_rc_probe,
 	.remove = st_rc_remove,

@@ -37,8 +37,8 @@
 #define S5P_MFC_DEC_NAME	"s5p-mfc-dec"
 #define S5P_MFC_ENC_NAME	"s5p-mfc-enc"
 
-int debug;
-module_param(debug, int, S_IRUGO | S_IWUSR);
+int mfc_debug_level;
+module_param_named(debug, mfc_debug_level, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(debug, "Debug level - higher value produces more verbose messages");
 
 /* Helper functions for interrupt processing */
@@ -1311,11 +1311,9 @@ static int s5p_mfc_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct s5p_mfc_dev *m_dev = platform_get_drvdata(pdev);
-	int pre_power;
 
 	if (!m_dev->alloc_ctx)
 		return 0;
-	pre_power = atomic_read(&m_dev->pm.power);
 	atomic_set(&m_dev->pm.power, 1);
 	return 0;
 }
