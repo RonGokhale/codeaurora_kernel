@@ -12,6 +12,9 @@ next/fixes-non-critical
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fixes-v3.18-not-urgent
 	mvebu/fixes-3.17
 		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.17
+	patch
+		MAINTAINERS: update ARM pxa maintainers
+		MAINTAINERS: Add entry for the Amlogic MesonX SoCs
 
 next/cleanup
 	patch
@@ -28,7 +31,10 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-pm-cleanups-for-v3.18
 	patch
 		ARM: sunxi: Remove sun4i reboot code from mach directory
-		ARM: make arrays containing machine compatible strings const
+	mvebu/soc
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.18
+	imx/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-cleanup-3.18
 
 next/soc
 	patch
@@ -65,6 +71,25 @@ next/soc
 		git://github.com/hisilicon/linux-hisi tags/D01-for-3.18
 	patch
 		ARM: debug: fix alphanumerical order on debug uarts
+		ARM: hisi: Fix platmcpm compilation when ARMv6 is selected
+		ARM: mediatek: Add earlyprintk support for mt6589
+	renesas/soc4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc4-for-v3.18
+	imx/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-soc-3.18
+		contains imx/cleanup
+	patch
+		irq: Export handle_fasteoi_irq
+		ARM: meson: debug: add debug UART for earlyprintk support
+		ARM: meson: add basic support for MesonX SoCs
+	zynq/cleanup
+		git://git.xilinx.com/linux-xlnx tags/zynq-cleanup-for-3.18
+	tegra/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra tags/tegra-for-3.18-soc
+	pxa/pxa3xx-ssp-name
+		https://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux tags/pxa3xx-ssp-name
+	renesas/soc5
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc5-for-v3.18
 
 next/boards
 	renesas/boards
@@ -99,6 +124,34 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-dt-for-3.18-2
 	rockchip/dt2
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-dts2-v2
+	mvebu/dt
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.18
+	patch
+		ARM: dts: Build dtb for Mediatek board
+		ARM: dts: mt6589: Fix typo in GIC unit address
+		ARM: dts: mt6589-aquaris5: Add boot argument earlyprintk
+		ARM: dts: mediatek: Add compatible property for aquaris5
+		ARM: dts: mt6589: Change compatible string for GIC
+	imx/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-dt-3.18
+		contains depends/mfd-ib
+		contains imx/cleanup
+		contains imx/soc
+	patch
+		ARM: meson: dts: add basic Meson/Meson6/Meson6-atv1200 DTSI/DTS
+		ARM: meson: documentation: add bindings documentation
+	zynq/dt
+		git://git.xilinx.com/linux-xlnx tags/zynq-dt-for-3.18
+	at91/dt3
+		git://github.com/at91linux/linux-at91 tags/at91-dt3
+	tegra/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra tags/tegra-for-3.18-dt
+	pxa/fix-abi
+		https://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux tags/pxa-fix-abi
+	renesas/dt5
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt5-for-v3.18
+	sunxi/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.18
 
 next/drivers
 	at91/drivers
@@ -114,10 +167,36 @@ next/drivers
 		contains omap/fixes-non-urgent
 	omap/mailbox
 		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/mailbox-for-v3.18
+	keystone/soc-ti
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/drivers-soc-ti-v2
+	patch
+		drivers/soc: ti: fix build break with modules
+	sunxi/rtc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-drivers-for-3.18
 
 next/defconfig
 	patch
 		ARM: multi_v7_defconfig: Enable Zynq/Xilinx drivers
+		ARM: configs: Remove REGULATOR_VIRTUAL_CONSUMER from defconfigs
+		ARM: configs: Enable cpufreq-cpu0 for multi_v7_defconfig
+	renesas/defconfig3
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig3-for-v3.18
+	at91/defconfig
+		git://github.com/at91linux/linux-at91 tags/at91-defconfig
+	lpc32xx/defconfig
+		git://git.antcom.de/linux-2.6 lpc32xx/defconfig
+	mvebu/defconfig
+		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.18
+	patch
+		ARM: multi_v7_defconfig: Enable Mediatek platform
+	renesas/defconfig4
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-defconfig4-for-v3.18
+	patch
+		ARM: meson: update multi_v7_defconfig
+	tegra/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra tags/tegra-for-3.18-defconfig
+	sunxi/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-defconfig-for-3.18
 
 fixes
 	patch
