@@ -673,15 +673,20 @@ nfs4_put_stid(struct nfs4_stid *s)
 
 static void nfs4_put_deleg_lease(struct nfs4_file *fp)
 {
-	lockdep_assert_held(&state_lock);
+	struct file *filp = NULL;
+	struct file_lock *fl;
 
-	if (!fp->fi_lease)
-		return;
-	if (atomic_dec_and_test(&fp->fi_delegees)) {
-		vfs_setlease(fp->fi_deleg_file, F_UNLCK, &fp->fi_lease);
+	spin_lock(&fp->fi_lock);
+	if (fp->fi_lease && atomic_dec_and_test(&fp->fi_delegees)) {
+		swap(filp, fp->fi_deleg_file);
+		fl = fp->fi_lease;
 		fp->fi_lease = NULL;
-		fput(fp->fi_deleg_file);
-		fp->fi_deleg_file = NULL;
+	}
+	spin_unlock(&fp->fi_lock);
+
+	if (filp) {
+		vfs_setlease(filp, F_UNLCK, &fl);
+		fput(filp);
 	}
 }
 
@@ -717,8 +722,6 @@ unhash_delegation_locked(struct nfs4_delegation *dp)
 	list_del_init(&dp->dl_recall_lru);
 	list_del_init(&dp->dl_perfile);
 	spin_unlock(&fp->fi_lock);
-	if (fp)
-		nfs4_put_deleg_lease(fp);
 }
 
 static void destroy_delegation(struct nfs4_delegation *dp)
@@ -726,6 +729,7 @@ static void destroy_delegation(struct nfs4_delegation *dp)
 	spin_lock(&state_lock);
 	unhash_delegation_locked(dp);
 	spin_unlock(&state_lock);
+	nfs4_put_deleg_lease(dp->dl_stid.sc_file);
 	nfs4_put_stid(&dp->dl_stid);
 }
 
@@ -734,6 +738,8 @@ static void revoke_delegation(struct nfs4_delegation *dp)
 	struct nfs4_client *clp = dp->dl_stid.sc_client;
 
 	WARN_ON(!list_empty(&dp->dl_recall_lru));
+
+	nfs4_put_deleg_lease(dp->dl_stid.sc_file);
 
 	if (clp->cl_minorversion == 0)
 		nfs4_put_stid(&dp->dl_stid);
@@ -1635,6 +1641,7 @@ __destroy_client(struct nfs4_client *clp)
 	while (!list_empty(&reaplist)) {
 		dp = list_entry(reaplist.next, struct nfs4_delegation, dl_recall_lru);
 		list_del_init(&dp->dl_recall_lru);
+		nfs4_put_deleg_lease(dp->dl_stid.sc_file);
 		nfs4_put_stid(&dp->dl_stid);
 	}
 	while (!list_empty(&clp->cl_revoked)) {
@@ -3759,7 +3766,6 @@ static struct file_lock *nfs4_alloc_init_lease(struct nfs4_file *fp, int flag)
 	fl = locks_alloc_lock();
 	if (!fl)
 		return NULL;
-	locks_init_lock(fl);
 	fl->fl_lmops = &nfsd_lease_mng_ops;
 	fl->fl_flags = FL_DELEG;
 	fl->fl_type = flag == NFS4_OPEN_DELEGATE_READ? F_RDLCK: F_WRLCK;
@@ -4107,7 +4113,7 @@ out:
 	return status;
 }
 
-static void
+void
 nfsd4_end_grace(struct nfsd_net *nn)
 {
 	/* do nothing if grace period already ended */
@@ -4116,14 +4122,28 @@ nfsd4_end_grace(struct nfsd_net *nn)
 
 	dprintk("NFSD: end of grace period\n");
 	nn->grace_ended = true;
-	nfsd4_record_grace_done(nn, nn->boot_time);
+	/*
+	 * If the server goes down again right now, an NFSv4
+	 * client will still be allowed to reclaim after it comes back up,
+	 * even if it hasn't yet had a chance to reclaim state this time.
+	 *
+	 */
+	nfsd4_record_grace_done(nn);
+	/*
+	 * At this point, NFSv4 clients can still reclaim.  But if the
+	 * server crashes, any that have not yet reclaimed will be out
+	 * of luck on the next boot.
+	 *
+	 * (NFSv4.1+ clients are considered to have reclaimed once they
+	 * call RECLAIM_COMPLETE.  NFSv4.0 clients are considered to
+	 * have reclaimed after their first OPEN.)
+	 */
 	locks_end_grace(&nn->nfsd4_manager);
 	/*
-	 * Now that every NFSv4 client has had the chance to recover and
-	 * to see the (possibly new, possibly shorter) lease time, we
-	 * can safely set the next grace time to the current lease time:
+	 * At this point, and once lockd and/or any other containers
+	 * exit their grace period, further reclaims will fail and
+	 * regular locking can resume.
 	 */
-	nn->nfsd4_grace = nn->nfsd4_lease;
 }
 
 static time_t
@@ -5210,7 +5230,6 @@ nfsd4_lock(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	}
 
 	fp = lock_stp->st_stid.sc_file;
-	locks_init_lock(file_lock);
 	switch (lock->lk_type) {
 		case NFS4_READ_LT:
 		case NFS4_READW_LT:
@@ -5354,7 +5373,7 @@ nfsd4_lockt(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 		status = nfserr_jukebox;
 		goto out;
 	}
-	locks_init_lock(file_lock);
+
 	switch (lockt->lt_type) {
 		case NFS4_READ_LT:
 		case NFS4_READW_LT:
@@ -5432,7 +5451,7 @@ nfsd4_locku(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 		status = nfserr_jukebox;
 		goto fput;
 	}
-	locks_init_lock(file_lock);
+
 	file_lock->fl_type = F_UNLCK;
 	file_lock->fl_owner = (fl_owner_t)lockowner(stp->st_stateowner);
 	file_lock->fl_pid = current->tgid;
@@ -5644,6 +5663,9 @@ nfs4_check_open_reclaim(clientid_t *clid,
 	status = lookup_clientid(clid, cstate, nn);
 	if (status)
 		return nfserr_reclaim_bad;
+
+	if (test_bit(NFSD4_CLIENT_RECLAIM_COMPLETE, &cstate->clp->cl_flags))
+		return nfserr_no_grace;
 
 	if (nfsd4_client_record_check(cstate->clp))
 		return nfserr_reclaim_bad;
@@ -6342,10 +6364,10 @@ nfs4_state_start_net(struct net *net)
 	ret = nfs4_state_create_net(net);
 	if (ret)
 		return ret;
-	nfsd4_client_tracking_init(net);
 	nn->boot_time = get_seconds();
-	locks_start_grace(net, &nn->nfsd4_manager);
 	nn->grace_ended = false;
+	locks_start_grace(net, &nn->nfsd4_manager);
+	nfsd4_client_tracking_init(net);
 	printk(KERN_INFO "NFSD: starting %ld-second grace period (net %p)\n",
 	       nn->nfsd4_grace, net);
 	queue_delayed_work(laundry_wq, &nn->laundromat_work, nn->nfsd4_grace * HZ);
@@ -6402,6 +6424,7 @@ nfs4_state_shutdown_net(struct net *net)
 	list_for_each_safe(pos, next, &reaplist) {
 		dp = list_entry (pos, struct nfs4_delegation, dl_recall_lru);
 		list_del_init(&dp->dl_recall_lru);
+		nfs4_put_deleg_lease(dp->dl_stid.sc_file);
 		nfs4_put_stid(&dp->dl_stid);
 	}
 
