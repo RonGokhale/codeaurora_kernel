@@ -1436,6 +1436,9 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 
 	spin_unlock_irq(&dev->power.lock);
 
+	if (genpd->attach_dev)
+		genpd->attach_dev(dev);
+
 	mutex_lock(&gpd_data->lock);
 	gpd_data->base.dev = dev;
 	list_add_tail(&gpd_data->base.list_node, &genpd->dev_list);
@@ -1452,39 +1455,6 @@ int __pm_genpd_add_device(struct generic_pm_domain *genpd, struct device *dev,
 
 	return ret;
 }
-
-/**
- * __pm_genpd_of_add_device - Add a device to an I/O PM domain.
- * @genpd_node: Device tree node pointer representing a PM domain to which the
- *   the device is added to.
- * @dev: Device to be added.
- * @td: Set of PM QoS timing parameters to attach to the device.
- */
-int __pm_genpd_of_add_device(struct device_node *genpd_node, struct device *dev,
-			     struct gpd_timing_data *td)
-{
-	struct generic_pm_domain *genpd = NULL, *gpd;
-
-	dev_dbg(dev, "%s()\n", __func__);
-
-	if (IS_ERR_OR_NULL(genpd_node) || IS_ERR_OR_NULL(dev))
-		return -EINVAL;
-
-	mutex_lock(&gpd_list_lock);
-	list_for_each_entry(gpd, &gpd_list, gpd_list_node) {
-		if (gpd->of_node == genpd_node) {
-			genpd = gpd;
-			break;
-		}
-	}
-	mutex_unlock(&gpd_list_lock);
-
-	if (!genpd)
-		return -EINVAL;
-
-	return __pm_genpd_add_device(genpd, dev, td);
-}
-
 
 /**
  * __pm_genpd_name_add_device - Find I/O PM domain and add a device to it.
@@ -1527,6 +1497,9 @@ int pm_genpd_remove_device(struct generic_pm_domain *genpd,
 
 	genpd->device_count--;
 	genpd->max_off_time_changed = true;
+
+	if (genpd->detach_dev)
+		genpd->detach_dev(dev);
 
 	spin_lock_irq(&dev->power.lock);
 
