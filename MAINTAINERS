@@ -835,6 +835,12 @@ M:	Emilio López <emilio@elopez.com.ar>
 S:	Maintained
 F:	drivers/clk/sunxi/
 
+ARM/Amlogic MesonX SoC support
+M:	Carlo Caione <carlo@caione.org>
+L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+S:	Maintained
+N:	meson[x68]
+
 ARM/ATMEL AT91RM9200 AND AT91SAM ARM ARCHITECTURES
 M:	Andrew Victor <linux@maxim.org.za>
 M:	Nicolas Ferre <nicolas.ferre@atmel.com>
@@ -7303,12 +7309,12 @@ F:	drivers/video/backlight/pwm_bl.c
 F:	include/linux/pwm_backlight.h
 
 PXA2xx/PXA3xx SUPPORT
-M:	Eric Miao <eric.y.miao@gmail.com>
-M:	Russell King <linux@arm.linux.org.uk>
+M:	Daniel Mack <daniel@zonque.org>
 M:	Haojian Zhuang <haojian.zhuang@gmail.com>
+M:	Robert Jarzmik <robert.jarzmik@free.fr>
 L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
 T:	git git://github.com/hzhuang1/linux.git
-T:	git git://git.linaro.org/people/ycmiao/pxa-linux.git
+T:	git git://github.com/rjarzmik/linux.git
 S:	Maintained
 F:	arch/arm/mach-pxa/
 F:	drivers/pcmcia/pxa2xx*
