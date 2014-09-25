@@ -15,6 +15,13 @@ next/fixes-non-critical
 	patch
 		MAINTAINERS: update ARM pxa maintainers
 		MAINTAINERS: Add entry for the Amlogic MesonX SoCs
+		CNS3xxx: Fix debug UART.
+		CNS3xxx: Fix logical PCIe topology.
+		CNS3xxx: Fix PCIe read size limit.
+		MAINTAINERS: add a third maintainer to mach-bcm
+		arm, vt8500, LLVMLlinux: Use mcr instead of mcr% for mach-vt8500
+	at91/fixes-non-critical
+		git://github.com/at91linux/linux-at91 tags/at91-fixes-non-critical
 
 next/cleanup
 	patch
@@ -35,6 +42,12 @@ next/cleanup
 		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.18
 	imx/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/shawnguo/linux tags/imx-cleanup-3.18
+	samsung/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	omap/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/cleanup-for-v3.18
+	at91/soc
+		git://github.com/at91linux/linux-at91 tags/at91-soc
 
 next/soc
 	patch
@@ -90,6 +103,14 @@ next/soc
 		https://git.kernel.org/pub/scm/linux/kernel/git/hzhuang1/linux tags/pxa3xx-ssp-name
 	renesas/soc5
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc5-for-v3.18
+	broadcom/bcm63138
+		http://github.com/brcm/linux tags/bcm63138-v4
+	omap/soc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/soc-part2-for-v3.18
+	at91/soc
+		Merge branch 'at91/soc' into next/soc
+	at91/soc2
+		git://github.com/at91linux/linux-at91 tags/at91-soc2
 
 next/boards
 	renesas/boards
@@ -152,6 +173,19 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt5-for-v3.18
 	sunxi/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.18
+	hisi/hix5hd2-dt
+		git://github.com/hisilicon/linux-hisi tags/hix5hd2-dt-for-3.18
+	patch
+		ARM: bcm2835: add I2S pinctrl to device tree
+		ARM: vexpress: Add CLCD Device Tree properties
+	omap/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/dt-part2-v2-for-v3.18
+	patch
+		ARM: dts: add rk3288 i2s controller
+	keystone/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
 
 next/drivers
 	at91/drivers
@@ -173,6 +207,13 @@ next/drivers
 		drivers/soc: ti: fix build break with modules
 	sunxi/rtc
 		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-drivers-for-3.18
+	omap/intc2
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/intc-part2-for-v3.18
+	patch
+		leds: add a driver for syscon-based LEDs
+		power: reset: driver for the Versatile syscon reboot
+		soc: add driver for the ARM RealView
+		leds: add device tree bindings for register bit LEDs
 
 next/defconfig
 	patch
@@ -197,6 +238,10 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/swarren/linux-tegra tags/tegra-for-3.18-defconfig
 	sunxi/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-defconfig-for-3.18
+	patch
+		ARM: multi_v7_defconfig: add missing Tegra options
+	<no branch> (bf7389c49d1db5d731bbb9cece2fd95edc7a176a)
+		git+ssh://ra.kernel.org/pub/scm/linux/kernel/git/arm/arm-soc next/defconfig
 
 fixes
 	patch
