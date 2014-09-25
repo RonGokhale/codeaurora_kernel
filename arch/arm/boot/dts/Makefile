@@ -421,6 +421,7 @@ dtb-$(CONFIG_MACH_SUN4I) += \
 dtb-$(CONFIG_MACH_SUN5I) += \
 	sun5i-a10s-olinuxino-micro.dtb \
 	sun5i-a10s-r7-tv-dongle.dtb \
+	sun5i-a13-hsg-h702.dtb \
 	sun5i-a13-olinuxino.dtb \
 	sun5i-a13-olinuxino-micro.dtb
 dtb-$(CONFIG_MACH_SUN6I) += \
@@ -431,7 +432,9 @@ dtb-$(CONFIG_MACH_SUN6I) += \
 dtb-$(CONFIG_MACH_SUN7I) += \
 	sun7i-a20-cubieboard2.dtb \
 	sun7i-a20-cubietruck.dtb \
+	sun7i-a20-hummingbird.dtb \
 	sun7i-a20-i12-tvbox.dtb \
+	sun7i-a20-olinuxino-lime.dtb \
 	sun7i-a20-olinuxino-micro.dtb \
 	sun7i-a20-pcduino3.dtb
 dtb-$(CONFIG_MACH_SUN8I) += \
@@ -455,6 +458,7 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra114-roth.dtb \
 	tegra114-tn7.dtb \
 	tegra124-jetson-tk1.dtb \
+	tegra124-nyan-big.dtb \
 	tegra124-venice2.dtb
 dtb-$(CONFIG_ARCH_U300) += ste-u300.dtb
 dtb-$(CONFIG_ARCH_U8500) += ste-snowball.dtb \
