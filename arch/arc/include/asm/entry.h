@@ -360,30 +360,6 @@
 .endm
 
 /*--------------------------------------------------------------
- * For early Exception Prologue, a core reg is temporarily needed to
- * code the rest of prolog (stack switching). This is done by stashing
- * it to memory (non-SMP case) or SCRATCH0 Aux Reg (SMP).
- *
- * Before saving the full regfile - this reg is restored back, only
- * to be saved again on kernel mode stack, as part of pt_regs.
- *-------------------------------------------------------------*/
-.macro EXCPN_PROLOG_FREEUP_REG	reg
-#ifdef CONFIG_SMP
-	sr  \reg, [ARC_REG_SCRATCH_DATA0]
-#else
-	st  \reg, [@ex_saved_reg1]
-#endif
-.endm
-
-.macro EXCPN_PROLOG_RESTORE_REG	reg
-#ifdef CONFIG_SMP
-	lr  \reg, [ARC_REG_SCRATCH_DATA0]
-#else
-	ld  \reg, [@ex_saved_reg1]
-#endif
-.endm
-
-/*--------------------------------------------------------------
  * Exception Entry prologue
  * -Switches stack to K mode (if not already)
  * -Saves the register file
@@ -392,8 +368,19 @@
  *-------------------------------------------------------------*/
 .macro EXCEPTION_PROLOGUE
 
-	/* Need at least 1 reg to code the early exception prologue */
-	EXCPN_PROLOG_FREEUP_REG r9
+	/*
+	 * For early Exception Prologue, a core reg is temporarily needed to
+	 * code the rest of prolog (stack switching). This is done by stashing
+	 * it to memory (non-SMP case) or SCRATCH0 Aux Reg (SMP).
+	 *
+	 * Before saving the full regfile - this reg is restored back, only
+	 * to be saved again on kernel mode stack, as part of pt_regs.
+	 */
+#ifdef CONFIG_SMP
+	sr  r9, [ARC_REG_SCRATCH_DATA0]
+#else
+	st  r9, [@ex_saved_reg1]
+#endif
 
 	/* U/K mode at time of exception (stack not switched if already K) */
 	lr  r9, [erstatus]
@@ -421,7 +408,11 @@
 	st      r0, [sp, 4]    /* orig_r0, needed only for sys calls */
 
 	/* Restore r9 used to code the early prologue */
-	EXCPN_PROLOG_RESTORE_REG  r9
+#ifdef CONFIG_SMP
+	lr  r9, [ARC_REG_SCRATCH_DATA0]
+#else
+	ld  r9, [@ex_saved_reg1]
+#endif
 
 	SAVE_R0_TO_R12
 	PUSH	gp

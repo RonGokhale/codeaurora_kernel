@@ -14,8 +14,6 @@
 /* Build Configuration Registers */
 #define ARC_REG_DCCMBASE_BCR	0x61	/* DCCM Base Addr */
 #define ARC_REG_CRC_BCR		0x62
-#define ARC_REG_DVFB_BCR	0x64
-#define ARC_REG_EXTARITH_BCR	0x65
 #define ARC_REG_VECBASE_BCR	0x68
 #define ARC_REG_PERIBASE_BCR	0x69
 #define ARC_REG_FP_BCR		0x6B	/* Single-Precision FPU */
@@ -31,6 +29,8 @@
 #define ARC_REG_MIXMAX_BCR	0x7e
 #define ARC_REG_BARREL_BCR	0x7f
 #define ARC_REG_D_UNCACH_BCR	0x6A
+#define ARC_REG_BPU_BCR		0xc0
+#define ARC_REG_ISA_CFG_BCR	0xc1
 
 /* status32 Bits Positions */
 #define STATUS_AE_BIT		5	/* Exception active */
@@ -212,27 +212,19 @@ struct bcr_identity {
 #endif
 };
 
-#define EXTN_SWAP_VALID     0x1
-#define EXTN_NORM_VALID     0x2
-#define EXTN_MINMAX_VALID   0x2
-#define EXTN_BARREL_VALID   0x2
-
-struct bcr_extn {
+struct bcr_isa {
 #ifdef CONFIG_CPU_BIG_ENDIAN
-	unsigned int pad:20, crc:1, ext_arith:2, mul:2, barrel:2, minmax:2,
-		     norm:2, swap:1;
+	unsigned int pad1:23, atomic1:1, ver:8;
 #else
-	unsigned int swap:1, norm:2, minmax:2, barrel:2, mul:2, ext_arith:2,
-		     crc:1, pad:20;
+	unsigned int ver:8, atomic1:1, pad1:23;
 #endif
 };
 
-/* DSP Options Ref Manual */
-struct bcr_extn_mac_mul {
+struct bcr_mpy {
 #ifdef CONFIG_CPU_BIG_ENDIAN
-	unsigned int pad:16, type:8, ver:8;
+	unsigned int pad:8, x1616:8, dsp:4, cycles:2, type:2, ver:8;
 #else
-	unsigned int ver:8, type:8, pad:16;
+	unsigned int ver:8, type:2, cycles:2, dsp:4, x1616:8, pad:8;
 #endif
 };
 
@@ -286,6 +278,22 @@ struct bcr_fp {
 #endif
 };
 
+struct bcr_timer {
+#ifdef CONFIG_CPU_BIG_ENDIAN
+	unsigned int res:15, rtsc:1, pad:6, t1:1, t0:1, ver:8;
+#else
+	unsigned int ver:8, t0:1, t1:1, pad:6, rtsc:1, res:15;
+#endif
+};
+
+struct bcr_bpu {
+#ifdef CONFIG_CPU_BIG_ENDIAN
+	unsigned int pad2:19, full:1, pad:2, num:2, ver:8;
+#else
+	unsigned int ver:8, num:2, pad:2, full:1, pad2:19;
+#endif
+};
+
 /*
  *******************************************************************
  * Generic structures to hold build configuration used at runtime
@@ -307,14 +315,18 @@ struct cpuinfo_arc {
 	struct cpuinfo_arc_cache icache, dcache;
 	struct cpuinfo_arc_mmu mmu;
 	struct bcr_identity core;
-	unsigned int timers;
+	struct bcr_isa isa;
+	struct bcr_timer timers;
 	unsigned int vec_base;
 	unsigned int uncached_base;
 	struct cpuinfo_arc_ccm iccm, dccm;
-	struct bcr_extn extn;
+	struct {
+		unsigned int swap:1, norm:1, minmax:1, barrel:1, crc:1, pad:26;
+	} extn;
+	struct bcr_mpy extn_mpy;
 	struct bcr_extn_xymem extn_xymem;
-	struct bcr_extn_mac_mul extn_mac_mul;
 	struct bcr_fp fp, dpfp;
+	struct bcr_bpu bpu;
 };
 
 extern struct cpuinfo_arc cpuinfo_arc700[];
