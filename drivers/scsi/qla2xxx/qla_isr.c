@@ -575,8 +575,9 @@ qla2x00_async_event(scsi_qla_host_t *vha, struct rsp_que *rsp, uint16_t *mb)
 	struct device_reg_2xxx __iomem *reg = &ha->iobase->isp;
 	struct device_reg_24xx __iomem *reg24 = &ha->iobase->isp24;
 	struct device_reg_82xx __iomem *reg82 = &ha->iobase->isp82;
-	uint32_t	rscn_entry, host_pid;
+	uint32_t	rscn_entry, host_pid, tmp_pid;
 	unsigned long	flags;
+	fc_port_t	*fcport = NULL;
 
 	/* Setup to process RIO completion. */
 	handle_cnt = 0;
@@ -752,6 +753,16 @@ skip_rio:
 		if (atomic_read(&vha->loop_state) != LOOP_DOWN) {
 			atomic_set(&vha->loop_state, LOOP_DOWN);
 			atomic_set(&vha->loop_down_timer, LOOP_DOWN_TIME);
+			/*
+			 * In case of loop down, restore WWPN from
+			 * NVRAM in case of FA-WWPN capable ISP
+			 */
+			if (ha->flags.fawwpn_enabled) {
+				void *wwpn = ha->init_cb->port_name;
+
+				memcpy(vha->port_name, wwpn, WWN_SIZE);
+			}
+
 			vha->device_flags |= DFLG_NO_CABLE;
 			qla2x00_mark_all_devices_lost(vha, 1);
 		}
@@ -969,6 +980,20 @@ skip_rio:
 		if (qla2x00_is_a_vp_did(vha, rscn_entry))
 			break;
 
+		/*
+		 * Search for the rport related to this RSCN entry and mark it
+		 * as lost.
+		 */
+		list_for_each_entry(fcport, &vha->vp_fcports, list) {
+			if (atomic_read(&fcport->state) != FCS_ONLINE)
+				continue;
+			tmp_pid = fcport->d_id.b24;
+			if (fcport->d_id.b24 == rscn_entry) {
+				qla2x00_mark_device_lost(vha, fcport, 0, 0);
+				break;
+			}
+		}
+
 		atomic_set(&vha->loop_down_timer, 0);
 		vha->flags.management_server_logged_in = 0;
 
@@ -1084,6 +1109,14 @@ skip_rio:
 		mb[6] = RD_REG_WORD(&reg24->mailbox6);
 		mb[7] = RD_REG_WORD(&reg24->mailbox7);
 		qla83xx_handle_8200_aen(vha, mb);
+		break;
+
+	case MBA_DPORT_DIAGNOSTICS:
+		ql_dbg(ql_dbg_async, vha, 0x5052,
+		    "D-Port Diagnostics: %04x %04x=%s\n", mb[0], mb[1],
+		    mb[1] == 0 ? "start" :
+		    mb[1] == 1 ? "done (ok)" :
+		    mb[1] == 2 ? "done (error)" : "other");
 		break;
 
 	default:
@@ -1975,6 +2008,7 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	int logit = 1;
 	int res = 0;
 	uint16_t state_flags = 0;
+	uint16_t retry_delay = 0;
 
 	sts = (sts_entry_t *) pkt;
 	sts24 = (struct sts_entry_24xx *) pkt;
@@ -2068,6 +2102,9 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 		host_to_fcp_swap(sts24->data, sizeof(sts24->data));
 		ox_id = le16_to_cpu(sts24->ox_id);
 		par_sense_len = sizeof(sts24->data);
+		/* Valid values of the retry delay timer are 0x1-0xffef */
+		if (sts24->retry_delay > 0 && sts24->retry_delay < 0xfff1)
+			retry_delay = sts24->retry_delay;
 	} else {
 		if (scsi_status & SS_SENSE_LEN_VALID)
 			sense_len = le16_to_cpu(sts->req_sense_length);
@@ -2100,6 +2137,14 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	if (IS_FWI2_CAPABLE(ha) && comp_status == CS_COMPLETE &&
 	    scsi_status & SS_RESIDUAL_OVER)
 		comp_status = CS_DATA_OVERRUN;
+
+	/*
+	 * Check retry_delay_timer value if we receive a busy or
+	 * queue full.
+	 */
+	if (lscsi_status == SAM_STAT_TASK_SET_FULL ||
+	    lscsi_status == SAM_STAT_BUSY)
+		qla2x00_set_retry_delay_timestamp(fcport, retry_delay);
 
 	/*
 	 * Based on Host and scsi status generate status code for Linux
@@ -3098,10 +3143,11 @@ skip_msi:
 	}
 
 clear_risc_ints:
+	if (IS_FWI2_CAPABLE(ha) || IS_QLAFX00(ha))
+		goto fail;
 
 	spin_lock_irq(&ha->hardware_lock);
-	if (!IS_FWI2_CAPABLE(ha))
-		WRT_REG_WORD(&reg->isp.semaphore, 0);
+	WRT_REG_WORD(&reg->isp.semaphore, 0);
 	spin_unlock_irq(&ha->hardware_lock);
 
 fail:
