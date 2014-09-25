@@ -132,17 +132,15 @@ enum mei_wd_states {
  * @MEI_FOP_READ      - read
  * @MEI_FOP_WRITE     - write
  * @MEI_FOP_CONNECT   - connect
+ * @MEI_FOP_DISCONNECT - disconnect
  * @MEI_FOP_DISCONNECT_RSP - disconnect response
- * @MEI_FOP_OPEN      - open
- * @MEI_FOP_CLOSE     - close
  */
 enum mei_cb_file_ops {
 	MEI_FOP_READ = 0,
 	MEI_FOP_WRITE,
 	MEI_FOP_CONNECT,
+	MEI_FOP_DISCONNECT,
 	MEI_FOP_DISCONNECT_RSP,
-	MEI_FOP_OPEN,
-	MEI_FOP_CLOSE
 };
 
 /*
@@ -175,6 +173,7 @@ struct mei_fw_status {
  * @mei_flow_ctrl_creds - flow control credits
  */
 struct mei_me_client {
+	struct list_head list;
 	struct mei_client_properties props;
 	u8 client_id;
 	u8 mei_flow_ctrl_creds;
@@ -211,6 +210,7 @@ struct mei_cl {
 	wait_queue_head_t wait;
 	int status;
 	/* ID of client connected */
+	uuid_le cl_uuid;
 	u8 host_client_id;
 	u8 me_client_id;
 	u8 mei_flow_ctrl_creds;
@@ -222,7 +222,6 @@ struct mei_cl {
 	/* MEI CL bus data */
 	struct mei_cl_device *device;
 	struct list_head device_link;
-	uuid_le device_uuid;
 };
 
 /** struct mei_hw_ops
@@ -403,6 +402,9 @@ struct mei_cfg {
  *
  * @reset_count - limits the number of consecutive resets
  * @hbm_state - state of host bus message protocol
+ *
+ * @hbm_f_pg_supported - hbm feature pgi protocol
+ *
  * @pg_event - power gating event
  * @mem_addr - mem mapped base register address
 
@@ -444,7 +446,7 @@ struct mei_device {
 	 */
 	wait_queue_head_t wait_hw_ready;
 	wait_queue_head_t wait_pg;
-	wait_queue_head_t wait_recvd_msg;
+	wait_queue_head_t wait_hbm_start;
 	wait_queue_head_t wait_stop_wd;
 
 	/*
@@ -477,11 +479,11 @@ struct mei_device {
 	} wr_msg;
 
 	struct hbm_version version;
+	unsigned int hbm_f_pg_supported:1;
 
-	struct mei_me_client *me_clients; /* Note: memory has to be allocated */
+	struct list_head me_clients;
 	DECLARE_BITMAP(me_clients_map, MEI_CLIENTS_MAX);
 	DECLARE_BITMAP(host_clients_map, MEI_CLIENTS_MAX);
-	unsigned long me_clients_num;
 	unsigned long me_client_presentation_num;
 	unsigned long me_client_index;
 
