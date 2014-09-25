@@ -37,6 +37,7 @@
 #include <linux/memblock.h>
 #include <linux/hugetlb.h>
 #include <linux/memory.h>
+#include <linux/nmi.h>
 
 #include <asm/io.h>
 #include <asm/kdump.h>
@@ -799,4 +800,11 @@ unsigned long memory_block_size_bytes(void)
 #if defined(CONFIG_PPC_INDIRECT_PIO) || defined(CONFIG_PPC_INDIRECT_MMIO)
 struct ppc_pci_io ppc_pci_io;
 EXPORT_SYMBOL(ppc_pci_io);
+#endif
+
+#ifdef CONFIG_HARDLOCKUP_DETECTOR
+u64 hw_nmi_get_sample_period(int watchdog_thresh)
+{
+	return ppc_proc_freq * watchdog_thresh;
+}
 #endif
