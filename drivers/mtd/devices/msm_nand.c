@@ -42,6 +42,10 @@ uint32_t dual_nand_ctlr_present;
 uint32_t interleave_enable;
 uint32_t enable_bch_ecc;
 
+static int
+is_page_ersd_with_corr_bitflips(struct mtd_info *mtd,
+			   unsigned page, unsigned *tot_ecc_errs);
+
 #define MSM_NAND_DMA_BUFFER_SIZE SZ_8K
 #define MSM_NAND_DMA_BUFFER_SLOTS \
 	(MSM_NAND_DMA_BUFFER_SIZE / (sizeof(((atomic_t *)0)->counter) * 8))
@@ -1128,10 +1132,57 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			for (n = start_sector; n < cwperpage; n++) {
 				if (dma_buffer->data.result[n].buffer_status &
 					chip->uncorrectable_bit_mask) {
-					/* not thread safe */
-					mtd->ecc_stats.failed++;
-					pageerr = -EBADMSG;
-					break;
+					/*checking if the page is an erased page with bit-flips*/
+					unsigned ecc_errs;
+					if (1 == is_page_ersd_with_corr_bitflips(mtd, page,
+							  &ecc_errs)) {
+
+						if (ops->datbuf && ops->mode != MTD_OPS_RAW) {
+							uint8_t *datbuf = ops->datbuf +
+								pages_read * mtd->writesize;
+
+							dma_sync_single_for_cpu(chip->dev,
+								data_dma_addr_curr-mtd->writesize,
+								mtd->writesize, DMA_BIDIRECTIONAL);
+
+							for (n = 0; n < mtd->writesize; n++)
+								datbuf[n] = 0xff;
+
+							dma_sync_single_for_device(chip->dev,
+								data_dma_addr_curr-mtd->writesize,
+								mtd->writesize, DMA_BIDIRECTIONAL);
+						}
+
+						if (ops->oobbuf) {
+							dma_sync_single_for_cpu(chip->dev,
+							oob_dma_addr_curr - (ops->ooblen - oob_len),
+							ops->ooblen - oob_len, DMA_BIDIRECTIONAL);
+
+							for (n = 0; n < ops->ooblen; n++)
+								ops->oobbuf[n] = 0xff;
+
+							dma_sync_single_for_device(chip->dev,
+							oob_dma_addr_curr - (ops->ooblen - oob_len),
+							ops->ooblen - oob_len, DMA_BIDIRECTIONAL);
+						}
+						/* While testing, noted that 2nd read to the same
+						 * page sometimes returns no bit-flips at-all.
+						 * Note: Weak bits may read different values in
+						 * multiple iterations.
+						 */
+						if (ecc_errs) {
+							total_ecc_errors += ecc_errs;
+							/* not thread safe */
+							mtd->ecc_stats.corrected += ecc_errs;
+							pageerr = -EUCLEAN;
+						} else
+							pageerr = 0;
+					} else {
+						/* not thread safe */
+						mtd->ecc_stats.failed++;
+						pageerr = -EBADMSG;
+						break;
+					}
 				}
 			}
 		}
@@ -1997,6 +2048,82 @@ err_dma_map_oobbuf_failed:
 			"==========\n");
 #endif
 	return err;
+}
+
+/**
+ * is_page_ersd_with_corr_bitflips - Checks if a page is erased but
+ *                                   has bit-flips which could be
+ *                                   corrected when the page is used.
+ * @param mtd           MTD device structure
+ * @param page          Page no w.r.t. entire NAND Flash
+ * @param tot_ecc_errs  Total no. of bitflips found
+ *
+ * return 0   - Is not an erased page with correctable no. of bit-flips.
+ * return 1   - Is an erased page with correctable no. of bit-flips.
+ * return -ve - error.
+ */
+static int
+is_page_ersd_with_corr_bitflips(struct mtd_info *mtd,
+			   unsigned page, unsigned *tot_ecc_errs)
+{
+	int i, j, ret, idx, ecc_strength, bitflipspercw;
+	u8 *buf, value;
+	unsigned cwperpage;
+	struct mtd_oob_ops ops;
+	struct msm_nand_chip *chip = mtd->priv;
+	int (*read_oob)(struct mtd_info *, loff_t, struct mtd_oob_ops *);
+
+	cwperpage = (mtd->writesize >> 9);
+	ecc_strength = enable_bch_ecc ? 8 : 4;
+	*tot_ecc_errs = 0;
+
+	if (!dual_nand_ctlr_present)
+		read_oob = msm_nand_read_oob;
+	else
+		read_oob = msm_nand_read_oob_dualnandc;
+
+	buf = kmalloc(mtd->writesize + mtd->oobsize, GFP_KERNEL | GFP_DMA);
+	if (!buf) {
+		pr_err("%s: could not allocate memory\n", __func__);
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	ops.mode = MTD_OPS_RAW;
+	ops.datbuf = buf;
+	ops.oobbuf = NULL;
+	ops.ooblen = 0;
+	ops.ooboffs = 0;
+	ops.retlen = 0;
+	ops.len = mtd->writesize + mtd->oobsize;
+
+	ret = read_oob(mtd, page * mtd->writesize, &ops);
+
+	if (ret < 0 || ops.retlen != (mtd->writesize + mtd->oobsize)) {
+		pr_err("%s: raw read of page failed, ret %d, retlen %d\n", __func__,
+				  ret, ops.retlen);
+		goto cleanup;
+	}
+	ret = 1;
+
+	for (i = 0; i < cwperpage; i++) {
+		bitflipspercw = 0;
+		for (j = 0; j < chip->cw_size; j++) {
+			idx = (i * chip->cw_size) + j;
+			if (buf[idx] != 0xff) {
+				for (value = buf[idx] ^ 0xff; value != 0; bitflipspercw++,
+						  value = value & (value - 1));
+			}
+		}
+		*tot_ecc_errs += bitflipspercw;
+		if (bitflipspercw > ecc_strength)
+			ret = 0;
+	}
+
+cleanup:
+	kfree(buf);
+out:
+	return ret;
 }
 
 static int
