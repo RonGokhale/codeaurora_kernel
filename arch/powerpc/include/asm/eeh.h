@@ -146,6 +146,11 @@ static inline struct pci_dev *eeh_dev_to_pci_dev(struct eeh_dev *edev)
 	return edev ? edev->pdev : NULL;
 }
 
+static inline struct eeh_pe *eeh_dev_to_pe(struct eeh_dev* edev)
+{
+	return edev ? edev->pe : NULL;
+}
+
 /* Return values from eeh_ops::next_error */
 enum {
 	EEH_NEXT_ERR_NONE = 0,
@@ -167,6 +172,7 @@ enum {
 #define EEH_OPT_ENABLE		1	/* EEH enable	*/
 #define EEH_OPT_THAW_MMIO	2	/* MMIO enable	*/
 #define EEH_OPT_THAW_DMA	3	/* DMA enable	*/
+#define EEH_OPT_FREEZE_PE	4	/* Freeze PE	*/
 #define EEH_STATE_UNAVAILABLE	(1 << 0)	/* State unavailable	*/
 #define EEH_STATE_NOT_SUPPORT	(1 << 1)	/* EEH not supported	*/
 #define EEH_STATE_RESET_ACTIVE	(1 << 2)	/* Active reset		*/
@@ -269,8 +275,7 @@ void eeh_dev_phb_init_dynamic(struct pci_controller *phb);
 int eeh_init(void);
 int __init eeh_ops_register(struct eeh_ops *ops);
 int __exit eeh_ops_unregister(const char *name);
-unsigned long eeh_check_failure(const volatile void __iomem *token,
-				unsigned long val);
+int eeh_check_failure(const volatile void __iomem *token);
 int eeh_dev_check_failure(struct eeh_dev *edev);
 void eeh_addr_cache_build(void);
 void eeh_add_device_early(struct device_node *);
@@ -321,9 +326,9 @@ static inline void *eeh_dev_init(struct device_node *dn, void *data)
 
 static inline void eeh_dev_phb_init_dynamic(struct pci_controller *phb) { }
 
-static inline unsigned long eeh_check_failure(const volatile void __iomem *token, unsigned long val)
+static inline int eeh_check_failure(const volatile void __iomem *token)
 {
-	return val;
+	return 0;
 }
 
 #define eeh_dev_check_failure(x) (0)
@@ -354,7 +359,7 @@ static inline u8 eeh_readb(const volatile void __iomem *addr)
 {
 	u8 val = in_8(addr);
 	if (EEH_POSSIBLE_ERROR(val, u8))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -362,7 +367,7 @@ static inline u16 eeh_readw(const volatile void __iomem *addr)
 {
 	u16 val = in_le16(addr);
 	if (EEH_POSSIBLE_ERROR(val, u16))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -370,7 +375,7 @@ static inline u32 eeh_readl(const volatile void __iomem *addr)
 {
 	u32 val = in_le32(addr);
 	if (EEH_POSSIBLE_ERROR(val, u32))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -378,7 +383,7 @@ static inline u64 eeh_readq(const volatile void __iomem *addr)
 {
 	u64 val = in_le64(addr);
 	if (EEH_POSSIBLE_ERROR(val, u64))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -386,7 +391,7 @@ static inline u16 eeh_readw_be(const volatile void __iomem *addr)
 {
 	u16 val = in_be16(addr);
 	if (EEH_POSSIBLE_ERROR(val, u16))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -394,7 +399,7 @@ static inline u32 eeh_readl_be(const volatile void __iomem *addr)
 {
 	u32 val = in_be32(addr);
 	if (EEH_POSSIBLE_ERROR(val, u32))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -402,7 +407,7 @@ static inline u64 eeh_readq_be(const volatile void __iomem *addr)
 {
 	u64 val = in_be64(addr);
 	if (EEH_POSSIBLE_ERROR(val, u64))
-		return eeh_check_failure(addr, val);
+		eeh_check_failure(addr);
 	return val;
 }
 
@@ -416,7 +421,7 @@ static inline void eeh_memcpy_fromio(void *dest, const
 	 * were copied. Check all four bytes.
 	 */
 	if (n >= 4 && EEH_POSSIBLE_ERROR(*((u32 *)(dest + n - 4)), u32))
-		eeh_check_failure(src, *((u32 *)(dest + n - 4)));
+		eeh_check_failure(src);
 }
 
 /* in-string eeh macros */
@@ -425,7 +430,7 @@ static inline void eeh_readsb(const volatile void __iomem *addr, void * buf,
 {
 	_insb(addr, buf, ns);
 	if (EEH_POSSIBLE_ERROR((*(((u8*)buf)+ns-1)), u8))
-		eeh_check_failure(addr, *(u8*)buf);
+		eeh_check_failure(addr);
 }
 
 static inline void eeh_readsw(const volatile void __iomem *addr, void * buf,
@@ -433,7 +438,7 @@ static inline void eeh_readsw(const volatile void __iomem *addr, void * buf,
 {
 	_insw(addr, buf, ns);
 	if (EEH_POSSIBLE_ERROR((*(((u16*)buf)+ns-1)), u16))
-		eeh_check_failure(addr, *(u16*)buf);
+		eeh_check_failure(addr);
 }
 
 static inline void eeh_readsl(const volatile void __iomem *addr, void * buf,
@@ -441,7 +446,7 @@ static inline void eeh_readsl(const volatile void __iomem *addr, void * buf,
 {
 	_insl(addr, buf, nl);
 	if (EEH_POSSIBLE_ERROR((*(((u32*)buf)+nl-1)), u32))
-		eeh_check_failure(addr, *(u32*)buf);
+		eeh_check_failure(addr);
 }
 
 #endif /* CONFIG_PPC64 */

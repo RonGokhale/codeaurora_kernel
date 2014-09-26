@@ -41,37 +41,36 @@
 #include "powernv.h"
 #include "pci.h"
 
-#define define_pe_printk_level(func, kern_level)		\
-static int func(const struct pnv_ioda_pe *pe, const char *fmt, ...)	\
-{								\
-	struct va_format vaf;					\
-	va_list args;						\
-	char pfix[32];						\
-	int r;							\
-								\
-	va_start(args, fmt);					\
-								\
-	vaf.fmt = fmt;						\
-	vaf.va = &args;						\
-								\
-	if (pe->pdev)						\
-		strlcpy(pfix, dev_name(&pe->pdev->dev),		\
-			sizeof(pfix));				\
-	else							\
-		sprintf(pfix, "%04x:%02x     ",			\
-			pci_domain_nr(pe->pbus),		\
-			pe->pbus->number);			\
-	r = printk(kern_level "pci %s: [PE# %.3d] %pV",		\
-		   pfix, pe->pe_number, &vaf);			\
-								\
-	va_end(args);						\
-								\
-	return r;						\
-}								\
+static void pe_level_printk(const struct pnv_ioda_pe *pe, const char *level,
+			    const char *fmt, ...)
+{
+	struct va_format vaf;
+	va_list args;
+	char pfix[32];
 
-define_pe_printk_level(pe_err, KERN_ERR);
-define_pe_printk_level(pe_warn, KERN_WARNING);
-define_pe_printk_level(pe_info, KERN_INFO);
+	va_start(args, fmt);
+
+	vaf.fmt = fmt;
+	vaf.va = &args;
+
+	if (pe->pdev)
+		strlcpy(pfix, dev_name(&pe->pdev->dev), sizeof(pfix));
+	else
+		sprintf(pfix, "%04x:%02x     ",
+			pci_domain_nr(pe->pbus), pe->pbus->number);
+
+	printk("%spci %s: [PE# %.3d] %pV",
+	       level, pfix, pe->pe_number, &vaf);
+
+	va_end(args);
+}
+
+#define pe_err(pe, fmt, ...)					\
+	pe_level_printk(pe, KERN_ERR, fmt, ##__VA_ARGS__)
+#define pe_warn(pe, fmt, ...)					\
+	pe_level_printk(pe, KERN_WARNING, fmt, ##__VA_ARGS__)
+#define pe_info(pe, fmt, ...)					\
+	pe_level_printk(pe, KERN_INFO, fmt, ##__VA_ARGS__)
 
 /*
  * stdcix is only supposed to be used in hypervisor real mode as per
@@ -385,7 +384,7 @@ static void pnv_ioda_freeze_pe(struct pnv_phb *phb, int pe_no)
 	}
 }
 
-int pnv_ioda_unfreeze_pe(struct pnv_phb *phb, int pe_no, int opt)
+static int pnv_ioda_unfreeze_pe(struct pnv_phb *phb, int pe_no, int opt)
 {
 	struct pnv_ioda_pe *pe, *slave;
 	s64 rc;
@@ -1631,8 +1630,8 @@ static void pnv_pci_ioda_shutdown(struct pnv_phb *phb)
 		       OPAL_ASSERT_RESET);
 }
 
-void __init pnv_pci_init_ioda_phb(struct device_node *np,
-				  u64 hub_id, int ioda_type)
+static void __init pnv_pci_init_ioda_phb(struct device_node *np,
+					 u64 hub_id, int ioda_type)
 {
 	struct pci_controller *hose;
 	struct pnv_phb *phb;
