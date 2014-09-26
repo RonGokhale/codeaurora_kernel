@@ -116,6 +116,7 @@ struct bam_ch_info {
 };
 
 struct gbam_port {
+	bool			is_connected;
 	unsigned		port_num;
 	spinlock_t		port_lock_ul;
 	spinlock_t		port_lock_dl;
@@ -738,6 +739,13 @@ static void gbam2bam_disconnect_work(struct work_struct *w)
 			container_of(w, struct gbam_port, disconnect_w);
 	struct bam_ch_info *d = &port->data_ch;
 	int ret;
+	if (!port->is_connected) {
+		pr_debug("%s: Port already disconnected. Bailing out.\n",
+			__func__);
+		return;
+	}
+
+	port->is_connected = false;
 
 	if (d->trans == USB_GADGET_XPORT_BAM2BAM_IPA) {
 		ret = usb_bam_disconnect_ipa(&d->ipa_params);
@@ -791,6 +799,8 @@ static void gbam2bam_connect_work(struct work_struct *w)
 	void *priv;
 	int ret;
 	unsigned long flags;
+
+	port->is_connected = true;
 
 	spin_lock_irqsave(&port->port_lock_ul, flags);
 	spin_lock(&port->port_lock_dl);
@@ -1086,6 +1096,7 @@ static int gbam_port_alloc(int portno)
 	port->port_num = portno;
 
 	/* port initialization */
+	port->is_connected = false;
 	spin_lock_init(&port->port_lock_ul);
 	spin_lock_init(&port->port_lock_dl);
 	INIT_WORK(&port->connect_w, gbam_connect_work);
@@ -1128,6 +1139,7 @@ static int gbam2bam_port_alloc(int portno)
 	port->port_num = portno;
 
 	/* port initialization */
+	port->is_connected = false;
 	spin_lock_init(&port->port_lock_ul);
 	spin_lock_init(&port->port_lock_dl);
 
