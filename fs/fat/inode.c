@@ -120,6 +120,14 @@ static int fat_add_cluster(struct inode *inode)
 	return err;
 }
 
+static inline int check_fallocated_region(struct inode *inode, sector_t iblock)
+{
+	struct super_block *sb = inode->i_sb;
+	sector_t last_disk_block = MSDOS_I(inode)->i_disksize >>
+		sb->s_blocksize_bits;
+	return iblock < last_disk_block;
+}
+
 static inline int __fat_get_block(struct inode *inode, sector_t iblock,
 				  unsigned long *max_blocks,
 				  struct buffer_head *bh_result, int create)
@@ -148,7 +156,7 @@ static inline int __fat_get_block(struct inode *inode, sector_t iblock,
 	}
 
 	offset = (unsigned long)iblock & (sbi->sec_per_clus - 1);
-	if (!offset) {
+	if (!offset && !check_fallocated_region(inode, iblock)) {
 		/* TODO: multiple cluster allocation would be desirable. */
 		err = fat_add_cluster(inode);
 		if (err)
