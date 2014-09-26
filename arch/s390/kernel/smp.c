@@ -333,12 +333,6 @@ int smp_vcpu_scheduled(int cpu)
 	return pcpu_running(pcpu_devices + cpu);
 }
 
-void smp_yield(void)
-{
-	if (MACHINE_HAS_DIAG44)
-		asm volatile("diag 0,0,0x44");
-}
-
 void smp_yield_cpu(int cpu)
 {
 	if (MACHINE_HAS_DIAG9C)
@@ -791,10 +785,6 @@ void __init smp_prepare_boot_cpu(void)
 	smp_cpu_set_polarization(0, POLARIZATION_UNKNOWN);
 	set_cpu_present(0, true);
 	set_cpu_online(0, true);
-}
-
-void __init smp_cpus_done(unsigned int max_cpus)
-{
 }
 
 void __init smp_setup_processor_id(void)
