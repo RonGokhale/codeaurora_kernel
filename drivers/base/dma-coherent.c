@@ -279,6 +279,7 @@ EXPORT_SYMBOL(dma_mmap_from_coherent);
 static int rmem_dma_device_init(struct reserved_mem *rmem, struct device *dev)
 {
 	struct dma_coherent_mem *mem = rmem->priv;
+
 	if (!mem &&
 	    dma_init_coherent_memory(rmem->base, rmem->base, rmem->size,
 				     DMA_MEMORY_MAP | DMA_MEMORY_EXCLUSIVE,
