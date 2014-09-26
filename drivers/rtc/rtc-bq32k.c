@@ -132,9 +132,7 @@ static const struct rtc_class_ops bq32k_rtc_ops = {
 
 static int trickle_charger_of_init(struct device *dev, struct device_node *node)
 {
-	int plen = 0;
-	const uint32_t *setup;
-	const uint32_t *reg;
+	unsigned char reg;
 	int error;
 	u32 ohms = 0;
 
@@ -166,7 +164,7 @@ static int trickle_charger_of_init(struct device *dev, struct device_node *node)
 		break;
 
 	default:
-		dev_err(dev, "invalid resistor value (%d)\n", *setup);
+		dev_err(dev, "invalid resistor value (%d)\n", ohms);
 		return -EINVAL;
 	}
 
