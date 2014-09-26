@@ -40,7 +40,7 @@ static int dma_init_coherent_memory(phys_addr_t phys_addr, dma_addr_t device_add
 		goto out;
 	dma_mem->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
 	if (!dma_mem->bitmap)
-		goto free1_out;
+		goto out;
 
 	dma_mem->virt_base = mem_base;
 	dma_mem->device_base = device_addr;
@@ -56,9 +56,8 @@ static int dma_init_coherent_memory(phys_addr_t phys_addr, dma_addr_t device_add
 
 	return DMA_MEMORY_IO;
 
- free1_out:
+out:
 	kfree(dma_mem);
- out:
 	if (mem_base)
 		iounmap(mem_base);
 	return 0;
