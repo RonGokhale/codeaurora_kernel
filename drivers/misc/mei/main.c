@@ -303,11 +303,11 @@ static ssize_t mei_write(struct file *file, const char __user *ubuf,
 			 size_t length, loff_t *offset)
 {
 	struct mei_cl *cl = file->private_data;
+	struct mei_me_client *me_cl;
 	struct mei_cl_cb *write_cb = NULL;
 	struct mei_device *dev;
 	unsigned long timeout = 0;
 	int rets;
-	int id;
 
 	if (WARN_ON(!cl || !cl->dev))
 		return -ENODEV;
@@ -321,8 +321,8 @@ static ssize_t mei_write(struct file *file, const char __user *ubuf,
 		goto out;
 	}
 
-	id = mei_me_cl_by_id(dev, cl->me_client_id);
-	if (id < 0) {
+	me_cl = mei_me_cl_by_uuid_id(dev, &cl->cl_uuid, cl->me_client_id);
+	if (!me_cl) {
 		rets = -ENOTTY;
 		goto out;
 	}
@@ -332,7 +332,7 @@ static ssize_t mei_write(struct file *file, const char __user *ubuf,
 		goto out;
 	}
 
-	if (length > dev->me_clients[id].props.max_msg_length) {
+	if (length > me_cl->props.max_msg_length) {
 		rets = -EFBIG;
 		goto out;
 	}
@@ -428,14 +428,11 @@ static int mei_ioctl_connect_client(struct file *file,
 {
 	struct mei_device *dev;
 	struct mei_client *client;
+	struct mei_me_client *me_cl;
 	struct mei_cl *cl;
-	int i;
 	int rets;
 
 	cl = file->private_data;
-	if (WARN_ON(!cl || !cl->dev))
-		return -ENODEV;
-
 	dev = cl->dev;
 
 	if (dev->dev_state != MEI_DEV_ENABLED) {
@@ -450,22 +447,23 @@ static int mei_ioctl_connect_client(struct file *file,
 	}
 
 	/* find ME client we're trying to connect to */
-	i = mei_me_cl_by_uuid(dev, &data->in_client_uuid);
-	if (i < 0 || dev->me_clients[i].props.fixed_address) {
+	me_cl = mei_me_cl_by_uuid(dev, &data->in_client_uuid);
+	if (!me_cl || me_cl->props.fixed_address) {
 		dev_dbg(&dev->pdev->dev, "Cannot connect to FW Client UUID = %pUl\n",
 				&data->in_client_uuid);
 		rets = -ENOTTY;
 		goto end;
 	}
 
-	cl->me_client_id = dev->me_clients[i].client_id;
+	cl->me_client_id = me_cl->client_id;
+	cl->cl_uuid = me_cl->props.protocol_name;
 
 	dev_dbg(&dev->pdev->dev, "Connect to FW Client ID = %d\n",
 			cl->me_client_id);
 	dev_dbg(&dev->pdev->dev, "FW Client - Protocol Version = %d\n",
-			dev->me_clients[i].props.protocol_version);
+			me_cl->props.protocol_version);
 	dev_dbg(&dev->pdev->dev, "FW Client - Max Msg Len = %d\n",
-			dev->me_clients[i].props.max_msg_length);
+			me_cl->props.max_msg_length);
 
 	/* if we're connecting to amthif client then we will use the
 	 * existing connection
@@ -484,10 +482,8 @@ static int mei_ioctl_connect_client(struct file *file,
 		file->private_data = &dev->iamthif_cl;
 
 		client = &data->out_client_properties;
-		client->max_msg_length =
-			dev->me_clients[i].props.max_msg_length;
-		client->protocol_version =
-			dev->me_clients[i].props.protocol_version;
+		client->max_msg_length = me_cl->props.max_msg_length;
+		client->protocol_version = me_cl->props.protocol_version;
 		rets = dev->iamthif_cl.status;
 
 		goto end;
@@ -496,8 +492,8 @@ static int mei_ioctl_connect_client(struct file *file,
 
 	/* prepare the output buffer */
 	client = &data->out_client_properties;
-	client->max_msg_length = dev->me_clients[i].props.max_msg_length;
-	client->protocol_version = dev->me_clients[i].props.protocol_version;
+	client->max_msg_length = me_cl->props.max_msg_length;
+	client->protocol_version = me_cl->props.protocol_version;
 	dev_dbg(&dev->pdev->dev, "Can connect?\n");
 
 
@@ -506,7 +502,6 @@ static int mei_ioctl_connect_client(struct file *file,
 end:
 	return rets;
 }
-
 
 /**
  * mei_ioctl - the IOCTL function
@@ -521,11 +516,9 @@ static long mei_ioctl(struct file *file, unsigned int cmd, unsigned long data)
 {
 	struct mei_device *dev;
 	struct mei_cl *cl = file->private_data;
-	struct mei_connect_client_data *connect_data = NULL;
+	struct mei_connect_client_data connect_data;
 	int rets;
 
-	if (cmd != IOCTL_MEI_CONNECT_CLIENT)
-		return -EINVAL;
 
 	if (WARN_ON(!cl || !cl->dev))
 		return -ENODEV;
@@ -540,38 +533,36 @@ static long mei_ioctl(struct file *file, unsigned int cmd, unsigned long data)
 		goto out;
 	}
 
-	dev_dbg(&dev->pdev->dev, ": IOCTL_MEI_CONNECT_CLIENT.\n");
-
-	connect_data = kzalloc(sizeof(struct mei_connect_client_data),
-							GFP_KERNEL);
-	if (!connect_data) {
-		rets = -ENOMEM;
-		goto out;
-	}
-	dev_dbg(&dev->pdev->dev, "copy connect data from user\n");
-	if (copy_from_user(connect_data, (char __user *)data,
+	switch (cmd) {
+	case IOCTL_MEI_CONNECT_CLIENT:
+		dev_dbg(&dev->pdev->dev, ": IOCTL_MEI_CONNECT_CLIENT.\n");
+		if (copy_from_user(&connect_data, (char __user *)data,
 				sizeof(struct mei_connect_client_data))) {
-		dev_dbg(&dev->pdev->dev, "failed to copy data from userland\n");
-		rets = -EFAULT;
-		goto out;
-	}
+			dev_dbg(&dev->pdev->dev, "failed to copy data from userland\n");
+			rets = -EFAULT;
+			goto out;
+		}
 
-	rets = mei_ioctl_connect_client(file, connect_data);
+		rets = mei_ioctl_connect_client(file, &connect_data);
+		if (rets)
+			goto out;
 
-	/* if all is ok, copying the data back to user. */
-	if (rets)
-		goto out;
-
-	dev_dbg(&dev->pdev->dev, "copy connect data to user\n");
-	if (copy_to_user((char __user *)data, connect_data,
+		/* if all is ok, copying the data back to user. */
+		if (copy_to_user((char __user *)data, &connect_data,
 				sizeof(struct mei_connect_client_data))) {
-		dev_dbg(&dev->pdev->dev, "failed to copy data to userland\n");
-		rets = -EFAULT;
-		goto out;
+			dev_dbg(&dev->pdev->dev, "failed to copy data to userland\n");
+			rets = -EFAULT;
+			goto out;
+		}
+
+		break;
+
+	default:
+		dev_err(&dev->pdev->dev, ": unsupported ioctl %d.\n", cmd);
+		rets = -ENOIOCTLCMD;
 	}
 
 out:
-	kfree(connect_data);
 	mutex_unlock(&dev->device_lock);
 	return rets;
 }

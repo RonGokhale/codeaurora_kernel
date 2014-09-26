@@ -25,6 +25,23 @@
 #include "hbm.h"
 #include "client.h"
 
+static const char *mei_hbm_status_str(enum mei_hbm_status status)
+{
+#define MEI_HBM_STATUS(status) case MEI_HBMS_##status: return #status
+	switch (status) {
+	MEI_HBM_STATUS(SUCCESS);
+	MEI_HBM_STATUS(CLIENT_NOT_FOUND);
+	MEI_HBM_STATUS(ALREADY_EXISTS);
+	MEI_HBM_STATUS(REJECTED);
+	MEI_HBM_STATUS(INVALID_PARAMETER);
+	MEI_HBM_STATUS(NOT_ALLOWED);
+	MEI_HBM_STATUS(ALREADY_STARTED);
+	MEI_HBM_STATUS(NOT_STARTED);
+	default: return "unknown";
+	}
+#undef MEI_HBM_STATUS
+};
+
 static const char *mei_cl_conn_status_str(enum mei_cl_connect_status status)
 {
 #define MEI_CL_CS(status) case MEI_CL_CONN_##status: return #status
@@ -71,60 +88,38 @@ void mei_hbm_idle(struct mei_device *dev)
 }
 
 /**
+ * mei_me_cl_remove_all - remove all me clients
+ *
+ * @dev: the device structure
+ */
+static void mei_me_cl_remove_all(struct mei_device *dev)
+{
+	struct mei_me_client *me_cl, *next;
+	list_for_each_entry_safe(me_cl, next, &dev->me_clients, list) {
+			list_del(&me_cl->list);
+			kfree(me_cl);
+	}
+}
+
+/**
  * mei_hbm_reset - reset hbm counters and book keeping data structurs
  *
  * @dev: the device structure
  */
 void mei_hbm_reset(struct mei_device *dev)
 {
-	dev->me_clients_num = 0;
 	dev->me_client_presentation_num = 0;
 	dev->me_client_index = 0;
 
-	kfree(dev->me_clients);
-	dev->me_clients = NULL;
+	mei_me_cl_remove_all(dev);
 
 	mei_hbm_idle(dev);
 }
 
 /**
- * mei_hbm_me_cl_allocate - allocates storage for me clients
- *
- * @dev: the device structure
- *
- * returns 0 on success -ENOMEM on allocation failure
- */
-static int mei_hbm_me_cl_allocate(struct mei_device *dev)
-{
-	struct mei_me_client *clients;
-	int b;
-
-	mei_hbm_reset(dev);
-
-	/* count how many ME clients we have */
-	for_each_set_bit(b, dev->me_clients_map, MEI_CLIENTS_MAX)
-		dev->me_clients_num++;
-
-	if (dev->me_clients_num == 0)
-		return 0;
-
-	dev_dbg(&dev->pdev->dev, "memory allocation for ME clients size=%ld.\n",
-		dev->me_clients_num * sizeof(struct mei_me_client));
-	/* allocate storage for ME clients representation */
-	clients = kcalloc(dev->me_clients_num,
-			sizeof(struct mei_me_client), GFP_KERNEL);
-	if (!clients) {
-		dev_err(&dev->pdev->dev, "memory allocation for ME clients failed.\n");
-		return -ENOMEM;
-	}
-	dev->me_clients = clients;
-	return 0;
-}
-
-/**
  * mei_hbm_cl_hdr - construct client hbm header
  *
- * @cl: - client
+ * @cl: client
  * @hbm_cmd: host bus message command
  * @buf: buffer for cl header
  * @len: buffer length
@@ -142,36 +137,83 @@ void mei_hbm_cl_hdr(struct mei_cl *cl, u8 hbm_cmd, void *buf, size_t len)
 }
 
 /**
- * mei_hbm_cl_addr_equal - tells if they have the same address
+ * mei_hbm_cl_write - write simple hbm client message
  *
- * @cl: - client
- * @buf: buffer with cl header
+ * @dev: the device structure
+ * @cl: client
+ * @hbm_cmd: host bus message command
+ * @len: buffer length
+ */
+static inline
+int mei_hbm_cl_write(struct mei_device *dev,
+		     struct mei_cl *cl, u8 hbm_cmd, size_t len)
+{
+	struct mei_msg_hdr *mei_hdr = &dev->wr_msg.hdr;
+
+	mei_hbm_hdr(mei_hdr, len);
+	mei_hbm_cl_hdr(cl, hbm_cmd, dev->wr_msg.data, len);
+
+	return mei_write_message(dev, mei_hdr, dev->wr_msg.data);
+}
+
+/**
+ * mei_hbm_cl_addr_equal - check if the client's and
+ *	the message address match
+ *
+ * @cl: client
+ * @cmd: hbm client message
  *
  * returns true if addresses are the same
  */
 static inline
-bool mei_hbm_cl_addr_equal(struct mei_cl *cl, void *buf)
+bool mei_hbm_cl_addr_equal(struct mei_cl *cl, struct mei_hbm_cl_cmd *cmd)
 {
-	struct mei_hbm_cl_cmd *cmd = buf;
 	return cl->host_client_id == cmd->host_addr &&
 		cl->me_client_id == cmd->me_addr;
 }
 
+/**
+ * mei_hbm_cl_find_by_cmd - find recipient client
+ *
+ * @dev: the device structure
+ * @buf: a buffer with hbm cl command
+ *
+ * returns the recipient client or NULL if not found
+ */
+static inline
+struct mei_cl *mei_hbm_cl_find_by_cmd(struct mei_device *dev, void *buf)
+{
+	struct mei_hbm_cl_cmd *cmd = (struct mei_hbm_cl_cmd *)buf;
+	struct mei_cl *cl;
 
+	list_for_each_entry(cl, &dev->file_list, link)
+		if (mei_hbm_cl_addr_equal(cl, cmd))
+			return cl;
+	return NULL;
+}
+
+
+/**
+ * mei_hbm_start_wait - wait for start response message.
+ *
+ * @dev: the device structure
+ *
+ * returns 0 on success and < 0 on failure
+ */
 int mei_hbm_start_wait(struct mei_device *dev)
 {
 	int ret;
-	if (dev->hbm_state > MEI_HBM_START)
+
+	if (dev->hbm_state > MEI_HBM_STARTING)
 		return 0;
 
 	mutex_unlock(&dev->device_lock);
-	ret = wait_event_interruptible_timeout(dev->wait_recvd_msg,
-			dev->hbm_state == MEI_HBM_IDLE ||
-			dev->hbm_state >= MEI_HBM_STARTED,
+	ret = wait_event_timeout(dev->wait_hbm_start,
+			dev->hbm_state != MEI_HBM_STARTING,
 			mei_secs_to_jiffies(MEI_HBM_TIMEOUT));
 	mutex_lock(&dev->device_lock);
 
-	if (ret <= 0 && (dev->hbm_state <= MEI_HBM_START)) {
+	if (ret == 0 && (dev->hbm_state <= MEI_HBM_STARTING)) {
 		dev->hbm_state = MEI_HBM_IDLE;
 		dev_err(&dev->pdev->dev, "waiting for mei start failed\n");
 		return -ETIME;
@@ -193,6 +235,8 @@ int mei_hbm_start_req(struct mei_device *dev)
 	const size_t len = sizeof(struct hbm_host_version_request);
 	int ret;
 
+	mei_hbm_reset(dev);
+
 	mei_hbm_hdr(mei_hdr, len);
 
 	/* host start message */
@@ -210,7 +254,7 @@ int mei_hbm_start_req(struct mei_device *dev)
 		return ret;
 	}
 
-	dev->hbm_state = MEI_HBM_START;
+	dev->hbm_state = MEI_HBM_STARTING;
 	dev->init_clients_timer = MEI_CLIENTS_INIT_TIMEOUT;
 	return 0;
 }
@@ -247,6 +291,32 @@ static int mei_hbm_enum_clients_req(struct mei_device *dev)
 	return 0;
 }
 
+/*
+ * mei_hbm_me_cl_add - add new me client to the list
+ *
+ * @dev: the device structure
+ * @res: hbm property response
+ *
+ * returns 0 on success and -ENOMEM on allocation failure
+ */
+
+static int mei_hbm_me_cl_add(struct mei_device *dev,
+			     struct hbm_props_response *res)
+{
+	struct mei_me_client *me_cl;
+
+	me_cl = kzalloc(sizeof(struct mei_me_client), GFP_KERNEL);
+	if (!me_cl)
+		return -ENOMEM;
+
+	me_cl->props = res->client_properties;
+	me_cl->client_id = res->me_addr;
+	me_cl->mei_flow_ctrl_creds = 0;
+
+	list_add(&me_cl->list, &dev->me_clients);
+	return 0;
+}
+
 /**
  * mei_hbm_prop_req - request property for a single client
  *
@@ -262,10 +332,7 @@ static int mei_hbm_prop_req(struct mei_device *dev)
 	struct hbm_props_request *prop_req;
 	const size_t len = sizeof(struct hbm_props_request);
 	unsigned long next_client_index;
-	unsigned long client_num;
 	int ret;
-
-	client_num = dev->me_client_presentation_num;
 
 	next_client_index = find_next_bit(dev->me_clients_map, MEI_CLIENTS_MAX,
 					  dev->me_client_index);
@@ -278,17 +345,13 @@ static int mei_hbm_prop_req(struct mei_device *dev)
 		return 0;
 	}
 
-	dev->me_clients[client_num].client_id = next_client_index;
-	dev->me_clients[client_num].mei_flow_ctrl_creds = 0;
-
 	mei_hbm_hdr(mei_hdr, len);
 	prop_req = (struct hbm_props_request *)dev->wr_msg.data;
 
 	memset(prop_req, 0, sizeof(struct hbm_props_request));
 
-
 	prop_req->hbm_cmd = HOST_CLIENT_PROPERTIES_REQ_CMD;
-	prop_req->address = next_client_index;
+	prop_req->me_addr = next_client_index;
 
 	ret = mei_write_message(dev, mei_hdr, dev->wr_msg.data);
 	if (ret) {
@@ -309,7 +372,8 @@ static int mei_hbm_prop_req(struct mei_device *dev)
  * @dev: the device structure
  * @pg_cmd: the pg command code
  *
- * This function returns -EIO on write failure
+ * returns -EIO on write failure
+ *         -EOPNOTSUPP if the operation is not supported by the protocol
  */
 int mei_hbm_pg(struct mei_device *dev, u8 pg_cmd)
 {
@@ -317,6 +381,9 @@ int mei_hbm_pg(struct mei_device *dev, u8 pg_cmd)
 	struct hbm_power_gate *req;
 	const size_t len = sizeof(struct hbm_power_gate);
 	int ret;
+
+	if (!dev->hbm_f_pg_supported)
+		return -EOPNOTSUPP;
 
 	mei_hbm_hdr(mei_hdr, len);
 
@@ -365,15 +432,9 @@ static int mei_hbm_stop_req(struct mei_device *dev)
  */
 int mei_hbm_cl_flow_control_req(struct mei_device *dev, struct mei_cl *cl)
 {
-	struct mei_msg_hdr *mei_hdr = &dev->wr_msg.hdr;
 	const size_t len = sizeof(struct hbm_flow_control);
-
-	mei_hbm_hdr(mei_hdr, len);
-	mei_hbm_cl_hdr(cl, MEI_FLOW_CONTROL_CMD, dev->wr_msg.data, len);
-
 	cl_dbg(dev, cl, "sending flow control\n");
-
-	return mei_write_message(dev, mei_hdr, dev->wr_msg.data);
+	return mei_hbm_cl_write(dev, cl, MEI_FLOW_CONTROL_CMD, len);
 }
 
 /**
@@ -388,25 +449,20 @@ static int mei_hbm_add_single_flow_creds(struct mei_device *dev,
 				  struct hbm_flow_control *flow)
 {
 	struct mei_me_client *me_cl;
-	int id;
 
-	id = mei_me_cl_by_id(dev, flow->me_addr);
-	if (id < 0) {
+	me_cl = mei_me_cl_by_id(dev, flow->me_addr);
+	if (!me_cl) {
 		dev_err(&dev->pdev->dev, "no such me client %d\n",
 			flow->me_addr);
-		return id;
+		return -ENOENT;
 	}
 
-	me_cl = &dev->me_clients[id];
-	if (me_cl->props.single_recv_buf) {
-		me_cl->mei_flow_ctrl_creds++;
-		dev_dbg(&dev->pdev->dev, "recv flow ctrl msg ME %d (single).\n",
-		    flow->me_addr);
-		dev_dbg(&dev->pdev->dev, "flow control credentials =%d.\n",
-		    me_cl->mei_flow_ctrl_creds);
-	} else {
-		BUG();	/* error in flow control */
-	}
+	if (WARN_ON(me_cl->props.single_recv_buf == 0))
+		return -EINVAL;
+
+	me_cl->mei_flow_ctrl_creds++;
+	dev_dbg(&dev->pdev->dev, "recv flow ctrl msg ME %d (single) creds = %d.\n",
+	    flow->me_addr, me_cl->mei_flow_ctrl_creds);
 
 	return 0;
 }
@@ -418,7 +474,7 @@ static int mei_hbm_add_single_flow_creds(struct mei_device *dev,
  * @flow_control: flow control response bus message
  */
 static void mei_hbm_cl_flow_control_res(struct mei_device *dev,
-		struct hbm_flow_control *flow_control)
+					struct hbm_flow_control *flow_control)
 {
 	struct mei_cl *cl;
 
@@ -428,16 +484,11 @@ static void mei_hbm_cl_flow_control_res(struct mei_device *dev,
 		return;
 	}
 
-	/* normal connection */
-	list_for_each_entry(cl, &dev->file_list, link) {
-		if (mei_hbm_cl_addr_equal(cl, flow_control)) {
-			cl->mei_flow_ctrl_creds++;
-			dev_dbg(&dev->pdev->dev, "flow ctrl msg for host %d ME %d.\n",
-				flow_control->host_addr, flow_control->me_addr);
-			dev_dbg(&dev->pdev->dev, "flow control credentials = %d.\n",
-				    cl->mei_flow_ctrl_creds);
-				break;
-		}
+	cl = mei_hbm_cl_find_by_cmd(dev, flow_control);
+	if (cl) {
+		cl->mei_flow_ctrl_creds++;
+		cl_dbg(dev, cl, "flow control creds = %d.\n",
+				cl->mei_flow_ctrl_creds);
 	}
 }
 
@@ -452,13 +503,8 @@ static void mei_hbm_cl_flow_control_res(struct mei_device *dev,
  */
 int mei_hbm_cl_disconnect_req(struct mei_device *dev, struct mei_cl *cl)
 {
-	struct mei_msg_hdr *mei_hdr = &dev->wr_msg.hdr;
 	const size_t len = sizeof(struct hbm_client_connect_request);
-
-	mei_hbm_hdr(mei_hdr, len);
-	mei_hbm_cl_hdr(cl, CLIENT_DISCONNECT_REQ_CMD, dev->wr_msg.data, len);
-
-	return mei_write_message(dev, mei_hdr, dev->wr_msg.data);
+	return mei_hbm_cl_write(dev, cl, CLIENT_DISCONNECT_REQ_CMD, len);
 }
 
 /**
@@ -471,49 +517,29 @@ int mei_hbm_cl_disconnect_req(struct mei_device *dev, struct mei_cl *cl)
  */
 int mei_hbm_cl_disconnect_rsp(struct mei_device *dev, struct mei_cl *cl)
 {
-	struct mei_msg_hdr *mei_hdr = &dev->wr_msg.hdr;
 	const size_t len = sizeof(struct hbm_client_connect_response);
-
-	mei_hbm_hdr(mei_hdr, len);
-	mei_hbm_cl_hdr(cl, CLIENT_DISCONNECT_RES_CMD, dev->wr_msg.data, len);
-
-	return mei_write_message(dev, mei_hdr, dev->wr_msg.data);
+	return mei_hbm_cl_write(dev, cl, CLIENT_DISCONNECT_RES_CMD, len);
 }
 
 /**
- * mei_hbm_cl_disconnect_res - disconnect response from ME
+ * mei_hbm_cl_disconnect_res - update the client state according
+ *       disconnect response
  *
- * @dev: the device structure
- * @rs: disconnect response bus message
+ * @cl: mei host client
+ * @cmd: disconnect client response host bus message
  */
-static void mei_hbm_cl_disconnect_res(struct mei_device *dev,
-		struct hbm_client_connect_response *rs)
+static void mei_hbm_cl_disconnect_res(struct mei_cl *cl,
+				      struct mei_hbm_cl_cmd *cmd)
 {
-	struct mei_cl *cl;
-	struct mei_cl_cb *cb, *next;
+	struct hbm_client_connect_response *rs =
+		(struct hbm_client_connect_response *)cmd;
 
-	dev_dbg(&dev->pdev->dev, "hbm: disconnect response cl:host=%02d me=%02d status=%d\n",
+	dev_dbg(&cl->dev->pdev->dev, "hbm: disconnect response cl:host=%02d me=%02d status=%d\n",
 			rs->me_addr, rs->host_addr, rs->status);
 
-	list_for_each_entry_safe(cb, next, &dev->ctrl_rd_list.list, list) {
-		cl = cb->cl;
-
-		/* this should not happen */
-		if (WARN_ON(!cl)) {
-			list_del(&cb->list);
-			return;
-		}
-
-		if (mei_hbm_cl_addr_equal(cl, rs)) {
-			list_del(&cb->list);
-			if (rs->status == MEI_CL_DISCONN_SUCCESS)
-				cl->state = MEI_FILE_DISCONNECTED;
-
-			cl->status = 0;
-			cl->timer_count = 0;
-			break;
-		}
-	}
+	if (rs->status == MEI_CL_DISCONN_SUCCESS)
+		cl->state = MEI_FILE_DISCONNECTED;
+	cl->status = 0;
 }
 
 /**
@@ -526,34 +552,50 @@ static void mei_hbm_cl_disconnect_res(struct mei_device *dev,
  */
 int mei_hbm_cl_connect_req(struct mei_device *dev, struct mei_cl *cl)
 {
-	struct mei_msg_hdr *mei_hdr = &dev->wr_msg.hdr;
 	const size_t len = sizeof(struct hbm_client_connect_request);
-
-	mei_hbm_hdr(mei_hdr, len);
-	mei_hbm_cl_hdr(cl, CLIENT_CONNECT_REQ_CMD, dev->wr_msg.data, len);
-
-	return mei_write_message(dev, mei_hdr,  dev->wr_msg.data);
+	return mei_hbm_cl_write(dev, cl, CLIENT_CONNECT_REQ_CMD, len);
 }
 
 /**
- * mei_hbm_cl_connect_res - connect response from the ME
+ * mei_hbm_cl_connect_res - update the client state according
+ *        connection response
  *
- * @dev: the device structure
- * @rs: connect response bus message
+ * @cl: mei host client
+ * @cmd: connect client response host bus message
  */
-static void mei_hbm_cl_connect_res(struct mei_device *dev,
-		struct hbm_client_connect_response *rs)
+static void mei_hbm_cl_connect_res(struct mei_cl *cl,
+				   struct mei_hbm_cl_cmd *cmd)
 {
+	struct hbm_client_connect_response *rs =
+		(struct hbm_client_connect_response *)cmd;
 
-	struct mei_cl *cl;
-	struct mei_cl_cb *cb, *next;
-
-	dev_dbg(&dev->pdev->dev, "hbm: connect response cl:host=%02d me=%02d status=%s\n",
+	dev_dbg(&cl->dev->pdev->dev, "hbm: connect response cl:host=%02d me=%02d status=%s\n",
 			rs->me_addr, rs->host_addr,
 			mei_cl_conn_status_str(rs->status));
 
-	cl = NULL;
+	if (rs->status == MEI_CL_CONN_SUCCESS)
+		cl->state = MEI_FILE_CONNECTED;
+	else
+		cl->state = MEI_FILE_DISCONNECTED;
+	cl->status = mei_cl_conn_status_to_errno(rs->status);
+}
 
+/**
+ * mei_hbm_cl_res - process hbm response received on behalf
+ *         an client
+ *
+ * @dev: the device structure
+ * @rs:  hbm client message
+ * @fop_type: file operation type
+ */
+static void mei_hbm_cl_res(struct mei_device *dev,
+			   struct mei_hbm_cl_cmd *rs,
+			   enum mei_cb_file_ops fop_type)
+{
+	struct mei_cl *cl;
+	struct mei_cl_cb *cb, *next;
+
+	cl = NULL;
 	list_for_each_entry_safe(cb, next, &dev->ctrl_rd_list.list, list) {
 
 		cl = cb->cl;
@@ -563,7 +605,7 @@ static void mei_hbm_cl_connect_res(struct mei_device *dev,
 			continue;
 		}
 
-		if (cb->fop_type !=  MEI_FOP_CONNECT)
+		if (cb->fop_type != fop_type)
 			continue;
 
 		if (mei_hbm_cl_addr_equal(cl, rs)) {
@@ -575,12 +617,19 @@ static void mei_hbm_cl_connect_res(struct mei_device *dev,
 	if (!cl)
 		return;
 
+	switch (fop_type) {
+	case MEI_FOP_CONNECT:
+		mei_hbm_cl_connect_res(cl, rs);
+		break;
+	case MEI_FOP_DISCONNECT:
+		mei_hbm_cl_disconnect_res(cl, rs);
+		break;
+	default:
+		return;
+	}
+
 	cl->timer_count = 0;
-	if (rs->status == MEI_CL_CONN_SUCCESS)
-		cl->state = MEI_FILE_CONNECTED;
-	else
-		cl->state = MEI_FILE_DISCONNECTED;
-	cl->status = mei_cl_conn_status_to_errno(rs->status);
+	wake_up(&cl->wait);
 }
 
 
@@ -599,27 +648,39 @@ static int mei_hbm_fw_disconnect_req(struct mei_device *dev,
 	struct mei_cl *cl;
 	struct mei_cl_cb *cb;
 
-	list_for_each_entry(cl, &dev->file_list, link) {
-		if (mei_hbm_cl_addr_equal(cl, disconnect_req)) {
-			dev_dbg(&dev->pdev->dev, "disconnect request host client %d ME client %d.\n",
-					disconnect_req->host_addr,
-					disconnect_req->me_addr);
-			cl->state = MEI_FILE_DISCONNECTED;
-			cl->timer_count = 0;
+	cl = mei_hbm_cl_find_by_cmd(dev, disconnect_req);
+	if (cl) {
+		cl_dbg(dev, cl, "disconnect request received\n");
+		cl->state = MEI_FILE_DISCONNECTED;
+		cl->timer_count = 0;
 
-			cb = mei_io_cb_init(cl, NULL);
-			if (!cb)
-				return -ENOMEM;
-			cb->fop_type = MEI_FOP_DISCONNECT_RSP;
-			cl_dbg(dev, cl, "add disconnect response as first\n");
-			list_add(&cb->list, &dev->ctrl_wr_list.list);
-
-			break;
-		}
+		cb = mei_io_cb_init(cl, NULL);
+		if (!cb)
+			return -ENOMEM;
+		cb->fop_type = MEI_FOP_DISCONNECT_RSP;
+		cl_dbg(dev, cl, "add disconnect response as first\n");
+		list_add(&cb->list, &dev->ctrl_wr_list.list);
 	}
 	return 0;
 }
 
+/**
+ * mei_hbm_config_features: check what hbm features and commands
+ *        are supported by the fw
+ *
+ * @dev: the device structure
+ */
+static void mei_hbm_config_features(struct mei_device *dev)
+{
+	/* Power Gating Isolation Support */
+	dev->hbm_f_pg_supported = 0;
+	if (dev->version.major_version > HBM_MAJOR_VERSION_PGI)
+		dev->hbm_f_pg_supported = 1;
+
+	if (dev->version.major_version == HBM_MAJOR_VERSION_PGI &&
+	    dev->version.minor_version >= HBM_MINOR_VERSION_PGI)
+		dev->hbm_f_pg_supported = 1;
+}
 
 /**
  * mei_hbm_version_is_supported - checks whether the driver can
@@ -647,19 +708,19 @@ bool mei_hbm_version_is_supported(struct mei_device *dev)
 int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 {
 	struct mei_bus_message *mei_msg;
-	struct mei_me_client *me_client;
 	struct hbm_host_version_response *version_res;
-	struct hbm_client_connect_response *connect_res;
-	struct hbm_client_connect_response *disconnect_res;
-	struct hbm_client_connect_request *disconnect_req;
-	struct hbm_flow_control *flow_control;
 	struct hbm_props_response *props_res;
 	struct hbm_host_enum_response *enum_res;
+
+	struct mei_hbm_cl_cmd *cl_cmd;
+	struct hbm_client_connect_request *disconnect_req;
+	struct hbm_flow_control *flow_control;
 
 	/* read the message to our buffer */
 	BUG_ON(hdr->length >= sizeof(dev->rd_msg_buf));
 	mei_read_slots(dev, dev->rd_msg_buf, hdr->length);
 	mei_msg = (struct mei_bus_message *)dev->rd_msg_buf;
+	cl_cmd  = (struct mei_hbm_cl_cmd *)mei_msg;
 
 	/* ignore spurious message and prevent reset nesting
 	 * hbm is put to idle during system reset
@@ -703,8 +764,10 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 			break;
 		}
 
+		mei_hbm_config_features(dev);
+
 		if (dev->dev_state != MEI_DEV_INIT_CLIENTS ||
-		    dev->hbm_state != MEI_HBM_START) {
+		    dev->hbm_state != MEI_HBM_STARTING) {
 			dev_err(&dev->pdev->dev, "hbm: start: state mismatch, [%d, %d]\n",
 				dev->dev_state, dev->hbm_state);
 			return -EPROTO;
@@ -717,23 +780,17 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 			return -EIO;
 		}
 
-		wake_up_interruptible(&dev->wait_recvd_msg);
+		wake_up(&dev->wait_hbm_start);
 		break;
 
 	case CLIENT_CONNECT_RES_CMD:
 		dev_dbg(&dev->pdev->dev, "hbm: client connect response: message received.\n");
-
-		connect_res = (struct hbm_client_connect_response *) mei_msg;
-		mei_hbm_cl_connect_res(dev, connect_res);
-		wake_up(&dev->wait_recvd_msg);
+		mei_hbm_cl_res(dev, cl_cmd, MEI_FOP_CONNECT);
 		break;
 
 	case CLIENT_DISCONNECT_RES_CMD:
 		dev_dbg(&dev->pdev->dev, "hbm: client disconnect response: message received.\n");
-
-		disconnect_res = (struct hbm_client_connect_response *) mei_msg;
-		mei_hbm_cl_disconnect_res(dev, disconnect_res);
-		wake_up(&dev->wait_recvd_msg);
+		mei_hbm_cl_res(dev, cl_cmd, MEI_FOP_DISCONNECT);
 		break;
 
 	case MEI_FLOW_CONTROL_CMD:
@@ -769,26 +826,6 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 
 		dev->init_clients_timer = 0;
 
-		if (dev->me_clients == NULL) {
-			dev_err(&dev->pdev->dev, "hbm: properties response: mei_clients not allocated\n");
-			return -EPROTO;
-		}
-
-		props_res = (struct hbm_props_response *)mei_msg;
-		me_client = &dev->me_clients[dev->me_client_presentation_num];
-
-		if (props_res->status) {
-			dev_err(&dev->pdev->dev, "hbm: properties response: wrong status = %d\n",
-				props_res->status);
-			return -EPROTO;
-		}
-
-		if (me_client->client_id != props_res->address) {
-			dev_err(&dev->pdev->dev, "hbm: properties response: address mismatch %d ?= %d\n",
-				me_client->client_id, props_res->address);
-			return -EPROTO;
-		}
-
 		if (dev->dev_state != MEI_DEV_INIT_CLIENTS ||
 		    dev->hbm_state != MEI_HBM_CLIENT_PROPERTIES) {
 			dev_err(&dev->pdev->dev, "hbm: properties response: state mismatch, [%d, %d]\n",
@@ -796,7 +833,17 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 			return -EPROTO;
 		}
 
-		me_client->props = props_res->client_properties;
+		props_res = (struct hbm_props_response *)mei_msg;
+
+		if (props_res->status) {
+			dev_err(&dev->pdev->dev, "hbm: properties response: wrong status = %d %s\n",
+				props_res->status,
+				mei_hbm_status_str(props_res->status));
+			return -EPROTO;
+		}
+
+		mei_hbm_me_cl_add(dev, props_res);
+
 		dev->me_client_index++;
 		dev->me_client_presentation_num++;
 
@@ -815,18 +862,13 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 		BUILD_BUG_ON(sizeof(dev->me_clients_map)
 				< sizeof(enum_res->valid_addresses));
 		memcpy(dev->me_clients_map, enum_res->valid_addresses,
-			sizeof(enum_res->valid_addresses));
+				sizeof(enum_res->valid_addresses));
 
 		if (dev->dev_state != MEI_DEV_INIT_CLIENTS ||
 		    dev->hbm_state != MEI_HBM_ENUM_CLIENTS) {
 			dev_err(&dev->pdev->dev, "hbm: enumeration response: state mismatch, [%d, %d]\n",
 				dev->dev_state, dev->hbm_state);
 			return -EPROTO;
-		}
-
-		if (mei_hbm_me_cl_allocate(dev)) {
-			dev_err(&dev->pdev->dev, "hbm: enumeration response: cannot allocate clients array\n");
-			return -ENOMEM;
 		}
 
 		dev->hbm_state = MEI_HBM_CLIENT_PROPERTIES;
@@ -865,7 +907,7 @@ int mei_hbm_dispatch(struct mei_device *dev, struct mei_msg_hdr *hdr)
 		dev_dbg(&dev->pdev->dev, "hbm: stop request: message received\n");
 		dev->hbm_state = MEI_HBM_STOPPED;
 		if (mei_hbm_stop_req(dev)) {
-			dev_err(&dev->pdev->dev, "hbm: start: failed to send stop request\n");
+			dev_err(&dev->pdev->dev, "hbm: stop request: failed to send stop request\n");
 			return -EIO;
 		}
 		break;

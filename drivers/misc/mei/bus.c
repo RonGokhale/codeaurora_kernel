@@ -70,7 +70,7 @@ static int mei_cl_device_probe(struct device *dev)
 
 	dev_dbg(dev, "Device probe\n");
 
-	strncpy(id.name, dev_name(dev), sizeof(id.name));
+	strlcpy(id.name, dev_name(dev), sizeof(id.name));
 
 	return driver->probe(device, &id);
 }
@@ -147,7 +147,7 @@ static struct mei_cl *mei_bus_find_mei_cl_by_uuid(struct mei_device *dev,
 	struct mei_cl *cl;
 
 	list_for_each_entry(cl, &dev->device_list, device_link) {
-		if (!uuid_le_cmp(uuid, cl->device_uuid))
+		if (!uuid_le_cmp(uuid, cl->cl_uuid))
 			return cl;
 	}
 
@@ -229,8 +229,8 @@ static int ___mei_cl_send(struct mei_cl *cl, u8 *buf, size_t length,
 			bool blocking)
 {
 	struct mei_device *dev;
+	struct mei_me_client *me_cl;
 	struct mei_cl_cb *cb;
-	int id;
 	int rets;
 
 	if (WARN_ON(!cl || !cl->dev))
@@ -242,11 +242,11 @@ static int ___mei_cl_send(struct mei_cl *cl, u8 *buf, size_t length,
 		return -ENODEV;
 
 	/* Check if we have an ME client device */
-	id = mei_me_cl_by_id(dev, cl->me_client_id);
-	if (id < 0)
-		return id;
+	me_cl = mei_me_cl_by_uuid_id(dev, &cl->cl_uuid, cl->me_client_id);
+	if (!me_cl)
+		return -ENOTTY;
 
-	if (length > dev->me_clients[id].props.max_msg_length)
+	if (length > me_cl->props.max_msg_length)
 		return -EFBIG;
 
 	cb = mei_io_cb_init(cl, NULL);

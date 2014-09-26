@@ -24,8 +24,15 @@
 
 #include "mei_dev.h"
 
-int mei_me_cl_by_uuid(const struct mei_device *dev, const uuid_le *cuuid);
-int mei_me_cl_by_id(struct mei_device *dev, u8 client_id);
+struct mei_me_client *mei_me_cl_by_uuid(const struct mei_device *dev,
+					const uuid_le *cuuid);
+struct mei_me_client *mei_me_cl_by_id(struct mei_device *dev, u8 client_id);
+
+struct mei_me_client *mei_me_cl_by_uuid_id(struct mei_device *dev,
+					   const uuid_le *uuid, u8 client_id);
+
+void mei_me_cl_remove(struct mei_device *dev,
+		      const uuid_le *uuid, u8 client_id);
 
 /*
  * MEI IO Functions
@@ -45,6 +52,8 @@ static inline void mei_io_list_init(struct mei_cl_cb *list)
 {
 	INIT_LIST_HEAD(&list->list);
 }
+void mei_io_list_flush(struct mei_cl_cb *list, struct mei_cl *cl);
+
 /*
  * MEI Host Client Functions
  */
