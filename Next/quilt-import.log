@@ -1,0 +1,37 @@
+Importing jdelvare-hwmon based on 3.15-rc7
+Unchanged quilt series jdelvare-hwmon
+Importing rd-docs based on 3.17-rc6
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard 0f33be009b89d2268e94194dc4fd01a7851b6d51
+HEAD is now at 0f33be009b89 Linux 3.17-rc6
+$ git am --patch-format=mbox ../quilt/rd-docs/001-docum-use-subdiry-avoid-builtin.patch
+Applying: Documentation: use subdir-y to avoid unnecessary built-in.o files
+$ git am --patch-format=mbox ../quilt/rd-docs/002-docum-add-make-more-targets.patch
+Applying: Documentation: add makefiles for more targets
+$ git am --patch-format=mbox ../quilt/rd-docs/003-docum-funcs-static.patch
+Applying: Documentation: make functions static to avoid prototype warnings
+$ git am --patch-format=mbox ../quilt/rd-docs/004-docum-misc-warnings.patch
+Applying: Documentation: fix misc. warnings
+$ git am --patch-format=mbox ../quilt/rd-docs/media-v4l2-pci-skel-dep-pci.patch
+Applying: v4l2-pci-skeleton: Only build if PCI is available
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-support-glibc-htole-macros.patch
+Applying: Documentation: support glibc versions without htole macros
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-update-gitignore.patch
+Applying: Documentation: update .gitignore files
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-vdso-build-portable.patch
+Applying: Documentation: update vDSO makefile to build portable examples
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-disable-vdso-test.patch
+Applying: Documentation: disable vdso_test to avoid breakage with old glibc
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-this-cpu-ops-remove-dup.patch
+Applying: Docs: this_cpu_ops: remove redundant add forms
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-make-dep-headers-install.patch
+Applying: Make Documenation depend on headers_install
+$ git am --patch-format=mbox ../quilt/rd-docs/tools-add-more-endianh-macros.patch
+Applying: tools: add more endian.h macros
+$ git am --patch-format=mbox ../quilt/rd-docs/docum-remove-empty-netw-gitignore.patch
+Applying: Documentation: remove networking/.gitignore
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:rd-docs/master
+From ../quilt-tmp
+ + 68c7ed167ef5...9e8e26907954 master     -> rd-docs/master  (forced update)
