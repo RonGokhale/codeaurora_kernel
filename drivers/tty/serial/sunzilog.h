@@ -2,10 +2,10 @@
 #define _SUNZILOG_H
 
 struct zilog_channel {
-	volatile unsigned char control;
-	volatile unsigned char __pad1;
-	volatile unsigned char data;
-	volatile unsigned char __pad2;
+	unsigned char control;
+	unsigned char __pad1;
+	unsigned char data;
+	unsigned char __pad2;
 };
 
 struct zilog_layout {

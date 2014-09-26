@@ -4,10 +4,6 @@
 #include <linux/kernel.h>
 #include <linux/ioport.h>  /* struct resource */
 
-#define readb_relaxed(__addr)	readb(__addr)
-#define readw_relaxed(__addr)	readw(__addr)
-#define readl_relaxed(__addr)	readl(__addr)
-
 #define IO_SPACE_LIMIT 0xffffffff
 
 #define memset_io(d,c,sz)     _memset_io(d,c,sz)
@@ -16,18 +12,15 @@
 
 #include <asm-generic/io.h>
 
-static inline void _memset_io(volatile void __iomem *dst,
-                              int c, __kernel_size_t n)
+static inline void _memset_io(void __iomem *dst, int c, __kernel_size_t n)
 {
-	volatile void __iomem *d = dst;
-
 	while (n--) {
-		writeb(c, d);
-		d++;
+		writeb(c, dst);
+		dst++;
 	}
 }
 
-static inline void _memcpy_fromio(void *dst, const volatile void __iomem *src,
+static inline void _memcpy_fromio(void *dst, const void __iomem *src,
                                   __kernel_size_t n)
 {
 	char *d = dst;
@@ -39,16 +32,15 @@ static inline void _memcpy_fromio(void *dst, const volatile void __iomem *src,
 	}
 }
 
-static inline void _memcpy_toio(volatile void __iomem *dst, const void *src,
+static inline void _memcpy_toio(void __iomem *dst, const void *src,
                                 __kernel_size_t n)
 {
 	const char *s = src;
-	volatile void __iomem *d = dst;
 
 	while (n--) {
 		char tmp = *s++;
-		writeb(tmp, d);
-		d++;
+		writeb(tmp, dst);
+		dst++;
 	}
 }
 
