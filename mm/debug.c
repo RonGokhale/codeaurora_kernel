@@ -197,7 +197,9 @@ void dump_mm(const struct mm_struct *mm)
 #if defined(CONFIG_NUMA_BALANCING) || defined(CONFIG_COMPACTION)
 		"tlb_flush_pending %d\n"
 #endif
-		, mm, mm->mmap, mm->vmacache_seqnum, mm->task_size,
+		"%s",	/* This is here to hold the comma */
+
+		mm, mm->mmap, mm->vmacache_seqnum, mm->task_size,
 #ifdef CONFIG_MMU
 		mm->get_unmapped_area,
 #endif
@@ -218,16 +220,17 @@ void dump_mm(const struct mm_struct *mm)
 #ifdef CONFIG_MEMCG
 		mm->owner,
 #endif
-		mm->exe_file
+		mm->exe_file,
 #ifdef CONFIG_MMU_NOTIFIER
-		, mm->mmu_notifier_mm
+		mm->mmu_notifier_mm,
 #endif
 #ifdef CONFIG_NUMA_BALANCING
-		, mm->numa_next_scan, mm->numa_scan_offset, mm->numa_scan_seq
+		mm->numa_next_scan, mm->numa_scan_offset, mm->numa_scan_seq,
 #endif
 #if defined(CONFIG_NUMA_BALANCING) || defined(CONFIG_COMPACTION)
-		, mm->tlb_flush_pending
+		mm->tlb_flush_pending,
 #endif
+		""		/* This is here to not have a comma! */
 		);
 
 		dump_flags(mm->def_flags, vmaflags_names,
