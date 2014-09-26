@@ -265,8 +265,8 @@ SMB3_request_interfaces(const unsigned int xid, struct cifs_tcon *tcon)
 			FSCTL_QUERY_NETWORK_INTERFACE_INFO, true /* is_fsctl */,
 			NULL /* no data input */, 0 /* no data input */,
 			(char **)&out_buf, &ret_data_len);
-
-	if ((rc == 0)  && (ret_data_len > 0)) {
+	if ((rc == 0)  &&
+	    (ret_data_len >= sizeof(struct network_interface_info_ioctl_rsp))) {
 		/* Dump info on first interface */
 		cifs_dbg(FYI, "Adapter Capability 0x%x\t",
 			le32_to_cpu(out_buf->Capability));
