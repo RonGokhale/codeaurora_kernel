@@ -1,10 +1,5 @@
 #ifndef ___ASM_SPARC_IO_H
 #define ___ASM_SPARC_IO_H
-#if defined(__sparc__) && defined(__arch64__)
-#include <asm/io_64.h>
-#else
-#include <asm/io_32.h>
-#endif
 
 /*
  * Defines used for both SPARC32 and SPARC64
@@ -18,6 +13,12 @@
 #define writeb_relaxed(__b, __addr)	writeb(__b, __addr)
 #define writew_relaxed(__w, __addr)	writew(__w, __addr)
 #define writel_relaxed(__l, __addr)	writel(__l, __addr)
+
+#if defined(__sparc__) && defined(__arch64__)
+#include <asm/io_64.h>
+#else
+#include <asm/io_32.h>
+#endif
 
 /* Big endian versions of memory read/write routines */
 #define readb_be(__addr)	__raw_readb(__addr)
