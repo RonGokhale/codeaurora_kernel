@@ -263,13 +263,13 @@ static int get_victim_by_default(struct f2fs_sb_info *sbi,
 	unsigned int secno, max_cost;
 	int nsearched = 0;
 
+	mutex_lock(&dirty_i->seglist_lock);
+
 	p.alloc_mode = alloc_mode;
 	select_policy(sbi, gc_type, type, &p);
 
 	p.min_segno = NULL_SEGNO;
 	p.min_cost = max_cost = get_max_cost(sbi, &p);
-
-	mutex_lock(&dirty_i->seglist_lock);
 
 	if (p.alloc_mode == LFS && gc_type == FG_GC) {
 		p.min_segno = check_bg_victims(sbi);
@@ -423,6 +423,12 @@ next_step:
 		if (IS_ERR(node_page))
 			continue;
 
+		/* block may become invalid during get_node_page */
+		if (check_valid_map(sbi, segno, off) == 0) {
+			f2fs_put_page(node_page, 1);
+			continue;
+		}
+
 		/* set page dirty and write it */
 		if (gc_type == FG_GC) {
 			f2fs_wait_on_page_writeback(node_page, NODE);
@@ -531,7 +537,7 @@ static void move_data_page(struct inode *inode, struct page *page, int gc_type)
 		f2fs_wait_on_page_writeback(page, DATA);
 
 		if (clear_page_dirty_for_io(page))
-			inode_dec_dirty_dents(inode);
+			inode_dec_dirty_pages(inode);
 		set_cold_data(page);
 		do_write_data_page(page, &fio);
 		clear_cold_data(page);
@@ -688,6 +694,9 @@ int f2fs_gc(struct f2fs_sb_info *sbi)
 	int gc_type = BG_GC;
 	int nfree = 0;
 	int ret = -1;
+	struct cp_control cpc = {
+		.reason = CP_SYNC,
+	};
 
 	INIT_LIST_HEAD(&ilist);
 gc_more:
@@ -698,7 +707,7 @@ gc_more:
 
 	if (gc_type == BG_GC && has_not_enough_free_secs(sbi, nfree)) {
 		gc_type = FG_GC;
-		write_checkpoint(sbi, false);
+		write_checkpoint(sbi, &cpc);
 	}
 
 	if (!__get_victim(sbi, &segno, gc_type, NO_CHECK_TYPE))
@@ -723,7 +732,7 @@ gc_more:
 		goto gc_more;
 
 	if (gc_type == FG_GC)
-		write_checkpoint(sbi, false);
+		write_checkpoint(sbi, &cpc);
 stop:
 	mutex_unlock(&sbi->gc_mutex);
 
