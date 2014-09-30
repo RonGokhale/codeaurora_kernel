@@ -236,14 +236,14 @@ static int backlight_resume(struct device *dev)
 {
 	struct backlight_device *bd = to_backlight_device(dev);
 
-	if (dev_dark_resume_active(dev)) {
-		dev_info(dev, "disabled for dark resume\n");
-		return 0;
-	}
-
 	mutex_lock(&bd->ops_lock);
 	if (bd->ops && bd->ops->options & BL_CORE_SUSPENDRESUME) {
 		bd->props.state &= ~BL_CORE_SUSPENDED;
+		if (dev_dark_resume_active(dev)) {
+			dev_info(dev, "disabled for dark resume\n");
+			bd->props.brightness = 0;
+		} else if (bd->props.resume_brightness != -1)
+			bd->props.brightness = bd->props.resume_brightness;
 		backlight_update_status(bd);
 	}
 	mutex_unlock(&bd->ops_lock);
