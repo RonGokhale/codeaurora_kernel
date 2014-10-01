@@ -143,6 +143,14 @@
 #define GAB_CTL				0x24000
 #define   GAB_CTL_CONT_AFTER_PAGEFAULT	(1<<8)
 
+#define GEN7_BIOS_RESERVED		0x1082C0
+#define GEN7_BIOS_RESERVED_1M		(0 << 5)
+#define GEN7_BIOS_RESERVED_256K		(1 << 5)
+#define GEN8_BIOS_RESERVED_SHIFT       7
+#define GEN7_BIOS_RESERVED_MASK        0x1
+#define GEN8_BIOS_RESERVED_MASK        0x3
+
+
 /* VGA stuff */
 
 #define VGA_ST01_MDA 0x3ba
@@ -5576,10 +5584,6 @@ enum punit_power_well {
 
 #define GEN8_UCGCTL6				0x9430
 #define   GEN8_SDEUNIT_CLOCK_GATE_DISABLE	(1<<14)
-
-#define TIMESTAMP_CTR		0x44070
-#define FREQ_1_28_US(us)	(((us) * 100) >> 7)
-#define MCHBAR_PCU_C0		(MCHBAR_MIRROR_BASE_SNB + 0x5960)
 
 #define GEN6_GFXPAUSE				0xA000
 #define GEN6_RPNSWREQ				0xA008
