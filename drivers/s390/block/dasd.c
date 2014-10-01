@@ -2261,8 +2261,8 @@ static inline int _wait_for_wakeup_queue(struct list_head *ccw_queue)
 static int _dasd_sleep_on_queue(struct list_head *ccw_queue, int interruptible)
 {
 	struct dasd_device *device;
-	int rc, value;
 	struct dasd_ccw_req *cqr, *n;
+	int rc;
 
 retry:
 	list_for_each_entry_safe(cqr, n, ccw_queue, blocklist) {
