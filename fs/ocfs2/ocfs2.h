@@ -203,6 +203,12 @@ struct ocfs2_lock_res {
 #endif
 };
 
+enum ocfs2_orphan_reco_type {
+	ORPHAN_MOUNT_COMPLETE = 0,
+	ORPHAN_NODE_RECOVERY,
+	ORPHAN_SCAN_WORK,
+};
+
 enum ocfs2_orphan_scan_state {
 	ORPHAN_SCAN_ACTIVE,
 	ORPHAN_SCAN_INACTIVE
