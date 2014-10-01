@@ -13,7 +13,6 @@
 
 #include "wacom_wac.h"
 #include "wacom.h"
-#include <linux/hid.h>
 
 #define WAC_MSG_RETRIES		5
 
@@ -110,6 +109,7 @@ static void wacom_feature_mapping(struct hid_device *hdev,
 {
 	struct wacom *wacom = hid_get_drvdata(hdev);
 	struct wacom_features *features = &wacom->wacom_wac.features;
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
 	u8 *data;
 	int ret;
 
@@ -128,6 +128,16 @@ static void wacom_feature_mapping(struct hid_device *hdev,
 				features->touch_max = data[1];
 			kfree(data);
 		}
+		break;
+	case HID_DG_INPUTMODE:
+		/* Ignore if value index is out of bounds. */
+		if (usage->usage_index >= field->report_count) {
+			dev_err(&hdev->dev, "HID_DG_INPUTMODE out of range\n");
+			break;
+		}
+
+		hid_data->inputmode = field->report->id;
+		hid_data->inputmode_index = usage->usage_index;
 		break;
 	}
 }
@@ -215,6 +225,9 @@ static void wacom_usage_mapping(struct hid_device *hdev,
 			features->pressure_max = field->logical_maximum;
 		break;
 	}
+
+	if (features->type == HID_GENERIC)
+		wacom_wac_usage_mapping(hdev, field, usage);
 }
 
 static void wacom_parse_hid(struct hid_device *hdev,
@@ -251,6 +264,25 @@ static void wacom_parse_hid(struct hid_device *hdev,
 				wacom_usage_mapping(hdev, hreport->field[i],
 						hreport->field[i]->usage + j);
 	}
+}
+
+static int wacom_hid_set_device_mode(struct hid_device *hdev)
+{
+	struct wacom *wacom = hid_get_drvdata(hdev);
+	struct hid_data *hid_data = &wacom->wacom_wac.hid_data;
+	struct hid_report *r;
+	struct hid_report_enum *re;
+
+	if (hid_data->inputmode < 0)
+		return 0;
+
+	re = &(hdev->report_enum[HID_FEATURE_REPORT]);
+	r = re->report_id_hash[hid_data->inputmode];
+	if (r) {
+		r->field[0]->value[hid_data->inputmode_index] = 2;
+		hid_hw_request(hdev, r, HID_REQ_SET_REPORT);
+	}
+	return 0;
 }
 
 static int wacom_set_device_mode(struct hid_device *hdev, int report_id,
@@ -344,6 +376,9 @@ static int wacom_query_tablet_data(struct hid_device *hdev,
 {
 	if (hdev->bus == BUS_BLUETOOTH)
 		return wacom_bt_query_tablet_data(hdev, 1, features);
+
+	if (features->type == HID_GENERIC)
+		return wacom_hid_set_device_mode(hdev);
 
 	if (features->device_type == BTN_TOOL_FINGER) {
 		if (features->type > TABLETPC) {
@@ -1054,12 +1089,51 @@ static struct input_dev *wacom_allocate_input(struct wacom *wacom)
 	return input_dev;
 }
 
-static void wacom_unregister_inputs(struct wacom *wacom)
+static void wacom_free_inputs(struct wacom *wacom)
 {
-	if (wacom->wacom_wac.input)
-		input_unregister_device(wacom->wacom_wac.input);
-	if (wacom->wacom_wac.pad_input)
-		input_unregister_device(wacom->wacom_wac.pad_input);
+	struct wacom_wac *wacom_wac = &(wacom->wacom_wac);
+
+	if (wacom_wac->input)
+		input_free_device(wacom_wac->input);
+	if (wacom_wac->pad_input)
+		input_free_device(wacom_wac->pad_input);
+	wacom_wac->input = NULL;
+	wacom_wac->pad_input = NULL;
+}
+
+static int wacom_allocate_inputs(struct wacom *wacom)
+{
+	struct input_dev *input_dev, *pad_input_dev;
+	struct wacom_wac *wacom_wac = &(wacom->wacom_wac);
+
+	input_dev = wacom_allocate_input(wacom);
+	pad_input_dev = wacom_allocate_input(wacom);
+	if (!input_dev || !pad_input_dev) {
+		wacom_free_inputs(wacom);
+		return -ENOMEM;
+	}
+
+	wacom_wac->input = input_dev;
+	wacom_wac->pad_input = pad_input_dev;
+	wacom_wac->pad_input->name = wacom_wac->pad_name;
+
+	return 0;
+}
+
+static void wacom_clean_inputs(struct wacom *wacom)
+{
+	if (wacom->wacom_wac.input) {
+		if (wacom->wacom_wac.input_registered)
+			input_unregister_device(wacom->wacom_wac.input);
+		else
+			input_free_device(wacom->wacom_wac.input);
+	}
+	if (wacom->wacom_wac.pad_input) {
+		if (wacom->wacom_wac.input_registered)
+			input_unregister_device(wacom->wacom_wac.pad_input);
+		else
+			input_free_device(wacom->wacom_wac.pad_input);
+	}
 	wacom->wacom_wac.input = NULL;
 	wacom->wacom_wac.pad_input = NULL;
 	wacom_destroy_leds(wacom);
@@ -1071,24 +1145,19 @@ static int wacom_register_inputs(struct wacom *wacom)
 	struct wacom_wac *wacom_wac = &(wacom->wacom_wac);
 	int error;
 
-	input_dev = wacom_allocate_input(wacom);
-	pad_input_dev = wacom_allocate_input(wacom);
-	if (!input_dev || !pad_input_dev) {
-		error = -ENOMEM;
-		goto fail1;
-	}
+	input_dev = wacom_wac->input;
+	pad_input_dev = wacom_wac->pad_input;
 
-	wacom_wac->input = input_dev;
-	wacom_wac->pad_input = pad_input_dev;
-	wacom_wac->pad_input->name = wacom_wac->pad_name;
+	if (!input_dev || !pad_input_dev)
+		return -EINVAL;
 
 	error = wacom_setup_input_capabilities(input_dev, wacom_wac);
 	if (error)
-		goto fail2;
+		return error;
 
 	error = input_register_device(input_dev);
 	if (error)
-		goto fail2;
+		return error;
 
 	error = wacom_setup_pad_input_capabilities(pad_input_dev, wacom_wac);
 	if (error) {
@@ -1099,29 +1168,23 @@ static int wacom_register_inputs(struct wacom *wacom)
 	} else {
 		error = input_register_device(pad_input_dev);
 		if (error)
-			goto fail3;
+			goto fail_register_pad_input;
 
 		error = wacom_initialize_leds(wacom);
 		if (error)
-			goto fail4;
+			goto fail_leds;
 	}
+
+	wacom_wac->input_registered = true;
 
 	return 0;
 
-fail4:
+fail_leds:
 	input_unregister_device(pad_input_dev);
 	pad_input_dev = NULL;
-fail3:
+fail_register_pad_input:
 	input_unregister_device(input_dev);
-	input_dev = NULL;
-fail2:
 	wacom_wac->input = NULL;
-	wacom_wac->pad_input = NULL;
-fail1:
-	if (input_dev)
-		input_free_device(input_dev);
-	if (pad_input_dev)
-		input_free_device(pad_input_dev);
 	return error;
 }
 
@@ -1146,13 +1209,13 @@ static void wacom_wireless_work(struct work_struct *work)
 	hdev1 = usb_get_intfdata(usbdev->config->interface[1]);
 	wacom1 = hid_get_drvdata(hdev1);
 	wacom_wac1 = &(wacom1->wacom_wac);
-	wacom_unregister_inputs(wacom1);
+	wacom_clean_inputs(wacom1);
 
 	/* Touch interface */
 	hdev2 = usb_get_intfdata(usbdev->config->interface[2]);
 	wacom2 = hid_get_drvdata(hdev2);
 	wacom_wac2 = &(wacom2->wacom_wac);
-	wacom_unregister_inputs(wacom2);
+	wacom_clean_inputs(wacom2);
 
 	if (wacom_wac->pid == 0) {
 		hid_info(wacom->hdev, "wireless tablet disconnected\n");
@@ -1186,7 +1249,8 @@ static void wacom_wireless_work(struct work_struct *work)
 		wacom_wac1->shared->touch_max = wacom_wac1->features.touch_max;
 		wacom_wac1->shared->type = wacom_wac1->features.type;
 		wacom_wac1->pid = wacom_wac->pid;
-		error = wacom_register_inputs(wacom1);
+		error = wacom_allocate_inputs(wacom1) ||
+			wacom_register_inputs(wacom1);
 		if (error)
 			goto fail;
 
@@ -1207,7 +1271,8 @@ static void wacom_wireless_work(struct work_struct *work)
 			snprintf(wacom_wac2->pad_name, WACOM_NAME_MAX,
 				 "%s (WL) Pad", wacom_wac2->features.name);
 			wacom_wac2->pid = wacom_wac->pid;
-			error = wacom_register_inputs(wacom2);
+			error = wacom_allocate_inputs(wacom2) ||
+				wacom_register_inputs(wacom2);
 			if (error)
 				goto fail;
 
@@ -1224,8 +1289,8 @@ static void wacom_wireless_work(struct work_struct *work)
 	return;
 
 fail:
-	wacom_unregister_inputs(wacom1);
-	wacom_unregister_inputs(wacom2);
+	wacom_clean_inputs(wacom1);
+	wacom_clean_inputs(wacom2);
 	return;
 }
 
@@ -1288,6 +1353,7 @@ static int wacom_probe(struct hid_device *hdev,
 	struct wacom_wac *wacom_wac;
 	struct wacom_features *features;
 	int error;
+	unsigned int connect_mask = HID_CONNECT_HIDRAW;
 
 	if (!id->driver_data)
 		return -EINVAL;
@@ -1305,7 +1371,7 @@ static int wacom_probe(struct hid_device *hdev,
 	error = hid_parse(hdev);
 	if (error) {
 		hid_err(hdev, "parse failed\n");
-		goto fail1;
+		goto fail_parse;
 	}
 
 	wacom_wac = &wacom->wacom_wac;
@@ -1314,18 +1380,24 @@ static int wacom_probe(struct hid_device *hdev,
 	features->pktlen = wacom_compute_pktlen(hdev);
 	if (features->pktlen > WACOM_PKGLEN_MAX) {
 		error = -EINVAL;
-		goto fail1;
+		goto fail_pktlen;
 	}
 
 	if (features->check_for_hid_type && features->hid_type != hdev->type) {
 		error = -ENODEV;
-		goto fail1;
+		goto fail_type;
 	}
 
 	wacom->usbdev = dev;
 	wacom->intf = intf;
 	mutex_init(&wacom->lock);
 	INIT_WORK(&wacom->work, wacom_wireless_work);
+
+	if (!(features->quirks & WACOM_QUIRK_NO_INPUT)) {
+		error = wacom_allocate_inputs(wacom);
+		if (error)
+			goto fail_allocate_inputs;
+	}
 
 	/* set the default size in case we do not get them from hid */
 	wacom_set_default_phy(features);
@@ -1388,20 +1460,20 @@ static int wacom_probe(struct hid_device *hdev,
 
 		error = wacom_add_shared_data(hdev);
 		if (error)
-			goto fail1;
+			goto fail_shared_data;
 	}
 
 	if (!(features->quirks & WACOM_QUIRK_MONITOR) &&
 	     (features->quirks & WACOM_QUIRK_BATTERY)) {
 		error = wacom_initialize_battery(wacom);
 		if (error)
-			goto fail2;
+			goto fail_battery;
 	}
 
 	if (!(features->quirks & WACOM_QUIRK_NO_INPUT)) {
 		error = wacom_register_inputs(wacom);
 		if (error)
-			goto fail3;
+			goto fail_register_inputs;
 	}
 
 	if (hdev->bus == BUS_BLUETOOTH) {
@@ -1412,15 +1484,18 @@ static int wacom_probe(struct hid_device *hdev,
 				 error);
 	}
 
-	/* Note that if query fails it is not a hard failure */
-	wacom_query_tablet_data(hdev, features);
+	if (features->type == HID_GENERIC)
+		connect_mask |= HID_CONNECT_DRIVER;
 
 	/* Regular HID work starts now */
-	error = hid_hw_start(hdev, HID_CONNECT_HIDRAW);
+	error = hid_hw_start(hdev, connect_mask);
 	if (error) {
 		hid_err(hdev, "hw start failed\n");
-		goto fail4;
+		goto fail_hw_start;
 	}
+
+	/* Note that if query fails it is not a hard failure */
+	wacom_query_tablet_data(hdev, features);
 
 	if (features->quirks & WACOM_QUIRK_MONITOR)
 		error = hid_hw_open(hdev);
@@ -1432,12 +1507,21 @@ static int wacom_probe(struct hid_device *hdev,
 
 	return 0;
 
- fail4:	if (hdev->bus == BUS_BLUETOOTH)
+fail_hw_start:
+	if (hdev->bus == BUS_BLUETOOTH)
 		device_remove_file(&hdev->dev, &dev_attr_speed);
-	wacom_unregister_inputs(wacom);
- fail3:	wacom_destroy_battery(wacom);
- fail2:	wacom_remove_shared_data(wacom_wac);
- fail1:	kfree(wacom);
+fail_register_inputs:
+	wacom_clean_inputs(wacom);
+	wacom_destroy_battery(wacom);
+fail_battery:
+	wacom_remove_shared_data(wacom_wac);
+fail_shared_data:
+	wacom_clean_inputs(wacom);
+fail_allocate_inputs:
+fail_type:
+fail_pktlen:
+fail_parse:
+	kfree(wacom);
 	hid_set_drvdata(hdev, NULL);
 	return error;
 }
@@ -1449,7 +1533,7 @@ static void wacom_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 
 	cancel_work_sync(&wacom->work);
-	wacom_unregister_inputs(wacom);
+	wacom_clean_inputs(wacom);
 	if (hdev->bus == BUS_BLUETOOTH)
 		device_remove_file(&hdev->dev, &dev_attr_speed);
 	wacom_destroy_battery(wacom);
@@ -1487,6 +1571,8 @@ static struct hid_driver wacom_driver = {
 	.id_table =	wacom_ids,
 	.probe =	wacom_probe,
 	.remove =	wacom_remove,
+	.event =	wacom_wac_event,
+	.report =	wacom_wac_report,
 #ifdef CONFIG_PM
 	.resume =	wacom_resume,
 	.reset_resume =	wacom_reset_resume,
