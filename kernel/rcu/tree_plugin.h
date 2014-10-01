@@ -30,14 +30,24 @@
 #include <linux/smpboot.h>
 #include "../time/tick-internal.h"
 
-#define RCU_KTHREAD_PRIO 1
-
 #ifdef CONFIG_RCU_BOOST
+
 #include "../locking/rtmutex_common.h"
-#define RCU_BOOST_PRIO CONFIG_RCU_BOOST_PRIO
-#else
-#define RCU_BOOST_PRIO RCU_KTHREAD_PRIO
-#endif
+
+/* rcuc/rcub kthread realtime priority */
+static int kthread_prio = CONFIG_RCU_KTHREAD_PRIO;
+module_param(kthread_prio, int, 0644);
+
+/*
+ * Control variables for per-CPU and per-rcu_node kthreads.  These
+ * handle all flavors of RCU.
+ */
+static DEFINE_PER_CPU(struct task_struct *, rcu_cpu_kthread_task);
+DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_status);
+DEFINE_PER_CPU(unsigned int, rcu_cpu_kthread_loops);
+DEFINE_PER_CPU(char, rcu_cpu_has_work);
+
+#endif /* #ifdef CONFIG_RCU_BOOST */
 
 #ifdef CONFIG_RCU_NOCB_CPU
 static cpumask_var_t rcu_nocb_mask; /* CPUs to have callbacks offloaded. */
@@ -72,9 +82,6 @@ static void __init rcu_bootup_announce_oddness(void)
 #ifdef CONFIG_RCU_TORTURE_TEST_RUNNABLE
 	pr_info("\tRCU torture testing starts during boot.\n");
 #endif
-#if defined(CONFIG_TREE_PREEMPT_RCU) && !defined(CONFIG_RCU_CPU_STALL_VERBOSE)
-	pr_info("\tDump stacks of tasks blocking RCU-preempt GP.\n");
-#endif
 #if defined(CONFIG_RCU_CPU_STALL_INFO)
 	pr_info("\tAdditional per-CPU info printed with stalls.\n");
 #endif
@@ -85,9 +92,12 @@ static void __init rcu_bootup_announce_oddness(void)
 		pr_info("\tBoot-time adjustment of leaf fanout to %d.\n", rcu_fanout_leaf);
 	if (nr_cpu_ids != NR_CPUS)
 		pr_info("\tRCU restricting CPUs from NR_CPUS=%d to nr_cpu_ids=%d.\n", NR_CPUS, nr_cpu_ids);
+#ifdef CONFIG_RCU_BOOST
+	pr_info("\tRCU kthread priority: %d.\n", kthread_prio);
+#endif
 }
 
-#ifdef CONFIG_TREE_PREEMPT_RCU
+#ifdef CONFIG_PREEMPT_RCU
 
 RCU_STATE_INITIALIZER(rcu_preempt, 'p', call_rcu);
 static struct rcu_state *rcu_state_p = &rcu_preempt_state;
@@ -415,8 +425,6 @@ void rcu_read_unlock_special(struct task_struct *t)
 	}
 }
 
-#ifdef CONFIG_RCU_CPU_STALL_VERBOSE
-
 /*
  * Dump detailed information for all tasks blocking the current RCU
  * grace period on the specified rcu_node structure.
@@ -450,14 +458,6 @@ static void rcu_print_detail_task_stall(struct rcu_state *rsp)
 	rcu_for_each_leaf_node(rsp, rnp)
 		rcu_print_detail_task_stall_rnp(rnp);
 }
-
-#else /* #ifdef CONFIG_RCU_CPU_STALL_VERBOSE */
-
-static void rcu_print_detail_task_stall(struct rcu_state *rsp)
-{
-}
-
-#endif /* #else #ifdef CONFIG_RCU_CPU_STALL_VERBOSE */
 
 #ifdef CONFIG_RCU_CPU_STALL_INFO
 
@@ -919,7 +919,7 @@ void exit_rcu(void)
 	__rcu_read_unlock();
 }
 
-#else /* #ifdef CONFIG_TREE_PREEMPT_RCU */
+#else /* #ifdef CONFIG_PREEMPT_RCU */
 
 static struct rcu_state *rcu_state_p = &rcu_sched_state;
 
@@ -1070,7 +1070,7 @@ void exit_rcu(void)
 {
 }
 
-#endif /* #else #ifdef CONFIG_TREE_PREEMPT_RCU */
+#endif /* #else #ifdef CONFIG_PREEMPT_RCU */
 
 #ifdef CONFIG_RCU_BOOST
 
@@ -1326,7 +1326,7 @@ static int rcu_spawn_one_boost_kthread(struct rcu_state *rsp,
 	smp_mb__after_unlock_lock();
 	rnp->boost_kthread_task = t;
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
-	sp.sched_priority = RCU_BOOST_PRIO;
+	sp.sched_priority = kthread_prio;
 	sched_setscheduler_nocheck(t, SCHED_FIFO, &sp);
 	wake_up_process(t); /* get to TASK_INTERRUPTIBLE quickly. */
 	return 0;
@@ -1343,7 +1343,7 @@ static void rcu_cpu_kthread_setup(unsigned int cpu)
 {
 	struct sched_param sp;
 
-	sp.sched_priority = RCU_KTHREAD_PRIO;
+	sp.sched_priority = kthread_prio;
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &sp);
 }
 
@@ -2728,9 +2728,10 @@ static int full_sysidle_state;		/* Current system-idle state. */
  * to detect full-system idle states, not RCU quiescent states and grace
  * periods.  The caller must have disabled interrupts.
  */
-static void rcu_sysidle_enter(struct rcu_dynticks *rdtp, int irq)
+static void rcu_sysidle_enter(int irq)
 {
 	unsigned long j;
+	struct rcu_dynticks *rdtp = this_cpu_ptr(&rcu_dynticks);
 
 	/* If there are no nohz_full= CPUs, no need to track this. */
 	if (!tick_nohz_full_enabled())
@@ -2799,8 +2800,10 @@ void rcu_sysidle_force_exit(void)
  * usermode execution does -not- count as idle here!  The caller must
  * have disabled interrupts.
  */
-static void rcu_sysidle_exit(struct rcu_dynticks *rdtp, int irq)
+static void rcu_sysidle_exit(int irq)
 {
+	struct rcu_dynticks *rdtp = this_cpu_ptr(&rcu_dynticks);
+
 	/* If there are no nohz_full= CPUs, no need to track this. */
 	if (!tick_nohz_full_enabled())
 		return;
@@ -3094,11 +3097,11 @@ static void rcu_sysidle_init_percpu_data(struct rcu_dynticks *rdtp)
 
 #else /* #ifdef CONFIG_NO_HZ_FULL_SYSIDLE */
 
-static void rcu_sysidle_enter(struct rcu_dynticks *rdtp, int irq)
+static void rcu_sysidle_enter(int irq)
 {
 }
 
-static void rcu_sysidle_exit(struct rcu_dynticks *rdtp, int irq)
+static void rcu_sysidle_exit(int irq)
 {
 }
 
