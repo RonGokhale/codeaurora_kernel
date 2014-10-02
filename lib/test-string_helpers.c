@@ -5,6 +5,7 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/string.h>
@@ -62,10 +63,14 @@ static const struct test_string strings[] __initconst = {
 static void __init test_string_unescape(const char *name, unsigned int flags,
 					bool inplace)
 {
-	char in[256];
-	char out_test[256];
-	char out_real[256];
-	int i, p = 0, q_test = 0, q_real = sizeof(out_real);
+	int q_real = 256;
+	char *in = kmalloc(q_real, GFP_KERNEL);
+	char *out_test = kmalloc(q_real, GFP_KERNEL);
+	char *out_real = kmalloc(q_real, GFP_KERNEL);
+	int i, p = 0, q_test = 0;
+
+	if (!in || !out_test || !out_real)
+		goto out;
 
 	for (i = 0; i < ARRAY_SIZE(strings); i++) {
 		const char *s = strings[i].in;
@@ -100,6 +105,10 @@ static void __init test_string_unescape(const char *name, unsigned int flags,
 
 	test_string_check_buf(name, flags, in, p - 1, out_real, q_real,
 			      out_test, q_test);
+out:
+	kfree(out_real);
+	kfree(out_test);
+	kfree(in);
 }
 
 struct test_string_1 {
@@ -255,10 +264,15 @@ static __init void test_string_escape(const char *name,
 				      const struct test_string_2 *s2,
 				      unsigned int flags, const char *esc)
 {
-	char in[256];
-	char out_test[512];
-	char out_real[512], *buf = out_real;
-	int p = 0, q_test = 0, q_real = sizeof(out_real);
+	int q_real = 512;
+	char *out_test = kmalloc(q_real, GFP_KERNEL);
+	char *out_real = kmalloc(q_real, GFP_KERNEL);
+	char *in = kmalloc(256, GFP_KERNEL);
+	char *buf = out_real;
+	int p = 0, q_test = 0;
+
+	if (!out_test || !out_real || !in)
+		goto out;
 
 	for (; s2->in; s2++) {
 		const char *out;
@@ -289,7 +303,12 @@ static __init void test_string_escape(const char *name,
 
 	q_real = string_escape_mem(in, p, &buf, q_real, flags, esc);
 
-	test_string_check_buf(name, flags, in, p, out_real, q_real, out_test, q_test);
+	test_string_check_buf(name, flags, in, p, out_real, q_real, out_test,
+			      q_test);
+out:
+	kfree(in);
+	kfree(out_real);
+	kfree(out_test);
 }
 
 static __init void test_string_escape_nomem(void)
