@@ -414,22 +414,19 @@ isolate_freepages_range(struct compact_control *cc,
 }
 
 /* Update the number of anon and file isolated pages in the zone */
-static void acct_isolated(struct zone *zone, bool locked, struct compact_control *cc)
+static void acct_isolated(struct zone *zone, struct compact_control *cc)
 {
 	struct page *page;
 	unsigned int count[2] = { 0, };
 
+	if (list_empty(&cc->migratepages))
+		return;
+
 	list_for_each_entry(page, &cc->migratepages, lru)
 		count[!!page_is_file_cache(page)]++;
 
-	/* If locked we can use the interrupt unsafe versions */
-	if (locked) {
-		__mod_zone_page_state(zone, NR_ISOLATED_ANON, count[0]);
-		__mod_zone_page_state(zone, NR_ISOLATED_FILE, count[1]);
-	} else {
-		mod_zone_page_state(zone, NR_ISOLATED_ANON, count[0]);
-		mod_zone_page_state(zone, NR_ISOLATED_FILE, count[1]);
-	}
+	mod_zone_page_state(zone, NR_ISOLATED_ANON, count[0]);
+	mod_zone_page_state(zone, NR_ISOLATED_FILE, count[1]);
 }
 
 /* Similar to reclaim, but different enough that they don't share logic */
@@ -612,8 +609,6 @@ isolate_success:
 		}
 	}
 
-	acct_isolated(zone, locked, cc);
-
 	if (locked)
 		spin_unlock_irqrestore(&zone->lru_lock, flags);
 
@@ -676,6 +671,7 @@ isolate_migratepages_range(struct compact_control *cc, unsigned long start_pfn,
 			break;
 		}
 	}
+	acct_isolated(cc->zone, cc);
 
 	return pfn;
 }
@@ -911,6 +907,7 @@ static isolate_migrate_t isolate_migratepages(struct zone *zone,
 		break;
 	}
 
+	acct_isolated(zone, cc);
 	/* Record where migration scanner will be restarted */
 	cc->migrate_pfn = low_pfn;
 
