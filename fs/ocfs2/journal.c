@@ -2160,8 +2160,7 @@ static int ocfs2_recover_orphans(struct ocfs2_super *osb,
 			ret = ocfs2_inode_lock(inode, &di_bh, 1);
 			if (ret) {
 				mlog_errno(ret);
-				spin_unlock(&oi->ip_lock);
-				goto out;
+				goto out_unlock;
 			}
 			ocfs2_truncate_file(inode, di_bh, i_size_read(inode));
 			ocfs2_inode_unlock(inode, 1);
@@ -2173,14 +2172,13 @@ static int ocfs2_recover_orphans(struct ocfs2_super *osb,
 					OCFS2_INODE_DEL_FROM_ORPHAN_CREDITS);
 			if (IS_ERR(handle)) {
 				ret = PTR_ERR(handle);
-				goto out;
+				goto out_unlock;
 			}
 			ret = ocfs2_del_inode_from_orphan(osb, handle, inode);
 			if (ret) {
 				mlog_errno(ret);
 				ocfs2_commit_trans(osb, handle);
-				spin_unlock(&oi->ip_lock);
-				goto out;
+				goto out_unlock;
 			}
 			ocfs2_commit_trans(osb, handle);
 		}
@@ -2200,7 +2198,10 @@ static int ocfs2_recover_orphans(struct ocfs2_super *osb,
 		inode = iter;
 	}
 
-out:
+	return ret;
+
+out_unlock:
+	spin_unlock(&oi->ip_lock);
 	return ret;
 }
 
