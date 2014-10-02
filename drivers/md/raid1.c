@@ -901,18 +901,18 @@ static sector_t wait_barrier(struct r1conf *conf, struct bio *bio)
 		 * However if there are already pending
 		 * requests (preventing the barrier from
 		 * rising completely), and the
-		 * pre-process bio queue isn't empty,
+		 * per-process bio queue isn't empty,
 		 * then don't wait, as we need to empty
-		 * that queue to get the nr_pending
-		 * count down.
+		 * that queue to allow conf->start_next_window
+		 * to increase.
 		 */
 		wait_event_lock_irq(conf->wait_barrier,
 				    !conf->array_frozen &&
 				    (!conf->barrier ||
-				    ((conf->start_next_window <
-				      conf->next_resync + RESYNC_SECTORS) &&
-				     current->bio_list &&
-				     !bio_list_empty(current->bio_list))),
+				     ((conf->start_next_window <
+				       conf->next_resync + RESYNC_SECTORS) &&
+				      current->bio_list &&
+				      !bio_list_empty(current->bio_list))),
 				    conf->resync_lock);
 		conf->nr_waiting--;
 	}
@@ -1947,7 +1947,7 @@ static int fix_sync_read_error(struct r1bio *r1_bio)
 	return 1;
 }
 
-static int process_checks(struct r1bio *r1_bio)
+static void process_checks(struct r1bio *r1_bio)
 {
 	/* We have read all readable devices.  If we haven't
 	 * got the block, then there is no hope left.
@@ -2039,7 +2039,6 @@ static int process_checks(struct r1bio *r1_bio)
 
 		bio_copy_data(sbio, pbio);
 	}
-	return 0;
 }
 
 static void sync_request_write(struct mddev *mddev, struct r1bio *r1_bio)
@@ -2057,8 +2056,8 @@ static void sync_request_write(struct mddev *mddev, struct r1bio *r1_bio)
 			return;
 
 	if (test_bit(MD_RECOVERY_REQUESTED, &mddev->recovery))
-		if (process_checks(r1_bio) < 0)
-			return;
+		process_checks(r1_bio);
+
 	/*
 	 * schedule writes
 	 */
@@ -2722,7 +2721,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr, int *skipp
 						/* remove last page from this bio */
 						bio->bi_vcnt--;
 						bio->bi_iter.bi_size -= len;
-						bio->bi_flags &= ~(1<< BIO_SEG_VALID);
+						__clear_bit(BIO_SEG_VALID, &bio->bi_flags);
 					}
 					goto bio_full;
 				}
