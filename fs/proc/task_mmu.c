@@ -1073,7 +1073,7 @@ static int pagemap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 				return err;
 		}
 
-		if (!vma)
+		if (!vma || vma->vm_start >= end)
 			break;
 		/*
 		 * We can't possibly be in a hugetlb VMA. In general,
