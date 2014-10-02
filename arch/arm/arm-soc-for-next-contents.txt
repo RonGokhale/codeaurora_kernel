@@ -22,6 +22,8 @@ next/fixes-non-critical
 		arm, vt8500, LLVMLlinux: Use mcr instead of mcr% for mach-vt8500
 	at91/fixes-non-critical
 		git://github.com/at91linux/linux-at91 tags/at91-fixes-non-critical
+	patch
+		MAINTAINERS: Add maintainers entry for Mediatek SoCs
 
 next/cleanup
 	patch
@@ -111,6 +113,8 @@ next/soc
 		Merge branch 'at91/soc' into next/soc
 	at91/soc2
 		git://github.com/at91linux/linux-at91 tags/at91-soc2
+	patch
+		ARM: at91: fix nommu build regression
 
 next/boards
 	renesas/boards
@@ -186,6 +190,9 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
 	samsung/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	patch
+		Revert "ARM: dts: hix5hd2: add wdg node"
+		Revert "Merge tag 'hix5hd2-dt-for-3.18' of git://github.com/hisilicon/linux-hisi into next/dt"
 
 next/drivers
 	at91/drivers
@@ -242,19 +249,38 @@ next/defconfig
 		ARM: multi_v7_defconfig: add missing Tegra options
 	<no branch> (bf7389c49d1db5d731bbb9cece2fd95edc7a176a)
 		git+ssh://ra.kernel.org/pub/scm/linux/kernel/git/arm/arm-soc next/defconfig
+	patch
+		ARM: configs: fix duplicate entry in multi_v7
+	qcom/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-3.18
+
+next/late
+	qcom/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-soc-for-3.18
+	mediatek/mt81xx
+		https://github.com/mbgg/linux-mediatek tags/v3.18-next-mt81xx
+	berlin/driver
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-driver-for-3.18-1
+	berlin/soc
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-for-3.18-1
+	berlin/dt
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-for-3.18-1
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.18-1
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+		contains samsung/dt
+	<no branch> (c3294253713cbc96df59a7cc6a9a3fc0c4ae5ba7)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/exynos-pm
+	samsung/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup-2
+		contains samsung/cleanup
+	patch
+		ARM: EXYNOS: fix build error in platsmp.c
+	samsung/dt3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-3
+	brcmstb/smp-uart
+		http://github.com/brcm/linux tags/brcmstb-smp-uart-for-3.18
 
 fixes
-	patch
-		ARM: OMAP: Fix Kconfig warning for omap1
-		ARM: pxa: fix section mismatch warning for pxa_timer_nodt_init
-		ARM: DT: imx53: fix lvds channel 1 port
-		ARM: imx: fix .is_enabled() of shared gate clock
-	<no branch> (99897500e54560397054aa238c771fa8284d0eb2)
-		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/fixes-v3.17-rc4
-	<no branch> (41fc619dd5584d438d1eb673bd82a722d627ad85)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fixes-v3.17-rc4
-	<no branch> (7db143b89137de06ed289cf8b302f3bbbc5baa1f)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/fix-v3.17-io-chain-v3
-	patch
-		drivers/soc: qcom: do not disable the iface clock in probe
 
