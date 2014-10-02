@@ -354,6 +354,7 @@ struct ath_chanctx {
 	bool switch_after_beacon;
 
 	short nvifs;
+	short nvifs_assigned;
 	unsigned int rxfilter;
 };
 
@@ -584,6 +585,11 @@ void ath9k_release_buffered_frames(struct ieee80211_hw *hw,
 
 struct ath_vif {
 	struct list_head list;
+
+	/* BSS info */
+	u8 bssid[ETH_ALEN];
+	u16 aid;
+	bool assoc;
 
 	struct ieee80211_vif *vif;
 	struct ath_node mcast_node;
