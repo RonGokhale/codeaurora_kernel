@@ -1057,27 +1057,15 @@ static int pagemap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 		return 0;
 
 	while (1) {
-		unsigned long vm_start = end;
-		unsigned long vm_end = end;
-		unsigned long vm_flags = 0;
+		/* End of address space hole, which we mark as non-present. */
+		unsigned long hole_end;
 
-		if (vma) {
-			/*
-			 * We can't possibly be in a hugetlb VMA. In general,
-			 * for a mm_walk with a pmd_entry and a hugetlb_entry,
-			 * the pmd_entry can only be called on addresses in a
-			 * hugetlb if the walk starts in a non-hugetlb VMA and
-			 * spans a hugepage VMA. Since pagemap_read walks are
-			 * PMD-sized and PMD-aligned, this will never be true.
-			 */
-			BUG_ON(is_vm_hugetlb_page(vma));
-			vm_start = vma->vm_start;
-			vm_end = min(end, vma->vm_end);
-			vm_flags = vma->vm_flags;
-		}
+		if (vma)
+			hole_end = min(end, vma->vm_start);
+		else
+			hole_end = end;
 
-		/* Addresses before the VMA. */
-		for (; addr < vm_start; addr += PAGE_SIZE) {
+		for (; addr < hole_end; addr += PAGE_SIZE) {
 			pagemap_entry_t pme = make_pme(PM_NOT_PRESENT(pm->v2));
 
 			err = add_to_pagemap(addr, &pme, pm);
@@ -1085,8 +1073,20 @@ static int pagemap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 				return err;
 		}
 
+		if (!vma)
+			break;
+		/*
+		 * We can't possibly be in a hugetlb VMA. In general,
+		 * for a mm_walk with a pmd_entry and a hugetlb_entry,
+		 * the pmd_entry can only be called on addresses in a
+		 * hugetlb if the walk starts in a non-hugetlb VMA and
+		 * spans a hugepage VMA. Since pagemap_read walks are
+		 * PMD-sized and PMD-aligned, this will never be true.
+		 */
+		BUG_ON(is_vm_hugetlb_page(vma));
+
 		/* Addresses in the VMA. */
-		for (; addr < vm_end; addr += PAGE_SIZE) {
+		for (; addr < min(end, vma->vm_end); addr += PAGE_SIZE) {
 			pagemap_entry_t pme;
 			pte = pte_offset_map(pmd, addr);
 			pte_to_pagemap_entry(&pme, pm, vma, addr, *pte);
