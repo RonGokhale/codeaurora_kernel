@@ -677,8 +677,8 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	list_add_tail(&isert_conn->conn_accept_node, &isert_np->np_accept_list);
 	mutex_unlock(&isert_np->np_accept_mutex);
 
-	pr_debug("isert_connect_request() up np_sem np: %p\n", np);
-	up(&isert_np->np_sem);
+	pr_debug("isert_connect_request() complete np_accept_comp np: %p\n", np);
+	complete(&isert_np->np_accept_comp);
 	return 0;
 
 out_conn_dev:
@@ -3011,9 +3011,9 @@ isert_setup_np(struct iscsi_np *np,
 		pr_err("Unable to allocate struct isert_np\n");
 		return -ENOMEM;
 	}
-	sema_init(&isert_np->np_sem, 0);
 	mutex_init(&isert_np->np_accept_mutex);
 	INIT_LIST_HEAD(&isert_np->np_accept_list);
+	init_completion(&isert_np->np_accept_comp);
 	init_completion(&isert_np->np_login_comp);
 
 	sa = (struct sockaddr *)ksockaddr;
@@ -3151,8 +3151,8 @@ isert_accept_np(struct iscsi_np *np, struct iscsi_conn *conn)
 	int max_accept = 0, ret;
 
 accept_wait:
-	ret = down_interruptible(&isert_np->np_sem);
-	if (max_accept > 5)
+	ret = wait_for_completion_interruptible(&isert_np->np_accept_comp);
+	if (ret || max_accept > 5)
 		return -ENODEV;
 
 	spin_lock_bh(&np->np_thread_lock);
