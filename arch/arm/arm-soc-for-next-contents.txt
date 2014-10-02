@@ -24,6 +24,7 @@ next/fixes-non-critical
 		git://github.com/at91linux/linux-at91 tags/at91-fixes-non-critical
 	patch
 		MAINTAINERS: Add maintainers entry for Mediatek SoCs
+		MAINTAINERS: CNS3xxx and IXP4xx update.
 
 next/cleanup
 	patch
@@ -115,6 +116,8 @@ next/soc
 		git://github.com/at91linux/linux-at91 tags/at91-soc2
 	patch
 		ARM: at91: fix nommu build regression
+		CNS3xxx: Fix debug UART.
+		ARM: hisi: depend on ARCH_MULTI_V7
 
 next/boards
 	renesas/boards
@@ -193,6 +196,10 @@ next/dt
 	patch
 		Revert "ARM: dts: hix5hd2: add wdg node"
 		Revert "Merge tag 'hix5hd2-dt-for-3.18' of git://github.com/hisilicon/linux-hisi into next/dt"
+	keystone/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts-fixes
+	mvebu/dt2
+		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.18-2
 
 next/drivers
 	at91/drivers
@@ -253,6 +260,13 @@ next/defconfig
 		ARM: configs: fix duplicate entry in multi_v7
 	qcom/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/galak/linux-qcom tags/qcom-defconfig-for-3.18
+
+next/arm64
+	patch
+		arm64, thunder: Add initial dts for Cavium Thunder SoC
+		arm64, thunder: Document devicetree bindings for Cavium Thunder SoC
+		arm64, thunder: Add Kconfig option for Cavium Thunder SoC Family
+		arm64, defconfig: Enable Cavium Thunder SoC in defconfig
 
 next/late
 	qcom/soc
