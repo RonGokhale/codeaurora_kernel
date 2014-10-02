@@ -134,12 +134,16 @@ static void bcma_host_soc_block_write(struct bcma_device *core,
 
 static u32 bcma_host_soc_aread32(struct bcma_device *core, u16 offset)
 {
+	if (WARN_ONCE(!core->io_wrap, "Accessed core has no wrapper/agent\n"))
+		return ~0;
 	return readl(core->io_wrap + offset);
 }
 
 static void bcma_host_soc_awrite32(struct bcma_device *core, u16 offset,
 				  u32 value)
 {
+	if (WARN_ONCE(!core->io_wrap, "Accessed core has no wrapper/agent\n"))
+		return;
 	writel(value, core->io_wrap + offset);
 }
 
@@ -161,7 +165,6 @@ static const struct bcma_host_ops bcma_host_soc_ops = {
 int __init bcma_host_soc_register(struct bcma_soc *soc)
 {
 	struct bcma_bus *bus = &soc->bus;
-	int err;
 
 	/* iomap only first core. We have to read some register on this core
 	 * to scan the bus.
@@ -174,7 +177,18 @@ int __init bcma_host_soc_register(struct bcma_soc *soc)
 	bus->hosttype = BCMA_HOSTTYPE_SOC;
 	bus->ops = &bcma_host_soc_ops;
 
-	/* Register */
+	/* Initialize struct, detect chip */
+	bcma_init_bus(bus);
+
+	return 0;
+}
+
+int __init bcma_host_soc_init(struct bcma_soc *soc)
+{
+	struct bcma_bus *bus = &soc->bus;
+	int err;
+
+	/* Scan bus and initialize it */
 	err = bcma_bus_early_register(bus, &soc->core_cc, &soc->core_mips);
 	if (err)
 		iounmap(bus->mmio);
