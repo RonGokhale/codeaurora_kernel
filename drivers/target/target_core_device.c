@@ -224,8 +224,7 @@ struct se_dev_entry *core_get_se_deve_from_rtpi(
 		if (port->sep_rtpi != rtpi)
 			continue;
 
-		atomic_inc(&deve->pr_ref_count);
-		smp_mb__after_atomic();
+		atomic_inc_mb(&deve->pr_ref_count);
 		spin_unlock_irq(&nacl->device_list_lock);
 
 		return deve;
@@ -1250,24 +1249,16 @@ struct se_lun *core_dev_add_lun(
  *
  *
  */
-int core_dev_del_lun(
+void core_dev_del_lun(
 	struct se_portal_group *tpg,
-	u32 unpacked_lun)
+	struct se_lun *lun)
 {
-	struct se_lun *lun;
-
-	lun = core_tpg_pre_dellun(tpg, unpacked_lun);
-	if (IS_ERR(lun))
-		return PTR_ERR(lun);
-
-	core_tpg_post_dellun(tpg, lun);
-
-	pr_debug("%s_TPG[%u]_LUN[%u] - Deactivated %s Logical Unit from"
+	pr_debug("%s_TPG[%u]_LUN[%u] - Deactivating %s Logical Unit from"
 		" device object\n", tpg->se_tpg_tfo->get_fabric_name(),
-		tpg->se_tpg_tfo->tpg_get_tag(tpg), unpacked_lun,
+		tpg->se_tpg_tfo->tpg_get_tag(tpg), lun->unpacked_lun,
 		tpg->se_tpg_tfo->get_fabric_name());
 
-	return 0;
+	core_tpg_remove_lun(tpg, lun);
 }
 
 struct se_lun *core_get_lun_from_tpg(struct se_portal_group *tpg, u32 unpacked_lun)
@@ -1396,8 +1387,7 @@ int core_dev_add_initiator_node_lun_acl(
 
 	spin_lock(&lun->lun_acl_lock);
 	list_add_tail(&lacl->lacl_list, &lun->lun_acl_list);
-	atomic_inc(&lun->lun_acl_count);
-	smp_mb__after_atomic();
+	atomic_inc_mb(&lun->lun_acl_count);
 	spin_unlock(&lun->lun_acl_lock);
 
 	pr_debug("%s_TPG[%hu]_LUN[%u->%u] - Added %s ACL for "
@@ -1430,8 +1420,7 @@ int core_dev_del_initiator_node_lun_acl(
 
 	spin_lock(&lun->lun_acl_lock);
 	list_del(&lacl->lacl_list);
-	atomic_dec(&lun->lun_acl_count);
-	smp_mb__after_atomic();
+	atomic_dec_mb(&lun->lun_acl_count);
 	spin_unlock(&lun->lun_acl_lock);
 
 	core_disable_device_list_for_node(lun, NULL, lacl->mapped_lun,
