@@ -326,14 +326,14 @@ static SIMPLE_DEV_PM_OPS(rk808_rtc_pm_ops,
 	rk808_rtc_suspend, rk808_rtc_resume);
 
 /* 2014.1.1 12:00:00 Saturday */
-struct rtc_time tm_def = {
-			.tm_wday = 6,
-			.tm_year = 114,
-			.tm_mon = 0,
-			.tm_mday = 1,
-			.tm_hour = 12,
-			.tm_min = 0,
-			.tm_sec = 0,
+static struct rtc_time tm_def = {
+	.tm_wday = 6,
+	.tm_year = 114,
+	.tm_mon = 0,
+	.tm_mday = 1,
+	.tm_hour = 12,
+	.tm_min = 0,
+	.tm_sec = 0,
 };
 
 static int rk808_rtc_probe(struct platform_device *pdev)
