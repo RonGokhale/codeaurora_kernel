@@ -2192,17 +2192,6 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 		}
 
 		/*
-		 * Allowing concurrent direct writes means
-		 * i_size changes wouldn't be synchronized, so
-		 * one node could wind up truncating another
-		 * nodes writes.
-		 */
-		if (end > i_size_read(inode)) {
-			*direct_io = 0;
-			break;
-		}
-
-		/*
 		 * We don't fill holes during direct io, so
 		 * check for them here. If any are found, the
 		 * caller will have to retake some cluster

@@ -663,10 +663,6 @@ static ssize_t ocfs2_direct_IO(int rw,
 	if (OCFS2_I(inode)->ip_dyn_features & OCFS2_INLINE_DATA_FL)
 		return 0;
 
-	/* Fallback to buffered I/O if we are appending. */
-	if (i_size_read(inode) <= offset)
-		return 0;
-
 	if (rw == WRITE) {
 		loff_t final_size = offset + count;
 		/*
