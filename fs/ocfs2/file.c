@@ -295,7 +295,7 @@ out:
 	return ret;
 }
 
-static int ocfs2_set_inode_size(handle_t *handle,
+int ocfs2_set_inode_size(handle_t *handle,
 				struct inode *inode,
 				struct buffer_head *fe_bh,
 				u64 new_i_size)
@@ -441,7 +441,7 @@ out:
 	return status;
 }
 
-static int ocfs2_truncate_file(struct inode *inode,
+int ocfs2_truncate_file(struct inode *inode,
 			       struct buffer_head *di_bh,
 			       u64 new_i_size)
 {
@@ -557,7 +557,7 @@ int ocfs2_add_inode_data(struct ocfs2_super *osb,
 	return ret;
 }
 
-static int __ocfs2_extend_allocation(struct inode *inode, u32 logical_start,
+int __ocfs2_extend_allocation(struct inode *inode, u32 logical_start,
 				     u32 clusters_to_add, int mark_unwritten)
 {
 	int status = 0;
@@ -760,7 +760,7 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 	struct address_space *mapping = inode->i_mapping;
 	struct page *page;
 	unsigned long index = abs_from >> PAGE_CACHE_SHIFT;
-	handle_t *handle = NULL;
+	handle_t *handle;
 	int ret = 0;
 	unsigned zero_from, zero_to, block_start, block_end;
 	struct ocfs2_dinode *di = (struct ocfs2_dinode *)di_bh->b_data;
@@ -769,11 +769,17 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 	BUG_ON(abs_to > (((u64)index + 1) << PAGE_CACHE_SHIFT));
 	BUG_ON(abs_from & (inode->i_blkbits - 1));
 
+	handle = ocfs2_zero_start_ordered_transaction(inode, di_bh);
+	if (IS_ERR(handle)) {
+		ret = PTR_ERR(handle);
+		goto out;
+	}
+
 	page = find_or_create_page(mapping, index, GFP_NOFS);
 	if (!page) {
 		ret = -ENOMEM;
 		mlog_errno(ret);
-		goto out;
+		goto out_commit_trans;
 	}
 
 	/* Get the offsets within the page that we want to zero */
@@ -805,15 +811,6 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 			goto out_unlock;
 		}
 
-		if (!handle) {
-			handle = ocfs2_zero_start_ordered_transaction(inode,
-								      di_bh);
-			if (IS_ERR(handle)) {
-				ret = PTR_ERR(handle);
-				handle = NULL;
-				break;
-			}
-		}
 
 		/* must not update i_size! */
 		ret = block_commit_write(page, block_start + 1,
@@ -824,27 +821,26 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 			ret = 0;
 	}
 
-	if (handle) {
-		/*
-		 * fs-writeback will release the dirty pages without page lock
-		 * whose offset are over inode size, the release happens at
-		 * block_write_full_page().
-		 */
-		i_size_write(inode, abs_to);
-		inode->i_blocks = ocfs2_inode_sector_count(inode);
-		di->i_size = cpu_to_le64((u64)i_size_read(inode));
-		inode->i_mtime = inode->i_ctime = CURRENT_TIME;
-		di->i_mtime = di->i_ctime = cpu_to_le64(inode->i_mtime.tv_sec);
-		di->i_ctime_nsec = cpu_to_le32(inode->i_mtime.tv_nsec);
-		di->i_mtime_nsec = di->i_ctime_nsec;
-		ocfs2_journal_dirty(handle, di_bh);
-		ocfs2_update_inode_fsync_trans(handle, inode, 1);
-		ocfs2_commit_trans(OCFS2_SB(inode->i_sb), handle);
-	}
+	/*
+	 * fs-writeback will release the dirty pages without page lock
+	 * whose offset are over inode size, the release happens at
+	 * block_write_full_page().
+	 */
+	i_size_write(inode, abs_to);
+	inode->i_blocks = ocfs2_inode_sector_count(inode);
+	di->i_size = cpu_to_le64((u64)i_size_read(inode));
+	inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	di->i_mtime = di->i_ctime = cpu_to_le64(inode->i_mtime.tv_sec);
+	di->i_ctime_nsec = cpu_to_le32(inode->i_mtime.tv_nsec);
+	di->i_mtime_nsec = di->i_ctime_nsec;
+	ocfs2_journal_dirty(handle, di_bh);
+	ocfs2_update_inode_fsync_trans(handle, inode, 1);
 
 out_unlock:
 	unlock_page(page);
 	page_cache_release(page);
+out_commit_trans:
+	ocfs2_commit_trans(OCFS2_SB(inode->i_sb), handle);
 out:
 	return ret;
 }
@@ -1353,44 +1349,6 @@ out:
 	return ret;
 }
 
-/*
- * Will look for holes and unwritten extents in the range starting at
- * pos for count bytes (inclusive).
- */
-static int ocfs2_check_range_for_holes(struct inode *inode, loff_t pos,
-				       size_t count)
-{
-	int ret = 0;
-	unsigned int extent_flags;
-	u32 cpos, clusters, extent_len, phys_cpos;
-	struct super_block *sb = inode->i_sb;
-
-	cpos = pos >> OCFS2_SB(sb)->s_clustersize_bits;
-	clusters = ocfs2_clusters_for_bytes(sb, pos + count) - cpos;
-
-	while (clusters) {
-		ret = ocfs2_get_clusters(inode, cpos, &phys_cpos, &extent_len,
-					 &extent_flags);
-		if (ret < 0) {
-			mlog_errno(ret);
-			goto out;
-		}
-
-		if (phys_cpos == 0 || (extent_flags & OCFS2_EXT_UNWRITTEN)) {
-			ret = 1;
-			break;
-		}
-
-		if (extent_len > clusters)
-			extent_len = clusters;
-
-		clusters -= extent_len;
-		cpos += extent_len;
-	}
-out:
-	return ret;
-}
-
 static int ocfs2_write_remove_suid(struct inode *inode)
 {
 	int ret;
@@ -1804,7 +1762,7 @@ static int ocfs2_remove_inode_range(struct inode *inode,
 
 		ret = ocfs2_remove_btree_range(inode, &et, trunc_cpos,
 					       phys_cpos, trunc_len, flags,
-					       &dealloc, refcount_loc);
+					       &dealloc, refcount_loc, false);
 		if (ret < 0) {
 			mlog_errno(ret);
 			goto out;
@@ -2191,30 +2149,6 @@ static int ocfs2_prepare_inode_for_write(struct file *file,
 			*direct_io = 0;
 			break;
 		}
-
-		/*
-		 * Allowing concurrent direct writes means
-		 * i_size changes wouldn't be synchronized, so
-		 * one node could wind up truncating another
-		 * nodes writes.
-		 */
-		if (end > i_size_read(inode)) {
-			*direct_io = 0;
-			break;
-		}
-
-		/*
-		 * We don't fill holes during direct io, so
-		 * check for them here. If any are found, the
-		 * caller will have to retake some cluster
-		 * locks and initiate the io as buffered.
-		 */
-		ret = ocfs2_check_range_for_holes(inode, saved_pos, count);
-		if (ret == 1) {
-			*direct_io = 0;
-			ret = 0;
-		} else if (ret < 0)
-			mlog_errno(ret);
 		break;
 	}
 
@@ -2244,6 +2178,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 	u32 old_clusters;
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file_inode(file);
+	struct address_space *mapping = file->f_mapping;
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
 	int full_coherency = !(osb->s_mount_opt &
 			       OCFS2_MOUNT_COHERENCY_BUFFERED);
@@ -2358,10 +2293,45 @@ relock:
 
 	iov_iter_truncate(from, count);
 	if (direct_io) {
+		loff_t endbyte;
+		ssize_t written_buffered;
 		written = generic_file_direct_write(iocb, from, *ppos);
 		if (written < 0) {
 			ret = written;
 			goto out_dio;
+		}
+		/*
+		 * direct-io write to a hole: fall through to buffered I/O
+		 * for completing the rest of the request.
+		 */
+		*ppos += written;
+		count -= written;
+		written_buffered = generic_perform_write(file, from, *ppos);
+		/*
+		 * If generic_file_buffered_write() retuned a synchronous error
+		 * then we want to return the number of bytes which were
+		 * direct-written, or the error code if that was zero.  Note
+		 * that this differs from normal direct-io semantics, which
+		 * will return -EFOO even if some bytes were written.
+		 */
+		if (written_buffered < 0) {
+			ret = written_buffered;
+			goto out;
+		}
+
+		/*
+		 * We need to ensure that the page cache pages are written to
+		 * disk and invalidated to preserve the expected O_DIRECT
+		 * semantics.
+		 */
+		endbyte = *ppos + written_buffered - written - 1;
+		ret = filemap_write_and_wait_range(file->f_mapping, *ppos,
+						   endbyte);
+		if (ret == 0) {
+			written = written_buffered;
+			invalidate_mapping_pages(mapping,
+						 *ppos >> PAGE_CACHE_SHIFT,
+						 endbyte >> PAGE_CACHE_SHIFT);
 		}
 	} else {
 		current->backing_dev_info = file->f_mapping->backing_dev_info;

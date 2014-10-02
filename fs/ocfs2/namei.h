@@ -26,10 +26,23 @@
 #ifndef OCFS2_NAMEI_H
 #define OCFS2_NAMEI_H
 
+#include "dir.h"
+
 extern const struct inode_operations ocfs2_dir_iops;
 
 struct dentry *ocfs2_get_parent(struct dentry *child);
-
+int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
+				    struct inode **ret_orphan_dir,
+				    u64 blkno,
+				    char *name,
+				    struct ocfs2_dir_lookup_result *lookup);
+int ocfs2_orphan_add(struct ocfs2_super *osb,
+			    handle_t *handle,
+			    struct inode *inode,
+			    struct buffer_head *fe_bh,
+			    char *name,
+			    struct ocfs2_dir_lookup_result *lookup,
+			    struct inode *orphan_dir_inode);
 int ocfs2_orphan_del(struct ocfs2_super *osb,
 		     handle_t *handle,
 		     struct inode *orphan_dir_inode,
@@ -38,6 +51,12 @@ int ocfs2_orphan_del(struct ocfs2_super *osb,
 int ocfs2_create_inode_in_orphan(struct inode *dir,
 				 int mode,
 				 struct inode **new_inode);
+int ocfs2_add_inode_to_orphan(struct ocfs2_super *osb,
+				handle_t *handle,
+				struct inode *inode);
+int ocfs2_del_inode_from_orphan(struct ocfs2_super *osb,
+				handle_t *handle,
+				struct inode *inode);
 int ocfs2_mv_orphaned_inode_to_new(struct inode *dir,
 				   struct inode *new_inode,
 				   struct dentry *new_dentry);
