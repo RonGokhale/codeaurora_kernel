@@ -1155,6 +1155,14 @@ static inline void unmap_shared_mapping_range(struct address_space *mapping,
 
 extern void truncate_pagecache(struct inode *inode, loff_t new);
 extern void truncate_setsize(struct inode *inode, loff_t newsize);
+#ifdef CONFIG_MMU
+void pagecache_isize_extended(struct inode *inode, loff_t from, loff_t to);
+#else
+static inline void pagecache_isize_extended(struct inode *inode, loff_t from,
+					    loff_t to)
+{
+}
+#endif
 void truncate_pagecache_range(struct inode *inode, loff_t offset, loff_t end);
 int truncate_inode_page(struct address_space *mapping, struct page *page);
 int generic_error_remove_page(struct address_space *mapping, struct page *page);
