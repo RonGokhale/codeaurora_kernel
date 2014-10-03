@@ -119,7 +119,8 @@ struct msdos_inode_info {
 	unsigned int cache_valid_id;
 
 	/* NOTE: mmu_private is 64bits, so must hold ->i_mutex to access */
-	loff_t mmu_private;	/* physically allocated size */
+	loff_t mmu_private;	/* physically allocated size (initialized) */
+	loff_t i_disksize;	/* physically allocated size (uninitialized) */
 
 	int i_start;		/* first cluster or 0 */
 	int i_logstart;		/* logical first cluster */
@@ -288,6 +289,9 @@ static inline void fatwchar_to16(__u8 *dst, const wchar_t *src, size_t len)
 extern void fat_cache_inval_inode(struct inode *inode);
 extern int fat_get_cluster(struct inode *inode, int cluster,
 			   int *fclus, int *dclus);
+extern int fat_get_mapped_cluster(struct inode *inode, sector_t sector,
+				  sector_t last_block,
+				  unsigned long *mapped_blocks, sector_t *bmap);
 extern int fat_bmap(struct inode *inode, sector_t sector, sector_t *phys,
 		    unsigned long *mapped_blocks, int create);
 
