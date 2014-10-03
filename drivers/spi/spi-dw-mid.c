@@ -1,7 +1,7 @@
 /*
  * Special handling for DW core on Intel MID platform
  *
- * Copyright (c) 2009, Intel Corporation.
+ * Copyright (c) 2009, 2014 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #include <linux/dma-mapping.h>
@@ -39,22 +35,25 @@ static bool mid_spi_dma_chan_filter(struct dma_chan *chan, void *param)
 {
 	struct dw_spi *dws = param;
 
-	return dws->dmac && (&dws->dmac->dev == chan->device->dev);
+	return dws->dma_dev == chan->device->dev;
 }
 
 static int mid_spi_dma_init(struct dw_spi *dws)
 {
 	struct mid_dma *dw_dma = dws->dma_priv;
+	struct pci_dev *dma_dev;
 	struct intel_mid_dma_slave *rxs, *txs;
 	dma_cap_mask_t mask;
 
 	/*
 	 * Get pci device for DMA controller, currently it could only
-	 * be the DMA controller of either Moorestown or Medfield
+	 * be the DMA controller of Medfield
 	 */
-	dws->dmac = pci_get_device(PCI_VENDOR_ID_INTEL, 0x0813, NULL);
-	if (!dws->dmac)
-		dws->dmac = pci_get_device(PCI_VENDOR_ID_INTEL, 0x0827, NULL);
+	dma_dev = pci_get_device(PCI_VENDOR_ID_INTEL, 0x0827, NULL);
+	if (!dma_dev)
+		return -ENODEV;
+
+	dws->dma_dev = &dma_dev->dev;
 
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_SLAVE, mask);
@@ -83,13 +82,18 @@ static int mid_spi_dma_init(struct dw_spi *dws)
 free_rxchan:
 	dma_release_channel(dws->rxchan);
 err_exit:
-	return -1;
-
+	return -EBUSY;
 }
 
 static void mid_spi_dma_exit(struct dw_spi *dws)
 {
+	if (!dws->dma_inited)
+		return;
+
+	dmaengine_terminate_all(dws->txchan);
 	dma_release_channel(dws->txchan);
+
+	dmaengine_terminate_all(dws->rxchan);
 	dma_release_channel(dws->rxchan);
 }
 
@@ -136,7 +140,7 @@ static int mid_spi_dma_transfer(struct dw_spi *dws, int cs_change)
 	txconf.dst_addr = dws->dma_addr;
 	txconf.dst_maxburst = LNW_DMA_MSIZE_16;
 	txconf.src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	txconf.dst_addr_width = DMA_SLAVE_BUSWIDTH_2_BYTES;
+	txconf.dst_addr_width = dws->dma_width;
 	txconf.device_fc = false;
 
 	txchan->device->device_control(txchan, DMA_SLAVE_CONFIG,
@@ -159,7 +163,7 @@ static int mid_spi_dma_transfer(struct dw_spi *dws, int cs_change)
 	rxconf.src_addr = dws->dma_addr;
 	rxconf.src_maxburst = LNW_DMA_MSIZE_16;
 	rxconf.dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	rxconf.src_addr_width = DMA_SLAVE_BUSWIDTH_2_BYTES;
+	rxconf.src_addr_width = dws->dma_width;
 	rxconf.device_fc = false;
 
 	rxchan->device->device_control(rxchan, DMA_SLAVE_CONFIG,
@@ -190,7 +194,7 @@ static struct dw_spi_dma_ops mid_dma_ops = {
 };
 #endif
 
-/* Some specific info for SPI0 controller on Moorestown */
+/* Some specific info for SPI0 controller on Intel MID */
 
 /* HW info for MRST CLk Control Unit, one 32b reg */
 #define MRST_SPI_CLK_BASE	100000000	/* 100m */
