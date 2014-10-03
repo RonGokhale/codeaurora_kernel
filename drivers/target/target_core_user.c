@@ -763,27 +763,27 @@ static int tcmu_netlink_event(enum tcmu_genl_cmd cmd, const char *name, int mino
 {
 	struct sk_buff *skb;
 	void *msg_header;
-	int ret = -ENOMEM;
+	int ret;
 
 	skb = genlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
 	if (!skb)
-		return ret;
+		return -ENOMEM;
 
 	msg_header = genlmsg_put(skb, 0, 0, &tcmu_genl_family, 0, cmd);
-	if (!msg_header)
-		goto free_skb;
+	if (!msg_header) {
+		nlmsg_free(skb);
+		return -ENOMEM;
+	}
 
 	ret = nla_put_string(skb, TCMU_ATTR_DEVICE, name);
-	if (ret < 0)
-		goto free_skb
 
 	ret = nla_put_u32(skb, TCMU_ATTR_MINOR, minor);
-	if (ret < 0)
-		goto free_skb;
 
 	ret = genlmsg_end(skb, msg_header);
-	if (ret < 0)
-		goto free_skb;
+	if (ret < 0) {
+		nlmsg_free(skb);
+		return ret;
+	}
 
 	ret = genlmsg_multicast(&tcmu_genl_family, skb, 0,
 				TCMU_MCGRP_CONFIG, GFP_KERNEL);
@@ -792,9 +792,6 @@ static int tcmu_netlink_event(enum tcmu_genl_cmd cmd, const char *name, int mino
 	if (ret == -ESRCH)
 		ret = 0;
 
-	return ret;
-free_skb:
-	nlmsg_free(skb);
 	return ret;
 }
 
