@@ -182,9 +182,9 @@ struct isert_device {
 };
 
 struct isert_np {
-	struct semaphore	np_sem;
 	struct rdma_cm_id	*np_cm_id;
 	struct mutex		np_accept_mutex;
 	struct list_head	np_accept_list;
+	struct completion	np_accept_comp;
 	struct completion	np_login_comp;
 };
