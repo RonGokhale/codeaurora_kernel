@@ -121,6 +121,12 @@ struct btrfs_inode {
 	u64 delalloc_bytes;
 
 	/*
+	 * total number of bytes pending defrag, used by stat to check whether
+	 * it needs COW.
+	 */
+	u64 defrag_bytes;
+
+	/*
 	 * the size of the file stored in the metadata on disk.  data=ordered
 	 * means the in-memory i_size might be larger than the size on disk
 	 * because not all the blocks are written yet.
@@ -248,8 +254,11 @@ static inline int btrfs_inode_in_log(struct inode *inode, u64 generation)
 	return 0;
 }
 
+#define BTRFS_DIO_ORIG_BIO_SUBMITTED	0x1
+
 struct btrfs_dio_private {
 	struct inode *inode;
+	unsigned long flags;
 	u64 logical_offset;
 	u64 disk_bytenr;
 	u64 bytes;
@@ -266,7 +275,12 @@ struct btrfs_dio_private {
 
 	/* dio_bio came from fs/direct-io.c */
 	struct bio *dio_bio;
-	u8 csum[0];
+
+	/*
+	 * The original bio may be splited to several sub-bios, this is
+	 * done during endio of sub-bios
+	 */
+	int (*subio_endio)(struct inode *, struct btrfs_io_bio *, int);
 };
 
 /*
