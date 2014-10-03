@@ -20,11 +20,7 @@ int unregister_tcf_proto_ops(struct tcf_proto_ops *ops);
 static inline unsigned long
 __cls_set_class(unsigned long *clp, unsigned long cl)
 {
-	unsigned long old_cl;
- 
-	old_cl = *clp;
-	*clp = cl;
-	return old_cl;
+	return xchg(clp, cl);
 }
 
 static inline unsigned long
@@ -137,7 +133,7 @@ tcf_exts_exec(struct sk_buff *skb, struct tcf_exts *exts,
 int tcf_exts_validate(struct net *net, struct tcf_proto *tp,
 		      struct nlattr **tb, struct nlattr *rate_tlv,
 		      struct tcf_exts *exts, bool ovr);
-void tcf_exts_destroy(struct tcf_proto *tp, struct tcf_exts *exts);
+void tcf_exts_destroy(struct tcf_exts *exts);
 void tcf_exts_change(struct tcf_proto *tp, struct tcf_exts *dst,
 		     struct tcf_exts *src);
 int tcf_exts_dump(struct sk_buff *skb, struct tcf_exts *exts);

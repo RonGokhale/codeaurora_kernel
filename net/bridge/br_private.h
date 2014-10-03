@@ -221,7 +221,7 @@ struct net_bridge
 	struct pcpu_sw_netstats		__percpu *stats;
 	spinlock_t			hash_lock;
 	struct hlist_head		hash[BR_HASH_SIZE];
-#ifdef CONFIG_BRIDGE_NETFILTER
+#if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
 	struct rtable 			fake_rtable;
 	bool				nf_call_iptables;
 	bool				nf_call_ip6tables;
@@ -754,18 +754,19 @@ static inline int br_vlan_enabled(struct net_bridge *br)
 #endif
 
 /* br_netfilter.c */
-#ifdef CONFIG_BRIDGE_NETFILTER
-int br_netfilter_init(void);
-void br_netfilter_fini(void);
+#if IS_ENABLED(CONFIG_BRIDGE_NETFILTER)
+int br_nf_core_init(void);
+void br_nf_core_fini(void);
 void br_netfilter_rtable_init(struct net_bridge *);
 #else
-#define br_netfilter_init()	(0)
-#define br_netfilter_fini()	do { } while (0)
+static inline int br_nf_core_init(void) { return 0; }
+static inline void br_nf_core_fini(void) {}
 #define br_netfilter_rtable_init(x)
 #endif
 
 /* br_stp.c */
 void br_log_state(const struct net_bridge_port *p);
+void br_set_state(struct net_bridge_port *p, unsigned int state);
 struct net_bridge_port *br_get_port(struct net_bridge *br, u16 port_no);
 void br_init_port(struct net_bridge_port *p);
 void br_become_designated_port(struct net_bridge_port *p);
