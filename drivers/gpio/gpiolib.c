@@ -1717,6 +1717,62 @@ struct gpio_desc *__must_check __gpiod_get_index(struct device *dev,
 EXPORT_SYMBOL_GPL(__gpiod_get_index);
 
 /**
+ * dev_get_named_gpiod_from_child - obtain a GPIO from firmware node
+ * @dev:	parent device
+ * @child:	firmware node (child of @dev)
+ * @propname:	name of the firmware property
+ * @idx:	index of the GPIO in the property value in case of many
+ *
+ * This function can be used for drivers that get their configuration
+ * from firmware in such a way that some properties are described as child
+ * nodes for the parent device in DT or ACPI.
+ *
+ * Function properly finds the corresponding GPIO using whatever is the
+ * underlying firmware interface and then makes sure that the GPIO
+ * descriptor is requested before it is returned to the caller.
+ *
+ * In case of error an ERR_PTR() is returned.
+ */
+struct gpio_desc *dev_get_named_gpiod_from_child(struct device *dev, void *child,
+						 const char *propname, int index)
+{
+	struct gpio_desc *desc = ERR_PTR(-ENODEV);
+	bool active_low = false;
+	int ret;
+
+	if (!child)
+		return ERR_PTR(-EINVAL);
+
+	if (IS_ENABLED(CONFIG_OF) && dev->of_node) {
+		enum of_gpio_flags flags;
+
+		desc = of_get_named_gpiod_flags(child, propname, index, &flags);
+		if (!IS_ERR(desc))
+			active_low = flags & OF_GPIO_ACTIVE_LOW;
+	} else if (ACPI_COMPANION(dev)) {
+		struct acpi_gpio_info info;
+
+		desc = acpi_get_gpiod_by_index(child, propname, index, &info);
+		if (!IS_ERR(desc))
+			active_low = info.active_low;
+	}
+
+	if (IS_ERR(desc))
+		return desc;
+
+	ret = gpiod_request(desc, NULL);
+	if (ret)
+		return ERR_PTR(ret);
+
+	/* Only value flag can be set from both DT and ACPI is active_low */
+	if (active_low)
+		set_bit(FLAG_ACTIVE_LOW, &desc->flags);
+
+	return desc;
+}
+EXPORT_SYMBOL_GPL(dev_get_named_gpiod_from_child);
+
+/**
  * gpiod_get_index_optional - obtain an optional GPIO from a multi-index GPIO
  *                            function
  * @dev: GPIO consumer, can be NULL for system-global GPIOs
