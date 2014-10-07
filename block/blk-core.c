@@ -236,7 +236,7 @@ EXPORT_SYMBOL(blk_stop_queue);
  *     this function.
  *
  *     This function does not cancel any asynchronous activity arising
- *     out of elevator or throttling code. That would require elevaotor_exit()
+ *     out of elevator or throttling code. That would require elevator_exit()
  *     and blkcg_exit_queue() to be called with queue lock initialized.
  *
  */
@@ -1236,7 +1236,7 @@ struct request *blk_make_request(struct request_queue *q, struct bio *bio,
 EXPORT_SYMBOL(blk_make_request);
 
 /**
- * blk_rq_set_block_pc - initialize a requeest to type BLOCK_PC
+ * blk_rq_set_block_pc - initialize a request to type BLOCK_PC
  * @rq:		request to be initialized
  *
  */
