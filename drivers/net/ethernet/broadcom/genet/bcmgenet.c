@@ -1054,7 +1054,8 @@ static int bcmgenet_xmit_frag(struct net_device *dev,
 /* Reallocate the SKB to put enough headroom in front of it and insert
  * the transmit checksum offsets in the descriptors
  */
-static int bcmgenet_put_tx_csum(struct net_device *dev, struct sk_buff *skb)
+static struct sk_buff *bcmgenet_put_tx_csum(struct net_device *dev,
+					    struct sk_buff *skb)
 {
 	struct status_64 *status = NULL;
 	struct sk_buff *new_skb;
@@ -1072,7 +1073,7 @@ static int bcmgenet_put_tx_csum(struct net_device *dev, struct sk_buff *skb)
 		if (!new_skb) {
 			dev->stats.tx_errors++;
 			dev->stats.tx_dropped++;
-			return -ENOMEM;
+			return NULL;
 		}
 		skb = new_skb;
 	}
@@ -1090,7 +1091,7 @@ static int bcmgenet_put_tx_csum(struct net_device *dev, struct sk_buff *skb)
 			ip_proto = ipv6_hdr(skb)->nexthdr;
 			break;
 		default:
-			return 0;
+			return skb;
 		}
 
 		offset = skb_checksum_start_offset(skb) - sizeof(*status);
@@ -1111,7 +1112,7 @@ static int bcmgenet_put_tx_csum(struct net_device *dev, struct sk_buff *skb)
 		status->tx_csum_info = tx_csum_info;
 	}
 
-	return 0;
+	return skb;
 }
 
 static netdev_tx_t bcmgenet_xmit(struct sk_buff *skb, struct net_device *dev)
@@ -1158,8 +1159,8 @@ static netdev_tx_t bcmgenet_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* set the SKB transmit checksum */
 	if (priv->desc_64b_en) {
-		ret = bcmgenet_put_tx_csum(dev, skb);
-		if (ret) {
+		skb = bcmgenet_put_tx_csum(dev, skb);
+		if (!skb) {
 			ret = NETDEV_TX_OK;
 			goto out;
 		}
@@ -2017,19 +2018,6 @@ static void bcmgenet_set_hw_addr(struct bcmgenet_priv *priv,
 	bcmgenet_umac_writel(priv, (addr[4] << 8) | addr[5], UMAC_MAC1);
 }
 
-static int bcmgenet_wol_resume(struct bcmgenet_priv *priv)
-{
-	/* From WOL-enabled suspend, switch to regular clock */
-	if (priv->wolopts)
-		clk_disable_unprepare(priv->clk_wol);
-
-	phy_init_hw(priv->phydev);
-	/* Speed settings must be restored */
-	bcmgenet_mii_config(priv->dev);
-
-	return 0;
-}
-
 /* Returns a reusable dma control register value */
 static u32 bcmgenet_dma_disable(struct bcmgenet_priv *priv)
 {
@@ -2174,9 +2162,10 @@ static void bcmgenet_netif_stop(struct net_device *dev)
 	 */
 	cancel_work_sync(&priv->bcmgenet_irq_work);
 
-	priv->old_pause = -1;
 	priv->old_link = -1;
+	priv->old_speed = -1;
 	priv->old_duplex = -1;
+	priv->old_pause = -1;
 }
 
 static int bcmgenet_close(struct net_device *dev)
@@ -2439,6 +2428,13 @@ static void bcmgenet_set_hw_params(struct bcmgenet_priv *priv)
 	dev_info(&priv->pdev->dev, "GENET " GENET_VER_FMT,
 		 major, (reg >> 16) & 0x0f, reg & 0xffff);
 
+	/* Store the integrated PHY revision for the MDIO probing function
+	 * to pass this information to the PHY driver. The PHY driver expects
+	 * to find the PHY major revision in bits 15:8 while the GENET register
+	 * stores that information in bits 7:0, account for that.
+	 */
+	priv->gphy_rev = (reg & 0xffff) << 8;
+
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 	if (!(params->flags & GENET_HAS_40BITS))
 		pr_warn("GENET does not support 40-bits PA\n");
@@ -2676,9 +2672,13 @@ static int bcmgenet_resume(struct device *d)
 	if (ret)
 		goto out_clk_disable;
 
-	ret = bcmgenet_wol_resume(priv);
-	if (ret)
-		goto out_clk_disable;
+	/* From WOL-enabled suspend, switch to regular clock */
+	if (priv->wolopts)
+		clk_disable_unprepare(priv->clk_wol);
+
+	phy_init_hw(priv->phydev);
+	/* Speed settings must be restored */
+	bcmgenet_mii_config(priv->dev);
 
 	/* disable ethernet MAC while updating its registers */
 	umac_enable_set(priv, CMD_TX_EN | CMD_RX_EN, false);

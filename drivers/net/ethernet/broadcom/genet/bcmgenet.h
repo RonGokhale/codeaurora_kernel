@@ -545,10 +545,12 @@ struct bcmgenet_priv {
 	struct phy_device *phydev;
 	struct device_node *phy_dn;
 	struct mii_bus *mii_bus;
+	u16 gphy_rev;
 
 	/* PHY device variables */
-	int old_duplex;
 	int old_link;
+	int old_speed;
+	int old_duplex;
 	int old_pause;
 	phy_interface_t phy_interface;
 	int phy_addr;
