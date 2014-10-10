@@ -766,14 +766,7 @@ void md_super_write(struct mddev *mddev, struct md_rdev *rdev,
 void md_super_wait(struct mddev *mddev)
 {
 	/* wait for all superblock writes that were scheduled to complete */
-	DEFINE_WAIT(wq);
-	for(;;) {
-		prepare_to_wait(&mddev->sb_wait, &wq, TASK_UNINTERRUPTIBLE);
-		if (atomic_read(&mddev->pending_writes)==0)
-			break;
-		schedule();
-	}
-	finish_wait(&mddev->sb_wait, &wq);
+	wait_event(mddev->sb_wait, atomic_read(&mddev->pending_writes)==0);
 }
 
 int sync_page_io(struct md_rdev *rdev, sector_t sector, int size,
@@ -5307,7 +5300,7 @@ static int md_set_readonly(struct mddev *mddev, struct block_device *bdev)
 	mddev_lock_nointr(mddev);
 
 	mutex_lock(&mddev->open_mutex);
-	if (atomic_read(&mddev->openers) > !!bdev ||
+	if ((mddev->pers && atomic_read(&mddev->openers) > !!bdev) ||
 	    mddev->sync_thread ||
 	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
 		printk("md: %s still in use.\n",mdname(mddev));
@@ -5362,7 +5355,7 @@ static int do_md_stop(struct mddev * mddev, int mode,
 	mddev_lock_nointr(mddev);
 
 	mutex_lock(&mddev->open_mutex);
-	if (atomic_read(&mddev->openers) > !!bdev ||
+	if ((mddev->pers && atomic_read(&mddev->openers) > !!bdev) ||
 	    mddev->sysfs_active ||
 	    mddev->sync_thread ||
 	    (bdev && !test_bit(MD_STILL_CLOSED, &mddev->flags))) {
@@ -6454,7 +6447,7 @@ static int md_ioctl(struct block_device *bdev, fmode_t mode,
 		 * and writes
 		 */
 		mutex_lock(&mddev->open_mutex);
-		if (atomic_read(&mddev->openers) > 1) {
+		if (mddev->pers && atomic_read(&mddev->openers) > 1) {
 			mutex_unlock(&mddev->open_mutex);
 			err = -EBUSY;
 			goto abort;
