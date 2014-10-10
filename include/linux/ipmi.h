@@ -37,6 +37,7 @@
 
 #include <linux/list.h>
 #include <linux/proc_fs.h>
+#include <linux/acpi.h> /* For acpi_handle */
 
 struct module;
 struct device;
@@ -286,7 +287,7 @@ union ipmi_smi_info_union {
 	 * address type
 	 */
 	struct {
-		void *acpi_handle;
+		acpi_handle acpi_handle;
 	} acpi_info;
 };
 
