@@ -111,10 +111,6 @@ enum si_type {
 };
 static char *si_to_str[] = { "kcs", "smic", "bt" };
 
-static char *ipmi_addr_src_to_str[] = { NULL, "hotmod", "hardcoded", "SPMI",
-					"ACPI", "SMBIOS", "PCI",
-					"device-tree", "default" };
-
 #define DEVICE_NAME "ipmi_si"
 
 static struct platform_driver ipmi_driver;
@@ -1697,7 +1693,7 @@ static int parse_str(struct hotmod_vals *v, int *val, char *name, char **curr)
 	}
 	*s = '\0';
 	s++;
-	for (i = 0; hotmod_ops[i].name; i++) {
+	for (i = 0; v[i].name; i++) {
 		if (strcmp(*curr, v[i].name) == 0) {
 			*val = v[i].val;
 			*curr = s;
@@ -2133,6 +2129,9 @@ static int try_init_spmi(struct SPMITable *spmi)
 	case 3:	/* BT */
 		info->si_type = SI_BT;
 		break;
+	case 4: /* SSIF, just ignore */
+		kfree(info);
+		return -EIO;
 	default:
 		printk(KERN_INFO PFX "Unknown ACPI/SPMI SI type %d\n",
 		       spmi->InterfaceType);
@@ -2250,6 +2249,8 @@ static int ipmi_pnp_probe(struct pnp_dev *dev,
 	case 3:
 		info->si_type = SI_BT;
 		break;
+	case 4: /* SSIF, just ignore */
+		goto err_free;
 	default:
 		dev_info(&dev->dev, "unknown IPMI type %lld\n", tmp);
 		goto err_free;
@@ -3274,8 +3275,8 @@ static int add_smi(struct smi_info *new_smi)
 	int rv = 0;
 
 	printk(KERN_INFO PFX "Adding %s-specified %s state machine",
-			ipmi_addr_src_to_str[new_smi->addr_source],
-			si_to_str[new_smi->si_type]);
+	       ipmi_addr_src_to_str(new_smi->addr_source),
+	       si_to_str[new_smi->si_type]);
 	mutex_lock(&smi_infos_lock);
 	if (!is_new_interface(new_smi)) {
 		printk(KERN_CONT " duplicate interface\n");
@@ -3305,7 +3306,7 @@ static int try_smi_init(struct smi_info *new_smi)
 	printk(KERN_INFO PFX "Trying %s-specified %s state"
 	       " machine at %s address 0x%lx, slave address 0x%x,"
 	       " irq %d\n",
-	       ipmi_addr_src_to_str[new_smi->addr_source],
+	       ipmi_addr_src_to_str(new_smi->addr_source),
 	       si_to_str[new_smi->si_type],
 	       addr_space_to_str[new_smi->io.addr_type],
 	       new_smi->io.addr_data,
@@ -3428,7 +3429,6 @@ static int try_smi_init(struct smi_info *new_smi)
 			       new_smi,
 			       &new_smi->device_id,
 			       new_smi->dev,
-			       "bmc",
 			       new_smi->slave_addr);
 	if (rv) {
 		dev_err(new_smi->dev, "Unable to register device: error %d\n",
