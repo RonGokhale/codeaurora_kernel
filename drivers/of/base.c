@@ -1250,6 +1250,39 @@ int of_property_read_u64(const struct device_node *np, const char *propname,
 EXPORT_SYMBOL_GPL(of_property_read_u64);
 
 /**
+ * of_property_read_u64_array - Find and read an array of 64 bit integers
+ * from a property.
+ *
+ * @np:		device node from which the property value is to be read.
+ * @propname:	name of the property to be searched.
+ * @out_values:	pointer to return value, modified only if return value is 0.
+ * @sz:		number of array elements to read
+ *
+ * Search for a property in a device node and read 64-bit value(s) from
+ * it. Returns 0 on success, -EINVAL if the property does not exist,
+ * -ENODATA if property does not have a value, and -EOVERFLOW if the
+ * property data isn't large enough.
+ *
+ * The out_values is modified only if a valid u64 value can be decoded.
+ */
+int of_property_read_u64_array(const struct device_node *np,
+			       const char *propname, u64 *out_values,
+			       size_t sz)
+{
+	const __be32 *val = of_find_property_value_of_size(np, propname,
+						(sz * sizeof(*out_values)));
+
+	if (IS_ERR(val))
+		return PTR_ERR(val);
+
+	while (sz--) {
+		*out_values++ = of_read_number(val, 2);
+		val += 2;
+	}
+	return 0;
+}
+
+/**
  * of_property_read_string - Find and read a string from a property
  * @np:		device node from which the property value is to be read.
  * @propname:	name of the property to be searched.
@@ -1396,6 +1429,49 @@ int of_property_count_strings(struct device_node *np, const char *propname)
 	return i;
 }
 EXPORT_SYMBOL_GPL(of_property_count_strings);
+
+/**
+ * of_property_read_string_array - Find and read an array of strings
+ * from a multiple strings property.
+ * @np:		device node from which the property value is to be read.
+ * @propname:	name of the property to be searched.
+ * @out_string:	pointer to null terminated return string, modified only if
+ *		return value is 0.
+ * @sz:		number of array elements to read
+ *
+ * Search for a property in a device tree node and retrieve a list of
+ * terminated string value (pointer to data, not a copy) in that property.
+ * Returns 0 on success, -EINVAL if the property does not exist, -ENODATA if
+ * property does not have a value, and -EOVERFLOW if the string is not
+ * null-terminated within the length of the property data.
+ *
+ * The out_string pointer is modified only if a valid string can be decoded.
+ */
+int of_property_read_string_array(struct device_node *np, const char *propname,
+				  char **output, size_t sz)
+{
+	struct property *prop = of_find_property(np, propname, NULL);
+	int i = 0;
+	size_t l = 0, total = 0;
+	char *p;
+
+	if (!prop)
+		return -EINVAL;
+
+	if (!prop->value)
+		return -ENODATA;
+
+	if (strnlen(prop->value, prop->length) >= prop->length)
+		return -EOVERFLOW;
+
+	p = prop->value;
+
+	for (i = 0; total < prop->length; total += l, p += l) {
+		output[i++] = p;
+		l = strlen(p) + 1;
+	}
+	return 0;
+}
 
 void of_print_phandle_args(const char *msg, const struct of_phandle_args *args)
 {
@@ -2186,3 +2262,98 @@ struct device_node *of_graph_get_remote_port(const struct device_node *node)
 	return of_get_next_parent(np);
 }
 EXPORT_SYMBOL(of_graph_get_remote_port);
+
+int of_dev_prop_get(struct device_node *dn, const char *propname, void **valptr)
+{
+	struct property *pp = of_find_property(dn, propname, NULL);
+
+	if (!pp)
+		return -ENODATA;
+
+	if (valptr)
+		*valptr = pp->value;
+	return 0;
+}
+
+int of_dev_prop_read(struct device_node *dn, const char *propname,
+		     enum dev_prop_type proptype, void *val)
+{
+	void *value;
+	int ret = of_dev_prop_get(dn, propname, &value);
+
+	if (ret)
+		return ret;
+
+	if (proptype >= DEV_PROP_U8 && proptype <= DEV_PROP_U64) {
+		switch (proptype) {
+		case DEV_PROP_U8: {
+			*(u8 *)val = *(u8 *)value;
+			break;
+		}
+		case DEV_PROP_U16:
+			*(u16 *)val = *(u16 *)value;
+			break;
+		case DEV_PROP_U32:
+			*(u32 *)val = *(u32 *)value;
+			break;
+		default:
+			*(u64 *)val = *(u64 *)value;
+			break;
+		}
+	} else if (proptype == DEV_PROP_STRING) {
+		*(char **)val = value;
+	}
+	return ret;
+
+}
+
+int of_dev_prop_read_array(struct device_node *dn, const char *propname,
+			   enum dev_prop_type proptype, void *val, size_t nval)
+{
+	int ret, elem_size;
+
+	if (!val) {
+		switch (proptype) {
+		case DEV_PROP_U8:
+			elem_size = sizeof(u8);
+			break;
+		case DEV_PROP_U16:
+			elem_size = sizeof(u16);
+			break;
+		case DEV_PROP_U32:
+			elem_size = sizeof(u32);
+			break;
+		case DEV_PROP_U64:
+			elem_size = sizeof(u64);
+			break;
+		case DEV_PROP_STRING:
+			return of_property_count_strings(dn, propname);
+		default:
+			return -EINVAL;
+		}
+		return of_property_count_elems_of_size(dn, propname, elem_size);
+	}
+
+	switch (proptype) {
+	case DEV_PROP_U8:
+		ret = of_property_read_u8_array(dn, propname, (u8 *)val, nval);
+		break;
+	case DEV_PROP_U16:
+		ret = of_property_read_u16_array(dn, propname, (u16 *)val, nval);
+		break;
+	case DEV_PROP_U32:
+		ret = of_property_read_u32_array(dn, propname, (u32 *)val, nval);
+		break;
+	case DEV_PROP_U64:
+		ret = of_property_read_u64_array(dn, propname, (u64 *)val, nval);
+		break;
+	case DEV_PROP_STRING:
+		ret = of_property_read_string_array(dn, propname,
+						    (char **)val, nval);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+	return ret;
+}
