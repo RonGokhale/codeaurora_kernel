@@ -246,6 +246,7 @@ struct led_platform_data {
 struct gpio_led {
 	const char *name;
 	const char *default_trigger;
+	struct gpio_desc *gpiod;
 	unsigned 	gpio;
 	unsigned	active_low : 1;
 	unsigned	retain_state_suspended : 1;
