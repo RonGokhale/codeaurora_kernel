@@ -578,13 +578,13 @@ asmlinkage __visible void __init start_kernel(void)
 		local_irq_disable();
 	idr_init_cache();
 	rcu_init();
-	rcu_init_nohz();
 	context_tracking_init();
 	radix_tree_init();
 	/* init some links before init_ISA_irqs() */
 	early_irq_init();
 	init_IRQ();
 	tick_init();
+	rcu_init_nohz();
 	init_timers();
 	hrtimers_init();
 	softirq_init();
