@@ -911,6 +911,7 @@ void release_pages(struct page **pages, int nr, bool cold)
 		if (unlikely(PageCompound(page))) {
 			if (zone) {
 				spin_unlock_irqrestore(&zone->lru_lock, flags);
+				lock_batch = 0;
 				zone = NULL;
 			}
 			put_compound_page(page);
@@ -946,6 +947,16 @@ void release_pages(struct page **pages, int nr, bool cold)
 			VM_BUG_ON_PAGE(!PageLRU(page), page);
 			__ClearPageLRU(page);
 			del_page_from_lru_list(page, lruvec, page_off_lru(page));
+
+			/*
+			 * Make sure the IRQ-safe lock-holding time
+			 * does not get excessive with a continuous
+			 * string of pages from the same zone.
+			 */
+			if (++lock_batch == SWAP_CLUSTER_MAX) {
+				spin_unlock_irqrestore(&zone->lru_lock, flags);
+				zone = NULL;
+			}
 		}
 
 		/* Clear Active bit in case of parallel mark_page_accessed */
