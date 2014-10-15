@@ -23,7 +23,7 @@ static int major;
 static int hw_tcs, hw_vpes;
 
 /* We are prepared so configure and start the VPE... */
-int vpe_run(struct vpe *v)
+int __weak vpe_run(struct vpe *v)
 {
 	unsigned long flags, val, dmt_flag;
 	struct vpe_notifications *notifier;
