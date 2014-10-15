@@ -1094,6 +1094,31 @@ static void dwc_issue_pending(struct dma_chan *chan)
 	spin_unlock_irqrestore(&dwc->lock, flags);
 }
 
+/*----------------------------------------------------------------------*/
+
+static void dw_dma_off(struct dw_dma *dw)
+{
+	int i;
+
+	dma_writel(dw, CFG, 0);
+
+	channel_clear_bit(dw, MASK.XFER, dw->all_chan_mask);
+	channel_clear_bit(dw, MASK.SRC_TRAN, dw->all_chan_mask);
+	channel_clear_bit(dw, MASK.DST_TRAN, dw->all_chan_mask);
+	channel_clear_bit(dw, MASK.ERROR, dw->all_chan_mask);
+
+	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN)
+		cpu_relax();
+
+	for (i = 0; i < dw->dma.chancnt; i++)
+		dw->chan[i].initialized = false;
+}
+
+static void dw_dma_on(struct dw_dma *dw)
+{
+	dma_writel(dw, CFG, DW_CFG_DMA_EN);
+}
+
 static int dwc_alloc_chan_resources(struct dma_chan *chan)
 {
 	struct dw_dma_chan	*dwc = to_dw_dma_chan(chan);
@@ -1117,6 +1142,11 @@ static int dwc_alloc_chan_resources(struct dma_chan *chan)
 	 * need to initialize here, like "scatter-gather" (which
 	 * doesn't mean what you think it means), and status writeback.
 	 */
+
+	/* Enable controller here if needed */
+	if (!dw->in_use)
+		dw_dma_on(dw);
+	dw->in_use |= dwc->mask;
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	i = dwc->descs_allocated;
@@ -1181,6 +1211,11 @@ static void dwc_free_chan_resources(struct dma_chan *chan)
 	channel_clear_bit(dw, MASK.ERROR, dwc->mask);
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	/* Disable controller in case it was a last user */
+	dw->in_use &= ~dwc->mask;
+	if (!dw->in_use)
+		dw_dma_off(dw);
 
 	list_for_each_entry_safe(desc, _desc, &list, desc_node) {
 		dev_vdbg(chan2dev(chan), "  freeing descriptor %p\n", desc);
@@ -1452,24 +1487,6 @@ EXPORT_SYMBOL(dw_dma_cyclic_free);
 
 /*----------------------------------------------------------------------*/
 
-static void dw_dma_off(struct dw_dma *dw)
-{
-	int i;
-
-	dma_writel(dw, CFG, 0);
-
-	channel_clear_bit(dw, MASK.XFER, dw->all_chan_mask);
-	channel_clear_bit(dw, MASK.SRC_TRAN, dw->all_chan_mask);
-	channel_clear_bit(dw, MASK.DST_TRAN, dw->all_chan_mask);
-	channel_clear_bit(dw, MASK.ERROR, dw->all_chan_mask);
-
-	while (dma_readl(dw, CFG) & DW_CFG_DMA_EN)
-		cpu_relax();
-
-	for (i = 0; i < dw->dma.chancnt; i++)
-		dw->chan[i].initialized = false;
-}
-
 int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 {
 	struct dw_dma		*dw;
@@ -1643,8 +1660,6 @@ int dw_dma_probe(struct dw_dma_chip *chip, struct dw_dma_platform_data *pdata)
 	dw->dma.device_tx_status = dwc_tx_status;
 	dw->dma.device_issue_pending = dwc_issue_pending;
 
-	dma_writel(dw, CFG, DW_CFG_DMA_EN);
-
 	err = dma_async_device_register(&dw->dma);
 	if (err)
 		goto err_dma_register;
@@ -1682,35 +1697,23 @@ int dw_dma_remove(struct dw_dma_chip *chip)
 }
 EXPORT_SYMBOL_GPL(dw_dma_remove);
 
-void dw_dma_shutdown(struct dw_dma_chip *chip)
-{
-	struct dw_dma *dw = chip->dw;
-
-	dw_dma_off(dw);
-}
-EXPORT_SYMBOL_GPL(dw_dma_shutdown);
-
-#ifdef CONFIG_PM_SLEEP
-
-int dw_dma_suspend(struct dw_dma_chip *chip)
+int dw_dma_disable(struct dw_dma_chip *chip)
 {
 	struct dw_dma *dw = chip->dw;
 
 	dw_dma_off(dw);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dw_dma_suspend);
+EXPORT_SYMBOL_GPL(dw_dma_disable);
 
-int dw_dma_resume(struct dw_dma_chip *chip)
+int dw_dma_enable(struct dw_dma_chip *chip)
 {
 	struct dw_dma *dw = chip->dw;
 
-	dma_writel(dw, CFG, DW_CFG_DMA_EN);
+	dw_dma_on(dw);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dw_dma_resume);
-
-#endif /* CONFIG_PM_SLEEP */
+EXPORT_SYMBOL_GPL(dw_dma_enable);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Synopsys DesignWare DMA Controller core driver");
