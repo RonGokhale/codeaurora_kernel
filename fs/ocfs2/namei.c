@@ -75,20 +75,6 @@ static int ocfs2_mknod_locked(struct ocfs2_super *osb,
 			      handle_t *handle,
 			      struct ocfs2_alloc_context *inode_ac);
 
-static int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
-				    struct inode **ret_orphan_dir,
-				    u64 blkno,
-				    char *name,
-				    struct ocfs2_dir_lookup_result *lookup);
-
-static int ocfs2_orphan_add(struct ocfs2_super *osb,
-			    handle_t *handle,
-			    struct inode *inode,
-			    struct buffer_head *fe_bh,
-			    char *name,
-			    struct ocfs2_dir_lookup_result *lookup,
-			    struct inode *orphan_dir_inode);
-
 static int ocfs2_create_symlink_data(struct ocfs2_super *osb,
 				     handle_t *handle,
 				     struct inode *inode,
@@ -2097,7 +2083,7 @@ static int __ocfs2_prepare_orphan_dir(struct inode *orphan_dir_inode,
  *
  * Returns non-zero on failure. 
  */
-static int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
+int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
 				    struct inode **ret_orphan_dir,
 				    u64 blkno,
 				    char *name,
@@ -2137,7 +2123,7 @@ out:
 	return ret;
 }
 
-static int ocfs2_orphan_add(struct ocfs2_super *osb,
+int ocfs2_orphan_add(struct ocfs2_super *osb,
 			    handle_t *handle,
 			    struct inode *inode,
 			    struct buffer_head *fe_bh,
@@ -2497,6 +2483,149 @@ leave:
 
 	ocfs2_inode_unlock(dir, 1);
 	brelse(parent_di_bh);
+	return status;
+}
+
+/* An orphan dir name is an 8 byte value, printed as a hex string */
+#define OCFS2_ORPHAN_NAMELEN ((int)(2 * sizeof(u64)))
+int ocfs2_add_inode_to_orphan(struct ocfs2_super *osb,
+			      handle_t *handle, struct inode *inode)
+{
+	char orphan_name[OCFS2_ORPHAN_NAMELEN + 1];
+	struct inode *orphan_dir_inode = NULL;
+	struct ocfs2_dir_lookup_result orphan_insert = { NULL, };
+	struct buffer_head *di_bh = NULL;
+	int status = 0;
+	bool inode_locked = false;
+
+	status = ocfs2_inode_lock(inode, &di_bh, 1);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+	inode_locked = true;
+
+	status = ocfs2_prepare_orphan_dir(osb, &orphan_dir_inode,
+					  OCFS2_I(inode)->ip_blkno,
+					  orphan_name,
+					  &orphan_insert);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+
+	status = ocfs2_journal_access_di(handle, INODE_CACHE(inode), di_bh,
+				OCFS2_JOURNAL_ACCESS_WRITE);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+
+	status = ocfs2_orphan_add(osb, handle, inode, di_bh, orphan_name,
+				  &orphan_insert, orphan_dir_inode);
+	if (status) {
+		mlog_errno(status);
+		goto out;
+	}
+
+out:
+	brelse(di_bh);
+
+	if (inode_locked)
+		ocfs2_inode_unlock(inode, 1);
+
+	if (orphan_dir_inode) {
+		ocfs2_inode_unlock(orphan_dir_inode, 1);
+		mutex_unlock(&orphan_dir_inode->i_mutex);
+		iput(orphan_dir_inode);
+	}
+	ocfs2_free_dir_lookup_result(&orphan_insert);
+
+	return status;
+}
+
+int ocfs2_del_inode_from_orphan(struct ocfs2_super *osb,
+				handle_t *handle, struct inode *inode)
+{
+	struct inode *orphan_dir_inode = NULL;
+	struct buffer_head *orphan_dir_bh = NULL;
+	struct buffer_head *di_bh = NULL;
+	struct ocfs2_dinode *di = NULL;
+	bool orphan_dir_locked = false;
+	int status = 0;
+
+	orphan_dir_inode = ocfs2_get_system_file_inode(osb,
+						ORPHAN_DIR_SYSTEM_INODE,
+						osb->slot_num);
+	if (!orphan_dir_inode) {
+		status = -EEXIST;
+		mlog_errno(status);
+		goto out;
+	}
+
+	mutex_lock(&orphan_dir_inode->i_mutex);
+	status = ocfs2_inode_lock(orphan_dir_inode, &orphan_dir_bh, 1);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+	orphan_dir_locked = true;
+
+	status = ocfs2_journal_access_di(handle,
+					 INODE_CACHE(orphan_dir_inode),
+					 orphan_dir_bh,
+					 OCFS2_JOURNAL_ACCESS_WRITE);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+
+	status = ocfs2_orphan_del(osb, handle, orphan_dir_inode,
+				  inode, orphan_dir_bh);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+
+	status = ocfs2_inode_lock(inode, &di_bh, 1);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+	di =  (struct ocfs2_dinode *) di_bh->b_data;
+
+	/*
+	 * We're going to journal the change of i_flags and i_orphaned_slot.
+	 * It's safe anyway, though some callers may duplicate the journaling.
+	 * Journaling within the func just make the logic look more
+	 * straightforward.
+	 */
+	status = ocfs2_journal_access_di(handle,
+					 INODE_CACHE(inode),
+					 di_bh,
+					 OCFS2_JOURNAL_ACCESS_WRITE);
+	if (status < 0) {
+		mlog_errno(status);
+		goto out;
+	}
+
+	di->i_flags &= ~cpu_to_le32(OCFS2_ORPHANED_FL);
+	OCFS2_I(inode)->ip_flags |= OCFS2_INODE_SKIP_ORPHAN_DIR;
+
+	di->i_orphaned_slot = 0;
+	ocfs2_journal_dirty(handle, di_bh);
+
+	ocfs2_inode_unlock(inode, 1);
+
+out:
+	brelse(orphan_dir_bh);
+
+	if (orphan_dir_inode) {
+		if (orphan_dir_locked)
+			ocfs2_inode_unlock(orphan_dir_inode, 1);
+		mutex_unlock(&orphan_dir_inode->i_mutex);
+		iput(orphan_dir_inode);
+	}
 	return status;
 }
 
