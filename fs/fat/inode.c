@@ -104,6 +104,7 @@ static struct fat_floppy_defaults {
 static int fat_add_cluster(struct inode *inode)
 {
 	int err, cluster;
+	struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
 
 	err = fat_alloc_clusters(inode, &cluster, 1);
 	if (err)
@@ -113,7 +114,18 @@ static int fat_add_cluster(struct inode *inode)
 	err = fat_chain_add(inode, cluster, 1);
 	if (err)
 		fat_free_clusters(inode, cluster);
+	else
+		MSDOS_I(inode)->i_disksize += sbi->cluster_size;
+
 	return err;
+}
+
+static inline int check_fallocated_region(struct inode *inode, sector_t iblock)
+{
+	struct super_block *sb = inode->i_sb;
+	sector_t last_disk_block = MSDOS_I(inode)->i_disksize >>
+		sb->s_blocksize_bits;
+	return iblock < last_disk_block;
 }
 
 static inline int __fat_get_block(struct inode *inode, sector_t iblock,
@@ -144,7 +156,7 @@ static inline int __fat_get_block(struct inode *inode, sector_t iblock,
 	}
 
 	offset = (unsigned long)iblock & (sbi->sec_per_clus - 1);
-	if (!offset) {
+	if (!offset && !check_fallocated_region(inode, iblock)) {
 		/* TODO: multiple cluster allocation would be desirable. */
 		err = fat_add_cluster(inode);
 		if (err)
@@ -282,13 +294,46 @@ static ssize_t fat_direct_IO(int rw, struct kiocb *iocb,
 	return ret;
 }
 
+static int fat_get_block_bmap(struct inode *inode, sector_t iblock,
+		struct buffer_head *bh_result, int create)
+{
+	struct super_block *sb = inode->i_sb;
+	unsigned long max_blocks = bh_result->b_size >> inode->i_blkbits;
+	int err;
+	sector_t bmap, last_block;
+	unsigned long mapped_blocks;
+	const unsigned long blocksize = sb->s_blocksize;
+	const unsigned char blocksize_bits = sb->s_blocksize_bits;
+
+	BUG_ON(create != 0);
+
+	last_block = (MSDOS_I(inode)->i_disksize + (blocksize - 1))
+		>> blocksize_bits;
+
+	if (iblock >= last_block)
+		return 0;
+
+	err = fat_get_mapped_cluster(inode, iblock, last_block, &mapped_blocks,
+		&bmap);
+	if (err)
+		return err;
+
+	if (bmap) {
+		map_bh(bh_result, sb, bmap);
+		max_blocks = min(mapped_blocks, max_blocks);
+	}
+
+	bh_result->b_size = max_blocks << sb->s_blocksize_bits;
+	return 0;
+}
+
 static sector_t _fat_bmap(struct address_space *mapping, sector_t block)
 {
 	sector_t blocknr;
 
 	/* fat_get_cluster() assumes the requested blocknr isn't truncated. */
 	down_read(&MSDOS_I(mapping->host)->truncate_lock);
-	blocknr = generic_block_bmap(mapping, block, fat_get_block);
+	blocknr = generic_block_bmap(mapping, block, fat_get_block_bmap);
 	up_read(&MSDOS_I(mapping->host)->truncate_lock);
 
 	return blocknr;
@@ -469,7 +514,6 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		error = fat_calc_dir_size(inode);
 		if (error < 0)
 			return error;
-		MSDOS_I(inode)->mmu_private = inode->i_size;
 
 		set_nlink(inode, fat_subdirs(inode));
 	} else { /* not a directory */
@@ -484,8 +528,11 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		inode->i_op = &fat_file_inode_operations;
 		inode->i_fop = &fat_file_operations;
 		inode->i_mapping->a_ops = &fat_aops;
-		MSDOS_I(inode)->mmu_private = inode->i_size;
 	}
+
+	MSDOS_I(inode)->mmu_private = inode->i_size;
+	MSDOS_I(inode)->i_disksize = round_up(inode->i_size, sbi->cluster_size);
+
 	if (de->attr & ATTR_SYS) {
 		if (sbi->options.sys_immutable)
 			inode->i_flags |= S_IMMUTABLE;
@@ -550,12 +597,35 @@ out:
 
 EXPORT_SYMBOL_GPL(fat_build_inode);
 
+static int __fat_write_inode(struct inode *inode, int wait);
 static void fat_evict_inode(struct inode *inode)
 {
 	truncate_inode_pages_final(&inode->i_data);
 	if (!inode->i_nlink) {
 		inode->i_size = 0;
 		fat_truncate_blocks(inode, 0);
+	} else {
+		/* Release unwritten fallocated blocks on inode eviction. */
+		if (MSDOS_I(inode)->i_disksize >
+		    round_up(MSDOS_I(inode)->mmu_private,
+				inode->i_sb->s_blocksize)) {
+			int err;
+
+			fat_truncate_blocks(inode, MSDOS_I(inode)->mmu_private);
+			/* Fallocate results in updating the i_start/iogstart
+			 * for the zero byte file. So, make it return to
+			 * original state during evict and commit it to avoid
+			 * any corruption on the next access to the cluster
+			 * chain for the file.
+			 */
+			err = __fat_write_inode(inode, inode_needs_sync(inode));
+			if (err) {
+				fat_msg(inode->i_sb, KERN_WARNING, "Failed to "
+				"update on disk inode for unused fallocated "
+				"blocks, inode could be corrupted. Please run "
+				"fsck");
+			}
+		}
 	}
 	invalidate_inode_buffers(inode);
 	clear_inode(inode);
@@ -1293,6 +1363,7 @@ static int fat_read_root(struct inode *inode)
 			   & ~((loff_t)sbi->cluster_size - 1)) >> 9;
 	MSDOS_I(inode)->i_logstart = 0;
 	MSDOS_I(inode)->mmu_private = inode->i_size;
+	MSDOS_I(inode)->i_disksize = round_up(inode->i_size, sbi->cluster_size);
 
 	fat_save_attrs(inode, ATTR_DIR);
 	inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;
