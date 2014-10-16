@@ -2326,7 +2326,7 @@ relock:
 		count -= written;
 		written_buffered = generic_perform_write(file, from, *ppos);
 		/*
-		 * If generic_file_buffered_write() retuned a synchronous error
+		 * If generic_file_buffered_write() returned a synchronous error
 		 * then we want to return the number of bytes which were
 		 * direct-written, or the error code if that was zero.  Note
 		 * that this differs from normal direct-io semantics, which
