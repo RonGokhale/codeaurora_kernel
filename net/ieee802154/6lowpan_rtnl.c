@@ -58,12 +58,13 @@
 #include "reassembly.h"
 
 static LIST_HEAD(lowpan_devices);
+static int lowpan_open_count;
 
 /* private device info */
 struct lowpan_dev_info {
 	struct net_device	*real_dev; /* real WPAN device ptr */
 	struct mutex		dev_list_mtx; /* mutex for list ops */
-	__be16			fragment_tag;
+	u16			fragment_tag;
 };
 
 struct lowpan_dev_record {
@@ -233,7 +234,7 @@ lowpan_alloc_frag(struct sk_buff *skb, int size,
 				     &master_hdr->source, size);
 		if (rc < 0) {
 			kfree_skb(frag);
-			return ERR_PTR(-rc);
+			return ERR_PTR(rc);
 		}
 	} else {
 		frag = ERR_PTR(-ENOMEM);
@@ -275,7 +276,8 @@ lowpan_xmit_fragmented(struct sk_buff *skb, struct net_device *dev,
 
 	dgram_size = lowpan_uncompress_size(skb, &dgram_offset) -
 		     skb->mac_len;
-	frag_tag = lowpan_dev_info(dev)->fragment_tag++;
+	frag_tag = htons(lowpan_dev_info(dev)->fragment_tag);
+	lowpan_dev_info(dev)->fragment_tag++;
 
 	frag_hdr[0] = LOWPAN_DISPATCH_FRAG1 | ((dgram_size >> 8) & 0x07);
 	frag_hdr[1] = dgram_size & 0xff;
@@ -294,7 +296,7 @@ lowpan_xmit_fragmented(struct sk_buff *skb, struct net_device *dev,
 				  frag_len + skb_network_header_len(skb));
 	if (rc) {
 		pr_debug("%s unable to send FRAG1 packet (tag: %d)",
-			 __func__, frag_tag);
+			 __func__, ntohs(frag_tag));
 		goto err;
 	}
 
@@ -315,7 +317,7 @@ lowpan_xmit_fragmented(struct sk_buff *skb, struct net_device *dev,
 					  frag_len);
 		if (rc) {
 			pr_debug("%s unable to send a FRAGN packet. (tag: %d, offset: %d)\n",
-				 __func__, frag_tag, skb_offset);
+				 __func__, ntohs(frag_tag), skb_offset);
 			goto err;
 		}
 	} while (skb_unprocessed > frag_cap);
@@ -515,6 +517,9 @@ static int lowpan_rcv(struct sk_buff *skb, struct net_device *dev,
 	if (!netif_running(dev))
 		goto drop_skb;
 
+	if (skb->pkt_type == PACKET_OTHERHOST)
+		goto drop_skb;
+
 	if (dev->type != ARPHRD_IEEE802154)
 		goto drop_skb;
 
@@ -567,11 +572,19 @@ drop:
 	return NET_RX_DROP;
 }
 
+static struct packet_type lowpan_packet_type = {
+	.type = htons(ETH_P_IEEE802154),
+	.func = lowpan_rcv,
+};
+
 static int lowpan_newlink(struct net *src_net, struct net_device *dev,
 			  struct nlattr *tb[], struct nlattr *data[])
 {
 	struct net_device *real_dev;
 	struct lowpan_dev_record *entry;
+	int ret;
+
+	ASSERT_RTNL();
 
 	pr_debug("adding new link\n");
 
@@ -606,9 +619,14 @@ static int lowpan_newlink(struct net *src_net, struct net_device *dev,
 	list_add_tail(&entry->list, &lowpan_devices);
 	mutex_unlock(&lowpan_dev_info(dev)->dev_list_mtx);
 
-	register_netdevice(dev);
+	ret = register_netdevice(dev);
+	if (ret >= 0) {
+		if (!lowpan_open_count)
+			dev_add_pack(&lowpan_packet_type);
+		lowpan_open_count++;
+	}
 
-	return 0;
+	return ret;
 }
 
 static void lowpan_dellink(struct net_device *dev, struct list_head *head)
@@ -618,6 +636,10 @@ static void lowpan_dellink(struct net_device *dev, struct list_head *head)
 	struct lowpan_dev_record *entry, *tmp;
 
 	ASSERT_RTNL();
+
+	lowpan_open_count--;
+	if (!lowpan_open_count)
+		dev_remove_pack(&lowpan_packet_type);
 
 	mutex_lock(&lowpan_dev_info(dev)->dev_list_mtx);
 	list_for_each_entry_safe(entry, tmp, &lowpan_devices, list) {
@@ -681,11 +703,6 @@ static struct notifier_block lowpan_dev_notifier = {
 	.notifier_call = lowpan_device_event,
 };
 
-static struct packet_type lowpan_packet_type = {
-	.type = htons(ETH_P_IEEE802154),
-	.func = lowpan_rcv,
-};
-
 static int __init lowpan_init_module(void)
 {
 	int err = 0;
@@ -698,8 +715,6 @@ static int __init lowpan_init_module(void)
 	if (err < 0)
 		goto out_frag;
 
-	dev_add_pack(&lowpan_packet_type);
-
 	err = register_netdevice_notifier(&lowpan_dev_notifier);
 	if (err < 0)
 		goto out_pack;
@@ -707,7 +722,6 @@ static int __init lowpan_init_module(void)
 	return 0;
 
 out_pack:
-	dev_remove_pack(&lowpan_packet_type);
 	lowpan_netlink_fini();
 out_frag:
 	lowpan_net_frag_exit();
@@ -718,8 +732,6 @@ out:
 static void __exit lowpan_cleanup_module(void)
 {
 	lowpan_netlink_fini();
-
-	dev_remove_pack(&lowpan_packet_type);
 
 	lowpan_net_frag_exit();
 
