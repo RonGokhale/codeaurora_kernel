@@ -94,6 +94,11 @@ int gpiod_to_irq(const struct gpio_desc *desc);
 struct gpio_desc *gpio_to_desc(unsigned gpio);
 int desc_to_gpio(const struct gpio_desc *desc);
 
+/* Child properties interface */
+struct gpio_desc *dev_get_named_gpiod_from_child(struct device *dev, void *child,
+						 const char *propname, int index);
+struct gpio_desc *devm_get_named_gpiod_from_child(struct device *dev, void *child,
+						  const char *propname, int index);
 #else /* CONFIG_GPIOLIB */
 
 static inline struct gpio_desc *__must_check __gpiod_get(struct device *dev,

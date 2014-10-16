@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <linux/topology.h>
 #include <linux/notifier.h>
+#include <linux/property.h>
 
 #include <asm/byteorder.h>
 #include <asm/errno.h>
@@ -355,6 +356,12 @@ const char *of_prop_next_string(struct property *prop, const char *cur);
 
 bool of_console_check(struct device_node *dn, char *name, int index);
 
+int of_dev_prop_get(struct device_node *dn, const char *propname, void **valptr);
+int of_dev_prop_read(struct device_node *dn, const char *propname,
+		     enum dev_prop_type proptype, void *val);
+int of_dev_prop_read_array(struct device_node *dn, const char *propname,
+			   enum dev_prop_type proptype, void *val, size_t nval);
+
 #else /* CONFIG_OF */
 
 static inline const char* of_node_full_name(const struct device_node *np)
@@ -580,6 +587,26 @@ static inline const char *of_prop_next_string(struct property *prop,
 		const char *cur)
 {
 	return NULL;
+}
+
+static inline int of_dev_prop_get(struct device_node *dn, const char *propname,
+				 void **valptr)
+{
+	return -ENXIO;
+}
+
+static inline int of_dev_prop_read(struct device_node *dn, const char *propname,
+				   enum dev_prop_type proptype, void *val)
+{
+	return -ENXIO;
+}
+
+static inline int of_dev_prop_read_array(struct device_node *dn,
+					 const char *propname,
+					 enum dev_prop_type proptype,
+					 void *val, size_t nval)
+{
+	return -ENXIO;
 }
 
 #define of_match_ptr(_ptr)	NULL
