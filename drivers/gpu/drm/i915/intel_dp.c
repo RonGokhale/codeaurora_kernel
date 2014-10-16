@@ -2687,6 +2687,9 @@ static void vlv_steal_power_sequencer(struct drm_device *dev,
 
 	lockdep_assert_held(&dev_priv->pps_mutex);
 
+	if (WARN_ON(pipe != PIPE_A && pipe != PIPE_B))
+		return;
+
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list,
 			    base.head) {
 		struct intel_dp *intel_dp;
