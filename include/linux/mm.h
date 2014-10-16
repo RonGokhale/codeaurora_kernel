@@ -1219,6 +1219,32 @@ long get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 		    struct vm_area_struct **vmas);
 int get_user_pages_fast(unsigned long start, int nr_pages, int write,
 			struct page **pages);
+
+#ifdef CONFIG_HAVE_GENERIC_RCU_GUP
+#ifndef is_hugepd
+/*
+ * Some architectures support hugepage directory format that is
+ * required to support different hugetlbfs sizes.
+ */
+typedef struct { unsigned long pd; } hugepd_t;
+#define is_hugepd(hugepd) (0)
+#define __hugepd(x) ((hugepd_t) { (x) })
+static inline int gup_hugepd(hugepd_t hugepd, unsigned long addr,
+			     unsigned pdshift, unsigned long end,
+			     int write, struct page **pages, int *nr)
+{
+	return 0;
+}
+#else
+extern int gup_hugepd(hugepd_t hugepd, unsigned long addr,
+		      unsigned pdshift, unsigned long end,
+		      int write, struct page **pages, int *nr);
+#endif
+extern int gup_huge_pte(pte_t orig, pte_t *ptep, unsigned long addr,
+			unsigned long sz, unsigned long end, int write,
+			struct page **pages, int *nr);
+#endif
+
 struct kvec;
 int get_kernel_pages(const struct kvec *iov, int nr_pages, int write,
 			struct page **pages);
