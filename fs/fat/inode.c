@@ -104,6 +104,7 @@ static struct fat_floppy_defaults {
 static int fat_add_cluster(struct inode *inode)
 {
 	int err, cluster;
+	struct msdos_sb_info *sbi = MSDOS_SB(inode->i_sb);
 
 	err = fat_alloc_clusters(inode, &cluster, 1);
 	if (err)
@@ -113,6 +114,9 @@ static int fat_add_cluster(struct inode *inode)
 	err = fat_chain_add(inode, cluster, 1);
 	if (err)
 		fat_free_clusters(inode, cluster);
+	else
+		MSDOS_I(inode)->i_disksize += sbi->cluster_size;
+
 	return err;
 }
 
@@ -469,7 +473,6 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		error = fat_calc_dir_size(inode);
 		if (error < 0)
 			return error;
-		MSDOS_I(inode)->mmu_private = inode->i_size;
 
 		set_nlink(inode, fat_subdirs(inode));
 	} else { /* not a directory */
@@ -484,8 +487,11 @@ int fat_fill_inode(struct inode *inode, struct msdos_dir_entry *de)
 		inode->i_op = &fat_file_inode_operations;
 		inode->i_fop = &fat_file_operations;
 		inode->i_mapping->a_ops = &fat_aops;
-		MSDOS_I(inode)->mmu_private = inode->i_size;
 	}
+
+	MSDOS_I(inode)->mmu_private = inode->i_size;
+	MSDOS_I(inode)->i_disksize = round_up(inode->i_size, sbi->cluster_size);
+
 	if (de->attr & ATTR_SYS) {
 		if (sbi->options.sys_immutable)
 			inode->i_flags |= S_IMMUTABLE;
@@ -1293,6 +1299,7 @@ static int fat_read_root(struct inode *inode)
 			   & ~((loff_t)sbi->cluster_size - 1)) >> 9;
 	MSDOS_I(inode)->i_logstart = 0;
 	MSDOS_I(inode)->mmu_private = inode->i_size;
+	MSDOS_I(inode)->i_disksize = round_up(inode->i_size, sbi->cluster_size);
 
 	fat_save_attrs(inode, ATTR_DIR);
 	inode->i_mtime.tv_sec = inode->i_atime.tv_sec = inode->i_ctime.tv_sec = 0;
