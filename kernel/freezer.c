@@ -45,12 +45,27 @@ bool freezing_slow_path(struct task_struct *p)
 	if (pm_nosig_freezing || cgroup_freezing(p))
 		return true;
 
-	if (pm_freezing && !(p->flags & PF_KTHREAD))
+	if (!(p->flags & PF_KTHREAD))
 		return true;
 
 	return false;
 }
 EXPORT_SYMBOL(freezing_slow_path);
+
+static bool should_thaw_current(bool check_kthr_stop)
+{
+	if (!freezing(current))
+		return true;
+
+	if (check_kthr_stop && kthread_should_stop())
+		return true;
+
+	/* It might not be safe to check TIF_MEMDIE for pm freeze. */
+	if (cgroup_freezing(current) && test_thread_flag(TIF_MEMDIE))
+		return true;
+
+	return false;
+}
 
 /* Refrigerator is place where frozen processes are stored :-). */
 bool __refrigerator(bool check_kthr_stop)
@@ -67,8 +82,7 @@ bool __refrigerator(bool check_kthr_stop)
 
 		spin_lock_irq(&freezer_lock);
 		current->flags |= PF_FROZEN;
-		if (!freezing(current) ||
-		    (check_kthr_stop && kthread_should_stop()))
+		if (should_thaw_current(check_kthr_stop))
 			current->flags &= ~PF_FROZEN;
 		spin_unlock_irq(&freezer_lock);
 
