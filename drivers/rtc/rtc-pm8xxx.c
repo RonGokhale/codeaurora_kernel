@@ -140,7 +140,7 @@ static int pm8xxx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	}
 
 	if (alarm_enabled) {
-		ctrl_reg |= regs->alarm_en;;
+		ctrl_reg |= regs->alarm_en;
 		rc = regmap_write(rtc_dd->regmap, regs->ctrl, ctrl_reg);
 		if (rc) {
 			dev_err(dev, "Write to RTC control register failed\n");
@@ -345,7 +345,7 @@ static irqreturn_t pm8xxx_alarm_trigger(int irq, void *dev_id)
 		goto rtc_alarm_handled;
 	}
 
-	ctrl_reg &= ~regs->alarm_en;;
+	ctrl_reg &= ~regs->alarm_en;
 
 	rc = regmap_write(rtc_dd->regmap, regs->alarm_ctrl, ctrl_reg);
 	if (rc) {
