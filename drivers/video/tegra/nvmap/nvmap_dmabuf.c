@@ -643,15 +643,7 @@ EXPORT_SYMBOL(__nvmap_dmabuf_export);
 struct dma_buf *nvmap_dmabuf_export(struct nvmap_client *client,
 				 unsigned long user_id)
 {
-	struct dma_buf *dmabuf;
-	ulong handle;
-
-	handle = unmarshal_user_id(user_id);
-	dmabuf = __nvmap_dmabuf_export(client, handle);
-	if (handle)
-		nvmap_handle_put((struct nvmap_handle *)handle);
-
-	return dmabuf;
+	return __nvmap_dmabuf_export(client, unmarshal_user_id(user_id));
 }
 
 /*
