@@ -71,6 +71,7 @@ MODULE_DESCRIPTION("Driver for the Digi International EPCA PCI based product lin
 MODULE_SUPPORTED_DEVICE("dgap");
 
 static int dgap_start(void);
+static void dgap_stop(void);
 static void dgap_init_globals(void);
 static struct board_t *dgap_found_board(struct pci_dev *pdev, int id,
 					int boardnum);
@@ -78,8 +79,8 @@ static void dgap_cleanup_board(struct board_t *brd);
 static void dgap_poll_handler(ulong dummy);
 static int dgap_init_one(struct pci_dev *pdev, const struct pci_device_id *ent);
 static void dgap_remove_one(struct pci_dev *dev);
-static int dgap_do_remap(struct board_t *brd);
-static void dgap_release_remap(struct board_t *brd);
+static int dgap_remap(struct board_t *brd);
+static void dgap_unmap(struct board_t *brd);
 static irqreturn_t dgap_intr(int irq, void *voidbrd);
 
 static int dgap_tty_open(struct tty_struct *tty, struct file *file);
@@ -479,19 +480,20 @@ static int dgap_init_module(void)
 
 	rc = pci_register_driver(&dgap_driver);
 	if (rc)
-		goto err_cleanup;
+		goto err_stop;
 
 	rc = dgap_create_driver_sysfiles(&dgap_driver);
 	if (rc)
-		goto err_cleanup;
+		goto err_unregister;
 
 	dgap_driver_state = DRIVER_READY;
 
 	return 0;
 
-err_cleanup:
-
-	dgap_cleanup_module();
+err_unregister:
+	pci_unregister_driver(&dgap_driver);
+err_stop:
+	dgap_stop();
 
 	return rc;
 }
@@ -561,6 +563,21 @@ failed_class:
 	return rc;
 }
 
+static void dgap_stop(void)
+{
+	unsigned long lock_flags;
+
+	spin_lock_irqsave(&dgap_poll_lock, lock_flags);
+	dgap_poll_stop = 1;
+	spin_unlock_irqrestore(&dgap_poll_lock, lock_flags);
+
+	del_timer_sync(&dgap_poll_timer);
+
+	device_destroy(dgap_class, MKDEV(DIGI_DGAP_MAJOR, 0));
+	class_destroy(dgap_class);
+	unregister_chrdev(DIGI_DGAP_MAJOR, "dgap");
+}
+
 static int dgap_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	int rc;
@@ -621,7 +638,7 @@ free_flipbuf:
 	dgap_free_flipbuf(brd);
 cleanup_brd:
 	dgap_cleanup_nodes();
-	dgap_release_remap(brd);
+	dgap_unmap(brd);
 	kfree(brd);
 
 	return rc;
@@ -683,7 +700,7 @@ static void dgap_cleanup_board(struct board_t *brd)
 
 	tasklet_kill(&brd->helper_tasklet);
 
-	dgap_release_remap(brd);
+	dgap_unmap(brd);
 
 	/* Free all allocated channels structs */
 	for (i = 0; i < MAXPORTS ; i++)
@@ -804,7 +821,7 @@ static struct board_t *dgap_found_board(struct pci_dev *pdev, int id,
 	tasklet_init(&brd->helper_tasklet, dgap_poll_tasklet,
 			(unsigned long) brd);
 
-	ret = dgap_do_remap(brd);
+	ret = dgap_remap(brd);
 	if (ret)
 		goto free_brd;
 
@@ -979,7 +996,7 @@ static int dgap_firmware_load(struct pci_dev *pdev, int card_type,
 /*
  * Remap PCI memory.
  */
-static int dgap_do_remap(struct board_t *brd)
+static int dgap_remap(struct board_t *brd)
 {
 	if (!brd || brd->magic != DGAP_BOARD_MAGIC)
 		return -EIO;
@@ -1011,17 +1028,12 @@ static int dgap_do_remap(struct board_t *brd)
 	return 0;
 }
 
-static void dgap_release_remap(struct board_t *brd)
+static void dgap_unmap(struct board_t *brd)
 {
-	if (brd->re_map_membase) {
-		release_mem_region(brd->membase, 0x200000);
-		iounmap(brd->re_map_membase);
-	}
-
-	if (brd->re_map_port) {
-		release_mem_region(brd->membase + PCI_IO_OFFSET, 0x200000);
-		iounmap(brd->re_map_port);
-	}
+	iounmap(brd->re_map_port);
+	iounmap(brd->re_map_membase);
+	release_mem_region(brd->membase + PCI_IO_OFFSET, 0x200000);
+	release_mem_region(brd->membase, 0x200000);
 }
 /*****************************************************************************
 *
@@ -2629,7 +2641,6 @@ static int dgap_tty_write(struct tty_struct *tty, const unsigned char *buf,
 	char __iomem *vaddr;
 	u16 head, tail, tmask, remain;
 	int bufcount, n;
-	int orig_count;
 	ulong lock_flags;
 
 	if (!tty)
@@ -2649,13 +2660,6 @@ static int dgap_tty_write(struct tty_struct *tty, const unsigned char *buf,
 
 	if (!count)
 		return 0;
-
-	/*
-	 * Store original amount of characters passed in.
-	 * This helps to figure out if we should ask the FEP
-	 * to send us an event when it has more space available.
-	 */
-	orig_count = count;
 
 	spin_lock_irqsave(&ch->ch_lock, lock_flags);
 

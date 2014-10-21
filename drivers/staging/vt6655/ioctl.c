@@ -38,10 +38,6 @@
 #include "wpactl.h"
 #include "rf.h"
 
-#ifdef WPA_SM_Transtatus
-SWPAResult wpa_Result;
-#endif
-
 int private_ioctl(struct vnt_private *pDevice, struct ifreq *rq)
 {
 	PSCmdRequest	pReq = (PSCmdRequest)rq;
@@ -49,7 +45,6 @@ int private_ioctl(struct vnt_private *pDevice, struct ifreq *rq)
 	int		result = 0;
 	PWLAN_IE_SSID	pItemSSID;
 	SCmdBSSJoin	sJoinCmd;
-	SCmdZoneTypeSet	sZoneTypeCmd;
 	SCmdScan	sScanCmd;
 	SCmdStartAP	sStartAPCmd;
 	SCmdSetWEP	sWEPCmd;
@@ -110,45 +105,6 @@ int private_ioctl(struct vnt_private *pDevice, struct ifreq *rq)
 	case WLAN_CMD_ZONETYPE_SET:
 		/* mike add :can't support. */
 		result = -EOPNOTSUPP;
-		break;
-
-		if (copy_from_user(&sZoneTypeCmd, pReq->data, sizeof(SCmdZoneTypeSet))) {
-			result = -EFAULT;
-			break;
-		}
-
-		if (sZoneTypeCmd.bWrite == true) {
-			/* write zonetype */
-			if (sZoneTypeCmd.ZoneType == ZoneType_USA) {
-				/* set to USA */
-				pr_debug("set_ZoneType:USA\n");
-			} else if (sZoneTypeCmd.ZoneType == ZoneType_Japan) {
-				/* set to Japan */
-				pr_debug("set_ZoneType:Japan\n");
-			} else if (sZoneTypeCmd.ZoneType == ZoneType_Europe) {
-				/* set to Europe */
-				pr_debug("set_ZoneType:Europe\n");
-			}
-		} else {
-			/* read zonetype */
-			unsigned char zonetype = 0;
-
-			if (zonetype == 0x00) {		/* USA */
-				sZoneTypeCmd.ZoneType = ZoneType_USA;
-			} else if (zonetype == 0x01) {	/* Japan */
-				sZoneTypeCmd.ZoneType = ZoneType_Japan;
-			} else if (zonetype == 0x02) {	/* Europe */
-				sZoneTypeCmd.ZoneType = ZoneType_Europe;
-			} else {			/* Unknown ZoneType */
-				pr_err("Error:ZoneType[%x] Unknown ???\n", zonetype);
-				result = -EFAULT;
-				break;
-			}
-			if (copy_to_user(pReq->data, &sZoneTypeCmd, sizeof(SCmdZoneTypeSet))) {
-				result = -EFAULT;
-				break;
-			}
-		}
 		break;
 
 	case WLAN_CMD_BSS_JOIN:
@@ -617,38 +573,6 @@ int private_ioctl(struct vnt_private *pDevice, struct ifreq *rq)
 		kfree(pNodeList);
 		pReq->wResult = 0;
 		break;
-
-#ifdef WPA_SM_Transtatus
-	case 0xFF:
-		memset(wpa_Result.ifname, 0, sizeof(wpa_Result.ifname));
-		wpa_Result.proto = 0;
-		wpa_Result.key_mgmt = 0;
-		wpa_Result.eap_type = 0;
-		wpa_Result.authenticated = false;
-		pDevice->fWPA_Authened = false;
-		if (copy_from_user(&wpa_Result, pReq->data, sizeof(wpa_Result))) {
-			result = -EFAULT;
-			break;
-		}
-
-		if (wpa_Result.authenticated == true) {
-#ifdef SndEvt_ToAPI
-			{
-				union iwreq_data wrqu;
-
-				pItemSSID = (PWLAN_IE_SSID)pMgmt->abyCurrSSID;
-
-				memset(&wrqu, 0, sizeof(wrqu));
-				wrqu.data.flags = RT_WPACONNECTED_EVENT_FLAG;
-				wrqu.data.length = pItemSSID->len;
-				wireless_send_event(pDevice->dev, IWEVCUSTOM, &wrqu, pItemSSID->abySSID);
-			}
-#endif
-			pDevice->fWPA_Authened = true; /* is successful peer to wpa_Result.authenticated? */
-		}
-		pReq->wResult = 0;
-		break;
-#endif
 
 	default:
 		pr_debug("Private command not support..\n");

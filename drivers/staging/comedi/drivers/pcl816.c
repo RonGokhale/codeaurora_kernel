@@ -160,7 +160,7 @@ static void pcl816_ai_setup_dma(struct comedi_device *dev,
 	bytes = devpriv->hwdmasize;
 	if (cmd->stop_src == TRIG_COUNT) {
 		/*  how many */
-		bytes = cmd->stop_arg * cfc_bytes_per_scan(s);
+		bytes = cmd->stop_arg * comedi_bytes_per_scan(s);
 
 		/*  how many DMA pages we must fill */
 		devpriv->dma_runs_to_end = bytes / devpriv->hwdmasize;
@@ -355,7 +355,7 @@ static irqreturn_t pcl816_interrupt(int irq, void *d)
 
 	pcl816_ai_clear_eoc(dev);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 
@@ -566,7 +566,7 @@ static int pcl816_ai_poll(struct comedi_device *dev, struct comedi_subdevice *s)
 	devpriv->ai_poll_ptr = top1;	/*  new buffer position */
 	spin_unlock_irqrestore(&dev->spinlock, flags);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 
 	return comedi_buf_n_bytes_ready(s);
 }
