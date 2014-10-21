@@ -257,7 +257,7 @@ static struct ctl_table sysctl_base_table[] = {
 		.mode		= 0555,
 		.child		= dev_table,
 	},
-	{ }
+	{ .procname = NULL }
 };
 
 #ifdef CONFIG_SCHED_DEBUG
@@ -1103,7 +1103,7 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
-	{ }
+	{ .procname = NULL }
 };
 
 static struct ctl_table vm_table[] = {
@@ -1485,12 +1485,12 @@ static struct ctl_table vm_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_doulongvec_minmax,
 	},
-	{ }
+	{ .procname = NULL }
 };
 
 #if defined(CONFIG_BINFMT_MISC) || defined(CONFIG_BINFMT_MISC_MODULE)
 static struct ctl_table binfmt_misc_table[] = {
-	{ }
+	{ .procname = NULL }
 };
 #endif
 
@@ -1658,7 +1658,7 @@ static struct ctl_table fs_table[] = {
 		.proc_handler	= &pipe_proc_fn,
 		.extra1		= &pipe_min_size,
 	},
-	{ }
+	{ .procname = NULL }
 };
 
 static struct ctl_table debug_table[] = {
@@ -1682,11 +1682,11 @@ static struct ctl_table debug_table[] = {
 		.extra2		= &one,
 	},
 #endif
-	{ }
+	{ .procname = NULL }
 };
 
 static struct ctl_table dev_table[] = {
-	{ }
+	{ .procname = NULL }
 };
 
 int __init sysctl_init(void)
