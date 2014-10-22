@@ -586,7 +586,7 @@ static void das16_interrupt(struct comedi_device *dev)
 	cfc_write_array_to_buffer(s,
 				  devpriv->dma_buffer[buffer_index], num_bytes);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static void das16_timer_interrupt(unsigned long arg)
@@ -764,7 +764,7 @@ static int das16_cmd_exec(struct comedi_device *dev, struct comedi_subdevice *s)
 		return -1;
 	}
 
-	devpriv->adc_byte_count = cmd->stop_arg * cfc_bytes_per_scan(s);
+	devpriv->adc_byte_count = cmd->stop_arg * comedi_bytes_per_scan(s);
 
 	if (devpriv->can_burst)
 		outb(DAS1600_CONV_DISABLE, dev->iobase + DAS1600_CONV_REG);

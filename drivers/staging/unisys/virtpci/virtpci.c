@@ -137,7 +137,7 @@ static struct device virtpci_rootbus_device = {
 };
 
 /* filled in with info about parent chipset driver when we register with it */
-static ULTRA_VBUS_DEVICEINFO Chipset_DriverInfo;
+static struct ultra_vbus_deviceinfo Chipset_DriverInfo;
 
 static const struct sysfs_ops virtpci_driver_sysfs_ops = {
 	.show = virtpci_driver_attr_show,
@@ -152,7 +152,7 @@ static struct virtpci_dev *VpcidevListHead;
 static DEFINE_RWLOCK(VpcidevListLock);
 
 /* filled in with info about this driver, wrt it servicing client busses */
-static ULTRA_VBUS_DEVICEINFO Bus_DriverInfo;
+static struct ultra_vbus_deviceinfo Bus_DriverInfo;
 
 /*****************************************************/
 /* debugfs entries                                   */
@@ -186,8 +186,8 @@ int WAIT_FOR_IO_CHANNEL(ULTRA_IO_CHANNEL_PROTOCOL __iomem  *chanptr)
 }
 
 /* Write the contents of <info> to the ULTRA_VBUS_CHANNEL_PROTOCOL.ChpInfo. */
-static int write_vbus_chpInfo(ULTRA_VBUS_CHANNEL_PROTOCOL *chan,
-			      ULTRA_VBUS_DEVICEINFO *info)
+static int write_vbus_chpInfo(struct ultra_vbus_channel_protocol *chan,
+			      struct ultra_vbus_deviceinfo *info)
 {
 	int off;
 
@@ -205,8 +205,8 @@ static int write_vbus_chpInfo(ULTRA_VBUS_CHANNEL_PROTOCOL *chan,
 }
 
 /* Write the contents of <info> to the ULTRA_VBUS_CHANNEL_PROTOCOL.BusInfo. */
-static int write_vbus_busInfo(ULTRA_VBUS_CHANNEL_PROTOCOL *chan,
-			      ULTRA_VBUS_DEVICEINFO *info)
+static int write_vbus_busInfo(struct ultra_vbus_channel_protocol *chan,
+			      struct ultra_vbus_deviceinfo *info)
 {
 	int off;
 
@@ -227,8 +227,8 @@ static int write_vbus_busInfo(ULTRA_VBUS_CHANNEL_PROTOCOL *chan,
  * ULTRA_VBUS_CHANNEL_PROTOCOL.DevInfo[<devix>].
  */
 static int
-write_vbus_devInfo(ULTRA_VBUS_CHANNEL_PROTOCOL *chan,
-		   ULTRA_VBUS_DEVICEINFO *info, int devix)
+write_vbus_devInfo(struct ultra_vbus_channel_protocol *chan,
+		   struct ultra_vbus_deviceinfo *info, int devix)
 {
 	int off;
 
@@ -262,7 +262,7 @@ static int add_vbus(struct add_vbus_guestpart *addparams)
 	if (!vbus)
 		return 0;
 
-	dev_set_name(vbus, "vbus%d", addparams->busNo);
+	dev_set_name(vbus, "vbus%d", addparams->bus_no);
 	vbus->release = virtpci_bus_release;
 	vbus->parent = &virtpci_rootbus_device;	/* root bus is parent */
 	vbus->bus = &virtpci_bus_type;	/* bus type */
@@ -283,7 +283,7 @@ static int add_vbus(struct add_vbus_guestpart *addparams)
 			   &Chipset_DriverInfo);
 	write_vbus_busInfo(vbus->platform_data /* chanptr */ , &Bus_DriverInfo);
 	LOGINF("Added vbus %d; device %s created successfully\n",
-	       addparams->busNo, BUS_ID(vbus));
+	       addparams->bus_no, BUS_ID(vbus));
 	POSTCODE_LINUX_2(VPCI_CREATE_EXIT_PC, POSTCODE_SEVERITY_INFO);
 	return 1;
 }
@@ -752,7 +752,7 @@ static int virtpci_device_resume(struct device *dev)
 
 /* For a child device just created on a client bus, fill in
  * information about the driver that is controlling this device into
- * the the appropriate slot within the vbus channel of the bus
+ * the appropriate slot within the vbus channel of the bus
  * instance.
  */
 static void fix_vbus_devInfo(struct device *dev, int devNo, int devType,
@@ -760,7 +760,7 @@ static void fix_vbus_devInfo(struct device *dev, int devNo, int devType,
 {
 	struct device *vbus;
 	void *pChan;
-	ULTRA_VBUS_DEVICEINFO devInfo;
+	struct ultra_vbus_deviceinfo devInfo;
 	const char *stype;
 
 	if (!dev) {

@@ -352,7 +352,7 @@ static void pcl818_ai_setup_dma(struct comedi_device *dev,
 	disable_dma(devpriv->dma);	/*  disable dma */
 	bytes = devpriv->hwdmasize;
 	if (cmd->stop_src == TRIG_COUNT) {
-		bytes = cmd->stop_arg * cfc_bytes_per_scan(s);
+		bytes = cmd->stop_arg * comedi_bytes_per_scan(s);
 		devpriv->dma_runs_to_end = bytes / devpriv->hwdmasize;
 		devpriv->last_dma_run = bytes % devpriv->hwdmasize;
 		devpriv->dma_runs_to_end--;
@@ -669,7 +669,7 @@ static irqreturn_t pcl818_interrupt(int irq, void *d)
 
 	pcl818_ai_clear_eoc(dev);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 

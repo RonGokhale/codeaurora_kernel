@@ -464,15 +464,6 @@ int iwctl_siwmode(struct net_device *dev,
 		rc = -EOPNOTSUPP;
 		break;
 
-		if (pMgmt->eConfigMode != WMAC_CONFIG_AP) {
-			pMgmt->eConfigMode = WMAC_CONFIG_AP;
-			if (pDevice->flags & DEVICE_FLAGS_OPENED)
-				pDevice->bCommit = true;
-
-		}
-		pr_debug("set mode to Access Point\n");
-		break;
-
 	case IW_MODE_REPEAT:
 		pMgmt->eConfigMode = WMAC_CONFIG_ESS_STA;
 		rc = -EOPNOTSUPP;
@@ -1728,7 +1719,7 @@ int iwctl_siwencodeext(struct net_device *dev,
 		goto error;
 	}
 //recover addr
-	memcpy(addr, ext->addr.sa_data, ETH_ALEN);
+	ether_addr_copy(addr, ext->addr.sa_data);
 //recover key_idx
 	key_idx = (wrq->flags&IW_ENCODE_INDEX) - 1;
 //recover set_tx
@@ -1756,7 +1747,7 @@ int iwctl_siwencodeext(struct net_device *dev,
 	}
 
 /**************Translate iw_encode_ext to viawget_wpa_param****************/
-	memcpy(param->addr, addr, ETH_ALEN);
+	ether_addr_copy(param->addr, addr);
 	param->u.wpa_key.alg_name = (int)alg_name;
 	param->u.wpa_key.set_tx = set_tx;
 	param->u.wpa_key.key_index = key_idx;

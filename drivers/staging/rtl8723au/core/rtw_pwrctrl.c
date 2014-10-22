@@ -172,12 +172,12 @@ void rtw_ps_processor23a(struct rtw_adapter *padapter)
 exit:
 	rtw_set_pwr_state_check_timer(&padapter->pwrctrlpriv);
 	pwrpriv->ps_processing = false;
-	return;
 }
 
 static void pwr_state_check_handler(unsigned long data)
 {
 	struct rtw_adapter *padapter = (struct rtw_adapter *)data;
+
 	rtw_ps_cmd23a(padapter);
 }
 
@@ -470,6 +470,7 @@ void rtw_free_pwrctrl_priv(struct rtw_adapter *adapter)
 inline void rtw_set_ips_deny23a(struct rtw_adapter *padapter, u32 ms)
 {
 	struct pwrctrl_priv *pwrpriv = &padapter->pwrctrlpriv;
+
 	pwrpriv->ips_deny_time = jiffies + msecs_to_jiffies(ms);
 }
 
