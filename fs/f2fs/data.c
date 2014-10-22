@@ -257,9 +257,6 @@ int f2fs_reserve_block(struct dnode_of_data *dn, pgoff_t index)
 	bool need_put = dn->inode_page ? false : true;
 	int err;
 
-	/* if inode_page exists, index should be zero */
-	f2fs_bug_on(F2FS_I_SB(dn->inode), !need_put && index);
-
 	err = get_dnode_of_data(dn, index, ALLOC_NODE);
 	if (err)
 		return err;
@@ -951,7 +948,7 @@ static int f2fs_write_begin(struct file *file, struct address_space *mapping,
 {
 	struct inode *inode = mapping->host;
 	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-	struct page *page;
+	struct page *page, *ipage;
 	pgoff_t index = ((unsigned long long) pos) >> PAGE_CACHE_SHIFT;
 	struct dnode_of_data dn;
 	int err = 0;
@@ -979,13 +976,26 @@ repeat:
 		goto inline_data;
 
 	f2fs_lock_op(sbi);
-	set_new_dnode(&dn, inode, NULL, NULL, 0);
-	err = f2fs_reserve_block(&dn, index);
-	f2fs_unlock_op(sbi);
-	if (err) {
+
+	/* check inline_data */
+	ipage = get_node_page(sbi, inode->i_ino);
+	if (IS_ERR(ipage))
+		goto unlock_fail;
+
+	if (f2fs_has_inline_data(inode)) {
+		f2fs_put_page(ipage, 1);
+		f2fs_unlock_op(sbi);
 		f2fs_put_page(page, 0);
-		goto fail;
+		goto repeat;
 	}
+
+	set_new_dnode(&dn, inode, ipage, NULL, 0);
+	err = f2fs_reserve_block(&dn, index);
+	if (err)
+		goto unlock_fail;
+	f2fs_put_dnode(&dn);
+	f2fs_unlock_op(sbi);
+
 inline_data:
 	lock_page(page);
 	if (unlikely(page->mapping != mapping)) {
@@ -1007,21 +1017,19 @@ inline_data:
 		goto out;
 	}
 
-	if (dn.data_blkaddr == NEW_ADDR) {
+	if (f2fs_has_inline_data(inode)) {
+		err = f2fs_read_inline_data(inode, page);
+		if (err) {
+			page_cache_release(page);
+			goto fail;
+		}
+	} else if (dn.data_blkaddr == NEW_ADDR) {
 		zero_user_segment(page, 0, PAGE_CACHE_SIZE);
 	} else {
-		if (f2fs_has_inline_data(inode)) {
-			err = f2fs_read_inline_data(inode, page);
-			if (err) {
-				page_cache_release(page);
-				goto fail;
-			}
-		} else {
-			err = f2fs_submit_page_bio(sbi, page, dn.data_blkaddr,
-							READ_SYNC);
-			if (err)
-				goto fail;
-		}
+		err = f2fs_submit_page_bio(sbi, page, dn.data_blkaddr,
+					   READ_SYNC);
+		if (err)
+			goto fail;
 
 		lock_page(page);
 		if (unlikely(!PageUptodate(page))) {
@@ -1038,6 +1046,10 @@ out:
 	SetPageUptodate(page);
 	clear_cold_data(page);
 	return 0;
+
+unlock_fail:
+	f2fs_unlock_op(sbi);
+	f2fs_put_page(page, 0);
 fail:
 	f2fs_write_failed(mapping, pos + len);
 	return err;
@@ -1052,10 +1064,7 @@ static int f2fs_write_end(struct file *file,
 
 	trace_f2fs_write_end(inode, pos, len, copied);
 
-	if (f2fs_is_atomic_file(inode) || f2fs_is_volatile_file(inode))
-		register_inmem_page(inode, page);
-	else
-		set_page_dirty(page);
+	set_page_dirty(page);
 
 	if (pos + copied > i_size_read(inode)) {
 		i_size_write(inode, pos + copied);
@@ -1119,6 +1128,9 @@ static void f2fs_invalidate_data_page(struct page *page, unsigned int offset,
 	if (offset % PAGE_CACHE_SIZE || length != PAGE_CACHE_SIZE)
 		return;
 
+	if (f2fs_is_atomic_file(inode) || f2fs_is_volatile_file(inode))
+		invalidate_inmem_page(inode, page);
+
 	if (PageDirty(page))
 		inode_dec_dirty_pages(inode);
 	ClearPagePrivate(page);
@@ -1138,6 +1150,12 @@ static int f2fs_set_data_page_dirty(struct page *page)
 	trace_f2fs_set_page_dirty(page, DATA);
 
 	SetPageUptodate(page);
+
+	if (f2fs_is_atomic_file(inode) || f2fs_is_volatile_file(inode)) {
+		register_inmem_page(inode, page);
+		return 1;
+	}
+
 	mark_inode_dirty(inode);
 
 	if (!PageDirty(page)) {
