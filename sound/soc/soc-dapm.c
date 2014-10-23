@@ -496,7 +496,7 @@ static int dapm_connect_mux(struct snd_soc_dapm_context *dapm,
 			list_add(&path->list, &dapm->card->paths);
 			list_add(&path->list_sink, &dest->sources);
 			list_add(&path->list_source, &src->sinks);
-			path->name = (char*)e->texts[i];
+			path->name = e->texts[i];
 			if (i == item)
 				path->connect = 1;
 			else
@@ -754,34 +754,6 @@ static int dapm_new_pga(struct snd_soc_dapm_widget *w)
 	return 0;
 }
 
-/* reset 'walked' bit for each dapm path */
-static void dapm_clear_walk_output(struct snd_soc_dapm_context *dapm,
-				   struct list_head *sink)
-{
-	struct snd_soc_dapm_path *p;
-
-	list_for_each_entry(p, sink, list_source) {
-		if (p->walked) {
-			p->walked = 0;
-			dapm_clear_walk_output(dapm, &p->sink->sinks);
-		}
-	}
-}
-
-static void dapm_clear_walk_input(struct snd_soc_dapm_context *dapm,
-				  struct list_head *source)
-{
-	struct snd_soc_dapm_path *p;
-
-	list_for_each_entry(p, source, list_sink) {
-		if (p->walked) {
-			p->walked = 0;
-			dapm_clear_walk_input(dapm, &p->source->sources);
-		}
-	}
-}
-
-
 /* We implement power down on suspend by checking the power state of
  * the ALSA card - when we are suspending the ALSA state for the card
  * is set to D3.
@@ -904,13 +876,9 @@ static int is_connected_output_ep(struct snd_soc_dapm_widget *widget,
 		if (path->walking)
 			return 1;
 
-		if (path->walked)
-			continue;
-
 		trace_snd_soc_dapm_output_path(widget, path);
 
-		if (path->sink && path->connect) {
-			path->walked = 1;
+		if (path->connect) {
 			path->walking = 1;
 
 			/* do we need to add this widget to the list ? */
@@ -1012,13 +980,9 @@ static int is_connected_input_ep(struct snd_soc_dapm_widget *widget,
 		if (path->walking)
 			return 1;
 
-		if (path->walked)
-			continue;
-
 		trace_snd_soc_dapm_input_path(widget, path);
 
-		if (path->source && path->connect) {
-			path->walked = 1;
+		if (path->connect) {
 			path->walking = 1;
 
 			/* do we need to add this widget to the list ? */
@@ -1066,15 +1030,10 @@ int snd_soc_dapm_dai_get_connected_widgets(struct snd_soc_dai *dai, int stream,
 	mutex_lock_nested(&card->dapm_mutex, SND_SOC_DAPM_CLASS_RUNTIME);
 	dapm_reset(card);
 
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
 		paths = is_connected_output_ep(dai->playback_widget, list);
-		dapm_clear_walk_output(&card->dapm,
-				       &dai->playback_widget->sinks);
-	} else {
+	else
 		paths = is_connected_input_ep(dai->capture_widget, list);
-		dapm_clear_walk_input(&card->dapm,
-				      &dai->capture_widget->sources);
-	}
 
 	trace_snd_soc_dapm_connected(paths, stream);
 	mutex_unlock(&card->dapm_mutex);
@@ -1163,42 +1122,8 @@ static int dapm_generic_check_power(struct snd_soc_dapm_widget *w)
 	DAPM_UPDATE_STAT(w, power_checks);
 
 	in = is_connected_input_ep(w, NULL);
-	dapm_clear_walk_input(w->dapm, &w->sources);
 	out = is_connected_output_ep(w, NULL);
-	dapm_clear_walk_output(w->dapm, &w->sinks);
 	return out != 0 && in != 0;
-}
-
-/* Check to see if an ADC has power */
-static int dapm_adc_check_power(struct snd_soc_dapm_widget *w)
-{
-	int in;
-
-	DAPM_UPDATE_STAT(w, power_checks);
-
-	if (w->active) {
-		in = is_connected_input_ep(w, NULL);
-		dapm_clear_walk_input(w->dapm, &w->sources);
-		return in != 0;
-	} else {
-		return dapm_generic_check_power(w);
-	}
-}
-
-/* Check to see if a DAC has power */
-static int dapm_dac_check_power(struct snd_soc_dapm_widget *w)
-{
-	int out;
-
-	DAPM_UPDATE_STAT(w, power_checks);
-
-	if (w->active) {
-		out = is_connected_output_ep(w, NULL);
-		dapm_clear_walk_output(w->dapm, &w->sinks);
-		return out != 0;
-	} else {
-		return dapm_generic_check_power(w);
-	}
 }
 
 /* Check to see if a power supply is needed */
@@ -1217,9 +1142,6 @@ static int dapm_supply_check_power(struct snd_soc_dapm_widget *w)
 
 		if (path->connected &&
 		    !path->connected(path->source, path->sink))
-			continue;
-
-		if (!path->sink)
 			continue;
 
 		if (dapm_widget_power_check(path->sink))
@@ -1636,12 +1558,9 @@ static void dapm_widget_set_power(struct snd_soc_dapm_widget *w, bool power,
 	/* If we changed our power state perhaps our neigbours changed
 	 * also.
 	 */
-	list_for_each_entry(path, &w->sources, list_sink) {
-		if (path->source) {
-			dapm_widget_set_peer_power(path->source, power,
-						   path->connect);
-		}
-	}
+	list_for_each_entry(path, &w->sources, list_sink)
+		dapm_widget_set_peer_power(path->source, power, path->connect);
+
 	switch (w->id) {
 	case snd_soc_dapm_supply:
 	case snd_soc_dapm_regulator_supply:
@@ -1650,12 +1569,9 @@ static void dapm_widget_set_power(struct snd_soc_dapm_widget *w, bool power,
 		/* Supplies can't affect their outputs, only their inputs */
 		break;
 	default:
-		list_for_each_entry(path, &w->sinks, list_source) {
-			if (path->sink) {
-				dapm_widget_set_peer_power(path->sink, power,
-							   path->connect);
-			}
-		}
+		list_for_each_entry(path, &w->sinks, list_source)
+			dapm_widget_set_peer_power(path->sink, power,
+						   path->connect);
 		break;
 	}
 
@@ -1864,9 +1780,7 @@ static ssize_t dapm_widget_power_read_file(struct file *file,
 		return -ENOMEM;
 
 	in = is_connected_input_ep(w, NULL);
-	dapm_clear_walk_input(w->dapm, &w->sources);
 	out = is_connected_output_ep(w, NULL);
-	dapm_clear_walk_output(w->dapm, &w->sinks);
 
 	ret = snprintf(buf, PAGE_SIZE, "%s: %s%s  in %d out %d",
 		       w->name, w->power ? "On" : "Off",
@@ -3095,12 +3009,6 @@ snd_soc_dapm_new_control(struct snd_soc_dapm_context *dapm,
 	case snd_soc_dapm_mux:
 		w->power_check = dapm_generic_check_power;
 		break;
-	case snd_soc_dapm_dai_out:
-		w->power_check = dapm_adc_check_power;
-		break;
-	case snd_soc_dapm_dai_in:
-		w->power_check = dapm_dac_check_power;
-		break;
 	case snd_soc_dapm_adc:
 	case snd_soc_dapm_aif_out:
 	case snd_soc_dapm_dac:
@@ -3115,6 +3023,8 @@ snd_soc_dapm_new_control(struct snd_soc_dapm_context *dapm,
 	case snd_soc_dapm_mic:
 	case snd_soc_dapm_line:
 	case snd_soc_dapm_dai_link:
+	case snd_soc_dapm_dai_out:
+	case snd_soc_dapm_dai_in:
 		w->power_check = dapm_generic_check_power;
 		break;
 	case snd_soc_dapm_supply:
@@ -3788,35 +3698,54 @@ int snd_soc_dapm_ignore_suspend(struct snd_soc_dapm_context *dapm,
 }
 EXPORT_SYMBOL_GPL(snd_soc_dapm_ignore_suspend);
 
+/**
+ * dapm_is_external_path() - Checks if a path is a external path
+ * @card: The card the path belongs to
+ * @path: The path to check
+ *
+ * Returns true if the path is either between two different DAPM contexts or
+ * between two external pins of the same DAPM context. Otherwise returns
+ * false.
+ */
+static bool dapm_is_external_path(struct snd_soc_card *card,
+	struct snd_soc_dapm_path *path)
+{
+	dev_dbg(card->dev,
+		"... Path %s(id:%d dapm:%p) - %s(id:%d dapm:%p)\n",
+		path->source->name, path->source->id, path->source->dapm,
+		path->sink->name, path->sink->id, path->sink->dapm);
+
+	/* Connection between two different DAPM contexts */
+	if (path->source->dapm != path->sink->dapm)
+		return true;
+
+	/* Loopback connection from external pin to external pin */
+	if (path->sink->id == snd_soc_dapm_input) {
+		switch (path->source->id) {
+		case snd_soc_dapm_output:
+		case snd_soc_dapm_micbias:
+			return true;
+		default:
+			break;
+		}
+	}
+
+	return false;
+}
+
 static bool snd_soc_dapm_widget_in_card_paths(struct snd_soc_card *card,
 					      struct snd_soc_dapm_widget *w)
 {
 	struct snd_soc_dapm_path *p;
 
-	list_for_each_entry(p, &card->paths, list) {
-		if ((p->source == w) || (p->sink == w)) {
-			dev_dbg(card->dev,
-			    "... Path %s(id:%d dapm:%p) - %s(id:%d dapm:%p)\n",
-			    p->source->name, p->source->id, p->source->dapm,
-			    p->sink->name, p->sink->id, p->sink->dapm);
+	list_for_each_entry(p, &w->sources, list_sink) {
+		if (dapm_is_external_path(card, p))
+			return true;
+	}
 
-			/* Connected to something other than the codec */
-			if (p->source->dapm != p->sink->dapm)
-				return true;
-			/*
-			 * Loopback connection from codec external pin to
-			 * codec external pin
-			 */
-			if (p->sink->id == snd_soc_dapm_input) {
-				switch (p->source->id) {
-				case snd_soc_dapm_output:
-				case snd_soc_dapm_micbias:
-					return true;
-				default:
-					break;
-				}
-			}
-		}
+	list_for_each_entry(p, &w->sinks, list_source) {
+		if (dapm_is_external_path(card, p))
+			return true;
 	}
 
 	return false;
