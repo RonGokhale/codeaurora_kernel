@@ -18,7 +18,8 @@ struct cpu_dev {
 	/* Optional vendor specific routine to obtain the cache size. */
 	unsigned int	(*legacy_cache_size)(struct cpuinfo_x86 *,
 					     unsigned int);
-
+#endif
+#ifdef CONFIG_X86_MODEL_TABLE
 	/* Family/stepping-based lookup table for model names. */
 	struct legacy_cpu_model_info {
 		int		family;
