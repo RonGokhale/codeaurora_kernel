@@ -189,7 +189,7 @@ static int rtc_proc_open(struct inode *inode, struct file *file);
  * timer (but you would need to have an awful timing before you'd trip on it)
  */
 static unsigned long rtc_status;	/* bitmapped status byte.	*/
-static unsigned long rtc_freq;		/* Current periodic IRQ rate	*/
+static unsigned long __maybe_unused rtc_freq; /* Current periodic IRQ rate    */
 static unsigned long rtc_irq_data;	/* our output to the world	*/
 static unsigned long rtc_max_user_freq = 64; /* > this, need CAP_SYS_RESOURCE */
 
