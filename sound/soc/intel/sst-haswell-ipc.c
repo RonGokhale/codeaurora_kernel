@@ -1256,10 +1256,6 @@ int sst_hsw_stream_set_channels(struct sst_hsw *hsw,
 		return -EINVAL;
 	}
 
-	/* stereo is only supported atm */
-	if (channels != 2)
-		return -EINVAL;
-
 	stream->request.format.ch_num = channels;
 	return 0;
 }
@@ -1630,6 +1626,10 @@ int sst_hsw_device_set_config(struct sst_hsw *hsw,
 	config.clock_frequency = mclk;
 	config.mode = mode;
 	config.clock_divider = clock_divider;
+	if (mode == SST_HSW_DEVICE_TDM_CLOCK_MASTER)
+		config.channels = 4;
+	else
+		config.channels = 2;
 
 	trace_hsw_device_config_req(&config);
 
