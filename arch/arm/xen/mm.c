@@ -1,5 +1,8 @@
+#include <linux/cpu.h>
+#include <linux/dma-mapping.h>
 #include <linux/bootmem.h>
 #include <linux/gfp.h>
+#include <linux/highmem.h>
 #include <linux/export.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -13,8 +16,129 @@
 
 #include <asm/cacheflush.h>
 #include <asm/xen/page.h>
+#include <asm/xen/page-coherent.h>
 #include <asm/xen/hypercall.h>
 #include <asm/xen/interface.h>
+
+
+#ifdef CONFIG_ARM64
+static inline void dmac_map_area(const void *start, size_t size, int dir)
+{
+	return __dma_map_area(start, size, dir);
+}
+
+static inline void dmac_unmap_area(const void *start, size_t size, int dir)
+{
+	return __dma_unmap_area(start, size, dir);
+}
+
+static inline bool cache_is_vipt_nonaliasing(void)
+{
+	return true;
+}
+
+static inline void *kmap_high_get(struct page *page)
+{
+	return NULL;
+}
+
+static inline void kunmap_high(struct page *page) {}
+#endif
+
+
+/* functions called by SWIOTLB */
+
+static void dma_cache_maint(dma_addr_t handle, unsigned long offset,
+	size_t size, enum dma_data_direction dir,
+	void (*op)(const void *, size_t, int))
+{
+	unsigned long pfn;
+	size_t left = size;
+
+	pfn = (handle >> PAGE_SHIFT) + offset / PAGE_SIZE;
+	offset %= PAGE_SIZE;
+
+	do {
+		size_t len = left;
+		void *vaddr;
+	
+		if (!pfn_valid(pfn))
+		{
+			/* TODO: cache flush */
+		} else {
+			struct page *page = pfn_to_page(pfn);
+
+			if (PageHighMem(page)) {
+				if (len + offset > PAGE_SIZE)
+					len = PAGE_SIZE - offset;
+
+				if (cache_is_vipt_nonaliasing()) {
+					vaddr = kmap_atomic(page);
+					op(vaddr + offset, len, dir);
+					kunmap_atomic(vaddr);
+				} else {
+					vaddr = kmap_high_get(page);
+					if (vaddr) {
+						op(vaddr + offset, len, dir);
+						kunmap_high(page);
+					}
+				}
+			} else {
+				vaddr = page_address(page) + offset;
+				op(vaddr, len, dir);
+			}
+		}
+
+		offset = 0;
+		pfn++;
+		left -= len;
+	} while (left);
+}
+
+static void __xen_dma_page_dev_to_cpu(struct device *hwdev, dma_addr_t handle,
+		size_t size, enum dma_data_direction dir)
+{
+	/* Cannot use __dma_page_dev_to_cpu because we don't have a
+	 * struct page for handle */
+
+	dma_cache_maint(handle & PAGE_MASK, handle & ~PAGE_MASK, size, dir, dmac_unmap_area);
+}
+
+static void __xen_dma_page_cpu_to_dev(struct device *hwdev, dma_addr_t handle,
+		size_t size, enum dma_data_direction dir)
+{
+
+	dma_cache_maint(handle & PAGE_MASK, handle & ~PAGE_MASK, size, dir, dmac_map_area);
+}
+
+void xen_dma_unmap_page(struct device *hwdev, dma_addr_t handle,
+		size_t size, enum dma_data_direction dir,
+		struct dma_attrs *attrs)
+
+{
+	if (xen_is_dma_coherent(hwdev))
+		return;
+	if (dma_get_attr(DMA_ATTR_SKIP_CPU_SYNC, attrs))
+		return;
+
+	__xen_dma_page_dev_to_cpu(hwdev, handle, size, dir);
+}
+
+void xen_dma_sync_single_for_cpu(struct device *hwdev,
+		dma_addr_t handle, size_t size, enum dma_data_direction dir)
+{
+	if (xen_is_dma_coherent(hwdev))
+		return;
+	__xen_dma_page_dev_to_cpu(hwdev, handle, size, dir);
+}
+
+void xen_dma_sync_single_for_device(struct device *hwdev,
+		dma_addr_t handle, size_t size, enum dma_data_direction dir)
+{
+	if (xen_is_dma_coherent(hwdev))
+		return;
+	__xen_dma_page_cpu_to_dev(hwdev, handle, size, dir);
+}
 
 int xen_create_contiguous_region(phys_addr_t pstart, unsigned int order,
 				 unsigned int address_bits,
