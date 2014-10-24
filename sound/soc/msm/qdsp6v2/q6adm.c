@@ -421,9 +421,18 @@ int adm_dolby_dap_get_params(int port_id, uint32_t module_id, uint32_t param_id,
 		rc = -EINVAL;
 		goto dolby_dap_get_param_return;
 	}
-	if (params_data) {
+	if ((params_data) && (ARRAY_SIZE(adm_dolby_get_parameters) >=
+		(1+adm_dolby_get_parameters[0])) &&
+		(params_length/sizeof(int) >=
+		adm_dolby_get_parameters[0])) {
 		for (i = 0; i < adm_dolby_get_parameters[0]; i++)
 			params_data[i] = adm_dolby_get_parameters[1+i];
+	} else {
+		pr_err("%s: Get param data not copied! get_param array size %zd, index %d, params array size %zd, index %d\n",
+		__func__, ARRAY_SIZE(adm_dolby_get_parameters),
+		(1+adm_dolby_get_parameters[0]),
+		params_length/sizeof(int),
+		adm_dolby_get_parameters[0]);
 	}
 	rc = 0;
 dolby_dap_get_param_return:
@@ -602,13 +611,26 @@ static int32_t adm_callback(struct apr_client_data *data, void *priv)
 			if (payload[0] != 0)
 				pr_err("%s: ADM_CMDRSP_GET_PP_PARAMS_V5 returned error = 0x%x\n",
 					__func__, payload[0]);
-			rtac_make_adm_callback(payload,
-				data->payload_size);
-			adm_dolby_get_parameters[0] = payload[3];
-			pr_debug("GET_PP PARAM:received parameter length: %x\n",
-					adm_dolby_get_parameters[0]);
-			for (i = 0; i < payload[3]; i++)
-				adm_dolby_get_parameters[1+i] = payload[4+i];
+			if (rtac_make_adm_callback(payload,
+					data->payload_size))
+				break;
+			if ((payload[0] == 0) && (data->payload_size >
+				(4 * sizeof(*payload))) &&
+				(data->payload_size/sizeof(*payload)-4 >=
+				payload[3]) &&
+				(ARRAY_SIZE(adm_dolby_get_parameters)-1 >=
+				payload[3])) {
+				adm_dolby_get_parameters[0] = payload[3];
+				pr_debug("%s: GET_PP PARAM:received parameter length: 0x%x\n",
+					__func__, adm_dolby_get_parameters[0]);
+				/* storing param size then params */
+				for (i = 0; i < payload[3]; i++)
+					adm_dolby_get_parameters[1+i] = payload[4+i];
+			} else {
+				adm_dolby_get_parameters[0] = -1;
+				pr_err("%s: GET_PP_PARAMS failed, setting size to %d\n",
+					__func__, adm_dolby_get_parameters[0]);
+			}
 			atomic_set(&this_adm.copp_stat[index], 1);
 			wake_up(&this_adm.wait[index]);
 			break;
