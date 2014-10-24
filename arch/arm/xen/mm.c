@@ -11,6 +11,7 @@
 #include <linux/swiotlb.h>
 
 #include <xen/xen.h>
+#include <xen/interface/grant_table.h>
 #include <xen/interface/memory.h>
 #include <xen/swiotlb-xen.h>
 
@@ -45,6 +46,8 @@ static inline void *kmap_high_get(struct page *page)
 static inline void kunmap_high(struct page *page) {}
 #endif
 
+static bool hypercall_cflush = false;
+
 
 /* functions called by SWIOTLB */
 
@@ -61,17 +64,35 @@ static void dma_cache_maint(dma_addr_t handle, unsigned long offset,
 	do {
 		size_t len = left;
 		void *vaddr;
+
+		/* buffers in highmem or foreign pages cannot cross page
+		 * boundaries */
+		if (len + offset > PAGE_SIZE)
+			len = PAGE_SIZE - offset;
 	
 		if (!pfn_valid(pfn))
 		{
-			/* TODO: cache flush */
+			struct gnttab_cache_flush cflush;
+
+			cflush.op = 0;
+			cflush.a.dev_bus_addr = pfn << PAGE_SHIFT;
+			cflush.offset = offset;
+			cflush.length = len;
+
+			if (op == dmac_unmap_area && dir != DMA_TO_DEVICE)
+				cflush.op = GNTTAB_CACHE_INVAL;
+			if (op == dmac_map_area) {
+				if (dir == DMA_FROM_DEVICE)
+					cflush.op = GNTTAB_CACHE_INVAL;
+				else
+					cflush.op = GNTTAB_CACHE_CLEAN;
+			}
+			if (cflush.op)
+				HYPERVISOR_grant_table_op(GNTTABOP_cache_flush, &cflush, 1);
 		} else {
 			struct page *page = pfn_to_page(pfn);
 
 			if (PageHighMem(page)) {
-				if (len + offset > PAGE_SIZE)
-					len = PAGE_SIZE - offset;
-
 				if (cache_is_vipt_nonaliasing()) {
 					vaddr = kmap_atomic(page);
 					op(vaddr + offset, len, dir);
@@ -144,7 +165,7 @@ bool xen_arch_need_swiotlb(struct device *dev,
 			   unsigned long pfn,
 			   unsigned long mfn)
 {
-	return ((pfn != mfn) && !xen_is_dma_coherent(dev));
+	return (!hypercall_cflush && (pfn != mfn) && !xen_is_dma_coherent(dev));
 }
 
 int xen_create_contiguous_region(phys_addr_t pstart, unsigned int order,
@@ -187,10 +208,18 @@ static struct dma_map_ops xen_swiotlb_dma_ops = {
 
 int __init xen_mm_init(void)
 {
+	struct gnttab_cache_flush cflush;
 	if (!xen_initial_domain())
 		return 0;
 	xen_swiotlb_init(1, false);
 	xen_dma_ops = &xen_swiotlb_dma_ops;
+
+	cflush.op = 0;
+	cflush.a.dev_bus_addr = 0;
+	cflush.offset = 0;
+	cflush.length = 0;
+	if (HYPERVISOR_grant_table_op(GNTTABOP_cache_flush, &cflush, 1) != -ENOSYS)
+		hypercall_cflush = true;
 	return 0;
 }
 arch_initcall(xen_mm_init);
