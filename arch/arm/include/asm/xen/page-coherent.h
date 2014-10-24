@@ -5,6 +5,11 @@
 #include <linux/dma-attrs.h>
 #include <linux/dma-mapping.h>
 
+static inline bool xen_is_dma_coherent(struct device *dev)
+{
+    return (__generic_dma_ops(dev) == &arm_coherent_dma_ops);
+}
+ 
 static inline void *xen_alloc_coherent_pages(struct device *hwdev, size_t size,
 		dma_addr_t *dma_handle, gfp_t flags,
 		struct dma_attrs *attrs)
