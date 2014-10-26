@@ -208,7 +208,8 @@ static void umh_complete(struct subprocess_info *sub_info)
 	struct completion *comp = xchg(&sub_info->complete, NULL);
 	/*
 	 * See call_usermodehelper_exec(). If xchg() returns NULL
-	 * we own sub_info, the UMH_KILLABLE caller has gone away.
+	 * we own sub_info, the UMH_KILLABLE caller has gone away
+	 * or the caller used UMH_NO_WAIT.
 	 */
 	if (comp)
 		complete(comp);
@@ -265,12 +266,12 @@ static int ____call_usermodehelper(void *data)
 			   (const char __user *const __user *)sub_info->envp);
 out:
 	sub_info->retval = retval;
+	/* wait_for_helper() will call umh_complete if UHM_WAIT_PROC. */
 	if (wait != UMH_WAIT_PROC)
-		/* For UMH_WAIT_PROC wait_for_helper calls umh_complete */
 		umh_complete(sub_info);
-	if (retval)
-		do_exit(0);
-	return 0;
+	if (!retval)
+		return 0;
+	do_exit(0);
 }
 
 static int call_helper(void *data)
@@ -580,6 +581,11 @@ int call_usermodehelper_exec(struct subprocess_info *sub_info, int wait)
 		goto out;
 	}
 
+	/*
+	 * Set the completion pointer only if there is a waiter.
+	 * This makes it possible to use umh_complete to free
+	 * the data structure in case of UMH_NO_WAIT.
+	 */
 	sub_info->complete = (wait == UMH_NO_WAIT) ? NULL : &done;
 	sub_info->wait = wait;
 
