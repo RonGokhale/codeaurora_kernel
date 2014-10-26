@@ -1739,7 +1739,7 @@ static int _proc_do_string(char *data, int maxlen, int write,
 		while ((p - buffer) < *lenp && len < maxlen - 1) {
 			if (get_user(c, p++))
 				return -EFAULT;
-			if (c == 0 || c == '\n')
+			if (c == 0 || c == '\n' || c == '\r')
 				break;
 			data[len++] = c;
 		}
