@@ -29,6 +29,7 @@
 #include <linux/mpage.h>
 #include <linux/quotaops.h>
 #include <linux/blkdev.h>
+#include <linux/math64.h>
 
 #include <cluster/masklog.h>
 
@@ -640,13 +641,20 @@ static ssize_t ocfs2_direct_IO_write(struct kiocb *iocb,
 	journal_t *journal = osb->journal->j_journal;
 	u32 p_cpos = 0;
 	u32 v_cpos = ocfs2_clusters_for_bytes(osb->sb, offset);
-	u32 zero_len = offset % (1 << osb->s_clustersize_bits);
-	int cluster_align = offset % (1 << osb->s_clustersize_bits) ? 0 : 1;
+	u32 zero_len;
+	int cluster_align;
+	loff_t final_size = offset + count;
 	int append_write = offset >= i_size_read(inode) ? 1 : 0;
 	unsigned int num_clusters = 0;
 	unsigned int ext_flags = 0;
 
-	loff_t final_size = offset + count;
+	{
+		loff_t o = offset;
+
+		zero_len = do_div(o, 1 << osb->s_clustersize_bits);
+		cluster_align = !!zero_len;
+	}
+
 	/*
 	 * when final_size > inode->i_size, inode->i_size will be
 	 * updated after direct write, so add the inode to orphan
