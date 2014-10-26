@@ -280,6 +280,7 @@ int __init cma_declare_contiguous(phys_addr_t base,
 			ret = -ENOMEM;
 			goto err;
 		} else {
+			kmemleak_ignore(phys_to_virt(addr));
 			base = addr;
 		}
 	}
