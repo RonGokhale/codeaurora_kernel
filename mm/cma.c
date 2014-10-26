@@ -280,6 +280,10 @@ int __init cma_declare_contiguous(phys_addr_t base,
 			ret = -ENOMEM;
 			goto err;
 		} else {
+			/*
+			 * kmemleak writes metadata to the tracked objects, but
+			 * this address isn't mapped and accessible.
+			 */
 			kmemleak_ignore(phys_to_virt(addr));
 			base = addr;
 		}
