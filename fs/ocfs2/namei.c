@@ -75,20 +75,6 @@ static int ocfs2_mknod_locked(struct ocfs2_super *osb,
 			      handle_t *handle,
 			      struct ocfs2_alloc_context *inode_ac);
 
-static int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
-				    struct inode **ret_orphan_dir,
-				    u64 blkno,
-				    char *name,
-				    struct ocfs2_dir_lookup_result *lookup);
-
-static int ocfs2_orphan_add(struct ocfs2_super *osb,
-			    handle_t *handle,
-			    struct inode *inode,
-			    struct buffer_head *fe_bh,
-			    char *name,
-			    struct ocfs2_dir_lookup_result *lookup,
-			    struct inode *orphan_dir_inode);
-
 static int ocfs2_create_symlink_data(struct ocfs2_super *osb,
 				     handle_t *handle,
 				     struct inode *inode,
@@ -2097,7 +2083,7 @@ static int __ocfs2_prepare_orphan_dir(struct inode *orphan_dir_inode,
  *
  * Returns non-zero on failure. 
  */
-static int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
+int ocfs2_prepare_orphan_dir(struct ocfs2_super *osb,
 				    struct inode **ret_orphan_dir,
 				    u64 blkno,
 				    char *name,
@@ -2137,7 +2123,7 @@ out:
 	return ret;
 }
 
-static int ocfs2_orphan_add(struct ocfs2_super *osb,
+int ocfs2_orphan_add(struct ocfs2_super *osb,
 			    handle_t *handle,
 			    struct inode *inode,
 			    struct buffer_head *fe_bh,
