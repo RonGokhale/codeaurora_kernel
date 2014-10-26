@@ -25,6 +25,19 @@
 		};
 	};
 
+	bl: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm0 0 5000000 0>;
+		status = "disabled";
+	};
+};
+
+&adc0 {
+	status = "okay";
+};
+
+&adc1 {
+	status = "okay";
 };
 
 &esdhc1 {
@@ -42,6 +55,16 @@
 &L2 {
 	arm,data-latency = <2 1 2>;
 	arm,tag-latency = <3 2 3>;
+};
+
+&pwm0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm0>;
+};
+
+&pwm1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm1>;
 };
 
 &uart0 {
@@ -94,6 +117,20 @@
 				VF610_PAD_PTC15__ENET_RMII1_TXD1	0x30d2
 				VF610_PAD_PTC16__ENET_RMII1_TXD0	0x30d2
 				VF610_PAD_PTC17__ENET_RMII1_TXEN	0x30d2
+			>;
+		};
+
+		pinctrl_pwm0: pwm0grp {
+			fsl,pins = <
+				VF610_PAD_PTB0__FTM0_CH0		0x1182
+				VF610_PAD_PTB1__FTM0_CH1		0x1182
+			>;
+		};
+
+		pinctrl_pwm1: pwm1grp {
+			fsl,pins = <
+				VF610_PAD_PTB8__FTM1_CH0		0x1182
+				VF610_PAD_PTB9__FTM1_CH1		0x1182
 			>;
 		};
 
