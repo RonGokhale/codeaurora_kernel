@@ -295,8 +295,8 @@ int __init cma_declare_contiguous(phys_addr_t base,
 		goto err;
 
 	totalcma_pages += (size / PAGE_SIZE);
-	pr_info("Reserved %ld MiB at %08lx\n", (unsigned long)size / SZ_1M,
-		(unsigned long)base);
+	pr_info("Reserved %ld MiB at %pa\n", (unsigned long)size / SZ_1M,
+		&base);
 	return 0;
 
 err:
