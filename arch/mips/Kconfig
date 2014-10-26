@@ -269,6 +269,8 @@ config LANTIQ
 	select USE_OF
 	select PINCTRL
 	select PINCTRL_LANTIQ
+	select ARCH_HAS_RESET_CONTROLLER
+	select RESET_CONTROLLER
 
 config LASAT
 	bool "LASAT Networks platforms"
@@ -2047,6 +2049,7 @@ config MIPS_CPS
 	  support is unavailable.
 
 config MIPS_CPS_PM
+	depends on MIPS_CPS
 	select MIPS_CPC
 	bool
 
