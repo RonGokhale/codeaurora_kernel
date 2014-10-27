@@ -280,6 +280,12 @@ int __init cma_declare_contiguous(phys_addr_t base,
 			ret = -ENOMEM;
 			goto err;
 		} else {
+			/*
+			 * kmemleak scans/reads tracked objects for pointers to
+			 * other objects but this address isn't mapped and
+			 * accessible
+			 */
+			kmemleak_ignore(phys_to_virt(addr));
 			base = addr;
 		}
 	}
@@ -288,8 +294,9 @@ int __init cma_declare_contiguous(phys_addr_t base,
 	if (ret)
 		goto err;
 
-	pr_info("Reserved %ld MiB at %08lx\n", (unsigned long)size / SZ_1M,
-		(unsigned long)base);
+	totalcma_pages += (size / PAGE_SIZE);
+	pr_info("Reserved %ld MiB at %pa\n", (unsigned long)size / SZ_1M,
+		&base);
 	return 0;
 
 err:
