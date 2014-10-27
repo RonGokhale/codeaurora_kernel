@@ -88,7 +88,7 @@ static const uuid_le UltraControlvmChannelProtocolGuid =
  *  - issued on the EventQueue queue (q #2) in the ControlVm channel
  *  - responded to on the EventAckQueue queue (q #3) in the ControlVm channel
  */
-typedef enum  {
+enum control_vm_id {
 	CONTROLVM_INVALID = 0,
 	/* SWITCH commands required Parameter: SwitchNumber  */
 	/* BUS commands required Parameter: BusNumber  */
@@ -117,9 +117,9 @@ typedef enum  {
 	CONTROLVM_CHIPSET_READY = 0x304,	/* CP --> SP */
 	CONTROLVM_CHIPSET_SELFTEST = 0x305,	/* CP --> SP */
 
-} CONTROLVM_ID;
+};
 
-struct InterruptInfo {
+struct irq_info {
 	 /**< specifies interrupt info. It is used to send interrupts
 	  *   for this channel. The peer at the end of this channel
 	  *   who has registered an interrupt (using recv fields
@@ -148,7 +148,7 @@ struct InterruptInfo {
 	u8 reserved[3];	/* Natural alignment purposes */
 };
 
-struct PciId {
+struct pci_id {
 	u16 Domain;
 	u8 Bus;
 	u8 Slot;
@@ -239,7 +239,7 @@ typedef enum {
  *  looking at the flags.response field.
  */
 typedef struct _CONTROLVM_MESSAGE_HEADER  {
-	u32 Id;		/* See CONTROLVM_ID. */
+	u32 Id;		/* See control_vm_id. */
 	/* For requests, indicates the message type. */
 	/* For responses, indicates the type of message we are responding to. */
 
@@ -298,7 +298,7 @@ typedef struct _CONTROLVM_PACKET_DEVICE_CREATE  {
 	u64 channelBytes; /**< specifies size of the channel in bytes */
 	uuid_le dataTypeGuid;/**< specifies format of data in channel */
 	uuid_le devInstGuid; /**< instance guid for the device */
-	struct InterruptInfo intr; /**< specifies interrupt information */
+	struct irq_info intr; /**< specifies interrupt information */
 } CONTROLVM_PACKET_DEVICE_CREATE;	/* for CONTROLVM_DEVICE_CREATE */
 
 typedef struct _CONTROLVM_PACKET_DEVICE_CONFIGURE  {
@@ -390,13 +390,13 @@ typedef struct _CONTROLVM_MESSAGE_PACKET  {
 		} reconfigureDevice;	/* for CONTROLVM_DEVICE_RECONFIGURE */
 		struct  {
 			u32 busNo;
-			ULTRA_SEGMENT_STATE state;
+			struct ultra_segment_state state;
 			u8 reserved[2];	/* Natural alignment purposes */
 		} busChangeState;	/* for CONTROLVM_BUS_CHANGESTATE */
 		struct  {
 			u32 busNo;
 			u32 devNo;
-			ULTRA_SEGMENT_STATE state;
+			struct ultra_segment_state state;
 			struct  {
 				u32 physicalDevice:1;	/* =1 if message is for
 							 * a physical device */
@@ -407,7 +407,7 @@ typedef struct _CONTROLVM_MESSAGE_PACKET  {
 		struct  {
 			u32 busNo;
 			u32 devNo;
-			ULTRA_SEGMENT_STATE state;
+			struct ultra_segment_state state;
 			u8 reserved[6];	/* Natural alignment purposes */
 		} deviceChangeStateEvent; /* for CONTROLVM_DEVICE_CHANGESTATE_EVENT */
 		struct  {

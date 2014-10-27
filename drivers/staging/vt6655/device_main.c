@@ -362,9 +362,9 @@ device_set_options(struct vnt_private *pDevice)
 	unsigned char abySNAP_RFC1042[ETH_ALEN] = {0xAA, 0xAA, 0x03, 0x00, 0x00, 0x00};
 	unsigned char abySNAP_Bridgetunnel[ETH_ALEN] = {0xAA, 0xAA, 0x03, 0x00, 0x00, 0xF8};
 
-	memcpy(pDevice->abyBroadcastAddr, abyBroadcastAddr, ETH_ALEN);
-	memcpy(pDevice->abySNAP_RFC1042, abySNAP_RFC1042, ETH_ALEN);
-	memcpy(pDevice->abySNAP_Bridgetunnel, abySNAP_Bridgetunnel, ETH_ALEN);
+	ether_addr_copy(pDevice->abyBroadcastAddr, abyBroadcastAddr);
+	ether_addr_copy(pDevice->abySNAP_RFC1042, abySNAP_RFC1042);
+	ether_addr_copy(pDevice->abySNAP_Bridgetunnel, abySNAP_Bridgetunnel);
 
 	pDevice->uChannel = pDevice->sOpts.channel_num;
 	pDevice->wRTSThreshold = pDevice->sOpts.rts_thresh;
@@ -854,8 +854,6 @@ vt6655_probe(struct pci_dev *pcid, const struct pci_device_id *ent)
 		return -ENODEV;
 	}
 
-#if 1
-
 #ifdef	DEBUG
 
 	pr_debug("after get pci_info memaddr is %x, io addr is %x,io_size is %d\n", pDevice->memaddr, pDevice->ioaddr, pDevice->io_size);
@@ -892,8 +890,6 @@ vt6655_probe(struct pci_dev *pcid, const struct pci_device_id *ent)
 			}
 		}
 	}
-#endif
-
 #endif
 
 	pDevice->PortOffset = ioremap(pDevice->memaddr & PCI_BASE_ADDRESS_MEM_MASK, pDevice->io_size);
@@ -1204,7 +1200,7 @@ static void device_free_rd0_ring(struct vnt_private *pDevice)
 
 		dev_kfree_skb(pRDInfo->skb);
 
-		kfree((void *)pDesc->pRDInfo);
+		kfree(pDesc->pRDInfo);
 	}
 }
 
@@ -1221,7 +1217,7 @@ static void device_free_rd1_ring(struct vnt_private *pDevice)
 
 		dev_kfree_skb(pRDInfo->skb);
 
-		kfree((void *)pDesc->pRDInfo);
+		kfree(pDesc->pRDInfo);
 	}
 }
 
@@ -1305,7 +1301,7 @@ static void device_free_td0_ring(struct vnt_private *pDevice)
 		if (pTDInfo->skb)
 			dev_kfree_skb(pTDInfo->skb);
 
-		kfree((void *)pDesc->pTDInfo);
+		kfree(pDesc->pTDInfo);
 	}
 }
 
@@ -1324,7 +1320,7 @@ static void device_free_td1_ring(struct vnt_private *pDevice)
 		if (pTDInfo->skb)
 			dev_kfree_skb(pTDInfo->skb);
 
-		kfree((void *)pDesc->pTDInfo);
+		kfree(pDesc->pTDInfo);
 	}
 }
 
@@ -1553,9 +1549,6 @@ static int  device_open(struct net_device *dev)
 {
 	struct vnt_private *pDevice = netdev_priv(dev);
 	int i;
-#ifdef WPA_SM_Transtatus
-	extern SWPAResult wpa_Result;
-#endif
 
 	pDevice->rx_buf_sz = PKT_BUF_SZ;
 	if (!device_init_rings(pDevice))
@@ -1567,11 +1560,6 @@ static int  device_open(struct net_device *dev)
 		return i;
 
 #ifdef WPA_SM_Transtatus
-	memset(wpa_Result.ifname, 0, sizeof(wpa_Result.ifname));
-	wpa_Result.proto = 0;
-	wpa_Result.key_mgmt = 0;
-	wpa_Result.eap_type = 0;
-	wpa_Result.authenticated = false;
 	pDevice->fWPA_Authened = false;
 #endif
 	pr_debug("call device init rd0 ring\n");
@@ -1591,7 +1579,7 @@ static int  device_open(struct net_device *dev)
 	device_init_registers(pDevice);
 
 	MACvReadEtherAddress(pDevice->PortOffset, pDevice->abyCurrentNetAddr);
-	memcpy(pDevice->pMgmt->abyMACAddr, pDevice->abyCurrentNetAddr, ETH_ALEN);
+	ether_addr_copy(pDevice->pMgmt->abyMACAddr, pDevice->abyCurrentNetAddr);
 	device_set_multi(pDevice->dev);
 
 	// Init for Key Management
@@ -2915,28 +2903,20 @@ static int  device_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 		if (!(pDevice->flags & DEVICE_FLAGS_OPENED)) {
 			rc = -EFAULT;
 			break;
-		} else {
-			rc = 0;
 		}
+		rc = 0;
 		pReq = (PSCmdRequest)rq;
 		pReq->wResult = MAGIC_CODE;
 		break;
 
 	case IOCTL_CMD_SET:
 
-#ifdef SndEvt_ToAPI
-		if ((((PSCmdRequest)rq)->wCmdCode != WLAN_CMD_SET_EVT) &&
-		    !(pDevice->flags & DEVICE_FLAGS_OPENED))
-#else
-			if (!(pDevice->flags & DEVICE_FLAGS_OPENED) &&
-			    (((PSCmdRequest)rq)->wCmdCode != WLAN_CMD_SET_WPA))
-#endif
-			{
+		if (!(pDevice->flags & DEVICE_FLAGS_OPENED) &&
+		    (((PSCmdRequest)rq)->wCmdCode != WLAN_CMD_SET_WPA))	{
 				rc = -EFAULT;
 				break;
-			} else {
-				rc = 0;
 			}
+			rc = 0;
 
 		if (test_and_set_bit(0, (void *)&(pMgmt->uCmdBusy)))
 			return -EBUSY;

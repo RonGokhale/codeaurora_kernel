@@ -1270,7 +1270,6 @@ static int ft1000_parse_dpram_msg(struct net_device *dev)
 	u16 nxtph;
 	u16 total_len;
 	int i = 0;
-	int cnt;
 	unsigned long flags;
 
 	doorbell = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
@@ -1336,7 +1335,6 @@ static int ft1000_parse_dpram_msg(struct net_device *dev)
 			  total_len);
 		if ((total_len < MAX_CMD_SQSIZE) && (total_len > sizeof(struct pseudo_hdr))) {
             total_len += nxtph;
-            cnt = 0;
 			/*
 			 * ft1000_read_reg will return a value that needs to be byteswap
 			 * in order to get DSP_QID_OFFSET.
@@ -2154,14 +2152,14 @@ struct net_device *init_ft1000_card(struct pcmcia_device *link,
 	if (flarion_ft1000_cnt > 1) {
 		flarion_ft1000_cnt--;
 
-		printk(KERN_INFO
-			   "ft1000: This driver can not support more than one instance\n");
+		dev_info(&link->dev,
+			   "This driver can not support more than one instance\n");
 		return NULL;
 	}
 
 	dev = alloc_etherdev(sizeof(struct ft1000_info));
 	if (!dev) {
-		printk(KERN_ERR "ft1000: failed to allocate etherdev\n");
+		dev_err(&link->dev, "Failed to allocate etherdev\n");
 		return NULL;
 	}
 
@@ -2209,17 +2207,17 @@ struct net_device *init_ft1000_card(struct pcmcia_device *link,
 	dev->irq = link->irq;
 	dev->base_addr = link->resource[0]->start;
 	if (pcmcia_get_mac_from_cis(link, dev)) {
-		printk(KERN_ERR "ft1000: Could not read mac address\n");
+		netdev_err(dev, "Could not read mac address\n");
 		goto err_dev;
 	}
 
 	if (request_irq(dev->irq, ft1000_interrupt, IRQF_SHARED, dev->name, dev)) {
-		printk(KERN_ERR "ft1000: Could not request_irq\n");
+		netdev_err(dev, "Could not request_irq\n");
 		goto err_dev;
 	}
 
 	if (request_region(dev->base_addr, 256, dev->name) == NULL) {
-		printk(KERN_ERR "ft1000: Could not request_region\n");
+		netdev_err(dev, "Could not request_region\n");
 		goto err_irq;
 	}
 

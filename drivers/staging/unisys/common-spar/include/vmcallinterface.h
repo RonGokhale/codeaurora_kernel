@@ -113,15 +113,15 @@ typedef struct phys_info IO_DATA_STRUCTURE;
 /* ///////////// ONLY STRUCT TYPE SHOULD BE BELOW */
 #pragma pack(push, 1)
 /* Parameters to VMCALL_IO_CONTROLVM_ADDR interface */
-typedef struct _VMCALL_IO_CONTROLVM_ADDR_PARAMS {
+struct vmcall_io_controlvm_addr_params {
 	    /* The Guest-relative physical address of the ControlVm channel.
 	    * This VMCall fills this in with the appropriate address. */
-	u64 ChannelAddress;	/* contents provided by this VMCALL (OUT) */
+	u64 address;	/* contents provided by this VMCALL (OUT) */
 	    /* the size of the ControlVm channel in bytes This VMCall fills this
 	    * in with the appropriate address. */
-	u32 ChannelBytes;	/* contents provided by this VMCALL (OUT) */
-	u8 Unused[4];		/* Unused Bytes in the 64-Bit Aligned Struct */
-} VMCALL_IO_CONTROLVM_ADDR_PARAMS;
+	u32 channel_bytes;	/* contents provided by this VMCALL (OUT) */
+	u8 unused[4];		/* Unused Bytes in the 64-Bit Aligned Struct */
+};
 
 #pragma pack(pop)
 /* ///////////// END PRAGMA PACK PUSH 1 /////////////////////////// */
@@ -130,11 +130,11 @@ typedef struct _VMCALL_IO_CONTROLVM_ADDR_PARAMS {
 /* ///////////// ONLY STRUCT TYPE SHOULD BE BELOW */
 #pragma pack(push, 1)
 /* Parameters to VMCALL_IO_DIAG_ADDR interface */
-typedef struct _VMCALL_IO_DIAG_ADDR_PARAMS {
+struct vmcall_io_diag_addr_params {
 	    /* The Guest-relative physical address of the diagnostic channel.
 	    * This VMCall fills this in with the appropriate address. */
-	u64 ChannelAddress;	/* contents provided by this VMCALL (OUT) */
-} VMCALL_IO_DIAG_ADDR_PARAMS;
+	u64 address;	/* contents provided by this VMCALL (OUT) */
+};
 
 #pragma pack(pop)
 /* ///////////// END PRAGMA PACK PUSH 1 /////////////////////////// */
@@ -143,25 +143,25 @@ typedef struct _VMCALL_IO_DIAG_ADDR_PARAMS {
 /* ///////////// ONLY STRUCT TYPE SHOULD BE BELOW */
 #pragma pack(push, 1)
 /* Parameters to VMCALL_IO_VISORSERIAL_ADDR interface */
-typedef struct _VMCALL_IO_VISORSERIAL_ADDR_PARAMS {
+struct vmcall_io_visorserial_addr_params {
 	    /* The Guest-relative physical address of the serial console
 	    * channel.  This VMCall fills this in with the appropriate
 	    * address. */
-	u64 ChannelAddress;	/* contents provided by this VMCALL (OUT) */
-} VMCALL_IO_VISORSERIAL_ADDR_PARAMS;
+	u64 address;	/* contents provided by this VMCALL (OUT) */
+};
 
 #pragma pack(pop)
 /* ///////////// END PRAGMA PACK PUSH 1 /////////////////////////// */
 
 /* Parameters to VMCALL_CHANNEL_MISMATCH interface */
-typedef struct _VMCALL_CHANNEL_VERSION_MISMATCH_PARAMS {
-	u8 ChannelName[32];	/* Null terminated string giving name of channel
+struct vmcall_channel_version_mismatch_params {
+	u8 chname[32];	/* Null terminated string giving name of channel
 				 * (IN) */
-	u8 ItemName[32];	/* Null terminated string giving name of
+	u8 item_name[32];	/* Null terminated string giving name of
 				 * mismatched item (IN) */
-	u32 SourceLineNumber;	/* line# where invoked. (IN) */
-	u8 SourceFileName[36];	/* source code where invoked - Null terminated
+	u32 line_no;		/* line# where invoked. (IN) */
+	u8 file_name[36];	/* source code where invoked - Null terminated
 				 * string (IN) */
-} VMCALL_CHANNEL_VERSION_MISMATCH_PARAMS;
+};
 
 #endif /* __IOMONINTF_H__ */

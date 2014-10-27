@@ -275,7 +275,8 @@ static int rtw_cfg80211_inform_bss(struct rtw_adapter *padapter,
 			    &pnetwork->network)) {
 		notify_signal = 100 * translate_percentage_to_dbm(padapter->recvpriv.signal_strength);	/* dbm */
 	} else {
-		notify_signal = 100 * translate_percentage_to_dbm(pnetwork->network.PhyInfo.SignalStrength);	/* dbm */
+		notify_signal = 100 * translate_percentage_to_dbm(
+			pnetwork->network.SignalStrength);	/* dbm */
 	}
 
 	bss = cfg80211_inform_bss(wiphy, notify_channel,
@@ -471,7 +472,6 @@ static int rtw_cfg80211_ap_set_encryption(struct net_device *dev, u8 key_index,
 					  int set_tx, const u8 *sta_addr,
 					  struct key_params *keyparms)
 {
-	int ret = 0;
 	int key_len;
 	struct sta_info *psta = NULL, *pbcmc_sta = NULL;
 	struct rtw_adapter *padapter = netdev_priv(dev);
@@ -708,7 +708,7 @@ static int rtw_cfg80211_ap_set_encryption(struct net_device *dev, u8 key_index,
 
 exit:
 
-	return ret;
+	return 0;
 }
 #endif
 
@@ -850,7 +850,6 @@ static int rtw_cfg80211_set_encryption(struct net_device *dev, u8 key_index,
 					    dot11PrivacyAlgrthm;
 				}
 			}
-		} else if (check_fwstate(pmlmepriv, WIFI_ADHOC_STATE)) {	/* adhoc mode */
 		}
 	}
 
@@ -2432,20 +2431,16 @@ void rtw_cfg80211_indicate_sta_disassoc(struct rtw_adapter *padapter,
 
 static int rtw_cfg80211_monitor_if_open(struct net_device *ndev)
 {
-	int ret = 0;
-
 	DBG_8723A("%s\n", __func__);
 
-	return ret;
+	return 0;
 }
 
 static int rtw_cfg80211_monitor_if_close(struct net_device *ndev)
 {
-	int ret = 0;
-
 	DBG_8723A("%s\n", __func__);
 
-	return ret;
+	return 0;
 }
 
 static int rtw_cfg80211_monitor_if_xmit_entry(struct sk_buff *skb,
@@ -2574,11 +2569,9 @@ fail:
 static int
 rtw_cfg80211_monitor_if_set_mac_address(struct net_device *ndev, void *addr)
 {
-	int ret = 0;
-
 	DBG_8723A("%s\n", __func__);
 
-	return ret;
+	return 0;
 }
 
 static const struct net_device_ops rtw_cfg80211_monitor_if_ops = {

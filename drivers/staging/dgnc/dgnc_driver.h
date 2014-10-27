@@ -42,21 +42,10 @@
  *
  *************************************************************************/
 
-/*
- * Driver identification, error and debugging statments
- *
- * In theory, you can change all occurrences of "digi" in the next
- * three lines, and the driver printk's will all automagically change.
- *
- * APR((fmt, args, ...));	Always prints message
- */
+/* Driver identification, error and debugging statments */
 #define	PROCSTR		"dgnc"			/* /proc entries	 */
 #define	DEVSTR		"/dev/dg/dgnc"		/* /dev entries		 */
-#define	DRVSTR		"dgnc"			/* Driver name string
-						 * displayed by APR	 */
-#define	APR(args)	do { printk(DRVSTR": "); printk args; \
-			   } while (0)
-#define	RAPR(args)	do { printk args; } while (0)
+#define	DRVSTR		"dgnc"			/* Driver name string	 */
 
 #define TRC_TO_CONSOLE 1
 
@@ -134,8 +123,6 @@
 #define   _POSIX_VDISABLE '\0'
 #endif
 
-#define SNIFF_MAX	65536		/* Sniff buffer size (2^n) */
-#define SNIFF_MASK	(SNIFF_MAX - 1)	/* Sniff wrap mask */
 
 /*
  * All the possible states the driver can be while being loaded.
@@ -342,13 +329,6 @@ struct un_t {
 #define CH_FORCED_STOP  0x20000		/* Output is forcibly stopped	*/
 #define CH_FORCED_STOPI 0x40000		/* Input is forcibly stopped	*/
 
-/*
- * Definitions for ch_sniff_flags
- */
-#define SNIFF_OPEN	0x1
-#define SNIFF_WAIT_DATA	0x2
-#define SNIFF_WAIT_SPACE 0x4
-
 
 /* Our Read/Error/Write queue sizes */
 #define RQUEUEMASK	0x1FFF		/* 8 K - 1 */
@@ -442,11 +422,6 @@ struct channel_t {
 	struct proc_dir_entry *proc_entry_pointer;
 	struct dgnc_proc_entry *dgnc_channel_table;
 
-	uint ch_sniff_in;
-	uint ch_sniff_out;
-	char *ch_sniff_buf;		/* Sniff buffer for proc */
-	ulong ch_sniff_flags;		/* Channel flags		*/
-	wait_queue_head_t ch_sniff_wait;
 };
 
 /*

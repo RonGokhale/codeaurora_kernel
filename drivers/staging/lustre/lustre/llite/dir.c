@@ -163,7 +163,7 @@ static int ll_dir_filler(void *_hash, struct page *page0)
 
 	LASSERT(max_pages > 0 && max_pages <= MD_MAX_BRW_PAGES);
 
-	page_pool = kzalloc(sizeof(page) * max_pages, GFP_NOFS);
+	page_pool = kcalloc(max_pages, sizeof(page), GFP_NOFS);
 	if (page_pool) {
 		page_pool[0] = page0;
 	} else {
@@ -275,14 +275,14 @@ static struct page *ll_dir_page_locate(struct inode *dir, __u64 *hash,
 	struct page *page;
 	int found;
 
-	TREE_READ_LOCK_IRQ(mapping);
+	spin_lock_irq(&mapping->tree_lock);
 	found = radix_tree_gang_lookup(&mapping->page_tree,
 				       (void **)&page, offset, 1);
 	if (found > 0) {
 		struct lu_dirpage *dp;
 
 		page_cache_get(page);
-		TREE_READ_UNLOCK_IRQ(mapping);
+		spin_unlock_irq(&mapping->tree_lock);
 		/*
 		 * In contrast to find_lock_page() we are sure that directory
 		 * page cannot be truncated (while DLM lock is held) and,
@@ -326,7 +326,7 @@ static struct page *ll_dir_page_locate(struct inode *dir, __u64 *hash,
 		}
 
 	} else {
-		TREE_READ_UNLOCK_IRQ(mapping);
+		spin_unlock_irq(&mapping->tree_lock);
 		page = NULL;
 	}
 	return page;
@@ -1509,8 +1509,7 @@ out_rmdir:
 					       cmd == LL_IOC_MDC_GETINFO)) {
 				rc = 0;
 				goto skip_lmm;
-			}
-			else
+			} else
 				goto out_req;
 		}
 
