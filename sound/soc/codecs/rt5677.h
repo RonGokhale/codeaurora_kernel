@@ -13,6 +13,7 @@
 #define __RT5677_H__
 
 #include <sound/rt5677.h>
+#include <linux/gpio/driver.h>
 
 /* Info */
 #define RT5677_RESET				0x00
@@ -1367,6 +1368,48 @@
 #define RT5677_SEL_SRC_IB01			(0x1 << 0)
 #define RT5677_SEL_SRC_IB01_SFT			0
 
+/* Jack Detect Control 1 (0xb5) */
+#define RT5677_SEL_GPIO_JD1_MASK		(0x3 << 14)
+#define RT5677_SEL_GPIO_JD1_SFT			14
+#define RT5677_SEL_GPIO_JD2_MASK		(0x3 << 12)
+#define RT5677_SEL_GPIO_JD2_SFT			12
+#define RT5677_SEL_GPIO_JD3_MASK		(0x3 << 10)
+#define RT5677_SEL_GPIO_JD3_SFT			10
+
+/* IRQ Control 1 (0xbd) */
+#define RT5677_STA_GPIO_JD1			(0x1 << 15)
+#define RT5677_STA_GPIO_JD1_SFT			15
+#define RT5677_EN_IRQ_GPIO_JD1			(0x1 << 14)
+#define RT5677_EN_IRQ_GPIO_JD1_SFT		14
+#define RT5677_EN_GPIO_JD1_STICKY		(0x1 << 13)
+#define RT5677_EN_GPIO_JD1_STICKY_SFT		13
+#define RT5677_INV_GPIO_JD1			(0x1 << 12)
+#define RT5677_INV_GPIO_JD1_SFT			12
+#define RT5677_STA_GPIO_JD2			(0x1 << 11)
+#define RT5677_STA_GPIO_JD2_SFT			11
+#define RT5677_EN_IRQ_GPIO_JD2			(0x1 << 10)
+#define RT5677_EN_IRQ_GPIO_JD2_SFT		10
+#define RT5677_EN_GPIO_JD2_STICKY		(0x1 << 9)
+#define RT5677_EN_GPIO_JD2_STICKY_SFT		9
+#define RT5677_INV_GPIO_JD2			(0x1 << 8)
+#define RT5677_INV_GPIO_JD2_SFT			8
+#define RT5677_STA_MICBIAS1_OVCD		(0x1 << 7)
+#define RT5677_STA_MICBIAS1_OVCD_SFT		7
+#define RT5677_EN_IRQ_MICBIAS1_OVCD		(0x1 << 6)
+#define RT5677_EN_IRQ_MICBIAS1_OVCD_SFT		6
+#define RT5677_EN_MICBIAS1_OVCD_STICKY		(0x1 << 5)
+#define RT5677_EN_MICBIAS1_OVCD_STICKY_SFT	5
+#define RT5677_INV_MICBIAS1_OVCD		(0x1 << 4)
+#define RT5677_INV_MICBIAS1_OVCD_SFT		4
+#define RT5677_STA_GPIO_JD3			(0x1 << 3)
+#define RT5677_STA_GPIO_JD3_SFT			3
+#define RT5677_EN_IRQ_GPIO_JD3			(0x1 << 2)
+#define RT5677_EN_IRQ_GPIO_JD3_SFT		2
+#define RT5677_EN_GPIO_JD3_STICKY		(0x1 << 1)
+#define RT5677_EN_GPIO_JD3_STICKY_SFT		1
+#define RT5677_INV_GPIO_JD3			(0x1 << 0)
+#define RT5677_INV_GPIO_JD3_SFT			0
+
 /* GPIO status (0xbf) */
 #define RT5677_GPIO6_STATUS_MASK		(0x1 << 5)
 #define RT5677_GPIO6_STATUS_SFT			5
@@ -1506,6 +1549,9 @@
 #define RT5677_GPIO5_FUNC_GPIO			(0x0 << 9)
 #define RT5677_GPIO5_FUNC_DMIC			(0x1 << 9)
 
+#define RT5677_FIRMWARE1	"rt5677_dsp_fw1.bin"
+#define RT5677_FIRMWARE2	"rt5677_dsp_fw2.bin"
+
 /* System Clock Source */
 enum {
 	RT5677_SCLK_S_MCLK,
@@ -1541,10 +1587,18 @@ enum {
 	RT5677_GPIO_NUM,
 };
 
+enum {
+	RT5677_IRQ_JD1,
+	RT5677_IRQ_JD2,
+	RT5677_IRQ_JD3,
+};
+
 struct rt5677_priv {
 	struct snd_soc_codec *codec;
 	struct rt5677_platform_data pdata;
 	struct regmap *regmap;
+	const struct firmware *fw1, *fw2;
+	struct mutex dsp_cmd_lock;
 
 	int sysclk;
 	int sysclk_src;
@@ -1558,6 +1612,8 @@ struct rt5677_priv {
 #ifdef CONFIG_GPIOLIB
 	struct gpio_chip gpio_chip;
 #endif
+	bool dsp_vad_en;
+	struct regmap_irq_chip_data *irq_data;
 };
 
 #endif /* __RT5677_H__ */
