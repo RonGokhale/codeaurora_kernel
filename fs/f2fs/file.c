@@ -41,18 +41,23 @@ static int f2fs_vm_page_mkwrite(struct vm_area_struct *vma,
 
 	sb_start_pagefault(inode->i_sb);
 
-	/* force to convert with normal data indices */
-	err = f2fs_convert_inline_data(inode, MAX_INLINE_DATA + 1, page);
-	if (err)
-		goto out;
+	/* we don't need to use inline_data strictly */
+	if (f2fs_has_inline_data(inode)) {
+		err = f2fs_convert_inline_inode(inode);
+		if (err)
+			goto out;
+	}
 
 	/* block allocation */
 	f2fs_lock_op(sbi);
 	set_new_dnode(&dn, inode, NULL, NULL, 0);
 	err = f2fs_reserve_block(&dn, page->index);
-	f2fs_unlock_op(sbi);
-	if (err)
+	if (err) {
+		f2fs_unlock_op(sbi);
 		goto out;
+	}
+	f2fs_put_dnode(&dn);
+	f2fs_unlock_op(sbi);
 
 	file_update_time(vma->vm_file);
 	lock_page(page);
@@ -296,7 +301,7 @@ static loff_t f2fs_seek_block(struct file *file, loff_t offset, int whence)
 		goto fail;
 
 	/* handle inline data case */
-	if (f2fs_has_inline_data(inode)) {
+	if (f2fs_has_inline_data(inode) || f2fs_has_inline_dentry(inode)) {
 		if (whence == SEEK_HOLE)
 			data_ofs = isize;
 		goto found;
@@ -415,20 +420,23 @@ void truncate_data_blocks(struct dnode_of_data *dn)
 	truncate_data_blocks_range(dn, ADDRS_PER_BLOCK);
 }
 
-static void truncate_partial_data_page(struct inode *inode, u64 from)
+static int truncate_partial_data_page(struct inode *inode, u64 from)
 {
 	unsigned offset = from & (PAGE_CACHE_SIZE - 1);
 	struct page *page;
 
-	if (f2fs_has_inline_data(inode))
-		return truncate_inline_data(inode, from);
+	if (f2fs_has_inline_data(inode)) {
+		int err = truncate_inline_data(inode, from);
+		if (err != -EAGAIN)
+			return err;
+	}
 
 	if (!offset)
-		return;
+		return 0;
 
 	page = find_data_page(inode, from >> PAGE_CACHE_SHIFT, false);
 	if (IS_ERR(page))
-		return;
+		return 0;
 
 	lock_page(page);
 	if (unlikely(!PageUptodate(page) ||
@@ -438,9 +446,9 @@ static void truncate_partial_data_page(struct inode *inode, u64 from)
 	f2fs_wait_on_page_writeback(page, DATA);
 	zero_user(page, offset, PAGE_CACHE_SIZE - offset);
 	set_page_dirty(page);
-
 out:
 	f2fs_put_page(page, 1);
+	return 0;
 }
 
 int truncate_blocks(struct inode *inode, u64 from, bool lock)
@@ -453,11 +461,11 @@ int truncate_blocks(struct inode *inode, u64 from, bool lock)
 
 	trace_f2fs_truncate_blocks_enter(inode, from);
 
+	free_from = (pgoff_t)
+		((from + blocksize - 1) >> (sbi->log_blocksize));
+
 	if (f2fs_has_inline_data(inode))
 		goto done;
-
-	free_from = (pgoff_t)
-			((from + blocksize - 1) >> (sbi->log_blocksize));
 
 	if (lock)
 		f2fs_lock_op(sbi);
@@ -490,7 +498,7 @@ free_next:
 		f2fs_unlock_op(sbi);
 done:
 	/* lastly zero out the first data page */
-	truncate_partial_data_page(inode, from);
+	err = truncate_partial_data_page(inode, from);
 
 	trace_f2fs_truncate_blocks_exit(inode, err);
 	return err;
@@ -561,10 +569,6 @@ int f2fs_setattr(struct dentry *dentry, struct iattr *attr)
 		return err;
 
 	if (attr->ia_valid & ATTR_SIZE) {
-		err = f2fs_convert_inline_data(inode, attr->ia_size, NULL);
-		if (err)
-			return err;
-
 		if (attr->ia_size != i_size_read(inode)) {
 			truncate_setsize(inode, attr->ia_size);
 			f2fs_truncate(inode);
@@ -665,9 +669,11 @@ static int punch_hole(struct inode *inode, loff_t offset, loff_t len)
 	if (offset >= inode->i_size)
 		return ret;
 
-	ret = f2fs_convert_inline_data(inode, MAX_INLINE_DATA + 1, NULL);
-	if (ret)
-		return ret;
+	if (f2fs_has_inline_data(inode)) {
+		ret = f2fs_convert_inline_inode(inode);
+		if (ret)
+			return ret;
+	}
 
 	pg_start = ((unsigned long long) offset) >> PAGE_CACHE_SHIFT;
 	pg_end = ((unsigned long long) offset + len) >> PAGE_CACHE_SHIFT;
@@ -721,9 +727,11 @@ static int expand_inode_data(struct inode *inode, loff_t offset,
 	if (ret)
 		return ret;
 
-	ret = f2fs_convert_inline_data(inode, offset + len, NULL);
-	if (ret)
-		return ret;
+	if (f2fs_has_inline_data(inode)) {
+		ret = f2fs_convert_inline_inode(inode);
+		if (ret)
+			return ret;
+	}
 
 	pg_start = ((unsigned long long) offset) >> PAGE_CACHE_SHIFT;
 	pg_end = ((unsigned long long) offset + len) >> PAGE_CACHE_SHIFT;
@@ -874,7 +882,7 @@ static int f2fs_ioc_start_atomic_write(struct file *filp)
 
 	set_inode_flag(F2FS_I(inode), FI_ATOMIC_FILE);
 
-	return f2fs_convert_inline_data(inode, MAX_INLINE_DATA + 1, NULL);
+	return f2fs_convert_inline_inode(inode);
 }
 
 static int f2fs_ioc_commit_atomic_write(struct file *filp)
