@@ -35,6 +35,8 @@
 #ifndef __LINUX_REGULATOR_CONSUMER_H_
 #define __LINUX_REGULATOR_CONSUMER_H_
 
+#include <linux/err.h>
+
 struct device;
 struct notifier_block;
 struct regmap;
@@ -282,7 +284,7 @@ devm_regulator_get(struct device *dev, const char *id)
 static inline struct regulator *__must_check
 regulator_get_exclusive(struct device *dev, const char *id)
 {
-	return NULL;
+	return ERR_PTR(-ENODEV);
 }
 
 static inline struct regulator *__must_check
