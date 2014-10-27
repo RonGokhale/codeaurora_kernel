@@ -1,0 +1,19 @@
+Importing jdelvare-hwmon based on 3.17
+$ git clone -s -l -n -q . ../quilt-tmp
+$ cd ../quilt-tmp
+$ git reset --hard bfe01a5ba2490f299e1d2d5508cbbbadd897bbe9
+HEAD is now at bfe01a5ba249 Linux 3.17
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-i5500_temp-01-new-driver.patch
+Applying: hwmon: (i5500_temp) New driver for the Intel 5500/5520/X58 chipsets
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-i5500_temp-02-convert-to-devm.patch
+Applying: hwmon: (i5500_temp) Convert to devm_hwmon_device_register_with_groups
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-i5500_temp-03-detect-disabled-sensor.patch
+Applying: hwmon: (i5500_temp) Don't bind to disabled sensors
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-i5500_temp-04-convert-to-module_pci_driver.patch
+Applying: hwmon: (i5500_temp) Convert to module_pci_driver
+$ git am --patch-format=mbox ../quilt/jdelvare-hwmon/hwmon-i5500_temp-05-convert-to-use-attribute_groups.patch
+Applying: hwmon: (i5500_temp) Convert to use ATTRIBUTE_GROUPS macro
+$ cd /home/sfr/kernels/next/next
+$ git fetch -f ../quilt-tmp master:jdelvare-hwmon/master
+From ../quilt-tmp
+ + 6f524c0e53c0...625f857de892 master     -> jdelvare-hwmon/master  (forced update)
