@@ -36,6 +36,11 @@ const char *get_system_type(void)
 	return soc_info.sys_type;
 }
 
+int ltq_soc_type(void)
+{
+	return soc_info.type;
+}
+
 void prom_free_prom_memory(void)
 {
 }
@@ -72,6 +77,8 @@ void __init plat_mem_setup(void)
 	 * parsed resulting in our memory appearing
 	 */
 	__dt_setup_arch(__dtb_start);
+
+	strlcpy(arcs_cmdline, boot_command_line, COMMAND_LINE_SIZE);
 }
 
 void __init device_tree_init(void)
