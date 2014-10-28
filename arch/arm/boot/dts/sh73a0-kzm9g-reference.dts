@@ -90,6 +90,7 @@
 		interrupt-parent = <&irqpin0>;
 		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
 		reg-io-width = <4>;
+		clocks = <&zb_clk>;
 		smsc,irq-push-pull;
 		smsc,save-mac-address;
 		vddvario-supply = <&reg_1p8v>;
