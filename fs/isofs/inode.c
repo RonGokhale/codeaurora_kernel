@@ -135,10 +135,6 @@ static const struct super_operations isofs_sops = {
 
 static const struct dentry_operations isofs_dentry_ops[] = {
 	{
-		.d_hash		= isofs_hash,
-		.d_compare	= isofs_dentry_cmp,
-	},
-	{
 		.d_hash		= isofs_hashi,
 		.d_compare	= isofs_dentry_cmpi,
 	},
@@ -930,7 +926,8 @@ root_found:
 	if (opt.check == 'r')
 		table++;
 
-	s->s_d_op = &isofs_dentry_ops[table];
+	if (table)
+		s->s_d_op = &isofs_dentry_ops[table - 1];
 
 	/* get the root dentry */
 	s->s_root = d_make_root(inode);
