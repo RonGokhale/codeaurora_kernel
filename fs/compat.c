@@ -326,6 +326,7 @@ COMPAT_SYSCALL_DEFINE3(fstatfs64, unsigned int, fd, compat_size_t, sz, struct co
 	return error;
 }
 
+#ifdef CONFIG_OBSOLETE_SYSCALLS
 /*
  * This is a copy of sys_ustat, just dealing with a structure layout.
  * Given how simple this syscall is that apporach is more maintainable
@@ -346,6 +347,7 @@ COMPAT_SYSCALL_DEFINE2(ustat, unsigned, dev, struct compat_ustat __user *, u)
 		return -EFAULT;
 	return 0;
 }
+#endif
 
 static int get_compat_flock(struct flock *kfl, struct compat_flock __user *ufl)
 {

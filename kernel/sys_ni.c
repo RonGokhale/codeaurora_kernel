@@ -159,6 +159,13 @@ cond_syscall(sys_uselib);
 cond_syscall(sys_fadvise64);
 cond_syscall(sys_fadvise64_64);
 cond_syscall(sys_madvise);
+cond_syscall(sys_ustat);
+cond_syscall(compat_sys_ustat);
+cond_syscall(sys_lstat);
+cond_syscall(sys_fstat);
+cond_syscall(sys_stat);
+cond_syscall(sys_uname);
+cond_syscall(sys_olduname);
 
 /* arch-specific weak syscall entries */
 cond_syscall(sys_pciconfig_read);
