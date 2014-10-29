@@ -1943,7 +1943,7 @@ void try_offline_node(int nid)
 
 	if (!PageSlab(pgdat_page) && !PageCompound(pgdat_page))
 		/* node data is allocated from boot memory */
-		return;
+		goto out;
 
 	/* free waittable in each zone */
 	for (i = 0; i < MAX_NR_ZONES; i++) {
@@ -1957,6 +1957,7 @@ void try_offline_node(int nid)
 			vfree(zone->wait_table);
 	}
 
+out:
 	/*
 	 * Since there is no way to guarentee the address of pgdat/zone is not
 	 * on stack of any kernel threads or used by other kernel objects
