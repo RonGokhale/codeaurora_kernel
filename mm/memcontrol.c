@@ -2198,21 +2198,31 @@ cleanup:
 	return true;
 }
 
-/*
- * Used to update mapped file or writeback or other statistics.
+/**
+ * mem_cgroup_begin_page_stat - begin a page state statistics transaction
+ * @page: page that is going to change accounted state
+ * @locked: &memcg->move_lock slowpath was taken
+ * @flags: IRQ-state flags for &memcg->move_lock
  *
- * Notes: Race condition
+ * This function must mark the beginning of an accounted page state
+ * change to prevent double accounting when the page is concurrently
+ * being moved to another memcg:
  *
- * Charging occurs during page instantiation, while the page is
- * unmapped and locked in page migration, or while the page table is
- * locked in THP migration.  No race is possible.
+ *   memcg = mem_cgroup_begin_page_stat(page, &locked, &flags);
+ *   if (TestClearPageState(page))
+ *     mem_cgroup_update_page_stat(memcg, state, -1);
+ *   mem_cgroup_end_page_stat(memcg, locked, flags);
  *
- * Uncharge happens to pages with zero references, no race possible.
+ * The RCU lock is held throughout the transaction.  The fast path can
+ * get away without acquiring the memcg->move_lock (@locked is false)
+ * because page moving starts with an RCU grace period.
  *
- * Charge moving between groups is protected by checking mm->moving
- * account and taking the move_lock in the slowpath.
+ * The RCU lock also protects the memcg from being freed when the page
+ * state that is going to change is the only thing preventing the page
+ * from being uncharged.  E.g. end-writeback clearing PageWriteback(),
+ * which allows migration to go ahead and uncharge the page before the
+ * account transaction might be complete.
  */
-
 struct mem_cgroup *mem_cgroup_begin_page_stat(struct page *page,
 					      bool *locked,
 					      unsigned long *flags)
@@ -2230,12 +2240,7 @@ again:
 	memcg = pc->mem_cgroup;
 	if (unlikely(!memcg || !PageCgroupUsed(pc)))
 		return NULL;
-	/*
-	 * If this memory cgroup is not under account moving, we don't
-	 * need to take move_lock_mem_cgroup(). Because we already hold
-	 * rcu_read_lock(), any calls to move_account will be delayed until
-	 * rcu_read_unlock().
-	 */
+
 	*locked = false;
 	if (atomic_read(&memcg->moving_account) <= 0)
 		return memcg;
@@ -2250,6 +2255,12 @@ again:
 	return memcg;
 }
 
+/**
+ * mem_cgroup_end_page_stat - finish a page state statistics transaction
+ * @memcg: the memcg that was accounted against
+ * @locked: value received from mem_cgroup_begin_page_stat()
+ * @flags: value received from mem_cgroup_begin_page_stat()
+ */
 void mem_cgroup_end_page_stat(struct mem_cgroup *memcg, bool locked,
 			      unsigned long flags)
 {
@@ -2259,6 +2270,14 @@ void mem_cgroup_end_page_stat(struct mem_cgroup *memcg, bool locked,
 	rcu_read_unlock();
 }
 
+/**
+ * mem_cgroup_update_page_stat - update page state statistics
+ * @memcg: memcg to account against
+ * @idx: page state item to account
+ * @val: number of pages (positive or negative)
+ *
+ * See mem_cgroup_begin_page_stat() for locking requirements.
+ */
 void mem_cgroup_update_page_stat(struct mem_cgroup *memcg,
 				 enum mem_cgroup_stat_index idx, int val)
 {
