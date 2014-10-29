@@ -113,8 +113,6 @@ static int pm8xxx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 			dev_err(dev, "Write to RTC control register failed\n");
 			goto rtc_rw_fail;
 		}
-	} else {
-		spin_unlock_irqrestore(&rtc_dd->ctrl_reg_lock, irq_flags);
 	}
 
 	/* Write 0 to Byte[0] */
@@ -149,8 +147,7 @@ static int pm8xxx_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	}
 
 rtc_rw_fail:
-	if (alarm_enabled)
-		spin_unlock_irqrestore(&rtc_dd->ctrl_reg_lock, irq_flags);
+	spin_unlock_irqrestore(&rtc_dd->ctrl_reg_lock, irq_flags);
 
 	return rc;
 }
