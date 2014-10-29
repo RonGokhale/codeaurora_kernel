@@ -292,6 +292,8 @@ struct thin_c {
 
 	struct pool *pool;
 	struct dm_thin_device *td;
+	struct mapped_device *thin_md;
+
 	bool requeue_mode:1;
 	spinlock_t lock;
 	struct list_head deferred_cells;
@@ -1896,35 +1898,50 @@ static void thin_put(struct thin_c *tc);
  * find a thin with the rcu lock held; bump a refcount; then drop
  * the lock.
  */
-static struct thin_c *get_first_thin(struct pool *pool)
+static struct thin_c *__get_first_thin(struct pool *pool, bool get_ref)
 {
 	struct thin_c *tc = NULL;
 
 	rcu_read_lock();
 	if (!list_empty(&pool->active_thins)) {
 		tc = list_entry_rcu(pool->active_thins.next, struct thin_c, list);
-		thin_get(tc);
+		if (get_ref)
+			thin_get(tc);
 	}
 	rcu_read_unlock();
 
 	return tc;
 }
 
-static struct thin_c *get_next_thin(struct pool *pool, struct thin_c *tc)
+static struct thin_c *get_first_thin(struct pool *pool)
+{
+	return __get_first_thin(pool, true);
+}
+
+static struct thin_c *__get_next_thin(struct pool *pool, struct thin_c *tc,
+				      bool get_ref, bool put_ref)
 {
 	struct thin_c *old_tc = tc;
 
 	rcu_read_lock();
 	list_for_each_entry_continue_rcu(tc, &pool->active_thins, list) {
-		thin_get(tc);
-		thin_put(old_tc);
+		if (get_ref)
+			thin_get(tc);
+		if (put_ref)
+			thin_put(old_tc);
 		rcu_read_unlock();
 		return tc;
 	}
-	thin_put(old_tc);
+	if (put_ref)
+		thin_put(old_tc);
 	rcu_read_unlock();
 
 	return NULL;
+}
+
+static struct thin_c *get_next_thin(struct pool *pool, struct thin_c *tc)
+{
+	return __get_next_thin(pool, tc, true, true);
 }
 
 static void process_deferred_bios(struct pool *pool)
@@ -3113,18 +3130,56 @@ static int pool_preresume(struct dm_target *ti)
 	return 0;
 }
 
+static void pool_suspend_active_thins(struct pool *pool)
+{
+	struct thin_c *tc;
+
+	/* Suspend all active thin devices */
+	tc = get_first_thin(pool);
+	while (tc) {
+		dm_internal_suspend_noflush(tc->thin_md);
+		/*
+		 * Use __get_next_thin() to keep reference on all
+		 * tc until resume via pool_resume_active_thins()
+		 */
+		tc = __get_next_thin(pool, tc, true, false);
+	}
+}
+
+static void pool_resume_active_thins(struct pool *pool)
+{
+	struct thin_c *tc;
+
+	/*
+	 * Resume all active thin devices
+	 *
+	 * Use __get_{first,next}_thin() to drop reference
+	 * that suspend already got on each tc.
+	 */
+	tc = __get_first_thin(pool, false);
+	while (tc) {
+		dm_internal_resume(tc->thin_md);
+		tc = __get_next_thin(pool, tc, false, true);
+	}
+}
+
 static void pool_resume(struct dm_target *ti)
 {
 	struct pool_c *pt = ti->private;
 	struct pool *pool = pt->pool;
 	unsigned long flags;
 
+	/*
+	 * Must requeue active_thins' bios and then resume
+	 * active_thins _before_ clearing 'suspend' flag.
+	 */
+	requeue_bios(pool);
+	pool_resume_active_thins(pool);
+
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->low_water_triggered = false;
 	pool->suspended = false;
 	spin_unlock_irqrestore(&pool->lock, flags);
-
-	requeue_bios(pool);
 
 	do_waker(&pool->waker.work);
 }
@@ -3138,6 +3193,8 @@ static void pool_presuspend(struct dm_target *ti)
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->suspended = true;
 	spin_unlock_irqrestore(&pool->lock, flags);
+
+	pool_suspend_active_thins(pool);
 }
 
 static void pool_presuspend_undo(struct dm_target *ti)
@@ -3145,6 +3202,8 @@ static void pool_presuspend_undo(struct dm_target *ti)
 	struct pool_c *pt = ti->private;
 	struct pool *pool = pt->pool;
 	unsigned long flags;
+
+	pool_resume_active_thins(pool);
 
 	spin_lock_irqsave(&pool->lock, flags);
 	pool->suspended = false;
@@ -3703,6 +3762,7 @@ static int thin_ctr(struct dm_target *ti, unsigned argc, char **argv)
 		r = -ENOMEM;
 		goto out_unlock;
 	}
+	tc->thin_md = dm_table_get_md(ti->table);
 	spin_lock_init(&tc->lock);
 	INIT_LIST_HEAD(&tc->deferred_cells);
 	bio_list_init(&tc->deferred_bio_list);
