@@ -30,6 +30,9 @@
 #define SST_DMA_TYPE_DW		1
 #define SST_DMA_TYPE_MID	2
 
+/* autosuspend delay 5s*/
+#define SST_RUNTIME_SUSPEND_DELAY	(5 * 1000)
+
 /* SST Shim register map
  * The register naming can differ between products. Some products also
  * contain extra functionality.
@@ -245,6 +248,17 @@ void sst_memcpy_fromio_32(struct sst_dsp *sst,
 /* DSP reset & boot */
 void sst_dsp_reset(struct sst_dsp *sst);
 int sst_dsp_boot(struct sst_dsp *sst);
+int sst_dsp_wake(struct sst_dsp *sst);
+void sst_dsp_sleep(struct sst_dsp *sst);
+void sst_dsp_stall(struct sst_dsp *sst);
+
+/* DMA */
+int sst_dsp_dma_get_channel(struct sst_dsp *dsp, int chan_id);
+void sst_dsp_dma_put_channel(struct sst_dsp *dsp);
+int sst_dsp_dma_copyfrom(struct sst_dsp *sst, dma_addr_t dest_addr,
+	dma_addr_t src_addr, size_t size);
+int sst_dsp_dma_copyto(struct sst_dsp *sst, dma_addr_t dest_addr,
+	dma_addr_t src_addr, size_t size);
 
 /* Msg IO */
 void sst_dsp_ipc_msg_tx(struct sst_dsp *dsp, u32 msg);
