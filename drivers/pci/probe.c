@@ -271,8 +271,11 @@ int __pci_read_base(struct pci_dev *dev, enum pci_bar_type type,
 
 	sz64 = pci_size(l64, sz64, mask64);
 
-	if (!sz64)
+	if (!sz64) {
+		dev_info(&dev->dev, "%sreg 0x%x: invalid BAR (can't size)\n",
+			 FW_BUG, pos);
 		goto fail;
+	}
 
 	region.start = l64;
 	region.end = l64 + sz64;
