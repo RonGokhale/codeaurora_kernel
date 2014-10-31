@@ -1126,7 +1126,7 @@ static void intel_ddi_pre_enable(struct intel_encoder *intel_encoder)
 
 		/* write eld */
 		DRM_DEBUG_DRIVER("DDI audio: write eld information\n");
-		intel_write_eld(encoder, &crtc->config.adjusted_mode);
+		intel_write_eld(intel_encoder);
 	}
 
 	if (type == INTEL_OUTPUT_EDP) {
@@ -1291,7 +1291,7 @@ static int hsw_get_cdclk_freq(struct drm_i915_private *dev_priv)
 		return 450000;
 	else if (freq == LCPLL_CLK_FREQ_450)
 		return 450000;
-	else if (IS_ULT(dev))
+	else if (IS_HSW_ULT(dev))
 		return 337500;
 	else
 		return 540000;
