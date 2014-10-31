@@ -149,6 +149,14 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 
 		led_trigger_event(host->led, LED_OFF);
 
+		if (mrq->sbc) {
+			pr_debug("%s: req done <CMD%u>: %d: %08x %08x %08x %08x\n",
+				mmc_hostname(host), mrq->sbc->opcode,
+				mrq->sbc->error,
+				mrq->sbc->resp[0], mrq->sbc->resp[1],
+				mrq->sbc->resp[2], mrq->sbc->resp[3]);
+		}
+
 		pr_debug("%s: req done (CMD%u): %d: %08x %08x %08x %08x\n",
 			mmc_hostname(host), cmd->opcode, err,
 			cmd->resp[0], cmd->resp[1],
@@ -214,6 +222,10 @@ mmc_start_request(struct mmc_host *host, struct mmc_request *mrq)
 
 	mrq->cmd->error = 0;
 	mrq->cmd->mrq = mrq;
+	if (mrq->sbc) {
+		mrq->sbc->error = 0;
+		mrq->sbc->mrq = mrq;
+	}
 	if (mrq->data) {
 		BUG_ON(mrq->data->blksz > host->max_blk_size);
 		BUG_ON(mrq->data->blocks > host->max_blk_count);
@@ -538,8 +550,18 @@ struct mmc_async_req *mmc_start_req(struct mmc_host *host,
 		if (host->card && mmc_card_mmc(host->card) &&
 		    ((mmc_resp_type(host->areq->mrq->cmd) == MMC_RSP_R1) ||
 		     (mmc_resp_type(host->areq->mrq->cmd) == MMC_RSP_R1B)) &&
-		    (host->areq->mrq->cmd->resp[0] & R1_EXCEPTION_EVENT))
+		    (host->areq->mrq->cmd->resp[0] & R1_EXCEPTION_EVENT)) {
+
+			/* Cancel the prepared request */
+			if (areq)
+				mmc_post_req(host, areq->mrq, -EINVAL);
+
 			mmc_start_bkops(host->card, true);
+
+			/* prepare the request again */
+			if (areq)
+				mmc_pre_req(host, areq->mrq, !host->areq);
+		}
 	}
 
 	if (!err && areq)
@@ -709,27 +731,16 @@ int mmc_read_bkops_status(struct mmc_card *card)
 	int err;
 	u8 *ext_csd;
 
-	/*
-	 * In future work, we should consider storing the entire ext_csd.
-	 */
-	ext_csd = kmalloc(512, GFP_KERNEL);
-	if (!ext_csd) {
-		pr_err("%s: could not allocate buffer to receive the ext_csd.\n",
-		       mmc_hostname(card->host));
-		return -ENOMEM;
-	}
-
 	mmc_claim_host(card->host);
-	err = mmc_send_ext_csd(card, ext_csd);
+	err = mmc_get_ext_csd(card, &ext_csd);
 	mmc_release_host(card->host);
 	if (err)
-		goto out;
+		return err;
 
 	card->ext_csd.raw_bkops_status = ext_csd[EXT_CSD_BKOPS_STATUS];
 	card->ext_csd.raw_exception_status = ext_csd[EXT_CSD_EXP_EVENTS_STATUS];
-out:
 	kfree(ext_csd);
-	return err;
+	return 0;
 }
 EXPORT_SYMBOL(mmc_read_bkops_status);
 
