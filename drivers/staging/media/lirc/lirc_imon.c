@@ -572,29 +572,6 @@ static void submit_data(struct imon_context *context)
 	wake_up(&context->driver->rbuf->wait_poll);
 }
 
-static inline int tv2int(const struct timeval *a, const struct timeval *b)
-{
-	int usecs = 0;
-	int sec   = 0;
-
-	if (b->tv_usec > a->tv_usec) {
-		usecs = 1000000;
-		sec--;
-	}
-
-	usecs += a->tv_usec - b->tv_usec;
-
-	sec += a->tv_sec - b->tv_sec;
-	sec *= 1000;
-	usecs /= 1000;
-	sec += usecs;
-
-	if (sec < 0)
-		sec = 1000;
-
-	return sec;
-}
-
 /**
  * Process the incoming packet
  */
@@ -623,8 +600,8 @@ static void imon_incoming_packet(struct imon_context *context,
 	if (debug) {
 		dev_info(dev, "raw packet: ");
 		for (i = 0; i < len; ++i)
-			printk("%02x ", buf[i]);
-		printk("\n");
+			dev_dbg(dev, "%02x ", buf[i]);
+		dev_dbg(dev, "\n");
 	}
 
 	/*

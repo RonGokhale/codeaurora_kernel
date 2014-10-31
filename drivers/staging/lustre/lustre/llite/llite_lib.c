@@ -250,7 +250,8 @@ static int client_common_fill_super(struct super_block *sb, char *md, char *dt,
 
 	data->ocd_brw_size = MD_MAX_BRW_SIZE;
 
-	err = obd_connect(NULL, &sbi->ll_md_exp, obd, &sbi->ll_sb_uuid, data, NULL);
+	err = obd_connect(NULL, &sbi->ll_md_exp, obd, &sbi->ll_sb_uuid,
+			  data, NULL);
 	if (err == -EBUSY) {
 		LCONSOLE_ERROR_MSG(0x14f, "An MDT (md %s) is performing "
 				   "recovery, of which this client is not a "
@@ -712,6 +713,7 @@ void lustre_dump_dentry(struct dentry *dentry, int recur)
 
 	list_for_each(tmp, &dentry->d_subdirs) {
 		struct dentry *d = list_entry(tmp, struct dentry, d_u.d_child);
+
 		lustre_dump_dentry(d, recur - 1);
 	}
 }
@@ -756,9 +758,9 @@ void ll_kill_super(struct super_block *sb)
 		return;
 
 	sbi = ll_s2sbi(sb);
-	/* we need to restore s_dev from changed for clustered NFS before put_super
-	 * because new kernels have cached s_dev and change sb->s_dev in
-	 * put_super not affected real removing devices */
+	/* we need to restore s_dev from changed for clustered NFS before
+	 * put_super because new kernels have cached s_dev and change sb->s_dev
+	 * in put_super not affected real removing devices */
 	if (sbi) {
 		sb->s_dev = sbi->ll_sdev_orig;
 		sbi->ll_umounting = 1;
@@ -816,25 +818,6 @@ static int ll_options(char *options, int *flags)
 			*flags &= ~tmp;
 			goto next;
 		}
-#if LUSTRE_VERSION_CODE < OBD_OCD_VERSION(2, 5, 50, 0)
-		tmp = ll_set_opt("acl", s1, LL_SBI_ACL);
-		if (tmp) {
-			/* Ignore deprecated mount option.  The client will
-			 * always try to mount with ACL support, whether this
-			 * is used depends on whether server supports it. */
-			LCONSOLE_ERROR_MSG(0x152, "Ignoring deprecated "
-						  "mount option 'acl'.\n");
-			goto next;
-		}
-		tmp = ll_set_opt("noacl", s1, LL_SBI_ACL);
-		if (tmp) {
-			LCONSOLE_ERROR_MSG(0x152, "Ignoring deprecated "
-						  "mount option 'noacl'.\n");
-			goto next;
-		}
-#else
-#warning "{no}acl options have been deprecated since 1.8, please remove them"
-#endif
 		tmp = ll_set_opt("remote_client", s1, LL_SBI_RMT_CLIENT);
 		if (tmp) {
 			*flags |= tmp;
@@ -1121,9 +1104,8 @@ void ll_put_super(struct super_block *sb)
 	}
 
 	next = 0;
-	while ((obd = class_devices_in_group(&sbi->ll_sb_uuid, &next)) !=NULL) {
+	while ((obd = class_devices_in_group(&sbi->ll_sb_uuid, &next)))
 		class_manual_cleanup(obd);
-	}
 
 	if (sbi->ll_flags & LL_SBI_VERBOSE)
 		LCONSOLE_WARN("Unmounted %s\n", profilenm ? profilenm : "");
@@ -1152,6 +1134,7 @@ struct inode *ll_inode_from_resource_lock(struct ldlm_lock *lock)
 	lock_res_and_lock(lock);
 	if (lock->l_resource->lr_lvb_inode) {
 		struct ll_inode_info *lli;
+
 		lli = ll_i2info(lock->l_resource->lr_lvb_inode);
 		if (lli->lli_inode_magic == LLI_INODE_MAGIC) {
 			inode = igrab(lock->l_resource->lr_lvb_inode);
@@ -1732,11 +1715,11 @@ void ll_update_inode(struct inode *inode, struct lustre_md *md)
 	if (body->valid & OBD_MD_FLTYPE)
 		inode->i_mode = (inode->i_mode & ~S_IFMT)|(body->mode & S_IFMT);
 	LASSERT(inode->i_mode != 0);
-	if (S_ISREG(inode->i_mode)) {
-		inode->i_blkbits = min(PTLRPC_MAX_BRW_BITS + 1, LL_MAX_BLKSIZE_BITS);
-	} else {
+	if (S_ISREG(inode->i_mode))
+		inode->i_blkbits = min(PTLRPC_MAX_BRW_BITS + 1,
+				       LL_MAX_BLKSIZE_BITS);
+	else
 		inode->i_blkbits = inode->i_sb->s_blocksize_bits;
-	}
 	if (body->valid & OBD_MD_FLUID)
 		inode->i_uid = make_kuid(&init_user_ns, body->uid);
 	if (body->valid & OBD_MD_FLGID)
@@ -1850,6 +1833,7 @@ void ll_read_inode2(struct inode *inode, void *opaque)
 
 	if (S_ISREG(inode->i_mode)) {
 		struct ll_sb_info *sbi = ll_i2sbi(inode);
+
 		inode->i_op = &ll_file_inode_operations;
 		inode->i_fop = sbi->ll_fop;
 		inode->i_mapping->a_ops = (struct address_space_operations *)&ll_aops;
@@ -1880,8 +1864,8 @@ void ll_delete_inode(struct inode *inode)
 
 	/* Workaround for LU-118 */
 	if (inode->i_data.nrpages) {
-		TREE_READ_LOCK_IRQ(&inode->i_data);
-		TREE_READ_UNLOCK_IRQ(&inode->i_data);
+		spin_lock_irq(&inode->i_data.tree_lock);
+		spin_unlock_irq(&inode->i_data.tree_lock);
 		LASSERTF(inode->i_data.nrpages == 0,
 			 "inode=%lu/%u(%p) nrpages=%lu, see "
 			 "http://jira.whamcloud.com/browse/LU-118\n",
@@ -2166,7 +2150,13 @@ int ll_obd_statfs(struct inode *inode, void *arg)
 	__u32 flags;
 	int len = 0, rc;
 
-	if (!inode || !(sbi = ll_i2sbi(inode))) {
+	if (!inode) {
+		rc = -EINVAL;
+		goto out_statfs;
+	}
+
+	sbi = ll_i2sbi(inode);
+	if (!sbi) {
 		rc = -EINVAL;
 		goto out_statfs;
 	}
@@ -2398,7 +2388,7 @@ char *ll_get_fsname(struct super_block *sb, char *buf, int buflen)
 	return buf;
 }
 
-static char* ll_d_path(struct dentry *dentry, char *buf, int bufsize)
+static char *ll_d_path(struct dentry *dentry, char *buf, int bufsize)
 {
 	char *path = NULL;
 

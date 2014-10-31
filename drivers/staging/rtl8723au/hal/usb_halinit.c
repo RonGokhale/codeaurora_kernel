@@ -480,7 +480,7 @@ static void _InitRFType(struct rtw_adapter *Adapter)
 
 	pHalData->rf_chip = RF_6052;
 
-	if (is92CU == false) {
+	if (!is92CU) {
 		pHalData->rf_type = RF_1T1R;
 		DBG_8723A("Set RF Chip ID to RF_6052 and RF type to 1T1R.\n");
 		return;
@@ -1485,7 +1485,6 @@ void rtl8723a_update_ramask(struct rtw_adapter *padapter,
 	}
 
 	/* mask &= 0x0fffffff; */
-	rate_bitmap = 0x0fffffff;
 	rate_bitmap = ODM_Get_Rate_Bitmap23a(pHalData, mac_id, mask,
 					     rssi_level);
 	DBG_8723A("%s => mac_id:%d, networkType:0x%02x, "

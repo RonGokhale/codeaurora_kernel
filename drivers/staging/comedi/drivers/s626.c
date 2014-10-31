@@ -1480,7 +1480,6 @@ static bool s626_handle_eos_interrupt(struct comedi_device *dev)
 	 * from the final ADC of the previous poll list scan.
 	 */
 	uint32_t *readaddr = (uint32_t *)devpriv->ana_buf.logical_base + 1;
-	bool finished = false;
 	int i;
 
 	/* get the data and hand it over to comedi */
@@ -1494,8 +1493,7 @@ static bool s626_handle_eos_interrupt(struct comedi_device *dev)
 		tempdata = s626_ai_reg_to_uint(*readaddr);
 		readaddr++;
 
-		/* put data into read buffer */
-		cfc_write_to_buffer(s, tempdata);
+		comedi_buf_write_samples(s, &tempdata, 1);
 	}
 
 	/* end of scan occurs */
@@ -1505,25 +1503,16 @@ static bool s626_handle_eos_interrupt(struct comedi_device *dev)
 		devpriv->ai_sample_count--;
 		if (devpriv->ai_sample_count <= 0) {
 			devpriv->ai_cmd_running = 0;
-
-			/* Stop RPS program */
-			s626_mc_disable(dev, S626_MC1_ERPS1, S626_P_MC1);
-
-			/* send end of acquisition */
 			async->events |= COMEDI_CB_EOA;
-
-			/* disable master interrupt */
-			finished = true;
 		}
 	}
 
 	if (devpriv->ai_cmd_running && cmd->scan_begin_src == TRIG_EXT)
 		s626_dio_set_irq(dev, cmd->scan_begin_arg);
 
-	/* tell comedi that data is there */
-	comedi_event(dev, s);
+	comedi_handle_events(dev, s);
 
-	return finished;
+	return !devpriv->ai_cmd_running;
 }
 
 static irqreturn_t s626_irq_handler(int irq, void *d)
@@ -1970,13 +1959,13 @@ static int s626_ns_to_timer(unsigned int *nanosec, unsigned int flags)
 	switch (flags & CMDF_ROUND_MASK) {
 	case CMDF_ROUND_NEAREST:
 	default:
-		divider = (*nanosec + base / 2) / base;
+		divider = DIV_ROUND_CLOSEST(*nanosec, base);
 		break;
 	case CMDF_ROUND_DOWN:
 		divider = (*nanosec) / base;
 		break;
 	case CMDF_ROUND_UP:
-		divider = (*nanosec + base - 1) / base;
+		divider = DIV_ROUND_UP(*nanosec, base);
 		break;
 	}
 

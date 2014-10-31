@@ -38,7 +38,7 @@
 #include <linux/debugfs.h>
 #include "ft1000_usb.h"
 
-static int ft1000_flarion_cnt = 0;
+static int ft1000_flarion_cnt;
 
 static int ft1000_open(struct inode *inode, struct file *file);
 static unsigned int ft1000_poll_dev(struct file *file, poll_table *wait);
@@ -365,7 +365,7 @@ static unsigned int ft1000_poll_dev(struct file *file, poll_table *wait)
     /* DEBUG("ft1000_poll_dev called\n"); */
     if (ft1000_flarion_cnt == 0) {
         DEBUG("FT1000:ft1000_poll_dev called when ft1000_flarion_cnt is zero\n");
-        return (-EBADF);
+        return -EBADF;
     }
 
     /* Search for matching file object */
@@ -379,7 +379,7 @@ static unsigned int ft1000_poll_dev(struct file *file, poll_table *wait)
     /* Could not find application info block */
     if (i == MAX_NUM_APP) {
         DEBUG("FT1000:ft1000_ioctl:Could not find application info block\n");
-        return (-EACCES);
+        return -EACCES;
     }
 
     if (list_empty(&dev->app_info[i].app_sqlist) == 0) {
@@ -433,7 +433,7 @@ static long ft1000_ioctl(struct file *file, unsigned int command,
 
     if (ft1000_flarion_cnt == 0) {
         DEBUG("FT1000:ft1000_ioctl called when ft1000_flarion_cnt is zero\n");
-        return (-EBADF);
+        return -EBADF;
     }
 
     /* DEBUG("FT1000:ft1000_ioctl:command = 0x%x argument = 0x%8x\n", command, (u32)argument); */
@@ -540,17 +540,14 @@ static long ft1000_ioctl(struct file *file, unsigned int command,
             /* DEBUG("FT1000:ft1000_ioctl: IOCTL_FT1000_SET_DPRAM called\n");*/
 
 
-            if (ft1000_flarion_cnt == 0) {
-                return (-EBADF);
-            }
+            if (ft1000_flarion_cnt == 0)
+                return -EBADF;
 
-            if (ft1000dev->DrvMsgPend) {
-                return (-ENOTTY);
-            }
+            if (ft1000dev->DrvMsgPend)
+                return -ENOTTY;
 
-            if (ft1000dev->fProvComplete == 0) {
-                return (-EACCES);
-            }
+            if (ft1000dev->fProvComplete == 0)
+                return -EACCES;
 
             ft1000dev->fAppMsgPend = 1;
 
@@ -677,9 +674,8 @@ static long ft1000_ioctl(struct file *file, unsigned int command,
 
             /* DEBUG("FT1000:ft1000_ioctl: IOCTL_FT1000_GET_DPRAM called\n"); */
 
-            if (ft1000_flarion_cnt == 0) {
-                return (-EBADF);
-            }
+            if (ft1000_flarion_cnt == 0)
+                return -EBADF;
 
             /* Search for matching file object */
             for (i=0; i<MAX_NUM_APP; i++) {
@@ -762,7 +758,7 @@ static int ft1000_release(struct inode *inode, struct file *file)
 
     if (ft1000_flarion_cnt == 0) {
         ft1000dev->appcnt--;
-        return (-EBADF);
+        return -EBADF;
     }
 
     /* Search for matching file object */

@@ -188,14 +188,14 @@ static irqreturn_t a2150_interrupt(int irq, void *d)
 	if (status & OVFL_BIT) {
 		dev_err(dev->class_dev, "fifo overflow\n");
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 	}
 
 	if ((status & DMA_TC_BIT) == 0) {
 		dev_err(dev->class_dev,
 			"caught non-dma interrupt?  Aborting.\n");
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return IRQ_HANDLED;
 	}
 
@@ -237,7 +237,7 @@ static irqreturn_t a2150_interrupt(int irq, void *d)
 		dpnt = devpriv->dma_buffer[i];
 		/*  convert from 2's complement to unsigned coding */
 		dpnt ^= 0x8000;
-		cfc_write_to_buffer(s, dpnt);
+		comedi_buf_write_samples(s, &dpnt, 1);
 		if (cmd->stop_src == TRIG_COUNT) {
 			if (--devpriv->count == 0) {	/* end of acquisition */
 				async->events |= COMEDI_CB_EOA;
@@ -253,9 +253,7 @@ static irqreturn_t a2150_interrupt(int irq, void *d)
 	}
 	release_dma_lock(flags);
 
-	async->events |= COMEDI_CB_BLOCK;
-
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 
 	/* clear interrupt */
 	outw(0x00, dev->iobase + DMA_TC_CLEAR_REG);
