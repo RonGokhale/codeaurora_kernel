@@ -1,13 +1,6 @@
 #ifndef __LINUX_PAGE_CGROUP_H
 #define __LINUX_PAGE_CGROUP_H
 
-enum {
-	/* flags for mem_cgroup */
-	PCG_USED = 0x01,	/* This page is charged to a memcg */
-	PCG_MEM = 0x02,		/* This page holds a memory charge */
-	PCG_MEMSW = 0x04,	/* This page holds a memory+swap charge */
-};
-
 struct pglist_data;
 
 #ifdef CONFIG_MEMCG
@@ -21,7 +14,6 @@ struct mem_cgroup;
  * then the page cgroup for pfn always exists.
  */
 struct page_cgroup {
-	unsigned long flags;
 	struct mem_cgroup *mem_cgroup;
 };
 
@@ -41,10 +33,6 @@ static inline void page_cgroup_init(void)
 
 struct page_cgroup *lookup_page_cgroup(struct page *page);
 
-static inline int PageCgroupUsed(struct page_cgroup *pc)
-{
-	return !!(pc->flags & PCG_USED);
-}
 #else /* !CONFIG_MEMCG */
 struct page_cgroup;
 
