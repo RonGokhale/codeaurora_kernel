@@ -79,6 +79,15 @@ struct blk_mq_tag_set {
 	struct list_head	tag_list;
 };
 
+/*
+ * This is what we pass in to the drivers ->queue_rq() strategy. The
+ * request 'rq' is what needs to be handled. 'list' is a provided list
+ * pointer that the driver can use to temporarily store prepared but
+ * unissued requests. The driver should flush this list on any error
+ * encountered handling 'rq', or if 'last' is true. When 'last' is
+ * true, this is the final invocation of ->queue_rq() for this series
+ * of requests, and 'list' will go out of scope after this call.
+ */
 struct blk_mq_queue_data {
 	struct request *rq;
 	struct list_head *list;
