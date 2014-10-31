@@ -119,7 +119,6 @@ static int mlx4_en_alloc_frags(struct mlx4_en_priv *priv,
 
 out:
 	while (i--) {
-		frag_info = &priv->frag_info[i];
 		if (page_alloc[i].page != ring_alloc[i].page) {
 			dma_unmap_page(priv->ddev, page_alloc[i].dma,
 				page_alloc[i].page_size, PCI_DMA_FROMDEVICE);
@@ -879,8 +878,8 @@ void mlx4_en_rx_irq(struct mlx4_cq *mcq)
 	struct mlx4_en_cq *cq = container_of(mcq, struct mlx4_en_cq, mcq);
 	struct mlx4_en_priv *priv = netdev_priv(cq->dev);
 
-	if (priv->port_up)
-		napi_schedule(&cq->napi);
+	if (likely(priv->port_up))
+		napi_schedule_irqoff(&cq->napi);
 	else
 		mlx4_en_arm_cq(priv, cq);
 }
