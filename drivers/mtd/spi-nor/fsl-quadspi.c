@@ -849,9 +849,8 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 
 	ret = clk_prepare_enable(q->clk);
 	if (ret) {
-		clk_disable_unprepare(q->clk_en);
 		dev_err(dev, "can not enable the qspi clock\n");
-		goto map_failed;
+		goto clk_failed;
 	}
 
 	/* find the irq */
@@ -881,7 +880,6 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 
 	/* iterate the subnodes. */
 	for_each_available_child_of_node(dev->of_node, np) {
-		const struct spi_device_id *id;
 		char modalias[40];
 
 		/* skip the holes */
@@ -906,11 +904,8 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 		nor->prepare = fsl_qspi_prep;
 		nor->unprepare = fsl_qspi_unprep;
 
-		if (of_modalias_node(np, modalias, sizeof(modalias)) < 0)
-			goto map_failed;
-
-		id = spi_nor_match_id(modalias);
-		if (!id)
+		ret = of_modalias_node(np, modalias, sizeof(modalias));
+		if (ret < 0)
 			goto map_failed;
 
 		ret = of_property_read_u32(np, "spi-max-frequency",
@@ -921,7 +916,7 @@ static int fsl_qspi_probe(struct platform_device *pdev)
 		/* set the chip address for READID */
 		fsl_qspi_set_base_addr(q, nor);
 
-		ret = spi_nor_scan(nor, id, SPI_NOR_QUAD);
+		ret = spi_nor_scan(nor, modalias, SPI_NOR_QUAD);
 		if (ret)
 			goto map_failed;
 
@@ -969,6 +964,7 @@ last_init_failed:
 
 irq_failed:
 	clk_disable_unprepare(q->clk);
+clk_failed:
 	clk_disable_unprepare(q->clk_en);
 map_failed:
 	dev_err(dev, "Freescale QuadSPI probe failed\n");
