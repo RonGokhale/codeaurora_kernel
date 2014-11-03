@@ -144,6 +144,53 @@ static bool acpi_ec_started(struct acpi_ec *ec)
 	       !test_bit(EC_FLAGS_STOPPED, &ec->flags);
 }
 
+static bool acpi_ec_flushed(struct acpi_ec *ec)
+{
+	return ec->reference_count == 1;
+}
+
+/* --------------------------------------------------------------------------
+ *                           GPE Enhancement
+ * -------------------------------------------------------------------------- */
+
+static void acpi_ec_submit_request(struct acpi_ec *ec)
+{
+	ec->reference_count++;
+	if (ec->reference_count == 1)
+		acpi_enable_gpe(NULL, ec->gpe);
+}
+
+static void acpi_ec_complete_request(struct acpi_ec *ec)
+{
+	bool flushed = false;
+
+	ec->reference_count--;
+	if (ec->reference_count == 0)
+		acpi_disable_gpe(NULL, ec->gpe);
+	flushed = acpi_ec_flushed(ec);
+	if (flushed)
+		wake_up(&ec->wait);
+}
+
+/*
+ * acpi_ec_submit_flushable_request() - Increase the reference count unless
+ *                                      the flush operation is not in
+ *                                      progress
+ * @ec: the EC device
+ *
+ * This function must be used before taking a new action that should hold
+ * the reference count.  If this function returns false, then the action
+ * must be discarded or it will prevent the flush operation from being
+ * completed.
+ */
+static bool acpi_ec_submit_flushable_request(struct acpi_ec *ec)
+{
+	if (!acpi_ec_started(ec))
+		return false;
+	acpi_ec_submit_request(ec);
+	return true;
+}
+
 /* --------------------------------------------------------------------------
  *                           Transaction Management
  * -------------------------------------------------------------------------- */
@@ -341,7 +388,8 @@ static int acpi_ec_transaction_unlocked(struct acpi_ec *ec,
 		udelay(ACPI_EC_MSI_UDELAY);
 	/* start transaction */
 	spin_lock_irqsave(&ec->lock, tmp);
-	if (!acpi_ec_started(ec)) {
+	/* Enable GPE for command processing (IBF=0/OBF=1) */
+	if (!acpi_ec_submit_flushable_request(ec)) {
 		ret = -EINVAL;
 		goto unlock;
 	}
@@ -360,6 +408,8 @@ static int acpi_ec_transaction_unlocked(struct acpi_ec *ec,
 	pr_debug("***** Command(%s) stopped *****\n",
 		 acpi_ec_cmd_string(t->command));
 	ec->curr = NULL;
+	/* Disable GPE for command processing (IBF=0/OBF=1) */
+	acpi_ec_complete_request(ec);
 unlock:
 	spin_unlock_irqrestore(&ec->lock, tmp);
 	return ret;
@@ -535,10 +585,22 @@ static void acpi_ec_start(struct acpi_ec *ec)
 	spin_lock_irqsave(&ec->lock, flags);
 	if (!test_and_set_bit(EC_FLAGS_STARTED, &ec->flags)) {
 		pr_debug("+++++ Starting EC +++++\n");
-		acpi_enable_gpe(NULL, ec->gpe);
+		/* Enable GPE for event processing (SCI_EVT=1) */
+		acpi_ec_submit_request(ec);
 		pr_info("+++++ EC started +++++\n");
 	}
 	spin_unlock_irqrestore(&ec->lock, flags);
+}
+
+static bool acpi_ec_stopped(struct acpi_ec *ec)
+{
+	unsigned long flags;
+	bool flushed;
+
+	spin_lock_irqsave(&ec->lock, flags);
+	flushed = acpi_ec_flushed(ec);
+	spin_unlock_irqrestore(&ec->lock, flags);
+	return flushed;
 }
 
 static void acpi_ec_stop(struct acpi_ec *ec)
@@ -549,7 +611,11 @@ static void acpi_ec_stop(struct acpi_ec *ec)
 	if (acpi_ec_started(ec)) {
 		pr_debug("+++++ Stopping EC +++++\n");
 		set_bit(EC_FLAGS_STOPPED, &ec->flags);
-		acpi_disable_gpe(NULL, ec->gpe);
+		spin_unlock_irqrestore(&ec->lock, flags);
+		wait_event(ec->wait, acpi_ec_stopped(ec));
+		spin_lock_irqsave(&ec->lock, flags);
+		/* Disable GPE for event processing (SCI_EVT=1) */
+		acpi_ec_complete_request(ec);
 		clear_bit(EC_FLAGS_STARTED, &ec->flags);
 		clear_bit(EC_FLAGS_STOPPED, &ec->flags);
 		pr_info("+++++ EC stopped +++++\n");
