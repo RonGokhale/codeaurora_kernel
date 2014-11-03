@@ -54,6 +54,12 @@ static struct inode *f2fs_new_inode(struct inode *dir, umode_t mode)
 		nid_free = true;
 		goto out;
 	}
+
+	if (f2fs_may_inline(inode))
+		set_inode_flag(F2FS_I(inode), FI_INLINE_DATA);
+	if (test_opt(sbi, INLINE_DENTRY) && S_ISDIR(inode->i_mode))
+		set_inode_flag(F2FS_I(inode), FI_INLINE_DENTRY);
+
 	trace_f2fs_new_inode(inode, 0);
 	mark_inode_dirty(inode);
 	return inode;
@@ -129,6 +135,7 @@ static int f2fs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	alloc_nid_done(sbi, ino);
 
+	stat_inc_inline_inode(inode);
 	d_instantiate(dentry, inode);
 	unlock_new_inode(inode);
 	return 0;
@@ -187,14 +194,13 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	de = f2fs_find_entry(dir, &dentry->d_name, &page);
 	if (de) {
 		nid_t ino = le32_to_cpu(de->ino);
-		kunmap(page);
+		if (!f2fs_has_inline_dentry(dir))
+			kunmap(page);
 		f2fs_put_page(page, 0);
 
 		inode = f2fs_iget(dir->i_sb, ino);
 		if (IS_ERR(inode))
 			return ERR_CAST(inode);
-
-		stat_inc_inline_inode(inode);
 	}
 
 	return d_splice_alias(inode, dentry);
@@ -219,11 +225,12 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	err = acquire_orphan_inode(sbi);
 	if (err) {
 		f2fs_unlock_op(sbi);
-		kunmap(page);
+		if (!f2fs_has_inline_dentry(dir))
+			kunmap(page);
 		f2fs_put_page(page, 0);
 		goto fail;
 	}
-	f2fs_delete_entry(de, page, inode);
+	f2fs_delete_entry(de, page, dir, inode);
 	f2fs_unlock_op(sbi);
 
 	/* In order to evict this inode, we set it dirty */
@@ -291,6 +298,7 @@ static int f2fs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 		goto out_fail;
 	f2fs_unlock_op(sbi);
 
+	stat_inc_inline_dir(inode);
 	alloc_nid_done(sbi, inode->i_ino);
 
 	d_instantiate(dentry, inode);
@@ -435,7 +443,7 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	old_inode->i_ctime = CURRENT_TIME;
 	mark_inode_dirty(old_inode);
 
-	f2fs_delete_entry(old_entry, old_page, NULL);
+	f2fs_delete_entry(old_entry, old_page, old_dir, NULL);
 
 	if (old_dir_entry) {
 		if (old_dir != new_dir) {
@@ -443,7 +451,8 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 						old_dir_page, new_dir);
 			update_inode_page(old_inode);
 		} else {
-			kunmap(old_dir_page);
+			if (!f2fs_has_inline_dentry(old_inode))
+				kunmap(old_dir_page);
 			f2fs_put_page(old_dir_page, 0);
 		}
 		drop_nlink(old_dir);
@@ -456,15 +465,18 @@ static int f2fs_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 put_out_dir:
 	f2fs_unlock_op(sbi);
-	kunmap(new_page);
+	if (!f2fs_has_inline_dentry(new_dir))
+		kunmap(new_page);
 	f2fs_put_page(new_page, 0);
 out_dir:
 	if (old_dir_entry) {
-		kunmap(old_dir_page);
+		if (!f2fs_has_inline_dentry(old_inode))
+			kunmap(old_dir_page);
 		f2fs_put_page(old_dir_page, 0);
 	}
 out_old:
-	kunmap(old_page);
+	if (!f2fs_has_inline_dentry(old_dir))
+		kunmap(old_page);
 	f2fs_put_page(old_page, 0);
 out:
 	return err;
@@ -596,19 +608,23 @@ out_unlock:
 	f2fs_unlock_op(sbi);
 out_new_dir:
 	if (new_dir_entry) {
-		kunmap(new_dir_page);
+		if (!f2fs_has_inline_dentry(new_inode))
+			kunmap(new_dir_page);
 		f2fs_put_page(new_dir_page, 0);
 	}
 out_old_dir:
 	if (old_dir_entry) {
-		kunmap(old_dir_page);
+		if (!f2fs_has_inline_dentry(old_inode))
+			kunmap(old_dir_page);
 		f2fs_put_page(old_dir_page, 0);
 	}
 out_new:
-	kunmap(new_page);
+	if (!f2fs_has_inline_dentry(new_dir))
+		kunmap(new_page);
 	f2fs_put_page(new_page, 0);
 out_old:
-	kunmap(old_page);
+	if (!f2fs_has_inline_dentry(old_dir))
+		kunmap(old_page);
 	f2fs_put_page(old_page, 0);
 out:
 	return err;
