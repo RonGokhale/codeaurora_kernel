@@ -81,6 +81,7 @@ int sysctl_tcp_window_scaling __read_mostly = 1;
 int sysctl_tcp_sack __read_mostly = 1;
 int sysctl_tcp_fack __read_mostly = 1;
 int sysctl_tcp_reordering __read_mostly = TCP_FASTRETRANS_THRESH;
+int sysctl_tcp_max_reordering __read_mostly = 300;
 EXPORT_SYMBOL(sysctl_tcp_reordering);
 int sysctl_tcp_dsack __read_mostly = 1;
 int sysctl_tcp_app_win __read_mostly = 31;
@@ -833,7 +834,7 @@ static void tcp_update_reordering(struct sock *sk, const int metric,
 	if (metric > tp->reordering) {
 		int mib_idx;
 
-		tp->reordering = min(TCP_MAX_REORDERING, metric);
+		tp->reordering = min(sysctl_tcp_max_reordering, metric);
 
 		/* This exciting event is worth to be remembered. 8) */
 		if (ts)
@@ -5028,7 +5029,7 @@ static bool tcp_validate_incoming(struct sock *sk, struct sk_buff *skb,
 	/* step 3: check security and precedence [ignored] */
 
 	/* step 4: Check for a SYN
-	 * RFC 5691 4.2 : Send a challenge ack
+	 * RFC 5961 4.2 : Send a challenge ack
 	 */
 	if (th->syn) {
 syn_challenge:
@@ -5865,7 +5866,7 @@ static inline void pr_drop_req(struct request_sock *req, __u16 port, int family)
  * If we receive a SYN packet with these bits set, it means a
  * network is playing bad games with TOS bits. In order to
  * avoid possible false congestion notifications, we disable
- * TCP ECN negociation.
+ * TCP ECN negotiation.
  *
  * Exception: tcp_ca wants ECN. This is required for DCTCP
  * congestion control; it requires setting ECT on all packets,
