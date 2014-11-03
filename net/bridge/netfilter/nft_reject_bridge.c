@@ -16,6 +16,7 @@
 #include <net/netfilter/nft_reject.h>
 #include <net/netfilter/ipv4/nf_reject.h>
 #include <net/netfilter/ipv6/nf_reject.h>
+#include <net/ip6_checksum.h>
 #include <linux/ip.h>
 #include <net/ip.h>
 #include <linux/netfilter_bridge.h>
