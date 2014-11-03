@@ -411,7 +411,7 @@ static void ieee80211_send_probe(struct ieee80211_device *ieee)
 	}
 }
 
-void ieee80211_send_probe_requests(struct ieee80211_device *ieee)
+static void ieee80211_send_probe_requests(struct ieee80211_device *ieee)
 {
 	if (ieee->active_scan && (ieee->softmac_features & IEEE_SOFTMAC_PROBERQ)){
 		ieee80211_send_probe(ieee);
@@ -517,7 +517,7 @@ static void ieee80211_softmac_scan_wq(struct work_struct *work)
 		goto out;
 	ieee->set_chan(ieee->dev, ieee->current_network.channel);
 	if(channel_map[ieee->current_network.channel] == 1)
-	ieee80211_send_probe_requests(ieee);
+		ieee80211_send_probe_requests(ieee);
 
 
 	queue_delayed_work(ieee->wq, &ieee->softmac_scan_wq, IEEE80211_SOFTMAC_SCAN_TIME);
@@ -1043,10 +1043,9 @@ inline struct sk_buff *ieee80211_association_req(struct ieee80211_network *beaco
 	{
 		ccxrm_ie_len = 6+2;
 	}
-	if( beacon->BssCcxVerNumber >= 2 )
-	{
+	if (beacon->BssCcxVerNumber >= 2)
 		cxvernum_ie_len = 5+2;
-	}
+
 #ifdef THOMAS_TURBO
 	len = sizeof(struct ieee80211_assoc_request_frame)+ 2
 		+ beacon->ssid_len//essid tagged val
@@ -1103,7 +1102,7 @@ inline struct sk_buff *ieee80211_association_req(struct ieee80211_network *beaco
 	if(ieee->short_slot)
 		hdr->capability |= cpu_to_le16(WLAN_CAPABILITY_SHORT_SLOT);
 	if (wmm_info_len) //QOS
-	hdr->capability |= cpu_to_le16(WLAN_CAPABILITY_QOS);
+		hdr->capability |= cpu_to_le16(WLAN_CAPABILITY_QOS);
 
 	hdr->listen_interval = 0xa; //FIXME
 
@@ -1118,8 +1117,7 @@ inline struct sk_buff *ieee80211_association_req(struct ieee80211_network *beaco
 	ieee80211_MFIE_Brate(ieee, &tag);
 	ieee80211_MFIE_Grate(ieee, &tag);
 	// For CCX 1 S13, CKIP. Added by Annie, 2006-08-14.
-	if( beacon->bCkipSupported )
-	{
+	if (beacon->bCkipSupported) {
 		static u8	AironetIeOui[] = {0x00, 0x01, 0x66}; // "4500-client"
 		u8	CcxAironetBuf[30];
 		OCTET_STRING	osCcxAironetIE;
@@ -1158,8 +1156,7 @@ inline struct sk_buff *ieee80211_association_req(struct ieee80211_network *beaco
 		tag += osCcxRmCap.Length;
 	}
 
-	if( beacon->BssCcxVerNumber >= 2 )
-	{
+	if (beacon->BssCcxVerNumber >= 2) {
 		u8			CcxVerNumBuf[] = {0x00, 0x40, 0x96, 0x03, 0x00};
 		OCTET_STRING	osCcxVerNum;
 		CcxVerNumBuf[4] = beacon->BssCcxVerNumber;
@@ -1533,7 +1530,7 @@ void ieee80211_softmac_check_all_nets(struct ieee80211_device *ieee)
 			break;
 
 		if (ieee->scan_age == 0 || time_after(target->last_scanned + ieee->scan_age, jiffies))
-		ieee80211_softmac_new_net(ieee, target);
+			ieee80211_softmac_new_net(ieee, target);
 	}
 
 	spin_unlock_irqrestore(&ieee->lock, flags);

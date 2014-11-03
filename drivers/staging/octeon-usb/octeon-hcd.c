@@ -640,8 +640,7 @@ static inline int __cvmx_usb_get_data_pid(struct cvmx_usb_pipe *pipe)
 {
 	if (pipe->pid_toggle)
 		return 2; /* Data1 */
-	else
-		return 0; /* Data0 */
+	return 0; /* Data0 */
 }
 
 /**
@@ -744,7 +743,7 @@ static int cvmx_usb_initialize(struct cvmx_usb_state *usb,
 	 *     such that USB is as close as possible to 125Mhz
 	 */
 	{
-		int divisor = (octeon_get_clock_rate()+125000000-1)/125000000;
+		int divisor = DIV_ROUND_UP(octeon_get_clock_rate(), 125000000);
 		/* Lower than 4 doesn't seem to work properly */
 		if (divisor < 4)
 			divisor = 4;
@@ -1328,7 +1327,8 @@ static void __cvmx_usb_poll_rx_fifo(struct cvmx_usb_state *usb)
 
 	/* Loop writing the FIFO data for this packet into memory */
 	while (bytes > 0) {
-		*ptr++ = __cvmx_usb_read_csr32(usb, USB_FIFO_ADDRESS(channel, usb->index));
+		*ptr++ = __cvmx_usb_read_csr32(usb,
+				USB_FIFO_ADDRESS(channel, usb->index));
 		bytes -= 4;
 	}
 	CVMX_SYNCW;
@@ -1479,7 +1479,8 @@ static void __cvmx_usb_fill_tx_fifo(struct cvmx_usb_state *usb, int channel)
 		fifo = &usb->nonperiodic;
 
 	fifo->entry[fifo->head].channel = channel;
-	fifo->entry[fifo->head].address = __cvmx_usb_read_csr64(usb, CVMX_USBNX_DMA0_OUTB_CHN0(usb->index) + channel*8);
+	fifo->entry[fifo->head].address = __cvmx_usb_read_csr64(usb,
+			CVMX_USBNX_DMA0_OUTB_CHN0(usb->index) + channel*8);
 	fifo->entry[fifo->head].size = (usbc_hctsiz.s.xfersize+3)>>2;
 	fifo->head++;
 	if (fifo->head > MAX_CHANNELS)
@@ -1607,8 +1608,8 @@ static void __cvmx_usb_start_channel_control(struct cvmx_usb_state *usb,
 	 * Calculate the number of packets to transfer. If the length is zero
 	 * we still need to transfer one packet
 	 */
-	packets_to_transfer = (bytes_to_transfer + pipe->max_packet - 1) /
-		pipe->max_packet;
+	packets_to_transfer = DIV_ROUND_UP(bytes_to_transfer,
+					   pipe->max_packet);
 	if (packets_to_transfer == 0)
 		packets_to_transfer = 1;
 	else if ((packets_to_transfer > 1) &&
@@ -1700,7 +1701,9 @@ static void __cvmx_usb_start_channel(struct cvmx_usb_state *usb,
 			usbc_hcintmsk.s.stallmsk = 1;
 			usbc_hcintmsk.s.xfercomplmsk = 1;
 		}
-		__cvmx_usb_write_csr32(usb, CVMX_USBCX_HCINTMSKX(channel, usb->index), usbc_hcintmsk.u32);
+		__cvmx_usb_write_csr32(usb,
+				CVMX_USBCX_HCINTMSKX(channel, usb->index),
+				usbc_hcintmsk.u32);
 
 		/* Enable the channel interrupt to propagate */
 		usbc_haintmsk.u32 = __cvmx_usb_read_csr32(usb,
@@ -1853,8 +1856,7 @@ static void __cvmx_usb_start_channel(struct cvmx_usb_state *usb,
 		 * zero we still need to transfer one packet
 		 */
 		packets_to_transfer =
-			(bytes_to_transfer + pipe->max_packet - 1) /
-			pipe->max_packet;
+			DIV_ROUND_UP(bytes_to_transfer, pipe->max_packet);
 		if (packets_to_transfer == 0)
 			packets_to_transfer = 1;
 		else if ((packets_to_transfer > 1) &&
@@ -2881,9 +2883,11 @@ static int __cvmx_usb_poll_channel(struct cvmx_usb_state *usb, int channel)
 					struct usb_ctrlrequest *header =
 						cvmx_phys_to_ptr(transaction->control_header);
 					if (header->wLength)
-						transaction->stage = CVMX_USB_STAGE_DATA;
+						transaction->stage =
+							CVMX_USB_STAGE_DATA;
 					else
-						transaction->stage = CVMX_USB_STAGE_STATUS;
+						transaction->stage =
+							CVMX_USB_STAGE_STATUS;
 				}
 				break;
 			case CVMX_USB_STAGE_SETUP_SPLIT_COMPLETE:
@@ -2891,9 +2895,11 @@ static int __cvmx_usb_poll_channel(struct cvmx_usb_state *usb, int channel)
 					struct usb_ctrlrequest *header =
 						cvmx_phys_to_ptr(transaction->control_header);
 					if (header->wLength)
-						transaction->stage = CVMX_USB_STAGE_DATA;
+						transaction->stage =
+							CVMX_USB_STAGE_DATA;
 					else
-						transaction->stage = CVMX_USB_STAGE_STATUS;
+						transaction->stage =
+							CVMX_USB_STAGE_STATUS;
 				}
 				break;
 			case CVMX_USB_STAGE_DATA:
@@ -3015,7 +3021,8 @@ static int __cvmx_usb_poll_channel(struct cvmx_usb_state *usb, int channel)
 				 * is complete, the pipe sleeps until the next
 				 * schedule interval
 				 */
-				if (pipe->transfer_dir == CVMX_USB_DIRECTION_OUT) {
+				if (pipe->transfer_dir ==
+					CVMX_USB_DIRECTION_OUT) {
 					/*
 					 * If no space left or this wasn't a max
 					 * size packet then this transfer is

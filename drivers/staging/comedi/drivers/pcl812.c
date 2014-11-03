@@ -556,8 +556,8 @@ static void pcl812_ai_setup_dma(struct comedi_device *dev,
 
 	/*  we use EOS, so adapt DMA buffer to one scan */
 	if (devpriv->ai_eos) {
-		devpriv->dmabytestomove[0] = cfc_bytes_per_scan(s);
-		devpriv->dmabytestomove[1] = cfc_bytes_per_scan(s);
+		devpriv->dmabytestomove[0] = comedi_bytes_per_scan(s);
+		devpriv->dmabytestomove[1] = comedi_bytes_per_scan(s);
 		devpriv->dma_runs_to_end = 1;
 	} else {
 		devpriv->dmabytestomove[0] = devpriv->hwdmasize;
@@ -572,7 +572,7 @@ static void pcl812_ai_setup_dma(struct comedi_device *dev,
 			devpriv->dma_runs_to_end = 1;
 		} else {
 			/*  how many samples we must transfer? */
-			bytes = cmd->stop_arg * cfc_bytes_per_scan(s);
+			bytes = cmd->stop_arg * comedi_bytes_per_scan(s);
 
 			/*  how many DMA pages we must fill */
 			devpriv->dma_runs_to_end =
@@ -844,8 +844,6 @@ static bool pcl812_ai_next_chan(struct comedi_device *dev,
 	struct pcl812_private *devpriv = dev->private;
 	struct comedi_cmd *cmd = &s->async->cmd;
 
-	s->async->events |= COMEDI_CB_BLOCK;
-
 	s->async->cur_chan++;
 	if (s->async->cur_chan >= cmd->chanlist_len) {
 		s->async->cur_chan = 0;
@@ -868,6 +866,7 @@ static void pcl812_handle_eoc(struct comedi_device *dev,
 {
 	struct comedi_cmd *cmd = &s->async->cmd;
 	unsigned int next_chan;
+	unsigned short val;
 
 	if (pcl812_ai_eoc(dev, s, NULL, 0)) {
 		dev_dbg(dev->class_dev, "A/D cmd IRQ without DRDY!\n");
@@ -875,7 +874,8 @@ static void pcl812_handle_eoc(struct comedi_device *dev,
 		return;
 	}
 
-	comedi_buf_put(s, pcl812_ai_get_sample(dev, s));
+	val = pcl812_ai_get_sample(dev, s);
+	comedi_buf_write_samples(s, &val, 1);
 
 	/* Set up next channel. Added by abbotti 2010-01-20, but untested. */
 	next_chan = s->async->cur_chan + 1;
@@ -893,9 +893,11 @@ static void transfer_from_dma_buf(struct comedi_device *dev,
 				  unsigned int bufptr, unsigned int len)
 {
 	unsigned int i;
+	unsigned short val;
 
 	for (i = len; i; i--) {
-		comedi_buf_put(s, ptr[bufptr++]);
+		val = ptr[bufptr++];
+		comedi_buf_write_samples(s, &val, 1);
 
 		if (!pcl812_ai_next_chan(dev, s))
 			break;
@@ -939,7 +941,7 @@ static irqreturn_t pcl812_interrupt(int irq, void *d)
 
 	pcl812_ai_clear_eoc(dev);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 

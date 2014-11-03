@@ -810,18 +810,18 @@ static void ft1000_send_cmd (struct net_device *dev, u16 *ptempbuffer, int size,
 	 */
 	spin_lock_irqsave(&info->dpram_lock, flags);
 
-    /* Make sure SLOWQ doorbell is clear */
-    tempword = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
-    i=0;
-    while (tempword & FT1000_DB_DPRAM_TX) {
-        mdelay(10);
-        i++;
-        if (i==10) {
-            spin_unlock_irqrestore(&info->dpram_lock, flags);
-            return;
-        }
-        tempword = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
-    }
+	/* Make sure SLOWQ doorbell is clear */
+	tempword = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
+	i = 0;
+	while (tempword & FT1000_DB_DPRAM_TX) {
+		mdelay(10);
+		i++;
+		if (i == 10) {
+			spin_unlock_irqrestore(&info->dpram_lock, flags);
+			return;
+		}
+		tempword = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
+	}
 
 	if (info->AsicID == ELECTRABUZZ_ID) {
 		ft1000_write_reg(dev, FT1000_REG_DPRAM_ADDR,
@@ -997,8 +997,8 @@ static void ft1000_proc_drvmsg(struct net_device *dev)
     }
     else {
         tempword = FT1000_DPRAM_MAG_RX_BASE;
-    }
-    if ( ft1000_receive_cmd(dev, &cmdbuffer[0], MAX_CMD_SQSIZE, &tempword) ) {
+		}
+		if (ft1000_receive_cmd(dev, &cmdbuffer[0], MAX_CMD_SQSIZE, &tempword)) {
 
 		/* Get the message type which is total_len + PSEUDO header + msgtype + message body */
 		pdrvmsg = (struct drv_msg *) & cmdbuffer[0];
@@ -1224,7 +1224,7 @@ static void ft1000_proc_drvmsg(struct net_device *dev)
                 for (i=1; i<7; i++) {
                     ppseudo_hdr->checksum ^= *pmsg++;
                 }
-				pmsg = (u16 *) & tempbuffer[16];
+				pmsg = (u16 *) &tempbuffer[16];
 				*pmsg++ = htons(RSP_DRV_ERR_RPT_MSG);
 				*pmsg++ = htons(0x000e);
 				*pmsg++ = htons(info->DSP_TIME[0]);
@@ -1270,7 +1270,6 @@ static int ft1000_parse_dpram_msg(struct net_device *dev)
 	u16 nxtph;
 	u16 total_len;
 	int i = 0;
-	int cnt;
 	unsigned long flags;
 
 	doorbell = ft1000_read_reg(dev, FT1000_REG_DOORBELL);
@@ -1336,7 +1335,6 @@ static int ft1000_parse_dpram_msg(struct net_device *dev)
 			  total_len);
 		if ((total_len < MAX_CMD_SQSIZE) && (total_len > sizeof(struct pseudo_hdr))) {
             total_len += nxtph;
-            cnt = 0;
 			/*
 			 * ft1000_read_reg will return a value that needs to be byteswap
 			 * in order to get DSP_QID_OFFSET.
@@ -1758,7 +1756,7 @@ static int ft1000_copy_up_pkt(struct net_device *dev)
                 SUCCESS
 
   -------------------------------------------------------------------------*/
-static int ft1000_copy_down_pkt(struct net_device *dev, u16 * packet, u16 len)
+static int ft1000_copy_down_pkt(struct net_device *dev, u16 *packet, u16 len)
 {
 	struct ft1000_info *info = netdev_priv(dev);
 	struct ft1000_pcmcia *pcmcia = info->priv;
@@ -2004,7 +2002,7 @@ static int ft1000_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 static irqreturn_t ft1000_interrupt(int irq, void *dev_id)
 {
-	struct net_device *dev = (struct net_device *)dev_id;
+	struct net_device *dev = dev_id;
 	struct ft1000_info *info = netdev_priv(dev);
 	u16 tempword;
 	u16 inttype;
@@ -2154,14 +2152,14 @@ struct net_device *init_ft1000_card(struct pcmcia_device *link,
 	if (flarion_ft1000_cnt > 1) {
 		flarion_ft1000_cnt--;
 
-		printk(KERN_INFO
-			   "ft1000: This driver can not support more than one instance\n");
+		dev_info(&link->dev,
+			   "This driver can not support more than one instance\n");
 		return NULL;
 	}
 
 	dev = alloc_etherdev(sizeof(struct ft1000_info));
 	if (!dev) {
-		printk(KERN_ERR "ft1000: failed to allocate etherdev\n");
+		dev_err(&link->dev, "Failed to allocate etherdev\n");
 		return NULL;
 	}
 
@@ -2209,17 +2207,17 @@ struct net_device *init_ft1000_card(struct pcmcia_device *link,
 	dev->irq = link->irq;
 	dev->base_addr = link->resource[0]->start;
 	if (pcmcia_get_mac_from_cis(link, dev)) {
-		printk(KERN_ERR "ft1000: Could not read mac address\n");
+		netdev_err(dev, "Could not read mac address\n");
 		goto err_dev;
 	}
 
 	if (request_irq(dev->irq, ft1000_interrupt, IRQF_SHARED, dev->name, dev)) {
-		printk(KERN_ERR "ft1000: Could not request_irq\n");
+		netdev_err(dev, "Could not request_irq\n");
 		goto err_dev;
 	}
 
 	if (request_region(dev->base_addr, 256, dev->name) == NULL) {
-		printk(KERN_ERR "ft1000: Could not request_region\n");
+		netdev_err(dev, "Could not request_region\n");
 		goto err_irq;
 	}
 

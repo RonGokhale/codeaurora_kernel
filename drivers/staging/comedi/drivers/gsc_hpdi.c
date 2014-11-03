@@ -196,8 +196,8 @@ static void gsc_hpdi_drain_dma(struct comedi_device *dev, unsigned int channel)
 				size = devpriv->dio_count;
 			devpriv->dio_count -= size;
 		}
-		cfc_write_array_to_buffer(s, devpriv->desc_dio_buffer[idx],
-					  size * sizeof(uint32_t));
+		comedi_buf_write_samples(s, devpriv->desc_dio_buffer[idx],
+					 size);
 		idx++;
 		idx %= devpriv->num_dma_descriptors;
 		start = le32_to_cpu(devpriv->dma_desc[idx].pci_start_addr);
@@ -272,7 +272,7 @@ static irqreturn_t gsc_hpdi_interrupt(int irq, void *d)
 	if (devpriv->dio_count == 0)
 		async->events |= COMEDI_CB_EOA;
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 
 	return IRQ_HANDLED;
 }

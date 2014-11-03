@@ -512,13 +512,11 @@ static int rtw_set_wpa_ie(struct adapter *padapter, char *pie, unsigned short ie
 	}
 
 	if (ielen) {
-		buf = kzalloc(ielen, GFP_KERNEL);
+		buf = kmemdup(pie, ielen, GFP_KERNEL);
 		if (buf == NULL) {
 			ret =  -ENOMEM;
 			goto exit;
 		}
-
-		memcpy(buf, pie, ielen);
 
 		/* dump */
 		{
@@ -1136,7 +1134,8 @@ static int rtw_wx_set_scan(struct net_device *dev, struct iw_request_info *a,
 		struct iw_scan_req *req = (struct iw_scan_req *)extra;
 
 		if (wrqu->data.flags & IW_SCAN_THIS_ESSID) {
-			int len = min((int)req->essid_len, IW_ESSID_MAX_SIZE);
+			int len = min_t(int, req->essid_len,
+					IW_ESSID_MAX_SIZE);
 
 			memcpy(ssid[0].Ssid, req->essid, len);
 			ssid[0].SsidLength = len;
@@ -2699,10 +2698,8 @@ static int rtw_set_wps_beacon(struct net_device *dev, struct ieee_param *param, 
 
 	ie_len = len-12-2;/*  12 = param header, 2:no packed */
 
-	if (pmlmepriv->wps_beacon_ie) {
-		kfree(pmlmepriv->wps_beacon_ie);
-		pmlmepriv->wps_beacon_ie = NULL;
-	}
+	kfree(pmlmepriv->wps_beacon_ie);
+	pmlmepriv->wps_beacon_ie = NULL;
 
 	if (ie_len > 0) {
 		pmlmepriv->wps_beacon_ie = rtw_malloc(ie_len);
@@ -2736,10 +2733,8 @@ static int rtw_set_wps_probe_resp(struct net_device *dev, struct ieee_param *par
 
 	ie_len = len-12-2;/*  12 = param header, 2:no packed */
 
-	if (pmlmepriv->wps_probe_resp_ie) {
-		kfree(pmlmepriv->wps_probe_resp_ie);
-		pmlmepriv->wps_probe_resp_ie = NULL;
-	}
+	kfree(pmlmepriv->wps_probe_resp_ie);
+	pmlmepriv->wps_probe_resp_ie = NULL;
 
 	if (ie_len > 0) {
 		pmlmepriv->wps_probe_resp_ie = rtw_malloc(ie_len);
@@ -2768,10 +2763,8 @@ static int rtw_set_wps_assoc_resp(struct net_device *dev, struct ieee_param *par
 
 	ie_len = len-12-2;/*  12 = param header, 2:no packed */
 
-	if (pmlmepriv->wps_assoc_resp_ie) {
-		kfree(pmlmepriv->wps_assoc_resp_ie);
-		pmlmepriv->wps_assoc_resp_ie = NULL;
-	}
+	kfree(pmlmepriv->wps_assoc_resp_ie);
+	pmlmepriv->wps_assoc_resp_ie = NULL;
 
 	if (ie_len > 0) {
 		pmlmepriv->wps_assoc_resp_ie = rtw_malloc(ie_len);

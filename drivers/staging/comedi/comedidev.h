@@ -213,6 +213,28 @@ struct comedi_async {
 		       unsigned int x);
 };
 
+/**
+ * comedi_async callback "events"
+ * @COMEDI_CB_EOS:		end-of-scan
+ * @COMEDI_CB_EOA:		end-of-acquisition/output
+ * @COMEDI_CB_BLOCK:		data has arrived, wakes up read() / write()
+ * @COMEDI_CB_EOBUF:		DEPRECATED: end of buffer
+ * @COMEDI_CB_ERROR:		card error during acquisition
+ * @COMEDI_CB_OVERFLOW:		buffer overflow/underflow
+ *
+ * @COMEDI_CB_ERROR_MASK:	events that indicate an error has occurred
+ * @COMEDI_CB_CANCEL_MASK:	events that will cancel an async command
+ */
+#define COMEDI_CB_EOS		(1 << 0)
+#define COMEDI_CB_EOA		(1 << 1)
+#define COMEDI_CB_BLOCK		(1 << 2)
+#define COMEDI_CB_EOBUF		(1 << 3)
+#define COMEDI_CB_ERROR		(1 << 4)
+#define COMEDI_CB_OVERFLOW	(1 << 5)
+
+#define COMEDI_CB_ERROR_MASK	(COMEDI_CB_ERROR | COMEDI_CB_OVERFLOW)
+#define COMEDI_CB_CANCEL_MASK	(COMEDI_CB_EOA | COMEDI_CB_ERROR_MASK)
+
 struct comedi_driver {
 	struct comedi_driver *next;
 
@@ -391,12 +413,67 @@ static inline unsigned int comedi_offset_munge(struct comedi_subdevice *s,
 	return val ^ s->maxdata ^ (s->maxdata >> 1);
 }
 
-static inline unsigned int bytes_per_sample(const struct comedi_subdevice *subd)
+/**
+ * comedi_bytes_per_sample - determine subdevice sample size
+ * @s:		comedi_subdevice struct
+ *
+ * The sample size will be 4 (sizeof int) or 2 (sizeof short) depending on
+ * whether the SDF_LSAMPL subdevice flag is set or not.
+ *
+ * Returns the subdevice sample size.
+ */
+static inline unsigned int comedi_bytes_per_sample(struct comedi_subdevice *s)
 {
-	if (subd->subdev_flags & SDF_LSAMPL)
-		return sizeof(unsigned int);
+	return s->subdev_flags & SDF_LSAMPL ? sizeof(int) : sizeof(short);
+}
 
-	return sizeof(short);
+/* to be removed */
+static inline unsigned int bytes_per_sample(struct comedi_subdevice *s)
+{
+	return comedi_bytes_per_sample(s);
+}
+
+/**
+ * comedi_sample_shift - determine log2 of subdevice sample size
+ * @s:		comedi_subdevice struct
+ *
+ * The sample size will be 4 (sizeof int) or 2 (sizeof short) depending on
+ * whether the SDF_LSAMPL subdevice flag is set or not.  The log2 of the
+ * sample size will be 2 or 1 and can be used as the right operand of a
+ * bit-shift operator to multiply or divide something by the sample size.
+ *
+ * Returns log2 of the subdevice sample size.
+ */
+static inline unsigned int comedi_sample_shift(struct comedi_subdevice *s)
+{
+	return s->subdev_flags & SDF_LSAMPL ? 2 : 1;
+}
+
+/**
+ * comedi_bytes_to_samples - converts a number of bytes to a number of samples
+ * @s:		comedi_subdevice struct
+ * @nbytes:	number of bytes
+ *
+ * Returns the number of bytes divided by the subdevice sample size.
+ */
+static inline unsigned int comedi_bytes_to_samples(struct comedi_subdevice *s,
+						   unsigned int nbytes)
+{
+	return nbytes >> comedi_sample_shift(s);
+}
+
+/**
+ * comedi_samples_to_bytes - converts a number of samples to a number of bytes
+ * @s:		comedi_subdevice struct
+ * @nsamples:	number of samples
+ *
+ * Returns the number of samples multiplied by the subdevice sample size.
+ * Does not check for arithmetic overflow.
+ */
+static inline unsigned int comedi_samples_to_bytes(struct comedi_subdevice *s,
+						   unsigned int nsamples)
+{
+	return nsamples << comedi_sample_shift(s);
 }
 
 /*
@@ -419,18 +496,10 @@ unsigned int comedi_buf_read_n_available(struct comedi_subdevice *s);
 unsigned int comedi_buf_read_alloc(struct comedi_subdevice *s, unsigned int n);
 unsigned int comedi_buf_read_free(struct comedi_subdevice *s, unsigned int n);
 
-int comedi_buf_put(struct comedi_subdevice *s, unsigned short x);
-int comedi_buf_get(struct comedi_subdevice *s, unsigned short *x);
-
-void comedi_buf_memcpy_to(struct comedi_subdevice *s, unsigned int offset,
-			  const void *source, unsigned int num_bytes);
-void comedi_buf_memcpy_from(struct comedi_subdevice *s, unsigned int offset,
-			    void *destination, unsigned int num_bytes);
-unsigned int comedi_write_array_to_buffer(struct comedi_subdevice *s,
-					  const void *data,
-					  unsigned int num_bytes);
-unsigned int comedi_read_array_from_buffer(struct comedi_subdevice *s,
-					   void *data, unsigned int num_bytes);
+unsigned int comedi_buf_write_samples(struct comedi_subdevice *s,
+				      const void *data, unsigned int nsamples);
+unsigned int comedi_buf_read_samples(struct comedi_subdevice *s,
+				     void *data, unsigned int nsamples);
 
 /* drivers.c - general comedi driver functions */
 

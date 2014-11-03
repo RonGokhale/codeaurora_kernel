@@ -2689,9 +2689,10 @@ static void pio_drain_ai_fifo_16(struct comedi_device *dev)
 		}
 
 		for (i = 0; i < num_samples; i++) {
-			cfc_write_to_buffer(s,
-					    readw(devpriv->main_iobase +
-						  ADC_FIFO_REG));
+			unsigned short val;
+
+			val = readw(devpriv->main_iobase + ADC_FIFO_REG);
+			comedi_buf_write_samples(s, &val, 1);
 		}
 
 	} while (read_segment != write_segment);
@@ -2722,11 +2723,15 @@ static void pio_drain_ai_fifo_32(struct comedi_device *dev)
 
 	}
 	for (i = 0; read_code != write_code && i < max_transfer;) {
+		unsigned short val;
+
 		fifo_data = readl(dev->mmio + ADC_FIFO_REG);
-		cfc_write_to_buffer(s, fifo_data & 0xffff);
+		val = fifo_data & 0xffff;
+		comedi_buf_write_samples(s, &val, 1);
 		i++;
 		if (i < max_transfer) {
-			cfc_write_to_buffer(s, (fifo_data >> 16) & 0xffff);
+			val = (fifo_data >> 16) & 0xffff;
+			comedi_buf_write_samples(s, &val, 1);
 			i++;
 		}
 		read_code = readw(devpriv->main_iobase + ADC_READ_PNTR_REG) &
@@ -2778,10 +2783,9 @@ static void drain_dma_buffers(struct comedi_device *dev, unsigned int channel)
 				num_samples = devpriv->ai_count;
 			devpriv->ai_count -= num_samples;
 		}
-		cfc_write_array_to_buffer(dev->read_subdev,
-					  devpriv->ai_buffer[devpriv->
-							     ai_dma_index],
-					  num_samples * sizeof(uint16_t));
+		comedi_buf_write_samples(dev->read_subdev,
+				devpriv->ai_buffer[devpriv->ai_dma_index],
+				num_samples);
 		devpriv->ai_dma_index = (devpriv->ai_dma_index + 1) %
 					ai_dma_ring_count(thisboard);
 	}
@@ -2836,7 +2840,7 @@ static void handle_ai_interrupt(struct comedi_device *dev,
 		async->events |= COMEDI_CB_EOA;
 	}
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static inline unsigned int prev_ao_dma_index(struct comedi_device *dev)
@@ -2912,32 +2916,46 @@ static void restart_ao_dma(struct comedi_device *dev)
 	dma_start_sync(dev, 0);
 }
 
+static unsigned int cb_pcidas64_ao_fill_buffer(struct comedi_device *dev,
+					       struct comedi_subdevice *s,
+					       unsigned short *dest,
+					       unsigned int max_bytes)
+{
+	struct pcidas64_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
+	unsigned int nsamples = max_bytes / bytes_per_sample(s);
+	unsigned int actual_bytes;
+
+	if (cmd->stop_src == TRIG_COUNT && devpriv->ao_count < nsamples)
+		nsamples = devpriv->ao_count;
+
+	actual_bytes = comedi_buf_read_samples(s, dest, nsamples);
+	nsamples = actual_bytes / bytes_per_sample(s);
+	if (cmd->stop_src == TRIG_COUNT)
+		devpriv->ao_count -= nsamples;
+
+	return nsamples;
+}
+
 static unsigned int load_ao_dma_buffer(struct comedi_device *dev,
 				       const struct comedi_cmd *cmd)
 {
 	struct pcidas64_private *devpriv = dev->private;
-	unsigned int num_bytes, buffer_index, prev_buffer_index;
+	struct comedi_subdevice *s = dev->write_subdev;
+	unsigned int buffer_index = devpriv->ao_dma_index;
+	unsigned int prev_buffer_index = prev_ao_dma_index(dev);
+	unsigned int nsamples;
+	unsigned int nbytes;
 	unsigned int next_bits;
 
-	buffer_index = devpriv->ao_dma_index;
-	prev_buffer_index = prev_ao_dma_index(dev);
-
-	num_bytes = comedi_buf_read_n_available(dev->write_subdev);
-	if (num_bytes > DMA_BUFFER_SIZE)
-		num_bytes = DMA_BUFFER_SIZE;
-	if (cmd->stop_src == TRIG_COUNT && num_bytes > devpriv->ao_count)
-		num_bytes = devpriv->ao_count;
-	num_bytes -= num_bytes % bytes_in_sample;
-
-	if (num_bytes == 0)
+	nsamples = cb_pcidas64_ao_fill_buffer(dev, s,
+					      devpriv->ao_buffer[buffer_index],
+					      DMA_BUFFER_SIZE);
+	if (nsamples == 0)
 		return 0;
 
-	num_bytes = cfc_read_array_from_buffer(dev->write_subdev,
-					       devpriv->
-					       ao_buffer[buffer_index],
-					       num_bytes);
-	devpriv->ao_dma_desc[buffer_index].transfer_size =
-		cpu_to_le32(num_bytes);
+	nbytes = nsamples * bytes_per_sample(s);
+	devpriv->ao_dma_desc[buffer_index].transfer_size = cpu_to_le32(nbytes);
 	/* set end of chain bit so we catch underruns */
 	next_bits = le32_to_cpu(devpriv->ao_dma_desc[buffer_index].next);
 	next_bits |= PLX_END_OF_CHAIN_BIT;
@@ -2949,9 +2967,8 @@ static unsigned int load_ao_dma_buffer(struct comedi_device *dev,
 	devpriv->ao_dma_desc[prev_buffer_index].next = cpu_to_le32(next_bits);
 
 	devpriv->ao_dma_index = (buffer_index + 1) % AO_DMA_RING_COUNT;
-	devpriv->ao_count -= num_bytes;
 
-	return num_bytes;
+	return nbytes;
 }
 
 static void load_ao_dma(struct comedi_device *dev, const struct comedi_cmd *cmd)
@@ -3020,7 +3037,7 @@ static void handle_ao_interrupt(struct comedi_device *dev,
 		if (ao_stopped_by_error(dev, cmd))
 			async->events |= COMEDI_CB_ERROR;
 	}
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static irqreturn_t handle_interrupt(int irq, void *d)
@@ -3191,7 +3208,9 @@ static void set_dac_interval_regs(struct comedi_device *dev,
 static int prep_ao_dma(struct comedi_device *dev, const struct comedi_cmd *cmd)
 {
 	struct pcidas64_private *devpriv = dev->private;
-	unsigned int num_bytes;
+	struct comedi_subdevice *s = dev->write_subdev;
+	unsigned int nsamples;
+	unsigned int nbytes;
 	int i;
 
 	/* clear queue pointer too, since external queue has
@@ -3199,22 +3218,22 @@ static int prep_ao_dma(struct comedi_device *dev, const struct comedi_cmd *cmd)
 	writew(0, devpriv->main_iobase + ADC_QUEUE_CLEAR_REG);
 	writew(0, devpriv->main_iobase + DAC_BUFFER_CLEAR_REG);
 
-	num_bytes = (DAC_FIFO_SIZE / 2) * bytes_in_sample;
-	if (cmd->stop_src == TRIG_COUNT &&
-	    num_bytes / bytes_in_sample > devpriv->ao_count)
-		num_bytes = devpriv->ao_count * bytes_in_sample;
-	num_bytes = cfc_read_array_from_buffer(dev->write_subdev,
-					       devpriv->ao_bounce_buffer,
-					       num_bytes);
-	for (i = 0; i < num_bytes / bytes_in_sample; i++) {
+	nsamples = cb_pcidas64_ao_fill_buffer(dev, s,
+					      devpriv->ao_bounce_buffer,
+					      DAC_FIFO_SIZE);
+	if (nsamples == 0)
+		return -1;
+
+	for (i = 0; i < nsamples; i++) {
 		writew(devpriv->ao_bounce_buffer[i],
 		       devpriv->main_iobase + DAC_FIFO_REG);
 	}
-	devpriv->ao_count -= num_bytes / bytes_in_sample;
+
 	if (cmd->stop_src == TRIG_COUNT && devpriv->ao_count == 0)
 		return 0;
-	num_bytes = load_ao_dma_buffer(dev, cmd);
-	if (num_bytes == 0)
+
+	nbytes = load_ao_dma_buffer(dev, cmd);
+	if (nbytes == 0)
 		return -1;
 	load_ao_dma(dev, cmd);
 
