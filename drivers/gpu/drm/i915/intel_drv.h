@@ -94,18 +94,20 @@
 
 /* these are outputs from the chip - integrated only
    external chips are via DVO or SDVO output */
-#define INTEL_OUTPUT_UNUSED 0
-#define INTEL_OUTPUT_ANALOG 1
-#define INTEL_OUTPUT_DVO 2
-#define INTEL_OUTPUT_SDVO 3
-#define INTEL_OUTPUT_LVDS 4
-#define INTEL_OUTPUT_TVOUT 5
-#define INTEL_OUTPUT_HDMI 6
-#define INTEL_OUTPUT_DISPLAYPORT 7
-#define INTEL_OUTPUT_EDP 8
-#define INTEL_OUTPUT_DSI 9
-#define INTEL_OUTPUT_UNKNOWN 10
-#define INTEL_OUTPUT_DP_MST 11
+enum intel_output_type {
+	INTEL_OUTPUT_UNUSED = 0,
+	INTEL_OUTPUT_ANALOG = 1,
+	INTEL_OUTPUT_DVO = 2,
+	INTEL_OUTPUT_SDVO = 3,
+	INTEL_OUTPUT_LVDS = 4,
+	INTEL_OUTPUT_TVOUT = 5,
+	INTEL_OUTPUT_HDMI = 6,
+	INTEL_OUTPUT_DISPLAYPORT = 7,
+	INTEL_OUTPUT_EDP = 8,
+	INTEL_OUTPUT_DSI = 9,
+	INTEL_OUTPUT_UNKNOWN = 10,
+	INTEL_OUTPUT_DP_MST = 11,
+};
 
 #define INTEL_DVO_CHIP_NONE 0
 #define INTEL_DVO_CHIP_LVDS 1
@@ -136,7 +138,7 @@ struct intel_encoder {
 	 */
 	struct intel_crtc *new_crtc;
 
-	int type;
+	enum intel_output_type type;
 	unsigned int cloneable;
 	bool connectors_active;
 	void (*hot_plug)(struct intel_encoder *);
@@ -590,6 +592,7 @@ struct intel_dp {
 	 * this port. Only relevant on VLV/CHV.
 	 */
 	enum pipe pps_pipe;
+	struct edp_power_seq pps_delays;
 
 	bool use_tps3;
 	bool can_mst; /* this port supports mst */
@@ -755,12 +758,19 @@ static inline unsigned int intel_num_planes(struct intel_crtc *crtc)
 	return INTEL_INFO(crtc->base.dev)->num_sprites[crtc->pipe] + 1;
 }
 
-/* i915_irq.c */
-bool intel_set_cpu_fifo_underrun_reporting(struct drm_device *dev,
+/* intel_fifo_underrun.c */
+bool intel_set_cpu_fifo_underrun_reporting(struct drm_i915_private *dev_priv,
 					   enum pipe pipe, bool enable);
-bool intel_set_pch_fifo_underrun_reporting(struct drm_device *dev,
+bool intel_set_pch_fifo_underrun_reporting(struct drm_i915_private *dev_priv,
 					   enum transcoder pch_transcoder,
 					   bool enable);
+void intel_cpu_fifo_underrun_irq_handler(struct drm_i915_private *dev_priv,
+					 enum pipe pipe);
+void intel_pch_fifo_underrun_irq_handler(struct drm_i915_private *dev_priv,
+					 enum transcoder pch_transcoder);
+void i9xx_check_fifo_underruns(struct drm_i915_private *dev_priv);
+
+/* i915_irq.c */
 void gen5_enable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void gen5_disable_gt_irq(struct drm_i915_private *dev_priv, uint32_t mask);
 void gen6_enable_pm_irq(struct drm_i915_private *dev_priv, uint32_t mask);
@@ -779,7 +789,6 @@ static inline bool intel_irqs_enabled(struct drm_i915_private *dev_priv)
 }
 
 int intel_get_crtc_scanline(struct intel_crtc *crtc);
-void i9xx_check_fifo_underruns(struct drm_device *dev);
 void gen8_irq_power_well_post_enable(struct drm_i915_private *dev_priv);
 
 /* intel_crt.c */
@@ -842,6 +851,10 @@ void intel_frontbuffer_flip(struct drm_device *dev,
 void intel_fb_obj_flush(struct drm_i915_gem_object *obj, bool retire);
 
 
+/* intel_audio.c */
+void intel_init_audio(struct drm_device *dev);
+void intel_write_eld(struct intel_encoder *encoder);
+
 /* intel_display.c */
 const char *intel_output_name(int output);
 bool intel_has_pending_fb_unpin(struct drm_device *dev);
@@ -867,6 +880,7 @@ int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 enum transcoder intel_pipe_to_cpu_transcoder(struct drm_i915_private *dev_priv,
 					     enum pipe pipe);
+bool intel_pipe_has_type(struct intel_crtc *crtc, int type);
 static inline void
 intel_wait_for_vblank(struct drm_device *dev, int pipe)
 {
@@ -904,6 +918,10 @@ void assert_shared_dpll(struct drm_i915_private *dev_priv,
 struct intel_shared_dpll *intel_get_shared_dpll(struct intel_crtc *crtc);
 void intel_put_shared_dpll(struct intel_crtc *crtc);
 
+void vlv_force_pll_on(struct drm_device *dev, enum pipe pipe,
+		      const struct dpll *dpll);
+void vlv_force_pll_off(struct drm_device *dev, enum pipe pipe);
+
 /* modesetting asserts */
 void assert_panel_unlocked(struct drm_i915_private *dev_priv,
 			   enum pipe pipe);
@@ -918,8 +936,6 @@ void assert_fdi_rx_pll(struct drm_i915_private *dev_priv,
 void assert_pipe(struct drm_i915_private *dev_priv, enum pipe pipe, bool state);
 #define assert_pipe_enabled(d, p) assert_pipe(d, p, true)
 #define assert_pipe_disabled(d, p) assert_pipe(d, p, false)
-void intel_write_eld(struct drm_encoder *encoder,
-		     struct drm_display_mode *mode);
 unsigned long intel_gen4_compute_page_offset(int *x, int *y,
 					     unsigned int tiling_mode,
 					     unsigned int bpp,

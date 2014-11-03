@@ -1466,6 +1466,16 @@ unlock:
  *
  * While the mapping holds a reference on the contents of the object, it doesn't
  * imply a ref on the object itself.
+ *
+ * IMPORTANT:
+ *
+ * DRM driver writers who look a this function as an example for how to do GEM
+ * mmap support, please don't implement mmap support like here. The modern way
+ * to implement DRM mmap support is with an mmap offset ioctl (like
+ * i915_gem_mmap_gtt) and then using the mmap syscall on the DRM fd directly.
+ * That way debug tooling like valgrind will understand what's going on, hiding
+ * the mmap call in a driver private ioctl will break that. The i915 driver only
+ * does cpu mmaps this way because we didn't know better.
  */
 int
 i915_gem_mmap_ioctl(struct drm_device *dev, void *data,
@@ -2800,6 +2810,9 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 	u32 seqno = 0;
 	int ret = 0;
 
+	if (args->flags != 0)
+		return -EINVAL;
+
 	ret = i915_mutex_lock_interruptible(dev);
 	if (ret)
 		return ret;
@@ -3688,7 +3701,7 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 		list_for_each_entry(vma, &obj->vma_list, vma_link)
 			if (drm_mm_node_allocated(&vma->node))
 				vma->bind_vma(vma, cache_level,
-					      obj->has_global_gtt_mapping ? GLOBAL_BIND : 0);
+						vma->bound & GLOBAL_BIND);
 	}
 
 	list_for_each_entry(vma, &obj->vma_list, vma_link)
@@ -4084,7 +4097,7 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 			return PTR_ERR(vma);
 	}
 
-	if (flags & PIN_GLOBAL && !obj->has_global_gtt_mapping)
+	if (flags & PIN_GLOBAL && !(vma->bound & GLOBAL_BIND))
 		vma->bind_vma(vma, obj->cache_level, GLOBAL_BIND);
 
 	vma->pin_count++;
@@ -5259,7 +5272,7 @@ i915_gem_shrinker_oom(struct notifier_block *nb, unsigned long event, void *ptr)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_i915_gem_object *obj;
 	unsigned long timeout = msecs_to_jiffies(5000) + 1;
-	unsigned long pinned, bound, unbound, freed;
+	unsigned long pinned, bound, unbound, freed_pages;
 	bool was_interruptible;
 	bool unlock;
 
@@ -5276,7 +5289,7 @@ i915_gem_shrinker_oom(struct notifier_block *nb, unsigned long event, void *ptr)
 	was_interruptible = dev_priv->mm.interruptible;
 	dev_priv->mm.interruptible = false;
 
-	freed = i915_gem_shrink_all(dev_priv);
+	freed_pages = i915_gem_shrink_all(dev_priv);
 
 	dev_priv->mm.interruptible = was_interruptible;
 
@@ -5307,14 +5320,15 @@ i915_gem_shrinker_oom(struct notifier_block *nb, unsigned long event, void *ptr)
 	if (unlock)
 		mutex_unlock(&dev->struct_mutex);
 
-	pr_info("Purging GPU memory, %lu bytes freed, %lu bytes still pinned.\n",
-		freed, pinned);
+	if (freed_pages || unbound || bound)
+		pr_info("Purging GPU memory, %lu bytes freed, %lu bytes still pinned.\n",
+			freed_pages << PAGE_SHIFT, pinned);
 	if (unbound || bound)
 		pr_err("%lu and %lu bytes still available in the "
 		       "bound and unbound GPU page lists.\n",
 		       bound, unbound);
 
-	*(unsigned long *)ptr += freed;
+	*(unsigned long *)ptr += freed_pages;
 	return NOTIFY_DONE;
 }
 
