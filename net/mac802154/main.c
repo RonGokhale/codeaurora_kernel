@@ -28,6 +28,7 @@
 #include <net/cfg802154.h>
 
 #include "ieee802154_i.h"
+#include "cfg.h"
 
 static int
 mac802154_netdev_register(struct wpan_phy *phy, struct net_device *dev)
@@ -58,8 +59,7 @@ mac802154_netdev_register(struct wpan_phy *phy, struct net_device *dev)
 	return 0;
 }
 
-static void
-mac802154_del_iface(struct wpan_phy *phy, struct net_device *dev)
+void mac802154_del_iface(struct wpan_phy *phy, struct net_device *dev)
 {
 	struct ieee802154_sub_if_data *sdata = IEEE802154_DEV_TO_SUB_IF(dev);
 
@@ -75,7 +75,7 @@ mac802154_del_iface(struct wpan_phy *phy, struct net_device *dev)
 	unregister_netdevice(sdata->dev);
 }
 
-static struct net_device *
+struct net_device *
 mac802154_add_iface(struct wpan_phy *phy, const char *name, int type)
 {
 	struct net_device *dev;
@@ -169,7 +169,7 @@ ieee802154_alloc_hw(size_t priv_data_len, const struct ieee802154_ops *ops)
 
 	priv_size = ALIGN(sizeof(*local), NETDEV_ALIGN) + priv_data_len;
 
-	phy = wpan_phy_alloc(priv_size);
+	phy = wpan_phy_alloc(&mac802154_config_ops, priv_size);
 	if (!phy) {
 		pr_err("failure to allocate master IEEE802.15.4 device\n");
 		return NULL;
@@ -219,9 +219,6 @@ int ieee802154_register_hw(struct ieee802154_hw *hw)
 	}
 
 	wpan_phy_set_dev(local->phy, local->hw.parent);
-
-	local->phy->add_iface = mac802154_add_iface;
-	local->phy->del_iface = mac802154_del_iface;
 
 	rc = wpan_phy_register(local->phy);
 	if (rc < 0)

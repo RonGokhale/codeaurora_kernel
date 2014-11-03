@@ -189,6 +189,9 @@ static void hci_cc_reset(struct hci_dev *hdev, struct sk_buff *skb)
 
 	clear_bit(HCI_RESET, &hdev->flags);
 
+	if (status)
+		return;
+
 	/* Reset all non-persistent flags */
 	hdev->dev_flags &= ~HCI_PERSISTENT_MASK;
 
@@ -2922,6 +2925,13 @@ static void hci_cmd_status_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	}
 }
 
+static void hci_hardware_error_evt(struct hci_dev *hdev, struct sk_buff *skb)
+{
+	struct hci_ev_hardware_error *ev = (void *) skb->data;
+
+	BT_ERR("%s hardware error 0x%2.2x", hdev->name, ev->code);
+}
+
 static void hci_role_change_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_role_change *ev = (void *) skb->data;
@@ -4741,6 +4751,10 @@ void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb)
 
 	case HCI_EV_CMD_STATUS:
 		hci_cmd_status_evt(hdev, skb);
+		break;
+
+	case HCI_EV_HARDWARE_ERROR:
+		hci_hardware_error_evt(hdev, skb);
 		break;
 
 	case HCI_EV_ROLE_CHANGE:

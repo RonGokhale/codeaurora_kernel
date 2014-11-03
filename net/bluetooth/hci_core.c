@@ -1147,12 +1147,14 @@ struct sk_buff *__hci_cmd_sync_ev(struct hci_dev *hdev, u16 opcode, u32 plen,
 
 	hdev->req_status = HCI_REQ_PEND;
 
-	err = hci_req_run(&req, hci_req_sync_complete);
-	if (err < 0)
-		return ERR_PTR(err);
-
 	add_wait_queue(&hdev->req_wait_q, &wait);
 	set_current_state(TASK_INTERRUPTIBLE);
+
+	err = hci_req_run(&req, hci_req_sync_complete);
+	if (err < 0) {
+		remove_wait_queue(&hdev->req_wait_q, &wait);
+		return ERR_PTR(err);
+	}
 
 	schedule_timeout(timeout);
 
@@ -1211,9 +1213,14 @@ static int __hci_req_sync(struct hci_dev *hdev,
 
 	func(&req, opt);
 
+	add_wait_queue(&hdev->req_wait_q, &wait);
+	set_current_state(TASK_INTERRUPTIBLE);
+
 	err = hci_req_run(&req, hci_req_sync_complete);
 	if (err < 0) {
 		hdev->req_status = 0;
+
+		remove_wait_queue(&hdev->req_wait_q, &wait);
 
 		/* ENODATA means the HCI request command queue is empty.
 		 * This can happen when a request with conditionals doesn't
@@ -1225,9 +1232,6 @@ static int __hci_req_sync(struct hci_dev *hdev,
 
 		return err;
 	}
-
-	add_wait_queue(&hdev->req_wait_q, &wait);
-	set_current_state(TASK_INTERRUPTIBLE);
 
 	schedule_timeout(timeout);
 
@@ -4243,6 +4247,24 @@ int hci_resume_dev(struct hci_dev *hdev)
 	return 0;
 }
 EXPORT_SYMBOL(hci_resume_dev);
+
+/* Reset HCI device */
+int hci_reset_dev(struct hci_dev *hdev)
+{
+	const u8 hw_err[] = { HCI_EV_HARDWARE_ERROR, 0x01, 0x00 };
+	struct sk_buff *skb;
+
+	skb = bt_skb_alloc(3, GFP_ATOMIC);
+	if (!skb)
+		return -ENOMEM;
+
+	bt_cb(skb)->pkt_type = HCI_EVENT_PKT;
+	memcpy(skb_put(skb, 3), hw_err, 3);
+
+	/* Send Hardware Error to upper stack */
+	return hci_recv_frame(hdev, skb);
+}
+EXPORT_SYMBOL(hci_reset_dev);
 
 /* Receive frame from HCI drivers */
 int hci_recv_frame(struct hci_dev *hdev, struct sk_buff *skb)

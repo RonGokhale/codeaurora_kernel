@@ -1047,7 +1047,7 @@ at86rf230_channel(struct ieee802154_hw *hw, u8 page, u8 channel)
 	struct at86rf230_local *lp = hw->priv;
 	int rc;
 
-	if (page < 0 || page > 31 ||
+	if (page > 31 ||
 	    !(lp->hw->phy->channels_supported[page] & BIT(channel))) {
 		WARN_ON(1);
 		return -EINVAL;
@@ -1427,6 +1427,7 @@ at86rf230_detect_device(struct at86rf230_local *lp)
 		chip = "at86rf231";
 		lp->data = &at86rf231_data;
 		lp->hw->phy->channels_supported[0] = 0x7FFF800;
+		lp->hw->phy->current_channel = 11;
 		break;
 	case 7:
 		chip = "at86rf212";
@@ -1435,6 +1436,7 @@ at86rf230_detect_device(struct at86rf230_local *lp)
 			lp->hw->flags |= IEEE802154_HW_LBT;
 			lp->hw->phy->channels_supported[0] = 0x00007FF;
 			lp->hw->phy->channels_supported[2] = 0x00007FF;
+			lp->hw->phy->current_channel = 5;
 		} else {
 			rc = -ENOTSUPP;
 		}
@@ -1443,6 +1445,7 @@ at86rf230_detect_device(struct at86rf230_local *lp)
 		chip = "at86rf233";
 		lp->data = &at86rf233_data;
 		lp->hw->phy->channels_supported[0] = 0x7FFF800;
+		lp->hw->phy->current_channel = 13;
 		break;
 	default:
 		chip = "unkown";

@@ -110,37 +110,21 @@ mac802154_wpan_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 
 static int mac802154_wpan_mac_addr(struct net_device *dev, void *p)
 {
+	struct ieee802154_sub_if_data *sdata = IEEE802154_DEV_TO_SUB_IF(dev);
 	struct sockaddr *addr = p;
+	__le64 extended_addr;
 
 	if (netif_running(dev))
 		return -EBUSY;
 
-	/* FIXME: validate addr */
+	extended_addr = ieee802154_netdev_to_extended_addr(addr->sa_data);
+	if (!ieee802154_is_valid_extended_addr(extended_addr))
+		return -EINVAL;
+
 	memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
-	mac802154_dev_set_ieee_addr(dev);
+	sdata->extended_addr = extended_addr;
+
 	return mac802154_wpan_update_llsec(dev);
-}
-
-int mac802154_set_mac_params(struct net_device *dev,
-			     const struct ieee802154_mac_params *params)
-{
-	struct ieee802154_sub_if_data *sdata = IEEE802154_DEV_TO_SUB_IF(dev);
-
-	mutex_lock(&sdata->local->iflist_mtx);
-	sdata->mac_params = *params;
-	mutex_unlock(&sdata->local->iflist_mtx);
-
-	return 0;
-}
-
-void mac802154_get_mac_params(struct net_device *dev,
-			      struct ieee802154_mac_params *params)
-{
-	struct ieee802154_sub_if_data *sdata = IEEE802154_DEV_TO_SUB_IF(dev);
-
-	mutex_lock(&sdata->local->iflist_mtx);
-	*params = sdata->mac_params;
-	mutex_unlock(&sdata->local->iflist_mtx);
 }
 
 static int mac802154_slave_open(struct net_device *dev)
@@ -202,27 +186,22 @@ static int mac802154_wpan_open(struct net_device *dev)
 			goto out;
 	}
 
-	if (local->hw.flags & IEEE802154_HW_TXPOWER) {
-		rc = drv_set_tx_power(local, sdata->mac_params.transmit_power);
+	if (local->hw.flags & IEEE802154_HW_AFILT) {
+		rc = drv_set_pan_id(local, sdata->pan_id);
+		if (rc < 0)
+			goto out;
+
+		rc = drv_set_extended_addr(local, sdata->extended_addr);
+		if (rc < 0)
+			goto out;
+
+		rc = drv_set_short_addr(local, sdata->short_addr);
 		if (rc < 0)
 			goto out;
 	}
 
 	if (local->hw.flags & IEEE802154_HW_LBT) {
 		rc = drv_set_lbt_mode(local, sdata->mac_params.lbt);
-		if (rc < 0)
-			goto out;
-	}
-
-	if (local->hw.flags & IEEE802154_HW_CCA_MODE) {
-		rc = drv_set_cca_mode(local, sdata->mac_params.cca_mode);
-		if (rc < 0)
-			goto out;
-	}
-
-	if (local->hw.flags & IEEE802154_HW_CCA_ED_LEVEL) {
-		rc = drv_set_cca_ed_level(local,
-					  sdata->mac_params.cca_ed_level);
 		if (rc < 0)
 			goto out;
 	}
