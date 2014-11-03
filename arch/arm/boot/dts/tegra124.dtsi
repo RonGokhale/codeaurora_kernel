@@ -12,6 +12,13 @@
 	#address-cells = <2>;
 	#size-cells = <2>;
 
+	aliases {
+		serial0 = &uarta;
+		serial1 = &uartb;
+		serial2 = &uartc;
+		serial3 = &uartd;
+	};
+
 	pcie-controller@0,01003000 {
 		compatible = "nvidia,tegra124-pcie";
 		device_type = "pci";
@@ -286,7 +293,7 @@
 	 * the APB DMA based serial driver, the comptible is
 	 * "nvidia,tegra124-hsuart", "nvidia,tegra30-hsuart".
 	 */
-	serial@0,70006000 {
+	uarta: serial@0,70006000 {
 		compatible = "nvidia,tegra124-uart", "nvidia,tegra20-uart";
 		reg = <0x0 0x70006000 0x0 0x40>;
 		reg-shift = <2>;
@@ -299,7 +306,7 @@
 		status = "disabled";
 	};
 
-	serial@0,70006040 {
+	uartb: serial@0,70006040 {
 		compatible = "nvidia,tegra124-uart", "nvidia,tegra20-uart";
 		reg = <0x0 0x70006040 0x0 0x40>;
 		reg-shift = <2>;
@@ -312,7 +319,7 @@
 		status = "disabled";
 	};
 
-	serial@0,70006200 {
+	uartc: serial@0,70006200 {
 		compatible = "nvidia,tegra124-uart", "nvidia,tegra20-uart";
 		reg = <0x0 0x70006200 0x0 0x40>;
 		reg-shift = <2>;
@@ -325,7 +332,7 @@
 		status = "disabled";
 	};
 
-	serial@0,70006300 {
+	uartd: serial@0,70006300 {
 		compatible = "nvidia,tegra124-uart", "nvidia,tegra20-uart";
 		reg = <0x0 0x70006300 0x0 0x40>;
 		reg-shift = <2>;
