@@ -2877,9 +2877,7 @@ static void intel_update_pipe_size(struct intel_crtc *crtc)
 	I915_WRITE(PIPESRC(crtc->pipe),
 		   ((adjusted_mode->crtc_hdisplay - 1) << 16) |
 		   (adjusted_mode->crtc_vdisplay - 1));
-	if (!crtc->config.pch_pfit.enabled &&
-	    (intel_pipe_has_type(crtc, INTEL_OUTPUT_LVDS) ||
-	     intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))) {
+	if (!crtc->config.pch_pfit.enabled) {
 		I915_WRITE(PF_CTL(crtc->pipe), 0);
 		I915_WRITE(PF_WIN_POS(crtc->pipe), 0);
 		I915_WRITE(PF_WIN_SZ(crtc->pipe), 0);
