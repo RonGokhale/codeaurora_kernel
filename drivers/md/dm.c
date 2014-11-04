@@ -19,6 +19,7 @@
 #include <linux/idr.h>
 #include <linux/hdreg.h>
 #include <linux/delay.h>
+#include <linux/wait.h>
 
 #include <trace/events/block.h>
 
@@ -2830,11 +2831,21 @@ int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
 	struct dm_table *map = NULL;
 	int r = 0;
 
+retry:
 	mutex_lock_nested(&md->suspend_lock, SINGLE_DEPTH_NESTING);
 
 	if (dm_suspended_md(md)) {
 		r = -EINVAL;
 		goto out_unlock;
+	}
+
+	if (dm_suspended_internally_md(md)) {
+		/* already internally suspended, wait for internal resume */
+		mutex_unlock(&md->suspend_lock);
+		r = wait_on_bit(&md->flags, DMF_SUSPENDED_INTERNALLY, TASK_INTERRUPTIBLE);
+		if (r)
+			return r;
+		goto retry;
 	}
 
 	map = rcu_dereference(md->map);
@@ -2879,9 +2890,19 @@ int dm_resume(struct mapped_device *md)
 	int r = -EINVAL;
 	struct dm_table *map = NULL;
 
+retry:
 	mutex_lock(&md->suspend_lock);
 	if (!dm_suspended_md(md))
 		goto out;
+
+	if (dm_suspended_internally_md(md)) {
+		/* already internally suspended, wait for internal resume */
+		mutex_unlock(&md->suspend_lock);
+		r = wait_on_bit(&md->flags, DMF_SUSPENDED_INTERNALLY, TASK_INTERRUPTIBLE);
+		if (r)
+			return r;
+		goto retry;
+	}
 
 	map = rcu_dereference(md->map);
 	if (!map || !dm_table_get_size(map))
@@ -2913,13 +2934,13 @@ static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_fla
 {
 	struct dm_table *map = NULL;
 
-	if (WARN_ON(dm_suspended_internally_md(md)))
-		return; /* disallow nested internal suspends! */
-
 	mutex_lock(&md->suspend_lock);
+	if (WARN_ON(dm_suspended_internally_md(md)))
+		goto out; /* disallow nested internal suspends! */
+
 	if (dm_suspended_md(md)) {
 		set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
-		return; /* nest suspend */
+		goto out; /* nest suspend */
 	}
 
 	map = rcu_dereference(md->map);
@@ -2930,6 +2951,8 @@ static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_fla
 	set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
 
 	dm_table_postsuspend_targets(map);
+out:
+	mutex_unlock(&md->suspend_lock);
 }
 
 void dm_internal_suspend(struct mapped_device *md)
@@ -2948,13 +2971,12 @@ void dm_internal_resume(struct mapped_device *md)
 {
 	struct dm_table *map = NULL;
 
+	mutex_lock(&md->suspend_lock);
 	if (WARN_ON(!dm_suspended_internally_md(md)))
-		return;
+		goto done;
 
-	if (dm_suspended_md(md)) {
-		clear_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
-		goto done; /* resume from nested suspend */
-	}
+	if (dm_suspended_md(md))
+		goto done_clear_bit; /* resume from nested suspend */
 
 	map = rcu_dereference(md->map);
 	if (WARN_ON(!map))
@@ -2966,7 +2988,10 @@ void dm_internal_resume(struct mapped_device *md)
 	 */
 	(void) __dm_resume(md, map, false);
 
+done_clear_bit:
 	clear_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
+	smp_mb__after_atomic();
+	wake_up_bit(&md->flags, DMF_SUSPENDED_INTERNALLY);
 
 done:
 	mutex_unlock(&md->suspend_lock);
