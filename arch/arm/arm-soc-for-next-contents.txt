@@ -5,6 +5,14 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/rric/linux tags/dts-subdirs-for-arm-soc-v3.19
 	samsung/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	renesas/cleanup-kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-kconfig-cleanups-for-v3.19
+	renesas/cleanup-boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-cleanups-for-v3.19
+	renesas/cleanup-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanups-for-v3.19
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.19
 
 next/soc
 	rk/cpufreq
@@ -21,6 +29,14 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
 	realview/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/arm-realview-dt-for-arm-soc
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/dt-timers
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-dt-timers-for-v3.19
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts1
+	renesas/dt-clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-clocksource-for-v3.19
 
 next/drivers
 
