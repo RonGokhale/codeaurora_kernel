@@ -1,0 +1,24 @@
+next/fixes-non-critical
+
+next/cleanup
+	cleanup/dts-subdirs
+		git://git.kernel.org/pub/scm/linux/kernel/git/rric/linux tags/dts-subdirs-for-arm-soc-v3.19
+	samsung/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+
+next/soc
+	rk/cpufreq
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-cpufreqdev-v2
+
+next/boards
+
+next/dt
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+
+next/drivers
+
+next/defconfig
+
+fixes
+
