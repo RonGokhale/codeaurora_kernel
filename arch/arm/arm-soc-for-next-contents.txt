@@ -9,12 +9,18 @@ next/cleanup
 next/soc
 	rk/cpufreq
 		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-cpufreqdev-v2
+	brcm/stb-smp-uart
+		http://github.com/brcm/linux tags/brcmstb-smp-uart-for-3.19
+	integrator/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-multiplatform-for-arm-soc
 
 next/boards
 
 next/dt
 	samsung/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	realview/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/arm-realview-dt-for-arm-soc
 
 next/drivers
 
