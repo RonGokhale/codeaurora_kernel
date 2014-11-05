@@ -1281,8 +1281,7 @@ i915_wait_seqno(struct intel_engine_cs *ring, uint32_t seqno)
 }
 
 static int
-i915_gem_object_wait_rendering__tail(struct drm_i915_gem_object *obj,
-				     struct intel_engine_cs *ring)
+i915_gem_object_wait_rendering__tail(struct drm_i915_gem_object *obj)
 {
 	if (!obj->active)
 		return 0;
@@ -1319,7 +1318,7 @@ i915_gem_object_wait_rendering(struct drm_i915_gem_object *obj,
 	if (ret)
 		return ret;
 
-	return i915_gem_object_wait_rendering__tail(obj, ring);
+	return i915_gem_object_wait_rendering__tail(obj);
 }
 
 /* A nonblocking variant of the above wait. This is a highly dangerous routine
@@ -1359,7 +1358,7 @@ i915_gem_object_wait_rendering__nonblocking(struct drm_i915_gem_object *obj,
 	if (ret)
 		return ret;
 
-	return i915_gem_object_wait_rendering__tail(obj, ring);
+	return i915_gem_object_wait_rendering__tail(obj);
 }
 
 /**
@@ -3477,23 +3476,9 @@ search_free:
 	list_move_tail(&obj->global_list, &dev_priv->mm.bound_list);
 	list_add_tail(&vma->mm_list, &vm->inactive_list);
 
-	if (i915_is_ggtt(vm)) {
-		bool mappable, fenceable;
-
-		fenceable = (vma->node.size == fence_size &&
-			     (vma->node.start & (fence_alignment - 1)) == 0);
-
-		mappable = (vma->node.start + obj->base.size <=
-			    dev_priv->gtt.mappable_end);
-
-		obj->map_and_fenceable = mappable && fenceable;
-	}
-
-	WARN_ON(flags & PIN_MAPPABLE && !obj->map_and_fenceable);
-
 	trace_i915_vma_bind(vma, flags);
 	vma->bind_vma(vma, obj->cache_level,
-		      flags & (PIN_MAPPABLE | PIN_GLOBAL) ? GLOBAL_BIND : 0);
+		      flags & PIN_GLOBAL ? GLOBAL_BIND : 0);
 
 	return vma;
 
@@ -3701,7 +3686,7 @@ int i915_gem_object_set_cache_level(struct drm_i915_gem_object *obj,
 		list_for_each_entry(vma, &obj->vma_list, vma_link)
 			if (drm_mm_node_allocated(&vma->node))
 				vma->bind_vma(vma, cache_level,
-					      obj->has_global_gtt_mapping ? GLOBAL_BIND : 0);
+						vma->bound & GLOBAL_BIND);
 	}
 
 	list_for_each_entry(vma, &obj->vma_list, vma_link)
@@ -4062,12 +4047,16 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 {
 	struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 	struct i915_vma *vma;
+	unsigned bound;
 	int ret;
 
 	if (WARN_ON(vm == &dev_priv->mm.aliasing_ppgtt->base))
 		return -ENODEV;
 
 	if (WARN_ON(flags & (PIN_GLOBAL | PIN_MAPPABLE) && !i915_is_ggtt(vm)))
+		return -EINVAL;
+
+	if (WARN_ON((flags & (PIN_MAPPABLE | PIN_GLOBAL)) == PIN_MAPPABLE))
 		return -EINVAL;
 
 	vma = i915_gem_obj_to_vma(obj, vm);
@@ -4091,14 +4080,38 @@ i915_gem_object_pin(struct drm_i915_gem_object *obj,
 		}
 	}
 
+	bound = vma ? vma->bound : 0;
 	if (vma == NULL || !drm_mm_node_allocated(&vma->node)) {
 		vma = i915_gem_object_bind_to_vm(obj, vm, alignment, flags);
 		if (IS_ERR(vma))
 			return PTR_ERR(vma);
 	}
 
-	if (flags & PIN_GLOBAL && !obj->has_global_gtt_mapping)
+	if (flags & PIN_GLOBAL && !(vma->bound & GLOBAL_BIND))
 		vma->bind_vma(vma, obj->cache_level, GLOBAL_BIND);
+
+	if ((bound ^ vma->bound) & GLOBAL_BIND) {
+		bool mappable, fenceable;
+		u32 fence_size, fence_alignment;
+
+		fence_size = i915_gem_get_gtt_size(obj->base.dev,
+						   obj->base.size,
+						   obj->tiling_mode);
+		fence_alignment = i915_gem_get_gtt_alignment(obj->base.dev,
+							     obj->base.size,
+							     obj->tiling_mode,
+							     true);
+
+		fenceable = (vma->node.size == fence_size &&
+			     (vma->node.start & (fence_alignment - 1)) == 0);
+
+		mappable = (vma->node.start + obj->base.size <=
+			    dev_priv->gtt.mappable_end);
+
+		obj->map_and_fenceable = mappable && fenceable;
+	}
+
+	WARN_ON(flags & PIN_MAPPABLE && !obj->map_and_fenceable);
 
 	vma->pin_count++;
 	if (flags & PIN_MAPPABLE)

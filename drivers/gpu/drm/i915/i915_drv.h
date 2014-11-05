@@ -57,6 +57,9 @@
 #define DRIVER_DESC		"Intel Graphics"
 #define DRIVER_DATE		"20141024"
 
+#undef WARN_ON
+#define WARN_ON(x)		WARN(x, "WARN_ON(" #x ")")
+
 enum pipe {
 	INVALID_PIPE = -1,
 	PIPE_A = 0,
@@ -226,14 +229,20 @@ struct intel_dpll_hw_state {
 	uint32_t wrpll;
 };
 
+struct intel_shared_dpll_config {
+	unsigned crtc_mask; /* mask of CRTCs sharing this PLL */
+	struct intel_dpll_hw_state hw_state;
+};
+
 struct intel_shared_dpll {
-	int refcount; /* count of number of CRTCs sharing this PLL */
+	struct intel_shared_dpll_config config;
+	struct intel_shared_dpll_config *new_config;
+
 	int active; /* count of number of active CRTCs (i.e. DPMS on) */
 	bool on; /* is the PLL actually active? Disabled during modeset */
 	const char *name;
 	/* should match the index in the dev_priv->shared_dplls array */
 	enum intel_dpll_id id;
-	struct intel_dpll_hw_state hw_state;
 	/* The mode_set hook is optional and should be used together with the
 	 * intel_prepare_shared_dpll function. */
 	void (*mode_set)(struct drm_i915_private *dev_priv,
@@ -275,7 +284,6 @@ void intel_link_compute_m_n(int bpp, int nlanes,
 #define DRIVER_PATCHLEVEL	0
 
 #define WATCH_LISTS	0
-#define WATCH_GTT	0
 
 struct opregion_header;
 struct opregion_acpi;
@@ -434,6 +442,7 @@ struct drm_i915_error_state {
 };
 
 struct intel_connector;
+struct intel_encoder;
 struct intel_crtc_config;
 struct intel_plane_config;
 struct intel_crtc;
@@ -476,15 +485,14 @@ struct drm_i915_display_funcs {
 				struct intel_crtc_config *);
 	void (*get_plane_config)(struct intel_crtc *,
 				 struct intel_plane_config *);
-	int (*crtc_mode_set)(struct intel_crtc *crtc,
-			     int x, int y,
-			     struct drm_framebuffer *old_fb);
+	int (*crtc_compute_clock)(struct intel_crtc *crtc);
 	void (*crtc_enable)(struct drm_crtc *crtc);
 	void (*crtc_disable)(struct drm_crtc *crtc);
 	void (*off)(struct drm_crtc *crtc);
-	void (*write_eld)(struct drm_connector *connector,
-			  struct drm_crtc *crtc,
-			  struct drm_display_mode *mode);
+	void (*audio_codec_enable)(struct drm_connector *connector,
+				   struct intel_encoder *encoder,
+				   struct drm_display_mode *mode);
+	void (*audio_codec_disable)(struct intel_encoder *encoder);
 	void (*fdi_link_train)(struct drm_crtc *crtc);
 	void (*init_clock_gating)(struct drm_device *dev);
 	int (*queue_flip)(struct drm_device *dev, struct drm_crtc *crtc,
@@ -1856,8 +1864,6 @@ struct drm_i915_gem_object {
 	unsigned long gt_ro:1;
 	unsigned int cache_level:3;
 
-	unsigned int has_aliasing_ppgtt_mapping:1;
-	unsigned int has_global_gtt_mapping:1;
 	unsigned int has_dma_mapping:1;
 
 	unsigned int frontbuffer_bits:INTEL_FRONTBUFFER_BITS;
@@ -2292,8 +2298,6 @@ __printf(3, 4)
 void i915_handle_error(struct drm_device *dev, bool wedged,
 		       const char *fmt, ...);
 
-void gen6_set_pm_mask(struct drm_i915_private *dev_priv, u32 pm_iir,
-							int new_delay);
 extern void intel_irq_init(struct drm_i915_private *dev_priv);
 extern void intel_hpd_init(struct drm_i915_private *dev_priv);
 int intel_irq_install(struct drm_i915_private *dev_priv);
@@ -2800,7 +2804,6 @@ static inline bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter)
 extern void intel_i2c_reset(struct drm_device *dev);
 
 /* intel_opregion.c */
-struct intel_encoder;
 #ifdef CONFIG_ACPI
 extern int intel_opregion_setup(struct drm_device *dev);
 extern void intel_opregion_init(struct drm_device *dev);

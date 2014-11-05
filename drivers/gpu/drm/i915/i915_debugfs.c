@@ -116,7 +116,7 @@ static const char *get_tiling_flag(struct drm_i915_gem_object *obj)
 
 static inline const char *get_global_flag(struct drm_i915_gem_object *obj)
 {
-	return obj->has_global_gtt_mapping ? "g" : " ";
+	return i915_gem_obj_to_ggtt(obj) ? "g" : " ";
 }
 
 static void
@@ -2630,14 +2630,15 @@ static int i915_shared_dplls_info(struct seq_file *m, void *unused)
 		struct intel_shared_dpll *pll = &dev_priv->shared_dplls[i];
 
 		seq_printf(m, "DPLL%i: %s, id: %i\n", i, pll->name, pll->id);
-		seq_printf(m, " refcount: %i, active: %i, on: %s\n", pll->refcount,
-			   pll->active, yesno(pll->on));
+		seq_printf(m, " crtc_mask: 0x%08x, active: %d, on: %s\n",
+			   pll->config.crtc_mask, pll->active, yesno(pll->on));
 		seq_printf(m, " tracked hardware state:\n");
-		seq_printf(m, " dpll:    0x%08x\n", pll->hw_state.dpll);
-		seq_printf(m, " dpll_md: 0x%08x\n", pll->hw_state.dpll_md);
-		seq_printf(m, " fp0:     0x%08x\n", pll->hw_state.fp0);
-		seq_printf(m, " fp1:     0x%08x\n", pll->hw_state.fp1);
-		seq_printf(m, " wrpll:   0x%08x\n", pll->hw_state.wrpll);
+		seq_printf(m, " dpll:    0x%08x\n", pll->config.hw_state.dpll);
+		seq_printf(m, " dpll_md: 0x%08x\n",
+			   pll->config.hw_state.dpll_md);
+		seq_printf(m, " fp0:     0x%08x\n", pll->config.hw_state.fp0);
+		seq_printf(m, " fp1:     0x%08x\n", pll->config.hw_state.fp1);
+		seq_printf(m, " wrpll:   0x%08x\n", pll->config.hw_state.wrpll);
 	}
 	drm_modeset_unlock_all(dev);
 
@@ -2970,6 +2971,8 @@ static int i9xx_pipe_crc_auto_source(struct drm_device *dev, enum pipe pipe,
 				     port_name(dig_port->port));
 				break;
 			}
+			break;
+		default:
 			break;
 		}
 	}

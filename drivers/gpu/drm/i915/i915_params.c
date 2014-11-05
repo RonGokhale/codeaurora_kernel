@@ -138,7 +138,7 @@ MODULE_PARM_DESC(disable_power_well,
 module_param_named(enable_ips, i915.enable_ips, int, 0600);
 MODULE_PARM_DESC(enable_ips, "Enable IPS (default: true)");
 
-module_param_named(fastboot, i915.fastboot, bool, 0600);
+module_param_named_unsafe(fastboot, i915.fastboot, bool, 0600);
 MODULE_PARM_DESC(fastboot,
 	"Try to skip unnecessary mode sets at boot time (default: false)");
 
