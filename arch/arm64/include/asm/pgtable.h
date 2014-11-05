@@ -464,6 +464,8 @@ static inline pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
 
+#define pgd_huge(pgd)		(0)
+
 /*
  * Encode and decode a swap entry:
  *	bits 0-1:	present (must be zero)
