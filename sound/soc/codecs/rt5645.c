@@ -139,6 +139,7 @@ static const struct reg_default rt5645_reg[] = {
 	{ 0x76, 0x000a },
 	{ 0x77, 0x0c00 },
 	{ 0x78, 0x0000 },
+	{ 0x79, 0x0123 },
 	{ 0x80, 0x0000 },
 	{ 0x81, 0x0000 },
 	{ 0x82, 0x0000 },
@@ -334,6 +335,7 @@ static bool rt5645_readable_register(struct device *dev, unsigned int reg)
 	case RT5645_DMIC_CTRL2:
 	case RT5645_TDM_CTRL_1:
 	case RT5645_TDM_CTRL_2:
+	case RT5645_TDM_CTRL_3:
 	case RT5645_GLB_CLK:
 	case RT5645_PLL_CTRL1:
 	case RT5645_PLL_CTRL2:
@@ -2069,8 +2071,8 @@ static int rt5645_set_bias_level(struct snd_soc_codec *codec,
 			enum snd_soc_bias_level level)
 {
 	switch (level) {
-	case SND_SOC_BIAS_STANDBY:
-		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
+	case SND_SOC_BIAS_PREPARE:
+		if (SND_SOC_BIAS_STANDBY == codec->dapm.bias_level) {
 			snd_soc_update_bits(codec, RT5645_PWR_ANLG1,
 				RT5645_PWR_VREF1 | RT5645_PWR_MB |
 				RT5645_PWR_BG | RT5645_PWR_VREF2,
@@ -2085,15 +2087,24 @@ static int rt5645_set_bias_level(struct snd_soc_codec *codec,
 		}
 		break;
 
+	case SND_SOC_BIAS_STANDBY:
+		snd_soc_update_bits(codec, RT5645_PWR_ANLG1,
+			RT5645_PWR_VREF1 | RT5645_PWR_MB |
+			RT5645_PWR_BG | RT5645_PWR_VREF2,
+			RT5645_PWR_VREF1 | RT5645_PWR_MB |
+			RT5645_PWR_BG | RT5645_PWR_VREF2);
+		snd_soc_update_bits(codec, RT5645_PWR_ANLG1,
+			RT5645_PWR_FV1 | RT5645_PWR_FV2,
+			RT5645_PWR_FV1 | RT5645_PWR_FV2);
+		break;
+
 	case SND_SOC_BIAS_OFF:
 		snd_soc_write(codec, RT5645_DEPOP_M2, 0x1100);
 		snd_soc_write(codec, RT5645_GEN_CTRL1, 0x0128);
-		snd_soc_write(codec, RT5645_PWR_DIG1, 0x0000);
-		snd_soc_write(codec, RT5645_PWR_DIG2, 0x0000);
-		snd_soc_write(codec, RT5645_PWR_VOL, 0x0000);
-		snd_soc_write(codec, RT5645_PWR_MIXER, 0x0000);
-		snd_soc_write(codec, RT5645_PWR_ANLG1, 0x0000);
-		snd_soc_write(codec, RT5645_PWR_ANLG2, 0x0000);
+		snd_soc_update_bits(codec, RT5645_PWR_ANLG1,
+				RT5645_PWR_VREF1 | RT5645_PWR_MB |
+				RT5645_PWR_BG | RT5645_PWR_VREF2 |
+				RT5645_PWR_FV1 | RT5645_PWR_FV2, 0x0);
 		break;
 
 	default:
@@ -2166,11 +2177,20 @@ int rt5645_set_jack_detect(struct snd_soc_codec *codec,
 }
 EXPORT_SYMBOL_GPL(rt5645_set_jack_detect);
 
+static void rt5645_jack_detect_work(struct work_struct *work)
+{
+	struct rt5645_priv *rt5645 =
+		container_of(work, struct rt5645_priv, jack_detect_work.work);
+
+	rt5645_jack_detect(rt5645->codec, rt5645->jack);
+}
+
 static irqreturn_t rt5645_irq(int irq, void *data)
 {
 	struct rt5645_priv *rt5645 = data;
 
-	rt5645_jack_detect(rt5645->codec, rt5645->jack);
+	queue_delayed_work(system_power_efficient_wq,
+			   &rt5645->jack_detect_work, msecs_to_jiffies(250));
 
 	return IRQ_HANDLED;
 }
@@ -2436,6 +2456,8 @@ static int rt5645_i2c_probe(struct i2c_client *i2c,
 			dev_err(&i2c->dev, "Fail gpio_direction hp_det_gpio\n");
 	}
 
+	INIT_DELAYED_WORK(&rt5645->jack_detect_work, rt5645_jack_detect_work);
+
 	return snd_soc_register_codec(&i2c->dev, &soc_codec_dev_rt5645,
 				      rt5645_dai, ARRAY_SIZE(rt5645_dai));
 }
@@ -2446,6 +2468,8 @@ static int rt5645_i2c_remove(struct i2c_client *i2c)
 
 	if (i2c->irq)
 		free_irq(i2c->irq, rt5645);
+
+	cancel_delayed_work_sync(&rt5645->jack_detect_work);
 
 	if (gpio_is_valid(rt5645->pdata.hp_det_gpio))
 		gpio_free(rt5645->pdata.hp_det_gpio);
