@@ -166,6 +166,7 @@
 #define CheckPerm   ((u64)1 << 49)  /* Has valid check_perm field */
 #define NoBigReal   ((u64)1 << 50)  /* No big real mode */
 #define PrivUD      ((u64)1 << 51)  /* #UD instead of #GP on CPL > 0 */
+#define NearBranch  ((u64)1 << 52)  /* Near branches */
 
 #define DstXacc     (DstAccLo | SrcAccHi | SrcWrite)
 
@@ -641,11 +642,11 @@ static bool insn_aligned(struct x86_emulate_ctxt *ctxt, unsigned size)
 		return true;
 }
 
-static int __linearize(struct x86_emulate_ctxt *ctxt,
-		     struct segmented_address addr,
-		     unsigned *max_size, unsigned size,
-		     bool write, bool fetch,
-		     ulong *linear)
+static __always_inline int __linearize(struct x86_emulate_ctxt *ctxt,
+				       struct segmented_address addr,
+				       unsigned *max_size, unsigned size,
+				       bool write, bool fetch,
+				       ulong *linear)
 {
 	struct desc_struct desc;
 	bool usable;
@@ -654,11 +655,12 @@ static int __linearize(struct x86_emulate_ctxt *ctxt,
 	u16 sel;
 	unsigned cpl;
 
-	la = seg_base(ctxt, addr.seg) + addr.ea;
+	la = seg_base(ctxt, addr.seg) +
+	    (fetch || ctxt->ad_bytes == 8 ? addr.ea : (u32)addr.ea);
 	*max_size = 0;
 	switch (ctxt->mode) {
 	case X86EMUL_MODE_PROT64:
-		if (((signed long)la << 16) >> 16 != la)
+		if (is_noncanonical_address(la))
 			return emulate_gp(ctxt, 0);
 
 		*max_size = min_t(u64, ~0u, (1ull << 48) - la);
@@ -701,8 +703,8 @@ static int __linearize(struct x86_emulate_ctxt *ctxt,
 		if (size > *max_size)
 			goto bad;
 		cpl = ctxt->ops->cpl(ctxt);
-		if (!(desc.type & 8)) {
-			/* data segment */
+		if (!fetch) {
+			/* data segment or readable code segment */
 			if (cpl > desc.dpl)
 				goto bad;
 		} else if ((desc.type & 8) && !(desc.type & 4)) {
@@ -716,7 +718,7 @@ static int __linearize(struct x86_emulate_ctxt *ctxt,
 		}
 		break;
 	}
-	if (fetch ? ctxt->mode != X86EMUL_MODE_PROT64 : ctxt->ad_bytes != 8)
+	if (ctxt->mode != X86EMUL_MODE_PROT64)
 		la &= (u32)-1;
 	if (insn_aligned(ctxt, size) && ((la & (size - 1)) != 0))
 		return emulate_gp(ctxt, 0);
@@ -2045,31 +2047,22 @@ static int em_jmp_far(struct x86_emulate_ctxt *ctxt)
 	return rc;
 }
 
-static int em_grp45(struct x86_emulate_ctxt *ctxt)
+static int em_jmp_abs(struct x86_emulate_ctxt *ctxt)
 {
-	int rc = X86EMUL_CONTINUE;
+	return assign_eip_near(ctxt, ctxt->src.val);
+}
 
-	switch (ctxt->modrm_reg) {
-	case 2: /* call near abs */ {
-		long int old_eip;
-		old_eip = ctxt->_eip;
-		rc = assign_eip_near(ctxt, ctxt->src.val);
-		if (rc != X86EMUL_CONTINUE)
-			break;
-		ctxt->src.val = old_eip;
-		rc = em_push(ctxt);
-		break;
-	}
-	case 4: /* jmp abs */
-		rc = assign_eip_near(ctxt, ctxt->src.val);
-		break;
-	case 5: /* jmp far */
-		rc = em_jmp_far(ctxt);
-		break;
-	case 6:	/* push */
-		rc = em_push(ctxt);
-		break;
-	}
+static int em_call_near_abs(struct x86_emulate_ctxt *ctxt)
+{
+	int rc;
+	long int old_eip;
+
+	old_eip = ctxt->_eip;
+	rc = assign_eip_near(ctxt, ctxt->src.val);
+	if (rc != X86EMUL_CONTINUE)
+		return rc;
+	ctxt->src.val = old_eip;
+	rc = em_push(ctxt);
 	return rc;
 }
 
@@ -2425,6 +2418,8 @@ static int em_sysexit(struct x86_emulate_ctxt *ctxt)
 		if ((msr_data & 0xfffc) == 0x0)
 			return emulate_gp(ctxt, 0);
 		ss_sel = (u16)(msr_data + 24);
+		rcx = (u32)rcx;
+		rdx = (u32)rdx;
 		break;
 	case X86EMUL_MODE_PROT64:
 		cs_sel = (u16)(msr_data + 32);
@@ -3780,11 +3775,11 @@ static const struct opcode group4[] = {
 static const struct opcode group5[] = {
 	F(DstMem | SrcNone | Lock,		em_inc),
 	F(DstMem | SrcNone | Lock,		em_dec),
-	I(SrcMem | Stack,			em_grp45),
+	I(SrcMem | NearBranch,			em_call_near_abs),
 	I(SrcMemFAddr | ImplicitOps | Stack,	em_call_far),
-	I(SrcMem | Stack,			em_grp45),
-	I(SrcMemFAddr | ImplicitOps,		em_grp45),
-	I(SrcMem | Stack,			em_grp45), D(Undefined),
+	I(SrcMem | NearBranch,			em_jmp_abs),
+	I(SrcMemFAddr | ImplicitOps,		em_jmp_far),
+	I(SrcMem | Stack,			em_push), D(Undefined),
 };
 
 static const struct opcode group6[] = {
@@ -3964,7 +3959,7 @@ static const struct opcode opcode_table[256] = {
 	I2bvIP(DstDI | SrcDX | Mov | String | Unaligned, em_in, ins, check_perm_in), /* insb, insw/insd */
 	I2bvIP(SrcSI | DstDX | String, em_out, outs, check_perm_out), /* outsb, outsw/outsd */
 	/* 0x70 - 0x7F */
-	X16(D(SrcImmByte)),
+	X16(D(SrcImmByte | NearBranch)),
 	/* 0x80 - 0x87 */
 	G(ByteOp | DstMem | SrcImm, group1),
 	G(DstMem | SrcImm, group1),
@@ -4003,8 +3998,8 @@ static const struct opcode opcode_table[256] = {
 	X8(I(DstReg | SrcImm64 | Mov, em_mov)),
 	/* 0xC0 - 0xC7 */
 	G(ByteOp | Src2ImmByte, group2), G(Src2ImmByte, group2),
-	I(ImplicitOps | Stack | SrcImmU16, em_ret_near_imm),
-	I(ImplicitOps | Stack, em_ret),
+	I(ImplicitOps | NearBranch | SrcImmU16, em_ret_near_imm),
+	I(ImplicitOps | NearBranch, em_ret),
 	I(DstReg | SrcMemFAddr | ModRM | No64 | Src2ES, em_lseg),
 	I(DstReg | SrcMemFAddr | ModRM | No64 | Src2DS, em_lseg),
 	G(ByteOp, group11), G(0, group11),
@@ -4024,13 +4019,14 @@ static const struct opcode opcode_table[256] = {
 	/* 0xD8 - 0xDF */
 	N, E(0, &escape_d9), N, E(0, &escape_db), N, E(0, &escape_dd), N, N,
 	/* 0xE0 - 0xE7 */
-	X3(I(SrcImmByte, em_loop)),
-	I(SrcImmByte, em_jcxz),
+	X3(I(SrcImmByte | NearBranch, em_loop)),
+	I(SrcImmByte | NearBranch, em_jcxz),
 	I2bvIP(SrcImmUByte | DstAcc, em_in,  in,  check_perm_in),
 	I2bvIP(SrcAcc | DstImmUByte, em_out, out, check_perm_out),
 	/* 0xE8 - 0xEF */
-	I(SrcImm | Stack, em_call), D(SrcImm | ImplicitOps),
-	I(SrcImmFAddr | No64, em_jmp_far), D(SrcImmByte | ImplicitOps),
+	I(SrcImm | NearBranch, em_call), D(SrcImm | ImplicitOps | NearBranch),
+	I(SrcImmFAddr | No64, em_jmp_far),
+	D(SrcImmByte | ImplicitOps | NearBranch),
 	I2bvIP(SrcDX | DstAcc, em_in,  in,  check_perm_in),
 	I2bvIP(SrcAcc | DstDX, em_out, out, check_perm_out),
 	/* 0xF0 - 0xF7 */
@@ -4090,7 +4086,7 @@ static const struct opcode twobyte_table[256] = {
 	N, N, N, N,
 	N, N, N, GP(SrcReg | DstMem | ModRM | Mov, &pfx_0f_6f_0f_7f),
 	/* 0x80 - 0x8F */
-	X16(D(SrcImm)),
+	X16(D(SrcImm | NearBranch)),
 	/* 0x90 - 0x9F */
 	X16(D(ByteOp | DstMem | SrcNone | ModRM| Mov)),
 	/* 0xA0 - 0xA7 */
@@ -4559,7 +4555,7 @@ done_prefixes:
 		return EMULATION_FAILED;
 
 	if (unlikely(ctxt->d &
-		     (NotImpl|Stack|Op3264|Sse|Mmx|Intercept|CheckPerm))) {
+	    (NotImpl|Stack|Op3264|Sse|Mmx|Intercept|CheckPerm|NearBranch))) {
 		/*
 		 * These are copied unconditionally here, and checked unconditionally
 		 * in x86_emulate_insn.
@@ -4570,8 +4566,12 @@ done_prefixes:
 		if (ctxt->d & NotImpl)
 			return EMULATION_FAILED;
 
-		if (mode == X86EMUL_MODE_PROT64 && (ctxt->d & Stack))
-			ctxt->op_bytes = 8;
+		if (mode == X86EMUL_MODE_PROT64) {
+			if (ctxt->op_bytes == 4 && (ctxt->d & Stack))
+				ctxt->op_bytes = 8;
+			else if (ctxt->d & NearBranch)
+				ctxt->op_bytes = 8;
+		}
 
 		if (ctxt->d & Op3264) {
 			if (mode == X86EMUL_MODE_PROT64)
