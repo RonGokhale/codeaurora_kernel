@@ -783,7 +783,7 @@ static void cpu_detect_tlb_amd(struct cpuinfo_x86 *c)
 static const struct cpu_dev amd_cpu_dev = {
 	.c_vendor	= "AMD",
 	.c_ident	= { "AuthenticAMD" },
-#ifdef CONFIG_X86_32
+#ifdef CONFIG_X86_MODEL_TABLE
 	.legacy_models = {
 		{ .family = 4, .model_names =
 		  {
@@ -796,6 +796,8 @@ static const struct cpu_dev amd_cpu_dev = {
 		  }
 		},
 	},
+#endif
+#ifdef CONFIG_X86_32
 	.legacy_cache_size = amd_size_cache,
 #endif
 	.c_early_init   = early_init_amd,

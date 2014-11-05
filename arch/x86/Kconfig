@@ -314,6 +314,16 @@ config SMP
 
 	  If you don't know what to do here, say N.
 
+config X86_MODEL_TABLE
+	bool "Enable X86 CPU model names table for 32bit systems"
+	depends on X86_32 && PROC_FS
+	default y
+	help
+	  This option provides tables of model names for CPUs that do
+	  not have the brand-string CPUIDs (0x80000002 through 0x80000004).
+
+	  If you want to save space on a 32bit system, set this option to n.
+
 config X86_FEATURE_NAMES
 	bool "Processor feature human-readable names" if EMBEDDED
 	default y

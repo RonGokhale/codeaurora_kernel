@@ -361,7 +361,7 @@ static void filter_cpuid_features(struct cpuinfo_x86 *c, bool warn)
 /* Look up CPU names by table lookup. */
 static const char *table_lookup_model(struct cpuinfo_x86 *c)
 {
-#ifdef CONFIG_X86_32
+#ifdef CONFIG_X86_MODEL_TABLE
 	const struct legacy_cpu_model_info *info;
 
 	if (c->x86_model >= 16)
