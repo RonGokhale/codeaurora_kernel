@@ -117,6 +117,7 @@ EXPORT_SYMBOL_GPL(dm_get_rq_mapinfo);
 #define DMF_NOFLUSH_SUSPENDING 5
 #define DMF_MERGE_IS_OPTIONAL 6
 #define DMF_DEFERRED_REMOVE 7
+#define DMF_SUSPENDED_INTERNALLY 8
 
 /*
  * A dummy definition to make RCU happy.
@@ -140,7 +141,7 @@ struct mapped_device {
 	 * Use dm_get_live_table{_fast} or take suspend_lock for
 	 * dereference.
 	 */
-	struct dm_table *map;
+	struct dm_table __rcu *map;
 
 	struct list_head table_devices;
 	struct mutex table_devices_lock;
@@ -1607,9 +1608,9 @@ static int dm_merge_bvec(struct request_queue *q,
 	 * Find maximum amount of I/O that won't need splitting
 	 */
 	max_sectors = min(max_io_len(bvm->bi_sector, ti),
-			  (sector_t) BIO_MAX_SECTORS);
+			  (sector_t) queue_max_sectors(q));
 	max_size = (max_sectors << SECTOR_SHIFT) - bvm->bi_size;
-	if (max_size < 0)
+	if (unlikely(max_size < 0)) /* this shouldn't _ever_ happen */
 		max_size = 0;
 
 	/*
@@ -1621,10 +1622,10 @@ static int dm_merge_bvec(struct request_queue *q,
 		max_size = ti->type->merge(ti, bvm, biovec, max_size);
 	/*
 	 * If the target doesn't support merge method and some of the devices
-	 * provided their merge_bvec method (we know this by looking at
-	 * queue_max_hw_sectors), then we can't allow bios with multiple vector
-	 * entries.  So always set max_size to 0, and the code below allows
-	 * just one page.
+	 * provided their merge_bvec method (we know this by looking for the
+	 * max_hw_sectors that dm_set_device_limits may set), then we can't
+	 * allow bios with multiple vector entries.  So always set max_size
+	 * to 0, and the code below allows just one page.
 	 */
 	else if (queue_max_hw_sectors(q) <= PAGE_SIZE >> 9)
 		max_size = 0;
@@ -2332,7 +2333,7 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
 
 	merge_is_optional = dm_table_merge_is_optional(t);
 
-	old_map = md->map;
+	old_map = rcu_dereference(md->map);
 	rcu_assign_pointer(md->map, t);
 	md->immutable_target_type = dm_table_get_immutable_target_type(t);
 
@@ -2351,7 +2352,7 @@ static struct dm_table *__bind(struct mapped_device *md, struct dm_table *t,
  */
 static struct dm_table *__unbind(struct mapped_device *md)
 {
-	struct dm_table *map = md->map;
+	struct dm_table *map = rcu_dereference(md->map);
 
 	if (!map)
 		return NULL;
@@ -2716,36 +2717,16 @@ static void unlock_fs(struct mapped_device *md)
 }
 
 /*
- * We need to be able to change a mapping table under a mounted
- * filesystem.  For example we might want to move some data in
- * the background.  Before the table can be swapped with
- * dm_bind_table, dm_suspend must be called to flush any in
- * flight bios and ensure that any further io gets deferred.
- */
-/*
- * Suspend mechanism in request-based dm.
+ * If __dm_suspend returns 0, the device is completely quiescent
+ * now. There is no request-processing activity. All new requests
+ * are being added to md->deferred list.
  *
- * 1. Flush all I/Os by lock_fs() if needed.
- * 2. Stop dispatching any I/O by stopping the request_queue.
- * 3. Wait for all in-flight I/Os to be completed or requeued.
- *
- * To abort suspend, start the request_queue.
+ * Caller must hold md->suspend_lock
  */
-int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
+static int __dm_suspend(struct mapped_device *md, struct dm_table *map,
+			bool do_lockfs, bool noflush, bool interruptible)
 {
-	struct dm_table *map = NULL;
-	int r = 0;
-	int do_lockfs = suspend_flags & DM_SUSPEND_LOCKFS_FLAG ? 1 : 0;
-	int noflush = suspend_flags & DM_SUSPEND_NOFLUSH_FLAG ? 1 : 0;
-
-	mutex_lock(&md->suspend_lock);
-
-	if (dm_suspended_md(md)) {
-		r = -EINVAL;
-		goto out_unlock;
-	}
-
-	map = md->map;
+	int r;
 
 	/*
 	 * DMF_NOFLUSH_SUSPENDING must be set before presuspend.
@@ -2754,7 +2735,10 @@ int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
 	if (noflush)
 		set_bit(DMF_NOFLUSH_SUSPENDING, &md->flags);
 
-	/* This does not get reverted if there's an error later. */
+	/*
+	 * This gets reverted if there's an error later and the targets
+	 * provide the .presuspend_undo hook.
+	 */
 	dm_table_presuspend_targets(map);
 
 	/*
@@ -2766,7 +2750,7 @@ int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
 	if (!noflush && do_lockfs) {
 		r = lock_fs(md);
 		if (r)
-			goto out_unlock;
+			return r;
 	}
 
 	/*
@@ -2798,7 +2782,8 @@ int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
 	 * We call dm_wait_for_completion to wait for all existing requests
 	 * to finish.
 	 */
-	r = dm_wait_for_completion(md, TASK_INTERRUPTIBLE);
+	r = dm_wait_for_completion(md, (interruptible ?
+					TASK_INTERRUPTIBLE : TASK_UNINTERRUPTIBLE));
 
 	if (noflush)
 		clear_bit(DMF_NOFLUSH_SUSPENDING, &md->flags);
@@ -2812,14 +2797,46 @@ int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
 			start_queue(md->queue);
 
 		unlock_fs(md);
-		goto out_unlock; /* pushback list is already flushed, so skip flush */
+		dm_table_presuspend_undo_targets(map);
+		/* pushback list is already flushed, so skip flush */
 	}
 
-	/*
-	 * If dm_wait_for_completion returned 0, the device is completely
-	 * quiescent now. There is no request-processing activity. All new
-	 * requests are being added to md->deferred list.
-	 */
+	return r;
+}
+
+/*
+ * We need to be able to change a mapping table under a mounted
+ * filesystem.  For example we might want to move some data in
+ * the background.  Before the table can be swapped with
+ * dm_bind_table, dm_suspend must be called to flush any in
+ * flight bios and ensure that any further io gets deferred.
+ */
+/*
+ * Suspend mechanism in request-based dm.
+ *
+ * 1. Flush all I/Os by lock_fs() if needed.
+ * 2. Stop dispatching any I/O by stopping the request_queue.
+ * 3. Wait for all in-flight I/Os to be completed or requeued.
+ *
+ * To abort suspend, start the request_queue.
+ */
+int dm_suspend(struct mapped_device *md, unsigned suspend_flags)
+{
+	struct dm_table *map = NULL;
+	int r = 0;
+	bool do_lockfs = suspend_flags & DM_SUSPEND_LOCKFS_FLAG;
+	bool noflush = suspend_flags & DM_SUSPEND_NOFLUSH_FLAG;
+
+	mutex_lock_nested(&md->suspend_lock, SINGLE_DEPTH_NESTING);
+
+	if (dm_suspended_md(md)) {
+		r = -EINVAL;
+		goto out_unlock;
+	}
+
+	map = rcu_dereference(md->map);
+
+	r = __dm_suspend(md, map, do_lockfs, noflush, true);
 
 	set_bit(DMF_SUSPENDED, &md->flags);
 
@@ -2830,22 +2847,14 @@ out_unlock:
 	return r;
 }
 
-int dm_resume(struct mapped_device *md)
+static int __dm_resume(struct mapped_device *md, struct dm_table *map,
+		       bool resume_targets)
 {
-	int r = -EINVAL;
-	struct dm_table *map = NULL;
-
-	mutex_lock(&md->suspend_lock);
-	if (!dm_suspended_md(md))
-		goto out;
-
-	map = md->map;
-	if (!map || !dm_table_get_size(map))
-		goto out;
-
-	r = dm_table_resume_targets(map);
-	if (r)
-		goto out;
+	if (resume_targets) {
+		int r = dm_table_resume_targets(map);
+		if (r)
+			return r;
+	}
 
 	dm_queue_flush(md);
 
@@ -2858,6 +2867,26 @@ int dm_resume(struct mapped_device *md)
 		start_queue(md->queue);
 
 	unlock_fs(md);
+
+	return 0;
+}
+
+int dm_resume(struct mapped_device *md)
+{
+	int r = -EINVAL;
+	struct dm_table *map = NULL;
+
+	mutex_lock(&md->suspend_lock);
+	if (!dm_suspended_md(md))
+		goto out;
+
+	map = rcu_dereference(md->map);
+	if (!map || !dm_table_get_size(map))
+		goto out;
+
+	r = __dm_resume(md, map, true);
+	if (r)
+		goto out;
 
 	clear_bit(DMF_SUSPENDED, &md->flags);
 
@@ -2877,28 +2906,70 @@ out:
  * userspace-driven suspend.
  */
 
+static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_flags)
+{
+	struct dm_table *map = NULL;
+	bool noflush = suspend_flags & DM_SUSPEND_NOFLUSH_FLAG;
+
+	if (WARN_ON(dm_suspended_internally_md(md)))
+		return; /* disallow nested internal suspends! */
+
+	mutex_lock(&md->suspend_lock);
+	if (dm_suspended_md(md)) {
+		set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
+		return; /* nest suspend */
+	}
+
+	map = rcu_dereference(md->map);
+
+	/* FIXME: should __dm_suspend always be interruptible? */
+	(void) __dm_suspend(md, map, false, noflush, false);
+
+	set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
+
+	dm_table_postsuspend_targets(map);
+}
+
 void dm_internal_suspend(struct mapped_device *md)
 {
-	mutex_lock(&md->suspend_lock);
-	if (dm_suspended_md(md))
-		return;
-
-	set_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags);
-	synchronize_srcu(&md->io_barrier);
-	flush_workqueue(md->wq);
-	dm_wait_for_completion(md, TASK_UNINTERRUPTIBLE);
+	__dm_internal_suspend(md, 0);
 }
+EXPORT_SYMBOL_GPL(dm_internal_suspend);
+
+void dm_internal_suspend_noflush(struct mapped_device *md)
+{
+	__dm_internal_suspend(md, DM_SUSPEND_NOFLUSH_FLAG);
+}
+EXPORT_SYMBOL_GPL(dm_internal_suspend_noflush);
 
 void dm_internal_resume(struct mapped_device *md)
 {
-	if (dm_suspended_md(md))
+	struct dm_table *map = NULL;
+
+	if (WARN_ON(!dm_suspended_internally_md(md)))
+		return;
+
+	if (dm_suspended_md(md)) {
+		clear_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
+		goto done; /* resume from nested suspend */
+	}
+
+	map = rcu_dereference(md->map);
+	if (WARN_ON(!map))
 		goto done;
 
-	dm_queue_flush(md);
+	/*
+	 * FIXME: existing callers don't need to call dm_table_resume_targets
+	 * (which may fail -- so best to avoid it for now)
+	 */
+	(void) __dm_resume(md, map, false);
+
+	clear_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
 
 done:
 	mutex_unlock(&md->suspend_lock);
 }
+EXPORT_SYMBOL_GPL(dm_internal_resume);
 
 /*-----------------------------------------------------------------
  * Event notification.
@@ -2975,6 +3046,11 @@ struct mapped_device *dm_get_from_kobject(struct kobject *kobj)
 int dm_suspended_md(struct mapped_device *md)
 {
 	return test_bit(DMF_SUSPENDED, &md->flags);
+}
+
+int dm_suspended_internally_md(struct mapped_device *md)
+{
+	return test_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
 }
 
 int dm_test_deferred_remove_flag(struct mapped_device *md)
