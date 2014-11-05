@@ -1,6 +1,7 @@
 config EXT3_FS
 	tristate "Ext3 journalling file system support"
 	select JBD
+	select HALFMD4
 	help
 	  This is the journalling version of the Second extended file system
 	  (often called ext3), the de facto standard Linux file system
