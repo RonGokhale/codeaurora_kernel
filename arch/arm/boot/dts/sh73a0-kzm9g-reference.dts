@@ -91,6 +91,7 @@
 		interrupt-parent = <&irqpin0>;
 		interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
 		reg-io-width = <4>;
+		clocks = <&zb_clk>;
 		smsc,irq-push-pull;
 		smsc,save-mac-address;
 		vddvario-supply = <&reg_1p8v>;
@@ -178,6 +179,10 @@
 	status = "ok";
 };
 
+&extal2_clk {
+	clock-frequency = <48000000>;
+};
+
 &i2c0 {
 	status = "okay";
 	as3711@40 {
@@ -251,7 +256,7 @@
 		};
 	};
 
-	ak4648: ak4648@0x12 {
+	ak4648: ak4648@12 {
 		#sound-dai-cells = <0>;
 		compatible = "asahi-kasei,ak4648";
 		reg = <0x12>;
