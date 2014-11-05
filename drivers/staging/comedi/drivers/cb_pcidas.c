@@ -1134,32 +1134,39 @@ static int cb_pcidas_cancel(struct comedi_device *dev,
 	return 0;
 }
 
+static void cb_pcidas_ao_load_fifo(struct comedi_device *dev,
+				   struct comedi_subdevice *s,
+				   unsigned int nsamples)
+{
+	struct cb_pcidas_private *devpriv = dev->private;
+	struct comedi_cmd *cmd = &s->async->cmd;
+	unsigned int nbytes;
+
+	if (cmd->stop_src == TRIG_COUNT && devpriv->ao_count < nsamples)
+		nsamples = devpriv->ao_count;
+
+	nbytes = comedi_buf_read_samples(s, devpriv->ao_buffer, nsamples);
+	nsamples = nbytes / bytes_per_sample(s);
+	if (cmd->stop_src == TRIG_COUNT)
+		devpriv->ao_count -= nsamples;
+
+	outsw(devpriv->ao_registers + DACDATA, devpriv->ao_buffer, nsamples);
+}
+
 static int cb_pcidas_ao_inttrig(struct comedi_device *dev,
 				struct comedi_subdevice *s,
 				unsigned int trig_num)
 {
 	const struct cb_pcidas_board *thisboard = dev->board_ptr;
 	struct cb_pcidas_private *devpriv = dev->private;
-	unsigned int num_bytes, num_points = thisboard->fifo_size;
 	struct comedi_async *async = s->async;
-	struct comedi_cmd *cmd = &s->async->cmd;
+	struct comedi_cmd *cmd = &async->cmd;
 	unsigned long flags;
 
 	if (trig_num != cmd->start_arg)
 		return -EINVAL;
 
-	/*  load up fifo */
-	if (cmd->stop_src == TRIG_COUNT && devpriv->ao_count < num_points)
-		num_points = devpriv->ao_count;
-
-	num_bytes = cfc_read_array_from_buffer(s, devpriv->ao_buffer,
-					       num_points * sizeof(short));
-	num_points = num_bytes / sizeof(short);
-
-	if (cmd->stop_src == TRIG_COUNT)
-		devpriv->ao_count -= num_points;
-	/*  write data to board's fifo */
-	outsw(devpriv->ao_registers + DACDATA, devpriv->ao_buffer, num_bytes);
+	cb_pcidas_ao_load_fifo(dev, s, thisboard->fifo_size);
 
 	/*  enable dac half-full and empty interrupts */
 	spin_lock_irqsave(&dev->spinlock, flags);
@@ -1275,8 +1282,6 @@ static void handle_ao_interrupt(struct comedi_device *dev, unsigned int status)
 	struct comedi_subdevice *s = dev->write_subdev;
 	struct comedi_async *async = s->async;
 	struct comedi_cmd *cmd = &async->cmd;
-	unsigned int half_fifo = thisboard->fifo_size / 2;
-	unsigned int num_points;
 	unsigned long flags;
 
 	if (status & DAEMI) {
@@ -1295,23 +1300,8 @@ static void handle_ao_interrupt(struct comedi_device *dev, unsigned int status)
 			async->events |= COMEDI_CB_EOA;
 		}
 	} else if (status & DAHFI) {
-		unsigned int num_bytes;
+		cb_pcidas_ao_load_fifo(dev, s, thisboard->fifo_size / 2);
 
-		/*  figure out how many points we are writing to fifo */
-		num_points = half_fifo;
-		if (cmd->stop_src == TRIG_COUNT &&
-		    devpriv->ao_count < num_points)
-			num_points = devpriv->ao_count;
-		num_bytes =
-		    cfc_read_array_from_buffer(s, devpriv->ao_buffer,
-					       num_points * sizeof(short));
-		num_points = num_bytes / sizeof(short);
-
-		if (cmd->stop_src == TRIG_COUNT)
-			devpriv->ao_count -= num_points;
-		/*  write data to board's fifo */
-		outsw(devpriv->ao_registers + DACDATA, devpriv->ao_buffer,
-		      num_points);
 		/*  clear half-full interrupt latch */
 		spin_lock_irqsave(&dev->spinlock, flags);
 		outw(devpriv->adc_fifo_bits | DAHFI,
@@ -1319,7 +1309,7 @@ static void handle_ao_interrupt(struct comedi_device *dev, unsigned int status)
 		spin_unlock_irqrestore(&dev->spinlock, flags);
 	}
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static irqreturn_t cb_pcidas_interrupt(int irq, void *d)
@@ -1369,8 +1359,7 @@ static irqreturn_t cb_pcidas_interrupt(int irq, void *d)
 		}
 		insw(devpriv->adc_fifo + ADCDATA, devpriv->ai_buffer,
 		     num_samples);
-		cfc_write_array_to_buffer(s, devpriv->ai_buffer,
-					  num_samples * sizeof(short));
+		comedi_buf_write_samples(s, devpriv->ai_buffer, num_samples);
 		devpriv->count -= num_samples;
 		if (cmd->stop_src == TRIG_COUNT && devpriv->count == 0)
 			async->events |= COMEDI_CB_EOA;
@@ -1382,11 +1371,14 @@ static irqreturn_t cb_pcidas_interrupt(int irq, void *d)
 		/*  else if fifo not empty */
 	} else if (status & (ADNEI | EOBI)) {
 		for (i = 0; i < timeout; i++) {
+			unsigned short val;
+
 			/*  break if fifo is empty */
 			if ((ADNE & inw(devpriv->control_status +
 					INT_ADCFIFO)) == 0)
 				break;
-			cfc_write_to_buffer(s, inw(devpriv->adc_fifo));
+			val = inw(devpriv->adc_fifo);
+			comedi_buf_write_samples(s, &val, 1);
 			if (cmd->stop_src == TRIG_COUNT &&
 			    --devpriv->count == 0) {
 				/* end of acquisition */
@@ -1419,7 +1411,7 @@ static irqreturn_t cb_pcidas_interrupt(int irq, void *d)
 		async->events |= COMEDI_CB_EOA | COMEDI_CB_ERROR;
 	}
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 
 	return IRQ_HANDLED;
 }

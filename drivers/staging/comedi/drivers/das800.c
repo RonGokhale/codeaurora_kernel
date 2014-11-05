@@ -511,17 +511,16 @@ static irqreturn_t das800_interrupt(int irq, void *d)
 
 		/* if there are more data points to collect */
 		if (cmd->stop_src == TRIG_NONE || devpriv->count > 0) {
-			/* write data point to buffer */
-			cfc_write_to_buffer(s, val & s->maxdata);
+			val &= s->maxdata;
+			comedi_buf_write_samples(s, &val, 1);
 			devpriv->count--;
 		}
 	}
-	async->events |= COMEDI_CB_BLOCK;
 
 	if (fifo_overflow) {
 		spin_unlock_irqrestore(&dev->spinlock, irq_flags);
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return IRQ_HANDLED;
 	}
 
@@ -537,7 +536,7 @@ static irqreturn_t das800_interrupt(int irq, void *d)
 		das800_disable(dev);
 		async->events |= COMEDI_CB_EOA;
 	}
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 

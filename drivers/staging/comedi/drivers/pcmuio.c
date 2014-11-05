@@ -317,7 +317,6 @@ static void pcmuio_handle_intr_subdev(struct comedi_device *dev,
 	int asic = pcmuio_subdevice_to_asic(s);
 	struct pcmuio_asic *chip = &devpriv->asics[asic];
 	struct comedi_cmd *cmd = &s->async->cmd;
-	unsigned oldevents = s->async->events;
 	unsigned int val = 0;
 	unsigned long flags;
 	unsigned int i;
@@ -337,33 +336,21 @@ static void pcmuio_handle_intr_subdev(struct comedi_device *dev,
 			val |= (1 << i);
 	}
 
-	/* Write the scan to the buffer. */
-	if (comedi_buf_put(s, val) &&
-	    comedi_buf_put(s, val >> 16)) {
-		s->async->events |= (COMEDI_CB_BLOCK | COMEDI_CB_EOS);
-	} else {
-		/* Overflow! Stop acquisition!! */
-		/* TODO: STOP_ACQUISITION_CALL_HERE!! */
-		pcmuio_stop_intr(dev, s);
-	}
+	comedi_buf_write_samples(s, &val, 1);
 
 	/* Check for end of acquisition. */
 	if (cmd->stop_src == TRIG_COUNT) {
 		if (chip->stop_count > 0) {
 			chip->stop_count--;
-			if (chip->stop_count == 0) {
+			if (chip->stop_count == 0)
 				s->async->events |= COMEDI_CB_EOA;
-				/* TODO: STOP_ACQUISITION_CALL_HERE!! */
-				pcmuio_stop_intr(dev, s);
-			}
 		}
 	}
 
 done:
 	spin_unlock_irqrestore(&chip->spinlock, flags);
 
-	if (oldevents != s->async->events)
-		comedi_event(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static int pcmuio_handle_asic_interrupt(struct comedi_device *dev, int asic)
@@ -614,7 +601,8 @@ static int pcmuio_attach(struct comedi_device *dev, struct comedi_devconfig *it)
 		if ((i == 0 && dev->irq) || (i == 2 && devpriv->irq2)) {
 			/* setup the interrupt subdevice */
 			dev->read_subdev = s;
-			s->subdev_flags	|= SDF_CMD_READ;
+			s->subdev_flags	|= SDF_CMD_READ | SDF_LSAMPL |
+					   SDF_PACKED;
 			s->len_chanlist	= s->n_chan;
 			s->cancel	= pcmuio_cancel;
 			s->do_cmd	= pcmuio_cmd;

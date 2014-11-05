@@ -477,9 +477,8 @@ static void pci9111_handle_fifo_half_full(struct comedi_device *dev,
 	     devpriv->ai_bounce_buffer, samples);
 
 	if (devpriv->scan_delay < 1) {
-		total = cfc_write_array_to_buffer(s,
-						  devpriv->ai_bounce_buffer,
-						  samples * sizeof(short));
+		total = comedi_buf_write_samples(s, devpriv->ai_bounce_buffer,
+						 samples);
 	} else {
 		unsigned int pos = 0;
 		unsigned int to_read;
@@ -492,9 +491,9 @@ static void pci9111_handle_fifo_half_full(struct comedi_device *dev,
 				if (to_read > samples - pos)
 					to_read = samples - pos;
 
-				total += cfc_write_array_to_buffer(s,
+				total += comedi_buf_write_samples(s,
 						devpriv->ai_bounce_buffer + pos,
-						to_read * sizeof(short));
+						to_read);
 			} else {
 				to_read = devpriv->chunk_num_samples -
 					  devpriv->chunk_counter;
@@ -561,7 +560,7 @@ static irqreturn_t pci9111_interrupt(int irq, void *p_device)
 			dev_dbg(dev->class_dev, "fifo overflow\n");
 			outb(0, dev->iobase + PCI9111_INT_CLR_REG);
 			async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-			cfc_handle_events(dev, s);
+			comedi_handle_events(dev, s);
 
 			return IRQ_HANDLED;
 		}
@@ -578,7 +577,7 @@ static irqreturn_t pci9111_interrupt(int irq, void *p_device)
 
 	spin_unlock_irqrestore(&dev->spinlock, irq_flags);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 
 	return IRQ_HANDLED;
 }
