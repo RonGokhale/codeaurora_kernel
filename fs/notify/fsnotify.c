@@ -187,6 +187,13 @@ static int send_to_group(struct inode *to_tell,
  * in linux/fsnotify.h.  Those functions then in turn call here.  Here will call
  * out to all of the registered fsnotify_group.  Those groups can then use the
  * notification event in whatever means they feel necessary.
+ *
+ * To correctly interprete the ignore mask it is necessary to pass the inode
+ * mark and the vfsmount mark of the same notification group in a single call
+ * to send_to_group().
+ *
+ * The marks of each inode and each vfsmount are sorted by group-priority and
+ * group (see fsnotify_add_inode_mark() and fsnotify_add_vfsmount_mark()).
  */
 int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 	     const unsigned char *file_name, u32 cookie)
@@ -232,6 +239,9 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 	while (inode_node || vfsmount_node) {
 		inode_group = vfsmount_group = NULL;
 
+		/*
+		 * Read current marks and groups.
+		 */
 		if (inode_node) {
 			inode_mark = hlist_entry(srcu_dereference(inode_node, &fsnotify_mark_srcu),
 						 struct fsnotify_mark, i.i_list);
@@ -244,25 +254,43 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 			vfsmount_group = vfsmount_mark->group;
 		}
 
-		if (inode_group > vfsmount_group) {
-			/* handle inode */
-			ret = send_to_group(to_tell, inode_mark, NULL, mask,
-					    data, data_is, cookie, file_name);
-			/* we didn't use the vfsmount_mark */
-			vfsmount_group = NULL;
-		} else if (vfsmount_group > inode_group) {
-			ret = send_to_group(to_tell, NULL, vfsmount_mark, mask,
-					    data, data_is, cookie, file_name);
-			inode_group = NULL;
-		} else {
-			ret = send_to_group(to_tell, inode_mark, vfsmount_mark,
-					    mask, data, data_is, cookie,
-					    file_name);
+		/*
+		 * Determine if the inode group or the vfsmount group is
+		 * first in the sorting order.
+		 * Only the mark for the group that is first will be passed to
+		 * send_to_group().
+		 */
+		if (inode_group == NULL)
+			inode_mark = NULL;
+		else if (vfsmount_group == NULL)
+			vfsmount_mark = NULL;
+		else {
+			if (inode_group->priority
+			    > vfsmount_group->priority) {
+				vfsmount_mark = NULL;
+				vfsmount_group = NULL;
+			} else if (inode_group->priority
+				   < vfsmount_group->priority) {
+				inode_mark = NULL;
+				inode_group = NULL;
+			} else if (inode_group > vfsmount_group) {
+				vfsmount_mark = NULL;
+				vfsmount_group = NULL;
+			} else if (inode_group < vfsmount_group) {
+				inode_mark = NULL;
+				inode_group = NULL;
+			}
 		}
+		ret = send_to_group(to_tell, inode_mark, vfsmount_mark,
+				    mask, data, data_is, cookie,
+				    file_name);
 
 		if (ret && (mask & ALL_FSNOTIFY_PERM_EVENTS))
 			goto out;
 
+		/*
+		 * Point to the next marks.
+		 */
 		if (inode_group)
 			inode_node = srcu_dereference(inode_node->next,
 						      &fsnotify_mark_srcu);
