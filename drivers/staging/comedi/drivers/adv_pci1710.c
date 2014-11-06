@@ -731,7 +731,6 @@ static int pci171x_ai_cancel(struct comedi_device *dev,
 	}
 
 	devpriv->ai_act_scan = 0;
-	s->async->cur_chan = 0;
 
 	return 0;
 }
@@ -749,14 +748,14 @@ static void pci1710_handle_every_sample(struct comedi_device *dev,
 	if (status & Status_FE) {
 		dev_dbg(dev->class_dev, "A/D FIFO empty (%4x)\n", status);
 		s->async->events |= COMEDI_CB_EOA | COMEDI_CB_ERROR;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 	if (status & Status_FF) {
 		dev_dbg(dev->class_dev,
 			"A/D FIFO Full status (Fatal Error!) (%4x)\n", status);
 		s->async->events |= COMEDI_CB_EOA | COMEDI_CB_ERROR;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 
@@ -770,12 +769,8 @@ static void pci1710_handle_every_sample(struct comedi_device *dev,
 			break;
 		}
 
-		comedi_buf_put(s, val & s->maxdata);
-
-		s->async->cur_chan++;
-		if (s->async->cur_chan >= cmd->chanlist_len)
-			s->async->cur_chan = 0;
-
+		val &= s->maxdata;
+		comedi_buf_write_samples(s, &val, 1);
 
 		if (s->async->cur_chan == 0) {	/*  one scan done */
 			devpriv->ai_act_scan++;
@@ -790,7 +785,7 @@ static void pci1710_handle_every_sample(struct comedi_device *dev,
 
 	outb(0, dev->iobase + PCI171x_CLRINT);	/*  clear our INT request */
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 /*
@@ -800,7 +795,6 @@ static int move_block_from_fifo(struct comedi_device *dev,
 				struct comedi_subdevice *s, int n, int turn)
 {
 	struct pci1710_private *devpriv = dev->private;
-	struct comedi_cmd *cmd = &s->async->cmd;
 	unsigned int val;
 	int ret;
 	int i;
@@ -814,13 +808,11 @@ static int move_block_from_fifo(struct comedi_device *dev,
 			return ret;
 		}
 
-		comedi_buf_put(s, val & s->maxdata);
+		val &= s->maxdata;
+		comedi_buf_write_samples(s, &val, 1);
 
-		s->async->cur_chan++;
-		if (s->async->cur_chan >= cmd->chanlist_len) {
-			s->async->cur_chan = 0;
+		if (s->async->cur_chan == 0)
 			devpriv->ai_act_scan++;
-		}
 	}
 	return 0;
 }
@@ -831,33 +823,34 @@ static void pci1710_handle_fifo(struct comedi_device *dev,
 	const struct boardtype *this_board = dev->board_ptr;
 	struct pci1710_private *devpriv = dev->private;
 	struct comedi_cmd *cmd = &s->async->cmd;
-	int m, samplesinbuf;
+	unsigned int nsamples;
+	unsigned int m;
 
 	m = inw(dev->iobase + PCI171x_STATUS);
 	if (!(m & Status_FH)) {
 		dev_dbg(dev->class_dev, "A/D FIFO not half full! (%4x)\n", m);
 		s->async->events |= COMEDI_CB_EOA | COMEDI_CB_ERROR;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 	if (m & Status_FF) {
 		dev_dbg(dev->class_dev,
 			"A/D FIFO Full status (Fatal Error!) (%4x)\n", m);
 		s->async->events |= COMEDI_CB_EOA | COMEDI_CB_ERROR;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 
-	samplesinbuf = this_board->fifo_half_size;
-	if (samplesinbuf * sizeof(short) >= s->async->prealloc_bufsz) {
-		m = s->async->prealloc_bufsz / sizeof(short);
+	nsamples = this_board->fifo_half_size;
+	if (comedi_samples_to_bytes(s, nsamples) >= s->async->prealloc_bufsz) {
+		m = comedi_bytes_to_samples(s, s->async->prealloc_bufsz);
 		if (move_block_from_fifo(dev, s, m, 0))
 			return;
-		samplesinbuf -= m;
+		nsamples -= m;
 	}
 
-	if (samplesinbuf) {
-		if (move_block_from_fifo(dev, s, samplesinbuf, 1))
+	if (nsamples) {
+		if (move_block_from_fifo(dev, s, nsamples, 1))
 			return;
 	}
 
@@ -865,12 +858,12 @@ static void pci1710_handle_fifo(struct comedi_device *dev,
 	    devpriv->ai_act_scan >= cmd->stop_arg) {
 		/* all data sampled */
 		s->async->events |= COMEDI_CB_EOA;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 	outb(0, dev->iobase + PCI171x_CLRINT);	/*  clear our INT request */
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 /*
@@ -929,7 +922,6 @@ static int pci171x_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 	outb(0, dev->iobase + PCI171x_CLRINT);
 
 	devpriv->ai_act_scan = 0;
-	s->async->cur_chan = 0;
 
 	devpriv->CntrlReg &= Control_CNT0;
 	if ((cmd->flags & CMDF_WAKE_EOS) == 0)
@@ -1208,7 +1200,7 @@ static int pci1710_auto_attach(struct comedi_device *dev,
 	if (this_board->n_dichan) {
 		s = &dev->subdevices[subdev];
 		s->type = COMEDI_SUBD_DI;
-		s->subdev_flags = SDF_READABLE | SDF_GROUND | SDF_COMMON;
+		s->subdev_flags = SDF_READABLE;
 		s->n_chan = this_board->n_dichan;
 		s->maxdata = 1;
 		s->len_chanlist = this_board->n_dichan;
@@ -1220,7 +1212,7 @@ static int pci1710_auto_attach(struct comedi_device *dev,
 	if (this_board->n_dochan) {
 		s = &dev->subdevices[subdev];
 		s->type = COMEDI_SUBD_DO;
-		s->subdev_flags = SDF_WRITABLE | SDF_GROUND | SDF_COMMON;
+		s->subdev_flags = SDF_WRITABLE;
 		s->n_chan = this_board->n_dochan;
 		s->maxdata = 1;
 		s->len_chanlist = this_board->n_dochan;

@@ -316,15 +316,14 @@ unsigned int comedi_bytes_per_scan(struct comedi_subdevice *s)
 	case COMEDI_SUBD_DI:
 	case COMEDI_SUBD_DO:
 	case COMEDI_SUBD_DIO:
-		bits_per_sample = 8 * bytes_per_sample(s);
-		num_samples = (cmd->chanlist_len + bits_per_sample - 1) /
-				bits_per_sample;
+		bits_per_sample = 8 * comedi_bytes_per_sample(s);
+		num_samples = DIV_ROUND_UP(cmd->chanlist_len, bits_per_sample);
 		break;
 	default:
 		num_samples = cmd->chanlist_len;
 		break;
 	}
-	return num_samples * bytes_per_sample(s);
+	return comedi_samples_to_bytes(s, num_samples);
 }
 EXPORT_SYMBOL_GPL(comedi_bytes_per_scan);
 
@@ -342,7 +341,14 @@ void comedi_inc_scan_progress(struct comedi_subdevice *s,
 			      unsigned int num_bytes)
 {
 	struct comedi_async *async = s->async;
+	struct comedi_cmd *cmd = &async->cmd;
 	unsigned int scan_length = comedi_bytes_per_scan(s);
+
+	/* track the 'cur_chan' for non-SDF_PACKED subdevices */
+	if (!(s->subdev_flags & SDF_PACKED)) {
+		async->cur_chan += comedi_bytes_to_samples(s, num_bytes);
+		async->cur_chan %= cmd->chanlist_len;
+	}
 
 	async->scan_progress += num_bytes;
 	if (async->scan_progress >= scan_length) {
@@ -376,7 +382,7 @@ unsigned int comedi_handle_events(struct comedi_device *dev,
 	if (events == 0)
 		return events;
 
-	if (events & (COMEDI_CB_EOA | COMEDI_CB_ERROR | COMEDI_CB_OVERFLOW))
+	if (events & COMEDI_CB_CANCEL_MASK)
 		s->cancel(dev, s);
 
 	comedi_event(dev, s);

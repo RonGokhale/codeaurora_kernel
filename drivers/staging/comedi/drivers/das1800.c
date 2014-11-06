@@ -488,8 +488,7 @@ static void das1800_handle_fifo_half_full(struct comedi_device *dev,
 		numPoints = devpriv->count;
 	insw(dev->iobase + DAS1800_FIFO, devpriv->ai_buf0, numPoints);
 	munge_data(dev, devpriv->ai_buf0, numPoints);
-	cfc_write_array_to_buffer(s, devpriv->ai_buf0,
-				  numPoints * sizeof(devpriv->ai_buf0[0]));
+	comedi_buf_write_samples(s, devpriv->ai_buf0, numPoints);
 	if (cmd->stop_src == TRIG_COUNT)
 		devpriv->count -= numPoints;
 }
@@ -512,7 +511,7 @@ static void das1800_handle_fifo_not_empty(struct comedi_device *dev,
 		if (!unipolar)
 			;
 		dpnt = munge_bipolar_sample(dev, dpnt);
-		cfc_write_to_buffer(s, dpnt);
+		comedi_buf_write_samples(s, &dpnt, 1);
 		if (cmd->stop_src == TRIG_COUNT)
 			devpriv->count--;
 	}
@@ -536,14 +535,14 @@ static void das1800_flush_dma_channel(struct comedi_device *dev,
 
 	/*  figure out how many points to read */
 	num_bytes = devpriv->dma_transfer_size - get_dma_residue(channel);
-	num_samples = num_bytes / sizeof(short);
+	num_samples = comedi_bytes_to_samples(s, num_bytes);
 
 	/* if we only need some of the points */
 	if (cmd->stop_src == TRIG_COUNT && devpriv->count < num_samples)
 		num_samples = devpriv->count;
 
 	munge_data(dev, buffer, num_samples);
-	cfc_write_array_to_buffer(s, buffer, num_bytes);
+	comedi_buf_write_samples(s, buffer, num_samples);
 	if (cmd->stop_src == TRIG_COUNT)
 		devpriv->count -= num_samples;
 }
@@ -649,14 +648,13 @@ static void das1800_ai_handler(struct comedi_device *dev)
 		das1800_handle_fifo_not_empty(dev, s);
 	}
 
-	async->events |= COMEDI_CB_BLOCK;
 	/* if the card's fifo has overflowed */
 	if (status & OVF) {
 		/*  clear OVF interrupt bit */
 		outb(CLEAR_INTR_MASK & ~OVF, dev->iobase + DAS1800_STATUS);
 		dev_err(dev->class_dev, "FIFO overflow\n");
 		async->events |= COMEDI_CB_ERROR | COMEDI_CB_EOA;
-		cfc_handle_events(dev, s);
+		comedi_handle_events(dev, s);
 		return;
 	}
 	/*  stop taking data if appropriate */
@@ -674,7 +672,7 @@ static void das1800_ai_handler(struct comedi_device *dev)
 		async->events |= COMEDI_CB_EOA;
 	}
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 }
 
 static int das1800_ai_poll(struct comedi_device *dev,
@@ -1515,7 +1513,7 @@ static int das1800_attach(struct comedi_device *dev,
 	/* do */
 	s = &dev->subdevices[3];
 	s->type = COMEDI_SUBD_DO;
-	s->subdev_flags = SDF_WRITABLE | SDF_READABLE;
+	s->subdev_flags = SDF_WRITABLE;
 	s->n_chan = thisboard->do_n_chan;
 	s->maxdata = 1;
 	s->range_table = &range_digital;

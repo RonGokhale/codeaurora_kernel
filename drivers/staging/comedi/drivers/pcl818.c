@@ -352,7 +352,7 @@ static void pcl818_ai_setup_dma(struct comedi_device *dev,
 	disable_dma(devpriv->dma);	/*  disable dma */
 	bytes = devpriv->hwdmasize;
 	if (cmd->stop_src == TRIG_COUNT) {
-		bytes = cmd->stop_arg * cfc_bytes_per_scan(s);
+		bytes = cmd->stop_arg * comedi_bytes_per_scan(s);
 		devpriv->dma_runs_to_end = bytes / devpriv->hwdmasize;
 		devpriv->last_dma_run = bytes % devpriv->hwdmasize;
 		devpriv->dma_runs_to_end--;
@@ -521,18 +521,12 @@ static bool pcl818_ai_next_chan(struct comedi_device *dev,
 	struct pcl818_private *devpriv = dev->private;
 	struct comedi_cmd *cmd = &s->async->cmd;
 
-	s->async->events |= COMEDI_CB_BLOCK;
-
 	devpriv->act_chanlist_pos++;
 	if (devpriv->act_chanlist_pos >= devpriv->act_chanlist_len)
 		devpriv->act_chanlist_pos = 0;
 
-	s->async->cur_chan++;
-	if (s->async->cur_chan >= cmd->chanlist_len) {
-		s->async->cur_chan = 0;
+	if (s->async->cur_chan == 0)
 		devpriv->ai_act_scan--;
-		s->async->events |= COMEDI_CB_EOS;
-	}
 
 	if (cmd->stop_src == TRIG_COUNT && devpriv->ai_act_scan == 0) {
 		/* all data sampled */
@@ -560,7 +554,7 @@ static void pcl818_handle_eoc(struct comedi_device *dev,
 	if (pcl818_ai_dropout(dev, s, chan))
 		return;
 
-	comedi_buf_put(s, val);
+	comedi_buf_write_samples(s, &val, 1);
 
 	pcl818_ai_next_chan(dev, s);
 }
@@ -589,7 +583,7 @@ static void pcl818_handle_dma(struct comedi_device *dev,
 		if (pcl818_ai_dropout(dev, s, chan))
 			break;
 
-		comedi_buf_put(s, val);
+		comedi_buf_write_samples(s, &val, 1);
 
 		if (!pcl818_ai_next_chan(dev, s))
 			break;
@@ -630,7 +624,7 @@ static void pcl818_handle_fifo(struct comedi_device *dev,
 		if (pcl818_ai_dropout(dev, s, chan))
 			break;
 
-		comedi_buf_put(s, val);
+		comedi_buf_write_samples(s, &val, 1);
 
 		if (!pcl818_ai_next_chan(dev, s))
 			break;
@@ -669,7 +663,7 @@ static irqreturn_t pcl818_interrupt(int irq, void *d)
 
 	pcl818_ai_clear_eoc(dev);
 
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 

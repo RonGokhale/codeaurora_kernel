@@ -50,7 +50,6 @@
  */
 
 #include "tmacro.h"
-#include "tether.h"
 #include "mac.h"
 #include "baseband.h"
 #include "srom.h"
@@ -1792,18 +1791,17 @@ BBuGetFrameTime(
 			uFrameTime++;
 
 		return uPreamble + uFrameTime;
-	} else {
-		uFrameTime = (cbFrameLength * 8 + 22) / uRate; /* ???????? */
-		uTmp = ((uFrameTime * uRate) - 22) / 8;
-		if (cbFrameLength != uTmp)
-			uFrameTime++;
-
-		uFrameTime = uFrameTime * 4;    /* ??????? */
-		if (byPktType != PK_TYPE_11A)
-			uFrameTime += 6;     /* ?????? */
-
-		return 20 + uFrameTime; /* ?????? */
 	}
+	uFrameTime = (cbFrameLength * 8 + 22) / uRate; /* ???????? */
+	uTmp = ((uFrameTime * uRate) - 22) / 8;
+	if (cbFrameLength != uTmp)
+		uFrameTime++;
+
+	uFrameTime = uFrameTime * 4;    /* ??????? */
+	if (byPktType != PK_TYPE_11A)
+		uFrameTime += 6;     /* ?????? */
+
+	return 20 + uFrameTime; /* ?????? */
 }
 
 /*
@@ -2117,7 +2115,7 @@ bool BBbVT3253Init(struct vnt_private *pDevice)
 				bResult &= BBbWriteEmbedded(dwIoBase, byVT3253B0_AGC4_RFMD2959[ii][0], byVT3253B0_AGC4_RFMD2959[ii][1]);
 
 			VNSvOutPortD(dwIoBase + MAC_REG_ITRTMSET, 0x23);
-			MACvRegBitsOn(dwIoBase, MAC_REG_PAPEDELAY, BIT0);
+			MACvRegBitsOn(dwIoBase, MAC_REG_PAPEDELAY, BIT(0));
 		}
 		pDevice->abyBBVGA[0] = 0x18;
 		pDevice->abyBBVGA[1] = 0x0A;
@@ -2150,7 +2148,7 @@ bool BBbVT3253Init(struct vnt_private *pDevice)
 			bResult &= BBbWriteEmbedded(dwIoBase, byVT3253B0_AGC[ii][0], byVT3253B0_AGC[ii][1]);
 
 		VNSvOutPortB(dwIoBase + MAC_REG_ITRTMSET, 0x23);
-		MACvRegBitsOn(dwIoBase, MAC_REG_PAPEDELAY, BIT0);
+		MACvRegBitsOn(dwIoBase, MAC_REG_PAPEDELAY, BIT(0));
 
 		pDevice->abyBBVGA[0] = 0x14;
 		pDevice->abyBBVGA[1] = 0x0A;
@@ -2456,7 +2454,7 @@ BBvPowerSaveModeON(void __iomem *dwIoBase)
 	unsigned char byOrgData;
 
 	BBbReadEmbedded(dwIoBase, 0x0D, &byOrgData);
-	byOrgData |= BIT0;
+	byOrgData |= BIT(0);
 	BBbWriteEmbedded(dwIoBase, 0x0D, byOrgData);
 }
 
@@ -2478,7 +2476,7 @@ BBvPowerSaveModeOFF(void __iomem *dwIoBase)
 	unsigned char byOrgData;
 
 	BBbReadEmbedded(dwIoBase, 0x0D, &byOrgData);
-	byOrgData &= ~(BIT0);
+	byOrgData &= ~(BIT(0));
 	BBbWriteEmbedded(dwIoBase, 0x0D, byOrgData);
 }
 
@@ -2783,13 +2781,15 @@ void BBvAntennaDiversity(struct vnt_private *pDevice,
 
 void
 TimerSQ3CallBack(
-	void *hDeviceContext
+	unsigned long data
 )
 {
-	struct vnt_private *pDevice = hDeviceContext;
+	struct vnt_private *pDevice = (struct vnt_private *)data;
+	unsigned long flags;
 
 	pr_debug("TimerSQ3CallBack...\n");
-	spin_lock_irq(&pDevice->lock);
+
+	spin_lock_irqsave(&pDevice->lock, flags);
 
 	pr_debug("3.[%08x][%08x], %d\n",
 		 (int)pDevice->ulRatio_State0, (int)pDevice->ulRatio_State1,
@@ -2804,7 +2804,7 @@ TimerSQ3CallBack(
 	add_timer(&pDevice->TimerSQ3Tmax3);
 	add_timer(&pDevice->TimerSQ3Tmax2);
 
-	spin_unlock_irq(&pDevice->lock);
+	spin_unlock_irqrestore(&pDevice->lock, flags);
 }
 
 /*+
@@ -2827,14 +2827,16 @@ TimerSQ3CallBack(
 
 void
 TimerState1CallBack(
-	void *hDeviceContext
+	unsigned long data
 )
 {
-	struct vnt_private *pDevice = hDeviceContext;
+	struct vnt_private *pDevice = (struct vnt_private *)data;
+	unsigned long flags;
 
 	pr_debug("TimerState1CallBack...\n");
 
-	spin_lock_irq(&pDevice->lock);
+	spin_lock_irqsave(&pDevice->lock, flags);
+
 	if (pDevice->uDiversityCnt < pDevice->ulDiversityMValue/100) {
 		s_vChangeAntenna(pDevice);
 		pDevice->TimerSQ3Tmax3.expires =  RUN_AT(pDevice->byTMax3 * HZ);
@@ -2865,5 +2867,6 @@ TimerState1CallBack(
 	}
 	pDevice->byAntennaState = 0;
 	BBvClearAntDivSQ3Value(pDevice);
-	spin_unlock_irq(&pDevice->lock);
+
+	spin_unlock_irqrestore(&pDevice->lock, flags);
 }

@@ -991,7 +991,7 @@ static int do_bufinfo_ioctl(struct comedi_device *dev,
 	if (s->busy != file)
 		return -EACCES;
 
-	if (bi.bytes_read && (s->subdev_flags & SDF_CMD_READ)) {
+	if (bi.bytes_read && !(async->cmd.flags & CMDF_WRITE)) {
 		bi.bytes_read = comedi_buf_read_alloc(s, bi.bytes_read);
 		comedi_buf_read_free(s, bi.bytes_read);
 
@@ -1001,7 +1001,7 @@ static int do_bufinfo_ioctl(struct comedi_device *dev,
 		}
 	}
 
-	if (bi.bytes_written && (s->subdev_flags & SDF_CMD_WRITE)) {
+	if (bi.bytes_written && (async->cmd.flags & CMDF_WRITE)) {
 		bi.bytes_written =
 		    comedi_buf_write_alloc(s, bi.bytes_written);
 		comedi_buf_write_free(s, bi.bytes_written);
@@ -1451,6 +1451,21 @@ static int __comedi_get_user_cmd(struct comedi_device *dev,
 		return -EINVAL;
 	}
 
+	/*
+	 * Set the CMDF_WRITE flag to the correct state if the subdevice
+	 * supports only "read" commands or only "write" commands.
+	 */
+	switch (s->subdev_flags & (SDF_CMD_READ | SDF_CMD_WRITE)) {
+	case SDF_CMD_READ:
+		cmd->flags &= ~CMDF_WRITE;
+		break;
+	case SDF_CMD_WRITE:
+		cmd->flags |= CMDF_WRITE;
+		break;
+	default:
+		break;
+	}
+
 	return 0;
 }
 
@@ -1552,9 +1567,7 @@ static int do_cmd_ioctl(struct comedi_device *dev,
 
 	comedi_buf_reset(s);
 
-	async->cb_mask =
-	    COMEDI_CB_EOA | COMEDI_CB_BLOCK | COMEDI_CB_ERROR |
-	    COMEDI_CB_OVERFLOW;
+	async->cb_mask = COMEDI_CB_BLOCK | COMEDI_CB_CANCEL_MASK;
 	if (async->cmd.flags & CMDF_WAKE_EOS)
 		async->cb_mask |= COMEDI_CB_EOS;
 
@@ -1720,7 +1733,6 @@ static int do_cancel_ioctl(struct comedi_device *dev, unsigned long arg,
 			   void *file)
 {
 	struct comedi_subdevice *s;
-	int ret;
 
 	if (arg >= dev->n_subdevices)
 		return -EINVAL;
@@ -1734,9 +1746,7 @@ static int do_cancel_ioctl(struct comedi_device *dev, unsigned long arg,
 	if (s->busy != file)
 		return -EBUSY;
 
-	ret = do_cancel(dev, s);
-
-	return ret;
+	return do_cancel(dev, s);
 }
 
 /*
@@ -2007,17 +2017,19 @@ static unsigned int comedi_poll(struct file *file, poll_table *wait)
 	if (s && s->async) {
 		poll_wait(file, &s->async->wait_head, wait);
 		if (!s->busy || !comedi_is_subdevice_running(s) ||
+		    (s->async->cmd.flags & CMDF_WRITE) ||
 		    comedi_buf_read_n_available(s) > 0)
 			mask |= POLLIN | POLLRDNORM;
 	}
 
 	s = comedi_write_subdevice(dev, minor);
 	if (s && s->async) {
-		unsigned int bps = bytes_per_sample(s);
+		unsigned int bps = comedi_bytes_per_sample(s);
 
 		poll_wait(file, &s->async->wait_head, wait);
 		comedi_buf_write_alloc(s, s->async->prealloc_bufsz);
 		if (!s->busy || !comedi_is_subdevice_running(s) ||
+		    !(s->async->cmd.flags & CMDF_WRITE) ||
 		    comedi_buf_write_n_allocated(s) >= bps)
 			mask |= POLLOUT | POLLWRNORM;
 	}
@@ -2063,6 +2075,10 @@ static ssize_t comedi_write(struct file *file, const char __user *buf,
 		goto out;
 	if (s->busy != file) {
 		retval = -EACCES;
+		goto out;
+	}
+	if (!(async->cmd.flags & CMDF_WRITE)) {
+		retval = -EINVAL;
 		goto out;
 	}
 
@@ -2136,6 +2152,10 @@ static ssize_t comedi_write(struct file *file, const char __user *buf,
 				retval = -EACCES;
 				break;
 			}
+			if (!(async->cmd.flags & CMDF_WRITE)) {
+				retval = -EINVAL;
+				break;
+			}
 			continue;
 		}
 
@@ -2200,6 +2220,10 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 		retval = -EACCES;
 		goto out;
 	}
+	if (async->cmd.flags & CMDF_WRITE) {
+		retval = -EINVAL;
+		goto out;
+	}
 
 	add_wait_queue(&async->wait_head, &wait);
 	while (nbytes > 0 && !retval) {
@@ -2237,6 +2261,10 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 			}
 			if (s->busy != file) {
 				retval = -EACCES;
+				break;
+			}
+			if (async->cmd.flags & CMDF_WRITE) {
+				retval = -EINVAL;
 				break;
 			}
 			continue;
@@ -2395,14 +2423,14 @@ void comedi_event(struct comedi_device *dev, struct comedi_subdevice *s)
 	if (!comedi_is_subdevice_running(s))
 		return;
 
-	if (s->
-	    async->events & (COMEDI_CB_EOA | COMEDI_CB_ERROR |
-			     COMEDI_CB_OVERFLOW)) {
+	if (s->async->events & COMEDI_CB_CANCEL_MASK)
 		runflags_mask |= SRF_RUNNING;
-	}
-	/* remember if an error event has occurred, so an error
-	 * can be returned the next time the user does a read() */
-	if (s->async->events & (COMEDI_CB_ERROR | COMEDI_CB_OVERFLOW)) {
+
+	/*
+	 * Remember if an error event has occurred, so an error
+	 * can be returned the next time the user does a read().
+	 */
+	if (s->async->events & COMEDI_CB_ERROR_MASK) {
 		runflags_mask |= SRF_ERROR;
 		runflags |= SRF_ERROR;
 	}
