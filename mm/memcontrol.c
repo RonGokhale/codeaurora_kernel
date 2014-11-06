@@ -2603,8 +2603,6 @@ void memcg_update_array_size(int num)
 static void memcg_register_cache(struct mem_cgroup *memcg,
 				 struct kmem_cache *root_cache)
 {
-	static char memcg_name_buf[NAME_MAX + 1]; /* protected by
-						     memcg_slab_mutex */
 	struct kmem_cache *cachep;
 	int id;
 
@@ -2620,8 +2618,7 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 	if (cache_from_memcg_idx(root_cache, id))
 		return;
 
-	cgroup_name(memcg->css.cgroup, memcg_name_buf, NAME_MAX + 1);
-	cachep = memcg_create_kmem_cache(memcg, root_cache, memcg_name_buf);
+	cachep = memcg_create_kmem_cache(memcg, root_cache);
 	/*
 	 * If we could not create a memcg cache, do not complain, because
 	 * that's not critical at all as we can always proceed with the root
@@ -2629,8 +2626,6 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 	 */
 	if (!cachep)
 		return;
-
-	css_get(&memcg->css);
 
 	/*
 	 * Since readers won't lock (see cache_from_memcg_idx()), we need a
@@ -2646,7 +2641,6 @@ static void memcg_register_cache(struct mem_cgroup *memcg,
 static void memcg_unregister_cache(struct kmem_cache *cachep)
 {
 	struct kmem_cache *root_cache;
-	struct mem_cgroup *memcg;
 	int id;
 
 	lockdep_assert_held(&memcg_slab_mutex);
@@ -2654,16 +2648,12 @@ static void memcg_unregister_cache(struct kmem_cache *cachep)
 	BUG_ON(is_root_cache(cachep));
 
 	root_cache = cachep->memcg_params->root_cache;
-	memcg = cachep->memcg_params->memcg;
-	id = memcg_cache_id(memcg);
+	id = cachep->memcg_params->id;
 
 	BUG_ON(root_cache->memcg_params->memcg_caches[id] != cachep);
 	root_cache->memcg_params->memcg_caches[id] = NULL;
 
 	kmem_cache_destroy(cachep);
-
-	/* drop the reference taken in memcg_register_cache */
-	css_put(&memcg->css);
 }
 
 /*
@@ -4198,7 +4188,6 @@ static int memcg_init_kmem(struct mem_cgroup *memcg, struct cgroup_subsys *ss)
 {
 	int ret;
 
-	memcg->kmemcg_id = -1;
 	ret = memcg_propagate_kmem(memcg);
 	if (ret)
 		return ret;
@@ -4743,6 +4732,9 @@ mem_cgroup_css_alloc(struct cgroup_subsys_state *parent_css)
 	vmpressure_init(&memcg->vmpressure);
 	INIT_LIST_HEAD(&memcg->event_list);
 	spin_lock_init(&memcg->event_list_lock);
+#ifdef CONFIG_MEMCG_KMEM
+	memcg->kmemcg_id = -1;
+#endif
 
 	return &memcg->css;
 

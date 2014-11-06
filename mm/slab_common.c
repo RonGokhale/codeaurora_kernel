@@ -125,7 +125,7 @@ static int memcg_alloc_cache_params(struct mem_cgroup *memcg,
 		return -ENOMEM;
 
 	if (memcg) {
-		s->memcg_params->memcg = memcg;
+		s->memcg_params->id = memcg_cache_id(memcg);
 		s->memcg_params->root_cache = root_cache;
 	} else
 		s->memcg_params->is_root_cache = true;
@@ -430,15 +430,13 @@ EXPORT_SYMBOL(kmem_cache_create);
  * memcg_create_kmem_cache - Create a cache for a memory cgroup.
  * @memcg: The memory cgroup the new cache is for.
  * @root_cache: The parent of the new cache.
- * @memcg_name: The name of the memory cgroup (used for naming the new cache).
  *
  * This function attempts to create a kmem cache that will serve allocation
  * requests going from @memcg to @root_cache. The new cache inherits properties
  * from its parent.
  */
 struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
-					   struct kmem_cache *root_cache,
-					   const char *memcg_name)
+					   struct kmem_cache *root_cache)
 {
 	struct kmem_cache *s = NULL;
 	char *cache_name;
@@ -448,8 +446,8 @@ struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
 
 	mutex_lock(&slab_mutex);
 
-	cache_name = kasprintf(GFP_KERNEL, "%s(%d:%s)", root_cache->name,
-			       memcg_cache_id(memcg), memcg_name);
+	cache_name = kasprintf(GFP_KERNEL, "%s(%d)", root_cache->name,
+			       memcg_cache_id(memcg));
 	if (!cache_name)
 		goto out_unlock;
 
@@ -916,7 +914,7 @@ int memcg_slab_show(struct seq_file *m, void *p)
 
 	if (p == slab_caches.next)
 		print_slabinfo_header(m);
-	if (!is_root_cache(s) && s->memcg_params->memcg == memcg)
+	if (!is_root_cache(s) && s->memcg_params->id == memcg_cache_id(memcg))
 		cache_show(s, m);
 	return 0;
 }
