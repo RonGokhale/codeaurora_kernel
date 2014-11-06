@@ -56,7 +56,8 @@ static const char *verstr = "20101219";
 
 /* The driver prints some debugging information on the console if DEBUG
    is defined and non-zero. */
-#define DEBUG 0
+#define DEBUG 1
+#define NO_DEBUG 0
 
 #define ST_DEB_MSG  KERN_NOTICE
 #if DEBUG
@@ -80,6 +81,7 @@ static int max_sg_segs;
 static int try_direct_io = TRY_DIRECT_IO;
 static int try_rdio = 1;
 static int try_wdio = 1;
+static int debug_flag;
 
 static struct class st_sysfs_class;
 static const struct attribute_group *st_dev_groups[];
@@ -100,6 +102,9 @@ module_param_named(max_sg_segs, max_sg_segs, int, 0);
 MODULE_PARM_DESC(max_sg_segs, "Maximum number of scatter/gather segments to use (256)");
 module_param_named(try_direct_io, try_direct_io, int, 0);
 MODULE_PARM_DESC(try_direct_io, "Try direct I/O between user buffer and tape drive (1)");
+module_param_named(debug_flag, debug_flag, int, 0);
+MODULE_PARM_DESC(debug_flag, "Enable DEBUG, same as setting debugging=1");
+
 
 /* Extra parameters for testing */
 module_param_named(try_rdio, try_rdio, int, 0);
@@ -124,6 +129,9 @@ static struct st_dev_parm {
 	},
 	{
 		"try_direct_io", &try_direct_io
+	},
+	{
+		"debug_flag", &debug_flag
 	}
 };
 #endif
@@ -306,8 +314,7 @@ static inline char *tape_name(struct scsi_tape *tape)
 }
 
 #define st_printk(prefix, t, fmt, a...) \
-	sdev_printk(prefix, (t)->device, "%s: " fmt, \
-		    tape_name(t), ##a)
+	sdev_prefix_printk(prefix, (t)->device, tape_name(t), fmt, ##a)
 #ifdef DEBUG
 #define DEBC_printk(t, fmt, a...) \
 	if (debugging) { st_printk(ST_DEB_MSG, t, fmt, ##a ); }
@@ -374,7 +381,8 @@ static int st_chk_result(struct scsi_tape *STp, struct st_request * SRpnt)
 			    SRpnt->cmd[0], SRpnt->cmd[1], SRpnt->cmd[2],
 			    SRpnt->cmd[3], SRpnt->cmd[4], SRpnt->cmd[5]);
 		if (cmdstatp->have_sense)
-			 __scsi_print_sense(name, SRpnt->sense, SCSI_SENSE_BUFFERSIZE);
+			__scsi_print_sense(STp->device, name,
+					   SRpnt->sense, SCSI_SENSE_BUFFERSIZE);
 	} ) /* end DEB */
 	if (!debugging) { /* Abnormal conditions for tape */
 		if (!cmdstatp->have_sense)
@@ -390,7 +398,8 @@ static int st_chk_result(struct scsi_tape *STp, struct st_request * SRpnt)
 			 SRpnt->cmd[0] != MODE_SENSE &&
 			 SRpnt->cmd[0] != TEST_UNIT_READY) {
 
-			__scsi_print_sense(name, SRpnt->sense, SCSI_SENSE_BUFFERSIZE);
+			__scsi_print_sense(STp->device, name,
+					   SRpnt->sense, SCSI_SENSE_BUFFERSIZE);
 		}
 	}
 
@@ -4308,6 +4317,12 @@ static int __init init_st(void)
 
 	printk(KERN_INFO "st: Version %s, fixed bufsize %d, s/g segs %d\n",
 		verstr, st_fixed_buffer_size, st_max_sg_segs);
+
+	debugging = (debug_flag > 0) ? debug_flag : NO_DEBUG;
+	if (debugging) {
+		printk(KERN_INFO "st: Debugging enabled debug_flag = %d\n",
+			debugging);
+	}
 
 	err = class_register(&st_sysfs_class);
 	if (err) {

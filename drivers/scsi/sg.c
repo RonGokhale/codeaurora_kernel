@@ -219,8 +219,8 @@ static void sg_device_destroy(struct kref *kref);
 #define SZ_SG_REQ_INFO sizeof(sg_req_info_t)
 
 #define sg_printk(prefix, sdp, fmt, a...) \
-	sdev_printk(prefix, (sdp)->device, "[%s] " fmt, \
-		    (sdp)->disk->disk_name, ##a)
+	sdev_prefix_printk(prefix, (sdp)->device,		\
+			   (sdp)->disk->disk_name, fmt, ##a)
 
 static int sg_allow_access(struct file *filp, unsigned char *cmd)
 {
@@ -847,7 +847,7 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 {
 	void __user *p = (void __user *)arg;
 	int __user *ip = p;
-	int result, val, read_only;
+	int result, val, val2, read_only;
 	Sg_device *sdp;
 	Sg_fd *sfp;
 	Sg_request *srp;
@@ -1082,27 +1082,32 @@ sg_ioctl(struct file *filp, unsigned int cmd_in, unsigned long arg)
 		result = get_user(val, ip);
 		if (result)
 			return result;
+		if (val & SG_SCSI_RESET_NO_ESCALATE) {
+			val &= ~SG_SCSI_RESET_NO_ESCALATE;
+			val2 = SCSI_TRY_RESET_NO_ESCALATE;
+		} else
+			val2 = 0;
 		if (SG_SCSI_RESET_NOTHING == val)
 			return 0;
 		switch (val) {
 		case SG_SCSI_RESET_DEVICE:
-			val = SCSI_TRY_RESET_DEVICE;
+			val2 |= SCSI_TRY_RESET_DEVICE;
 			break;
 		case SG_SCSI_RESET_TARGET:
-			val = SCSI_TRY_RESET_TARGET;
+			val2 |= SCSI_TRY_RESET_TARGET;
 			break;
 		case SG_SCSI_RESET_BUS:
-			val = SCSI_TRY_RESET_BUS;
+			val2 |= SCSI_TRY_RESET_BUS;
 			break;
 		case SG_SCSI_RESET_HOST:
-			val = SCSI_TRY_RESET_HOST;
+			val2 |= SCSI_TRY_RESET_HOST;
 			break;
 		default:
 			return -EINVAL;
 		}
 		if (!capable(CAP_SYS_ADMIN) || !capable(CAP_SYS_RAWIO))
 			return -EACCES;
-		return (scsi_reset_provider(sdp->device, val) ==
+		return (scsi_reset_provider(sdp->device, val2) ==
 			SUCCESS) ? 0 : -EIO;
 	case SCSI_IOCTL_SEND_COMMAND:
 		if (atomic_read(&sdp->detaching))
@@ -1360,7 +1365,7 @@ sg_rq_end_io(struct request *rq, int uptodate)
 		if ((sdp->sgdebug > 0) &&
 		    ((CHECK_CONDITION == srp->header.masked_status) ||
 		     (COMMAND_TERMINATED == srp->header.masked_status)))
-			__scsi_print_sense(__func__, sense,
+			__scsi_print_sense(sdp->device, __func__, sense,
 					   SCSI_SENSE_BUFFERSIZE);
 
 		/* Following if statement is a patch supplied by Eric Youngdale */
