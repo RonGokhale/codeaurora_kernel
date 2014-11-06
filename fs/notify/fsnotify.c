@@ -188,7 +188,7 @@ static int send_to_group(struct inode *to_tell,
  * out to all of the registered fsnotify_group.  Those groups can then use the
  * notification event in whatever means they feel necessary.
  *
- * To correctly interprete the ignore mask it is necessary to pass the inode
+ * To correctly interpret the ignore mask it is necessary to pass the inode
  * mark and the vfsmount mark of the same notification group in a single call
  * to send_to_group().
  *
@@ -265,12 +265,11 @@ int fsnotify(struct inode *to_tell, __u32 mask, void *data, int data_is,
 		else if (vfsmount_group == NULL)
 			vfsmount_mark = NULL;
 		else {
-			if (inode_group->priority
-			    > vfsmount_group->priority) {
+			if (inode_group->priority > vfsmount_group->priority) {
 				vfsmount_mark = NULL;
 				vfsmount_group = NULL;
-			} else if (inode_group->priority
-				   < vfsmount_group->priority) {
+			} else if (inode_group->priority <
+					vfsmount_group->priority) {
 				inode_mark = NULL;
 				inode_group = NULL;
 			} else if (inode_group > vfsmount_group) {
