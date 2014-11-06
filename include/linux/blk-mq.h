@@ -79,7 +79,22 @@ struct blk_mq_tag_set {
 	struct list_head	tag_list;
 };
 
-typedef int (queue_rq_fn)(struct blk_mq_hw_ctx *, struct request *, bool);
+/*
+ * This is what we pass in to the drivers ->queue_rq() strategy. The
+ * request 'rq' is what needs to be handled. 'list' is a provided list
+ * pointer that the driver can use to temporarily store prepared but
+ * unissued requests. The driver should flush this list on any error
+ * encountered handling 'rq', or if 'last' is true. When 'last' is
+ * true, this is the final invocation of ->queue_rq() for this series
+ * of requests, and 'list' will go out of scope after this call.
+ */
+struct blk_mq_queue_data {
+	struct request *rq;
+	struct list_head *list;
+	bool last;
+};
+
+typedef int (queue_rq_fn)(struct blk_mq_hw_ctx *, const struct blk_mq_queue_data *);
 typedef struct blk_mq_hw_ctx *(map_queue_fn)(struct request_queue *, const int);
 typedef enum blk_eh_timer_return (timeout_fn)(struct request *, bool);
 typedef int (init_hctx_fn)(struct blk_mq_hw_ctx *, void *, unsigned int);
@@ -140,6 +155,7 @@ enum {
 	BLK_MQ_F_TAG_SHARED	= 1 << 1,
 	BLK_MQ_F_SG_MERGE	= 1 << 2,
 	BLK_MQ_F_SYSFS_UP	= 1 << 3,
+	BLK_MQ_F_DEFER_ISSUE	= 1 << 4,
 
 	BLK_MQ_S_STOPPED	= 0,
 	BLK_MQ_S_TAG_ACTIVE	= 1,
