@@ -435,10 +435,11 @@ EXPORT_SYMBOL(kmem_cache_create);
  * requests going from @memcg to @root_cache. The new cache inherits properties
  * from its parent.
  */
-struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
-					   struct kmem_cache *root_cache)
+void memcg_create_kmem_cache(struct mem_cgroup *memcg,
+			     struct kmem_cache *root_cache)
 {
-	struct kmem_cache *s = NULL;
+	int id = memcg_cache_id(memcg);
+	struct kmem_cache *s;
 	char *cache_name;
 
 	get_online_cpus();
@@ -446,8 +447,15 @@ struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
 
 	mutex_lock(&slab_mutex);
 
-	cache_name = kasprintf(GFP_KERNEL, "%s(%d)", root_cache->name,
-			       memcg_cache_id(memcg));
+	/*
+	 * Since per-memcg caches are created asynchronously on first
+	 * allocation (see memcg_kmem_get_cache()), several threads can try to
+	 * create the same cache, but only one of them may succeed.
+	 */
+	if (cache_from_memcg_idx(root_cache, id))
+		goto out_unlock;
+
+	cache_name = kasprintf(GFP_KERNEL, "%s(%d)", root_cache->name, id);
 	if (!cache_name)
 		goto out_unlock;
 
@@ -457,31 +465,52 @@ struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
 				 memcg, root_cache);
 	if (IS_ERR(s)) {
 		kfree(cache_name);
-		s = NULL;
+		goto out_unlock;
 	}
+
+	/*
+	 * Since readers won't lock (see cache_from_memcg_idx()), we need a
+	 * barrier here to ensure nobody will see the kmem_cache partially
+	 * initialized.
+	 */
+	smp_wmb();
+
+	BUG_ON(root_cache->memcg_params->memcg_caches[id]);
+	root_cache->memcg_params->memcg_caches[id] = s;
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
 
 	put_online_mems();
 	put_online_cpus();
-
-	return s;
 }
 
 static int memcg_cleanup_cache_params(struct kmem_cache *s)
 {
-	int rc;
+	int i;
+	int ret = 0;
 
 	if (!s->memcg_params ||
 	    !s->memcg_params->is_root_cache)
 		return 0;
 
 	mutex_unlock(&slab_mutex);
-	rc = __memcg_cleanup_cache_params(s);
+	for_each_memcg_cache_index(i) {
+		struct kmem_cache *c;
+
+		c = cache_from_memcg_idx(s, i);
+		if (!c)
+			continue;
+
+		kmem_cache_destroy(s);
+
+		/* failed to destroy? */
+		if (cache_from_memcg_idx(s, i))
+			ret = -EBUSY;
+	}
 	mutex_lock(&slab_mutex);
 
-	return rc;
+	return ret;
 }
 #else
 static int memcg_cleanup_cache_params(struct kmem_cache *s)
@@ -517,6 +546,15 @@ void kmem_cache_destroy(struct kmem_cache *s)
 		goto out_unlock;
 	}
 
+#ifdef CONFIG_MEMCG_KMEM
+	if (!is_root_cache(s)) {
+		int id = s->memcg_params->id;
+		struct kmem_cache *root_cache = s->memcg_params->root_cache;
+
+		BUG_ON(root_cache->memcg_params->memcg_caches[id] != s);
+		root_cache->memcg_params->memcg_caches[id] = NULL;
+	}
+#endif
 	list_del(&s->list);
 
 	mutex_unlock(&slab_mutex);
