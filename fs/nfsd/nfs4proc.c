@@ -997,15 +997,14 @@ nfsd4_write(struct svc_rqst *rqstp, struct nfsd4_compound_state *cstate,
 	}
 
 	cnt = write->wr_buflen;
-	write->wr_how_written = write->wr_stable_how;
 	gen_boot_verifier(&write->wr_verifier, SVC_NET(rqstp));
 
 	nvecs = fill_in_write_vector(rqstp->rq_vec, write);
 	WARN_ON_ONCE(nvecs > ARRAY_SIZE(rqstp->rq_vec));
 
-	status =  nfsd_write(rqstp, &cstate->current_fh, filp,
-			     write->wr_offset, rqstp->rq_vec, nvecs,
-			     &cnt, &write->wr_how_written);
+	status = nfsd_write(rqstp, &cstate->current_fh, filp, write->wr_offset,
+			    rqstp->rq_vec, nvecs, &cnt, write->wr_stable_how);
+	write->wr_how_written = write->wr_stable_how;
 	if (filp)
 		fput(filp);
 
