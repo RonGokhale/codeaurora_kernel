@@ -395,6 +395,7 @@ bool __memcg_kmem_newpage_charge(gfp_t gfp, struct mem_cgroup **memcg,
 void __memcg_kmem_commit_charge(struct page *page,
 				       struct mem_cgroup *memcg, int order);
 void __memcg_kmem_uncharge_pages(struct page *page, int order);
+int __memcg_kmem_recharge_slab(void *obj, gfp_t gfp);
 
 int memcg_cache_id(struct mem_cgroup *memcg);
 
@@ -488,6 +489,15 @@ memcg_kmem_get_cache(struct kmem_cache *cachep, gfp_t gfp)
 		return cachep;
 	return __memcg_kmem_get_cache(cachep, gfp);
 }
+
+static __always_inline int memcg_kmem_recharge_slab(void *obj, gfp_t gfp)
+{
+	if (!memcg_kmem_enabled())
+		return 0;
+	if (!memcg_kmem_should_charge(gfp))
+		return 0;
+	return __memcg_kmem_recharge_slab(obj, gfp);
+}
 #else
 #define for_each_memcg_cache_index(_idx)	\
 	for (; NULL; )
@@ -521,6 +531,11 @@ static inline struct kmem_cache *
 memcg_kmem_get_cache(struct kmem_cache *cachep, gfp_t gfp)
 {
 	return cachep;
+}
+
+static inline int memcg_kmem_recharge_slab(void *obj, gfp_t gfp)
+{
+	return 0;
 }
 #endif /* CONFIG_MEMCG_KMEM */
 #endif /* _LINUX_MEMCONTROL_H */

@@ -2828,6 +2828,68 @@ void __memcg_kmem_uncharge_pages(struct page *page, int order)
 	memcg_uncharge_kmem(memcg, 1 << order);
 	page->mem_cgroup = NULL;
 }
+
+/*
+ * Since we reuse per cgroup kmem caches, the slab we allocate an object from
+ * may be accounted to a dead memory cgroup. If we leave such a slab accounted
+ * to a dead cgroup, we risk pinning the cgroup forever, so this function is
+ * called in the end of kmalloc to recharge the new object's slab to the
+ * current cgroup unless it is already charged to it.
+ */
+int __memcg_kmem_recharge_slab(void *obj, gfp_t gfp)
+{
+	struct mem_cgroup *page_memcg, *memcg;
+	struct page *page;
+	int nr_pages;
+	int ret = 0;
+
+	if (current->memcg_kmem_skip_account)
+		goto out;
+
+	page = virt_to_head_page(obj);
+	page_memcg = ACCESS_ONCE(page->mem_cgroup);
+
+	rcu_read_lock();
+
+	memcg = mem_cgroup_from_task(rcu_dereference(current->mm->owner));
+	if (!memcg_kmem_is_active(memcg))
+		memcg = NULL;
+	if (likely(memcg == page_memcg))
+		goto out_unlock;
+	if (memcg && !css_tryget(&memcg->css))
+		goto out_unlock;
+
+	rcu_read_unlock();
+
+	nr_pages = 1 << compound_order(page);
+
+	if (memcg && memcg_charge_kmem(memcg, gfp, nr_pages)) {
+		ret = -ENOMEM;
+		goto out_put_memcg;
+	}
+
+	/*
+	 * We use cmpxchg to synchronize against concurrent threads allocating
+	 * from the same slab. If it fails, it means that some other thread
+	 * recharged the slab before us, and we are done.
+	 */
+	if (cmpxchg(&page->mem_cgroup, page_memcg, memcg) == page_memcg) {
+		if (page_memcg)
+			memcg_uncharge_kmem(page_memcg, nr_pages);
+	} else {
+		if (memcg)
+			memcg_uncharge_kmem(memcg, nr_pages);
+	}
+
+out_put_memcg:
+	if (memcg)
+		css_put(&memcg->css);
+	goto out;
+out_unlock:
+	rcu_read_unlock();
+out:
+	return ret;
+}
 #endif /* CONFIG_MEMCG_KMEM */
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE

@@ -3133,6 +3133,8 @@ done:
 	return obj;
 }
 
+static __always_inline void slab_free(struct kmem_cache *cachep, void *objp);
+
 static __always_inline void *
 slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid,
 		   unsigned long caller)
@@ -3185,6 +3187,10 @@ slab_alloc_node(struct kmem_cache *cachep, gfp_t flags, int nodeid,
 		kmemcheck_slab_alloc(cachep, flags, ptr, cachep->object_size);
 		if (unlikely(flags & __GFP_ZERO))
 			memset(ptr, 0, cachep->object_size);
+		if (unlikely(memcg_kmem_recharge_slab(ptr, flags))) {
+			slab_free(cachep, ptr);
+			ptr = NULL;
+		}
 	}
 
 	return ptr;
@@ -3250,6 +3256,10 @@ slab_alloc(struct kmem_cache *cachep, gfp_t flags, unsigned long caller)
 		kmemcheck_slab_alloc(cachep, flags, objp, cachep->object_size);
 		if (unlikely(flags & __GFP_ZERO))
 			memset(objp, 0, cachep->object_size);
+		if (unlikely(memcg_kmem_recharge_slab(objp, flags))) {
+			slab_free(cachep, objp);
+			objp = NULL;
+		}
 	}
 
 	return objp;

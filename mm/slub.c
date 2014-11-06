@@ -2360,6 +2360,9 @@ new_slab:
 	return freelist;
 }
 
+static __always_inline void slab_free(struct kmem_cache *s,
+			struct page *page, void *x, unsigned long addr);
+
 /*
  * Inlined fastpath so that allocation functions (kmalloc, kmem_cache_alloc)
  * have the fastpath folded into their functions. So no function call
@@ -2444,6 +2447,11 @@ redo:
 		memset(object, 0, s->object_size);
 
 	slab_post_alloc_hook(s, gfpflags, object);
+
+	if (object && unlikely(memcg_kmem_recharge_slab(object, gfpflags))) {
+		slab_free(s, virt_to_head_page(object), object, _RET_IP_);
+		object = NULL;
+	}
 
 	return object;
 }
