@@ -1414,13 +1414,18 @@ int rc_register_device(struct rc_dev *dev)
 			ir_raw_init();
 			raw_init = true;
 		}
+		/* calls ir_register_device so unlock mutex here*/
+		mutex_unlock(&dev->lock);
 		rc = ir_raw_event_register(dev);
+		mutex_lock(&dev->lock);
 		if (rc < 0)
 			goto out_input;
 	}
 
 	if (dev->change_protocol) {
 		u64 rc_type = (1 << rc_map->rc_type);
+		if (dev->driver_type == RC_DRIVER_IR_RAW)
+			rc_type |= RC_BIT_LIRC;
 		rc = dev->change_protocol(dev, &rc_type);
 		if (rc < 0)
 			goto out_raw;
