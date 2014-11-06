@@ -1223,7 +1223,7 @@ static int mv_udc_pullup(struct usb_gadget *gadget, int is_on)
 }
 
 static int mv_udc_start(struct usb_gadget *, struct usb_gadget_driver *);
-static int mv_udc_stop(struct usb_gadget *, struct usb_gadget_driver *);
+static int mv_udc_stop(struct usb_gadget *);
 /* device controller usb_gadget_ops structure */
 static const struct usb_gadget_ops mv_ops = {
 
@@ -1371,8 +1371,7 @@ static int mv_udc_start(struct usb_gadget *gadget,
 	return 0;
 }
 
-static int mv_udc_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver)
+static int mv_udc_stop(struct usb_gadget *gadget)
 {
 	struct mv_udc *udc;
 	unsigned long flags;
@@ -1386,7 +1385,7 @@ static int mv_udc_stop(struct usb_gadget *gadget,
 
 	/* stop all usb activities */
 	udc->gadget.speed = USB_SPEED_UNKNOWN;
-	stop_activity(udc, driver);
+	stop_activity(udc, NULL);
 	mv_udc_disable(udc);
 
 	spin_unlock_irqrestore(&udc->lock, flags);
@@ -2107,10 +2106,8 @@ static int mv_udc_probe(struct platform_device *pdev)
 	}
 
 	udc = devm_kzalloc(&pdev->dev, sizeof(*udc), GFP_KERNEL);
-	if (udc == NULL) {
-		dev_err(&pdev->dev, "failed to allocate memory for udc\n");
+	if (udc == NULL)
 		return -ENOMEM;
-	}
 
 	udc->done = &release_done;
 	udc->pdata = dev_get_platdata(&pdev->dev);
@@ -2207,7 +2204,6 @@ static int mv_udc_probe(struct platform_device *pdev)
 	size = udc->max_eps * sizeof(struct mv_ep) *2;
 	udc->eps = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
 	if (udc->eps == NULL) {
-		dev_err(&pdev->dev, "allocate ep memory failed\n");
 		retval = -ENOMEM;
 		goto err_destroy_dma;
 	}
@@ -2216,7 +2212,6 @@ static int mv_udc_probe(struct platform_device *pdev)
 	udc->status_req = devm_kzalloc(&pdev->dev, sizeof(struct mv_req),
 					GFP_KERNEL);
 	if (!udc->status_req) {
-		dev_err(&pdev->dev, "allocate status_req memory failed\n");
 		retval = -ENOMEM;
 		goto err_destroy_dma;
 	}

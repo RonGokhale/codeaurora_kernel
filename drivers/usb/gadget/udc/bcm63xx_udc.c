@@ -1836,8 +1836,7 @@ static int bcm63xx_udc_start(struct usb_gadget *gadget,
  * @gadget: USB slave device.
  * @driver: Driver for USB slave devices.
  */
-static int bcm63xx_udc_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver)
+static int bcm63xx_udc_stop(struct usb_gadget *gadget)
 {
 	struct bcm63xx_udc *udc = gadget_to_udc(gadget);
 	unsigned long flags;
@@ -2324,10 +2323,8 @@ static int bcm63xx_udc_probe(struct platform_device *pdev)
 	int rc = -ENOMEM, i, irq;
 
 	udc = devm_kzalloc(dev, sizeof(*udc), GFP_KERNEL);
-	if (!udc) {
-		dev_err(dev, "cannot allocate memory\n");
+	if (!udc)
 		return -ENOMEM;
-	}
 
 	platform_set_drvdata(pdev, udc);
 	udc->dev = dev;
