@@ -1559,6 +1559,19 @@ slab_out_of_memory(struct kmem_cache *cachep, gfp_t gfpflags, int nodeid)
 #endif
 }
 
+static inline struct page *alloc_slab_page(gfp_t flags, int nodeid, int order)
+{
+	struct mem_cgroup *memcg = NULL;
+	struct page *page;
+
+	flags |= __GFP_NOTRACK;
+	if (!memcg_kmem_newpage_charge(flags, &memcg, order))
+		return NULL;
+	page = alloc_pages_exact_node(nodeid, flags, order);
+	memcg_kmem_commit_charge(page, memcg, order);
+	return page;
+}
+
 /*
  * Interface to system's page allocator. No need to hold the
  * kmem_cache_node ->list_lock.
@@ -1577,12 +1590,8 @@ static struct page *kmem_getpages(struct kmem_cache *cachep, gfp_t flags,
 	if (cachep->flags & SLAB_RECLAIM_ACCOUNT)
 		flags |= __GFP_RECLAIMABLE;
 
-	if (memcg_charge_slab(cachep, flags, cachep->gfporder))
-		return NULL;
-
-	page = alloc_pages_exact_node(nodeid, flags | __GFP_NOTRACK, cachep->gfporder);
+	page = alloc_slab_page(flags, nodeid, cachep->gfporder);
 	if (!page) {
-		memcg_uncharge_slab(cachep, cachep->gfporder);
 		slab_out_of_memory(cachep, flags, nodeid);
 		return NULL;
 	}
@@ -1638,8 +1647,7 @@ static void kmem_freepages(struct kmem_cache *cachep, struct page *page)
 
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += nr_freed;
-	__free_pages(page, cachep->gfporder);
-	memcg_uncharge_slab(cachep, cachep->gfporder);
+	__free_kmem_pages(page, cachep->gfporder);
 }
 
 static void kmem_rcu_free(struct rcu_head *head)
