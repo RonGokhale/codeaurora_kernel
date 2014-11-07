@@ -3954,6 +3954,7 @@ static int thin_iterate_devices(struct dm_target *ti,
 
 static struct target_type thin_target = {
 	.name = "thin",
+	.features = DM_TARGET_SINGLETON | DM_TARGET_IMMUTABLE,
 	.version = {1, 14, 0},
 	.module	= THIS_MODULE,
 	.ctr = thin_ctr,
