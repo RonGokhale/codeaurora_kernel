@@ -2925,22 +2925,18 @@ out:
  * Internal suspend/resume works like userspace-driven suspend. It waits
  * until all bios finish and prevents issuing new bios to the target drivers.
  * It may be used only from the kernel.
- *
- * Internal suspend holds md->suspend_lock, which prevents interaction with
- * userspace-driven suspend.
  */
 
 static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_flags)
 {
 	struct dm_table *map = NULL;
 
-	mutex_lock(&md->suspend_lock);
 	if (WARN_ON(dm_suspended_internally_md(md)))
-		goto out; /* disallow nested internal suspends! */
+		return; /* disallow nested internal suspends! */
 
 	if (dm_suspended_md(md)) {
 		set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
-		goto out; /* nest suspend */
+		return; /* nest suspend */
 	}
 
 	map = rcu_dereference(md->map);
@@ -2951,36 +2947,21 @@ static void __dm_internal_suspend(struct mapped_device *md, unsigned suspend_fla
 	set_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
 
 	dm_table_postsuspend_targets(map);
-out:
-	mutex_unlock(&md->suspend_lock);
 }
 
-void dm_internal_suspend(struct mapped_device *md)
-{
-	__dm_internal_suspend(md, 0);
-}
-EXPORT_SYMBOL_GPL(dm_internal_suspend);
-
-void dm_internal_suspend_noflush(struct mapped_device *md)
-{
-	__dm_internal_suspend(md, DM_SUSPEND_NOFLUSH_FLAG);
-}
-EXPORT_SYMBOL_GPL(dm_internal_suspend_noflush);
-
-void dm_internal_resume(struct mapped_device *md)
+static void __dm_internal_resume(struct mapped_device *md)
 {
 	struct dm_table *map = NULL;
 
-	mutex_lock(&md->suspend_lock);
 	if (WARN_ON(!dm_suspended_internally_md(md)))
-		goto done;
+		return;
 
 	if (dm_suspended_md(md))
-		goto done_clear_bit; /* resume from nested suspend */
+		goto done; /* resume from nested suspend */
 
 	map = rcu_dereference(md->map);
 	if (WARN_ON(!map))
-		goto done;
+		return;
 
 	/*
 	 * FIXME: existing callers don't need to call dm_table_resume_targets
@@ -2988,15 +2969,44 @@ void dm_internal_resume(struct mapped_device *md)
 	 */
 	(void) __dm_resume(md, map, false);
 
-done_clear_bit:
+done:
 	clear_bit(DMF_SUSPENDED_INTERNALLY, &md->flags);
 	smp_mb__after_atomic();
 	wake_up_bit(&md->flags, DMF_SUSPENDED_INTERNALLY);
+}
 
-done:
+void dm_internal_suspend_noflush(struct mapped_device *md)
+{
+	mutex_lock(&md->suspend_lock);
+	__dm_internal_suspend(md, DM_SUSPEND_NOFLUSH_FLAG);
+	mutex_unlock(&md->suspend_lock);
+}
+EXPORT_SYMBOL_GPL(dm_internal_suspend_noflush);
+
+void dm_internal_resume(struct mapped_device *md)
+{
+	mutex_lock(&md->suspend_lock);
+	__dm_internal_resume(md);
 	mutex_unlock(&md->suspend_lock);
 }
 EXPORT_SYMBOL_GPL(dm_internal_resume);
+
+/*
+ * Fast variants of internal suspend/resume hold md->suspend_lock,
+ * which prevents interaction with userspace-driven suspend.
+ */
+
+void dm_internal_suspend_fast(struct mapped_device *md)
+{
+	mutex_lock(&md->suspend_lock);
+	__dm_internal_suspend(md, 0);
+}
+
+void dm_internal_resume_fast(struct mapped_device *md)
+{
+	__dm_internal_resume(md);
+	mutex_unlock(&md->suspend_lock);
+}
 
 /*-----------------------------------------------------------------
  * Event notification.

@@ -133,7 +133,8 @@ int dm_suspended_md(struct mapped_device *md);
  * Internal suspend and resume methods.
  */
 int dm_suspended_internally_md(struct mapped_device *md);
-void dm_internal_suspend(struct mapped_device *md);
+void dm_internal_suspend_fast(struct mapped_device *md);
+void dm_internal_resume_fast(struct mapped_device *md);
 void dm_internal_suspend_noflush(struct mapped_device *md);
 void dm_internal_resume(struct mapped_device *md);
 
