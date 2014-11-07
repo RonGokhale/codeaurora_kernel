@@ -2999,12 +2999,23 @@ EXPORT_SYMBOL_GPL(dm_internal_resume);
 void dm_internal_suspend_fast(struct mapped_device *md)
 {
 	mutex_lock(&md->suspend_lock);
-	__dm_internal_suspend(md, 0);
+	if (dm_suspended_md(md) || dm_suspended_internally_md(md))
+		return;
+
+	set_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags);
+	synchronize_srcu(&md->io_barrier);
+	flush_workqueue(md->wq);
+	dm_wait_for_completion(md, TASK_UNINTERRUPTIBLE);
 }
 
 void dm_internal_resume_fast(struct mapped_device *md)
 {
-	__dm_internal_resume(md);
+	if (dm_suspended_md(md) || dm_suspended_internally_md(md))
+		goto done;
+
+	dm_queue_flush(md);
+
+done:
 	mutex_unlock(&md->suspend_lock);
 }
 
