@@ -3951,6 +3951,7 @@ static int intel_shared_dpll_start_config(struct drm_i915_private *dev_priv,
 cleanup:
 	while (--i >= 0) {
 		pll = &dev_priv->shared_dplls[i];
+		kfree(pll->new_config);
 		pll->new_config = NULL;
 	}
 
