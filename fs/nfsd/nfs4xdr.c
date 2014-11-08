@@ -1747,6 +1747,15 @@ static __be32 *encode_change(__be32 *p, struct kstat *stat, struct inode *inode)
 	return p;
 }
 
+static __be32 *encode_change_attr_type(__be32 *p, struct inode *inode)
+{
+	if (IS_I_VERSION(inode))
+		*p++ = cpu_to_be32(NFS4_CHANGE_TYPE_IS_MONOTONIC_INCR);
+	else
+		*p++ = cpu_to_be32(NFS4_CHANGE_TYPE_IS_TIME_METADATA);
+	return p;
+}
+
 static __be32 *encode_cinfo(__be32 *p, struct nfsd4_change_info *c)
 {
 	*p++ = cpu_to_be32(c->atomic);
@@ -2550,6 +2559,13 @@ out_acl:
 		*p++ = cpu_to_be32(NFSD_SUPPATTR_EXCLCREAT_WORD0);
 		*p++ = cpu_to_be32(NFSD_SUPPATTR_EXCLCREAT_WORD1);
 		*p++ = cpu_to_be32(NFSD_SUPPATTR_EXCLCREAT_WORD2);
+	}
+
+	if (bmval2 & FATTR4_WORD2_CHANGE_ATTR_TYPE) {
+		p = xdr_reserve_space(xdr, 4);
+		if (!p)
+			goto out_resource;
+		p = encode_change_attr_type(p, dentry->d_inode);
 	}
 
 	attrlen = htonl(xdr->buf->len - attrlen_offset - 4);
