@@ -54,6 +54,9 @@ config ARCH_USE_CMPXCHG_LOCKREF
 config ARCH_HAS_FAST_MULTIPLIER
 	bool
 
+config FLEX_ARRAY
+	bool
+
 config RHASHTABLE
 	bool
 
