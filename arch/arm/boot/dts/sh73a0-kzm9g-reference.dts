@@ -40,6 +40,7 @@
 
 	chosen {
 		bootargs = "console=tty0 console=ttySC4,115200 root=/dev/nfs ip=dhcp ignore_loglevel rw";
+		stdout-path = &scifa4;
 	};
 
 	memory {
@@ -250,7 +251,7 @@
 		};
 	};
 
-	ak4648: ak4648@0x12 {
+	ak4648: ak4648@12 {
 		#sound-dai-cells = <0>;
 		compatible = "asahi-kasei,ak4648";
 		reg = <0x12>;
