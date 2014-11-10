@@ -23,13 +23,13 @@
 static char nvram_buf[NVRAM_SPACE];
 static const u32 nvram_sizes[] = {0x8000, 0xF000, 0x10000};
 
-static u32 find_nvram_size(u32 end)
+static u32 find_nvram_size(void __iomem *end)
 {
-	struct nvram_header *header;
+	struct nvram_header __iomem *header;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(nvram_sizes); i++) {
-		header = (struct nvram_header *)KSEG1ADDR(end - nvram_sizes[i]);
+		header = (struct nvram_header *)(end - nvram_sizes[i]);
 		if (header->magic == NVRAM_HEADER)
 			return nvram_sizes[i];
 	}
@@ -38,35 +38,39 @@ static u32 find_nvram_size(u32 end)
 }
 
 /* Probe for NVRAM header */
-static int nvram_find_and_copy(u32 base, u32 lim)
+static int nvram_find_and_copy(void __iomem *iobase, u32 lim)
 {
-	struct nvram_header *header;
+	struct nvram_header __iomem *header;
 	int i;
 	u32 off;
 	u32 *src, *dst;
 	u32 size;
 
+	if (nvram_buf[0]) {
+		pr_warn("nvram already initialized\n");
+		return -EEXIST;
+	}
+
 	/* TODO: when nvram is on nand flash check for bad blocks first. */
 	off = FLASH_MIN;
 	while (off <= lim) {
 		/* Windowed flash access */
-		size = find_nvram_size(base + off);
+		size = find_nvram_size(iobase + off);
 		if (size) {
-			header = (struct nvram_header *)KSEG1ADDR(base + off -
-								  size);
+			header = (struct nvram_header *)(iobase + off - size);
 			goto found;
 		}
 		off <<= 1;
 	}
 
 	/* Try embedded NVRAM at 4 KB and 1 KB as last resorts */
-	header = (struct nvram_header *) KSEG1ADDR(base + 4096);
+	header = (struct nvram_header *)(iobase + 4096);
 	if (header->magic == NVRAM_HEADER) {
 		size = NVRAM_SPACE;
 		goto found;
 	}
 
-	header = (struct nvram_header *) KSEG1ADDR(base + 1024);
+	header = (struct nvram_header *)(iobase + 1024);
 	if (header->magic == NVRAM_HEADER) {
 		size = NVRAM_SPACE;
 		goto found;
@@ -94,67 +98,33 @@ found:
 	return 0;
 }
 
-#ifdef CONFIG_BCM47XX_SSB
-static int nvram_init_ssb(void)
+/*
+ * On bcm47xx we need access to the NVRAM very early, so we can't use mtd
+ * subsystem to access flash. We can't even use platform device / driver to
+ * store memory offset.
+ * To handle this we provide following symbol. It's supposed to be called as
+ * soon as we get info about flash device, before any NVRAM entry is needed.
+ */
+int bcm47xx_nvram_init_from_mem(u32 base, u32 lim)
 {
-	struct ssb_mipscore *mcore = &bcm47xx_bus.ssb.mipscore;
-	u32 base;
-	u32 lim;
+	void __iomem *iobase;
+	int err;
 
-	if (mcore->pflash.present) {
-		base = mcore->pflash.window;
-		lim = mcore->pflash.window_size;
-	} else {
-		pr_err("Couldn't find supported flash memory\n");
-		return -ENXIO;
-	}
+	iobase = ioremap_nocache(base, lim);
+	if (!iobase)
+		return -ENOMEM;
 
-	return nvram_find_and_copy(base, lim);
+	err = nvram_find_and_copy(iobase, lim);
+
+	iounmap(iobase);
+
+	return err;
 }
-#endif
-
-#ifdef CONFIG_BCM47XX_BCMA
-static int nvram_init_bcma(void)
-{
-	struct bcma_drv_cc *cc = &bcm47xx_bus.bcma.bus.drv_cc;
-	u32 base;
-	u32 lim;
-
-#ifdef CONFIG_BCMA_NFLASH
-	if (cc->nflash.boot) {
-		base = BCMA_SOC_FLASH1;
-		lim = BCMA_SOC_FLASH1_SZ;
-	} else
-#endif
-	if (cc->pflash.present) {
-		base = cc->pflash.window;
-		lim = cc->pflash.window_size;
-#ifdef CONFIG_BCMA_SFLASH
-	} else if (cc->sflash.present) {
-		base = cc->sflash.window;
-		lim = cc->sflash.size;
-#endif
-	} else {
-		pr_err("Couldn't find supported flash memory\n");
-		return -ENXIO;
-	}
-
-	return nvram_find_and_copy(base, lim);
-}
-#endif
 
 static int nvram_init(void)
 {
-	switch (bcm47xx_bus_type) {
-#ifdef CONFIG_BCM47XX_SSB
-	case BCM47XX_BUS_TYPE_SSB:
-		return nvram_init_ssb();
-#endif
-#ifdef CONFIG_BCM47XX_BCMA
-	case BCM47XX_BUS_TYPE_BCMA:
-		return nvram_init_bcma();
-#endif
-	}
+	/* TODO: Look for MTD "nvram" partition */
+
 	return -ENXIO;
 }
 
