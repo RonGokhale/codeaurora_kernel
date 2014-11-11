@@ -53,6 +53,7 @@ config MIPS
 	select HAVE_CC_STACKPROTECTOR
 	select CPU_PM if CPU_IDLE
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
+	select ARCH_BINFMT_ELF_STATE
 
 menu "Machine selection"
 
@@ -320,7 +321,7 @@ config MIPS_MALTA
 	select GENERIC_ISA_DMA
 	select HAVE_PCSPKR_PLATFORM
 	select IRQ_CPU
-	select IRQ_GIC
+	select MIPS_GIC
 	select HW_HAS_PCI
 	select I8253
 	select I8259
@@ -362,7 +363,7 @@ config MIPS_SEAD3
 	select CPU_MIPSR2_IRQ_EI
 	select DMA_NONCOHERENT
 	select IRQ_CPU
-	select IRQ_GIC
+	select MIPS_GIC
 	select LIBFDT
 	select MIPS_MSC
 	select SYS_HAS_CPU_MIPS32_R1
@@ -975,6 +976,7 @@ config SYS_SUPPORTS_HOTPLUG_CPU
 
 config I8259
 	bool
+	select IRQ_DOMAIN
 
 config MIPS_BONITO64
 	bool
@@ -1055,6 +1057,7 @@ config MIPS_HUGE_TLB_SUPPORT
 
 config IRQ_CPU
 	bool
+	select IRQ_DOMAIN
 
 config IRQ_CPU_RM7K
 	bool
@@ -1069,10 +1072,6 @@ config IRQ_TXX9
 	bool
 
 config IRQ_GT641XX
-	bool
-
-config IRQ_GIC
-	select MIPS_CM
 	bool
 
 config PCI_GT64XXX_PCI0
@@ -1888,7 +1887,7 @@ config FORCE_MAX_ZONEORDER
 
 config CEVT_GIC
 	bool "Use GIC global counter for clock events"
-	depends on IRQ_GIC && !MIPS_SEAD3
+	depends on MIPS_GIC && !MIPS_SEAD3
 	help
 	  Use the GIC global counter for the clock events. The R4K clock
 	  event driver is always present, so if the platform ends up not
