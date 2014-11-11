@@ -31,6 +31,8 @@ next/soc
 		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-3.19-1
 	ux500/core
 		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/ux500-core-for-arm-soc
+	patch
+		ARM: fix multiplatform allmodcompile
 
 next/boards
 
