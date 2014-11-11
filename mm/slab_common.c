@@ -125,7 +125,7 @@ static int memcg_alloc_cache_params(struct mem_cgroup *memcg,
 		return -ENOMEM;
 
 	if (memcg) {
-		s->memcg_params->memcg = memcg;
+		s->memcg_params->id = memcg_cache_id(memcg);
 		s->memcg_params->root_cache = root_cache;
 	} else
 		s->memcg_params->is_root_cache = true;
@@ -240,7 +240,7 @@ struct kmem_cache *find_mergeable(size_t size, size_t align,
 	size = ALIGN(size, align);
 	flags = kmem_cache_flags(size, flags, name, NULL);
 
-	list_for_each_entry(s, &slab_caches, list) {
+	list_for_each_entry_reverse(s, &slab_caches, list) {
 		if (slab_unmergeable(s))
 			continue;
 
@@ -257,6 +257,10 @@ struct kmem_cache *find_mergeable(size_t size, size_t align,
 			continue;
 
 		if (s->size - size >= sizeof(void *))
+			continue;
+
+		if (IS_ENABLED(CONFIG_SLAB) && align &&
+			(align > s->align || s->align % align))
 			continue;
 
 		return s;
@@ -426,17 +430,16 @@ EXPORT_SYMBOL(kmem_cache_create);
  * memcg_create_kmem_cache - Create a cache for a memory cgroup.
  * @memcg: The memory cgroup the new cache is for.
  * @root_cache: The parent of the new cache.
- * @memcg_name: The name of the memory cgroup (used for naming the new cache).
  *
  * This function attempts to create a kmem cache that will serve allocation
  * requests going from @memcg to @root_cache. The new cache inherits properties
  * from its parent.
  */
-struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
-					   struct kmem_cache *root_cache,
-					   const char *memcg_name)
+void memcg_create_kmem_cache(struct mem_cgroup *memcg,
+			     struct kmem_cache *root_cache)
 {
-	struct kmem_cache *s = NULL;
+	int id = memcg_cache_id(memcg);
+	struct kmem_cache *s;
 	char *cache_name;
 
 	get_online_cpus();
@@ -444,8 +447,15 @@ struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
 
 	mutex_lock(&slab_mutex);
 
-	cache_name = kasprintf(GFP_KERNEL, "%s(%d:%s)", root_cache->name,
-			       memcg_cache_id(memcg), memcg_name);
+	/*
+	 * Since per-memcg caches are created asynchronously on first
+	 * allocation (see memcg_kmem_get_cache()), several threads can try to
+	 * create the same cache, but only one of them may succeed.
+	 */
+	if (cache_from_memcg_idx(root_cache, id))
+		goto out_unlock;
+
+	cache_name = kasprintf(GFP_KERNEL, "%s(%d)", root_cache->name, id);
 	if (!cache_name)
 		goto out_unlock;
 
@@ -455,31 +465,52 @@ struct kmem_cache *memcg_create_kmem_cache(struct mem_cgroup *memcg,
 				 memcg, root_cache);
 	if (IS_ERR(s)) {
 		kfree(cache_name);
-		s = NULL;
+		goto out_unlock;
 	}
+
+	/*
+	 * Since readers won't lock (see cache_from_memcg_idx()), we need a
+	 * barrier here to ensure nobody will see the kmem_cache partially
+	 * initialized.
+	 */
+	smp_wmb();
+
+	BUG_ON(root_cache->memcg_params->memcg_caches[id]);
+	root_cache->memcg_params->memcg_caches[id] = s;
 
 out_unlock:
 	mutex_unlock(&slab_mutex);
 
 	put_online_mems();
 	put_online_cpus();
-
-	return s;
 }
 
 static int memcg_cleanup_cache_params(struct kmem_cache *s)
 {
-	int rc;
+	int i;
+	int ret = 0;
 
 	if (!s->memcg_params ||
 	    !s->memcg_params->is_root_cache)
 		return 0;
 
 	mutex_unlock(&slab_mutex);
-	rc = __memcg_cleanup_cache_params(s);
+	for_each_memcg_cache_index(i) {
+		struct kmem_cache *c;
+
+		c = cache_from_memcg_idx(s, i);
+		if (!c)
+			continue;
+
+		kmem_cache_destroy(s);
+
+		/* failed to destroy? */
+		if (cache_from_memcg_idx(s, i))
+			ret = -EBUSY;
+	}
 	mutex_lock(&slab_mutex);
 
-	return rc;
+	return ret;
 }
 #else
 static int memcg_cleanup_cache_params(struct kmem_cache *s)
@@ -515,6 +546,15 @@ void kmem_cache_destroy(struct kmem_cache *s)
 		goto out_unlock;
 	}
 
+#ifdef CONFIG_MEMCG_KMEM
+	if (!is_root_cache(s)) {
+		int id = s->memcg_params->id;
+		struct kmem_cache *root_cache = s->memcg_params->root_cache;
+
+		BUG_ON(root_cache->memcg_params->memcg_caches[id] != s);
+		root_cache->memcg_params->memcg_caches[id] = NULL;
+	}
+#endif
 	list_del(&s->list);
 
 	mutex_unlock(&slab_mutex);
@@ -807,7 +847,7 @@ EXPORT_SYMBOL(kmalloc_order_trace);
 #define SLABINFO_RIGHTS S_IRUSR
 #endif
 
-void print_slabinfo_header(struct seq_file *m)
+static void print_slabinfo_header(struct seq_file *m)
 {
 	/*
 	 * Output format version, so at least we can change it
@@ -830,14 +870,9 @@ void print_slabinfo_header(struct seq_file *m)
 	seq_putc(m, '\n');
 }
 
-static void *s_start(struct seq_file *m, loff_t *pos)
+void *slab_start(struct seq_file *m, loff_t *pos)
 {
-	loff_t n = *pos;
-
 	mutex_lock(&slab_mutex);
-	if (!n)
-		print_slabinfo_header(m);
-
 	return seq_list_start(&slab_caches, *pos);
 }
 
@@ -877,7 +912,7 @@ memcg_accumulate_slabinfo(struct kmem_cache *s, struct slabinfo *info)
 	}
 }
 
-int cache_show(struct kmem_cache *s, struct seq_file *m)
+static void cache_show(struct kmem_cache *s, struct seq_file *m)
 {
 	struct slabinfo sinfo;
 
@@ -896,17 +931,32 @@ int cache_show(struct kmem_cache *s, struct seq_file *m)
 		   sinfo.active_slabs, sinfo.num_slabs, sinfo.shared_avail);
 	slabinfo_show_stats(m, s);
 	seq_putc(m, '\n');
-	return 0;
 }
 
-static int s_show(struct seq_file *m, void *p)
+static int slab_show(struct seq_file *m, void *p)
 {
 	struct kmem_cache *s = list_entry(p, struct kmem_cache, list);
 
-	if (!is_root_cache(s))
-		return 0;
-	return cache_show(s, m);
+	if (p == slab_caches.next)
+		print_slabinfo_header(m);
+	if (is_root_cache(s))
+		cache_show(s, m);
+	return 0;
 }
+
+#ifdef CONFIG_MEMCG_KMEM
+int memcg_slab_show(struct seq_file *m, void *p)
+{
+	struct kmem_cache *s = list_entry(p, struct kmem_cache, list);
+	struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
+
+	if (p == slab_caches.next)
+		print_slabinfo_header(m);
+	if (!is_root_cache(s) && s->memcg_params->id == memcg_cache_id(memcg))
+		cache_show(s, m);
+	return 0;
+}
+#endif
 
 /*
  * slabinfo_op - iterator that generates /proc/slabinfo
@@ -922,10 +972,10 @@ static int s_show(struct seq_file *m, void *p)
  * + further values on SMP and with statistics enabled
  */
 static const struct seq_operations slabinfo_op = {
-	.start = s_start,
+	.start = slab_start,
 	.next = slab_next,
 	.stop = slab_stop,
-	.show = s_show,
+	.show = slab_show,
 };
 
 static int slabinfo_open(struct inode *inode, struct file *file)
