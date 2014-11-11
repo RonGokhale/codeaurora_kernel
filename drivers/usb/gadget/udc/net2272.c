@@ -1169,8 +1169,7 @@ net2272_pullup(struct usb_gadget *_gadget, int is_on)
 
 static int net2272_start(struct usb_gadget *_gadget,
 		struct usb_gadget_driver *driver);
-static int net2272_stop(struct usb_gadget *_gadget,
-		struct usb_gadget_driver *driver);
+static int net2272_stop(struct usb_gadget *_gadget);
 
 static const struct usb_gadget_ops net2272_ops = {
 	.get_frame	= net2272_get_frame,
@@ -1471,8 +1470,6 @@ static int net2272_start(struct usb_gadget *_gadget,
 	 */
 	net2272_ep0_start(dev);
 
-	dev_dbg(dev->dev, "%s ready\n", driver->driver.name);
-
 	return 0;
 }
 
@@ -1502,8 +1499,7 @@ stop_activity(struct net2272 *dev, struct usb_gadget_driver *driver)
 	net2272_usb_reinit(dev);
 }
 
-static int net2272_stop(struct usb_gadget *_gadget,
-		struct usb_gadget_driver *driver)
+static int net2272_stop(struct usb_gadget *_gadget)
 {
 	struct net2272 *dev;
 	unsigned long flags;
@@ -1511,12 +1507,11 @@ static int net2272_stop(struct usb_gadget *_gadget,
 	dev = container_of(_gadget, struct net2272, gadget);
 
 	spin_lock_irqsave(&dev->lock, flags);
-	stop_activity(dev, driver);
+	stop_activity(dev, NULL);
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	dev->driver = NULL;
 
-	dev_dbg(dev->dev, "unregistered driver '%s'\n", driver->driver.name);
 	return 0;
 }
 
@@ -2200,18 +2195,8 @@ static void
 net2272_remove(struct net2272 *dev)
 {
 	usb_del_gadget_udc(&dev->gadget);
-
-	/* start with the driver above us */
-	if (dev->driver) {
-		/* should have been done already by driver model core */
-		dev_warn(dev->dev, "pci remove, driver '%s' is still registered\n",
-			dev->driver->driver.name);
-		usb_gadget_unregister_driver(dev->driver);
-	}
-
 	free_irq(dev->irq, dev);
 	iounmap(dev->base_addr);
-
 	device_remove_file(dev->dev, &dev_attr_registers);
 
 	dev_info(dev->dev, "unbind\n");

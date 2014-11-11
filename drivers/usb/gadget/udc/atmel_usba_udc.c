@@ -987,8 +987,8 @@ usba_udc_set_selfpowered(struct usb_gadget *gadget, int is_selfpowered)
 
 static int atmel_usba_start(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver);
-static int atmel_usba_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver);
+static int atmel_usba_stop(struct usb_gadget *gadget);
+
 static const struct usb_gadget_ops usba_udc_ops = {
 	.get_frame		= usba_udc_get_frame,
 	.wakeup			= usba_udc_wakeup,
@@ -1791,8 +1791,6 @@ static int atmel_usba_start(struct usb_gadget *gadget,
 		return ret;
 	}
 
-	DBG(DBG_GADGET, "registered driver `%s'\n", driver->driver.name);
-
 	udc->vbus_prev = 0;
 	if (gpio_is_valid(udc->vbus_pin))
 		enable_irq(gpio_to_irq(udc->vbus_pin));
@@ -1809,8 +1807,7 @@ static int atmel_usba_start(struct usb_gadget *gadget,
 	return 0;
 }
 
-static int atmel_usba_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver)
+static int atmel_usba_stop(struct usb_gadget *gadget)
 {
 	struct usba_udc *udc = container_of(gadget, struct usba_udc, gadget);
 	unsigned long flags;
@@ -1829,8 +1826,6 @@ static int atmel_usba_stop(struct usb_gadget *gadget,
 
 	clk_disable_unprepare(udc->hclk);
 	clk_disable_unprepare(udc->pclk);
-
-	DBG(DBG_GADGET, "unregistered driver `%s'\n", udc->driver->driver.name);
 
 	udc->driver = NULL;
 
