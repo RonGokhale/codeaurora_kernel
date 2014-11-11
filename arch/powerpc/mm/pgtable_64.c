@@ -33,7 +33,6 @@
 #include <linux/swap.h>
 #include <linux/stddef.h>
 #include <linux/vmalloc.h>
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 #include <linux/slab.h>
 
@@ -51,6 +50,7 @@
 #include <asm/cputable.h>
 #include <asm/sections.h>
 #include <asm/firmware.h>
+#include <asm/dma.h>
 
 #include "mmu_decl.h"
 
@@ -75,11 +75,7 @@ static __ref void *early_alloc_pgtable(unsigned long size)
 {
 	void *pt;
 
-	if (init_bootmem_done)
-		pt = __alloc_bootmem(size, size, __pa(MAX_DMA_ADDRESS));
-	else
-		pt = __va(memblock_alloc_base(size, size,
-					 __pa(MAX_DMA_ADDRESS)));
+	pt = __va(memblock_alloc_base(size, size, __pa(MAX_DMA_ADDRESS)));
 	memset(pt, 0, size);
 
 	return pt;
@@ -113,10 +109,6 @@ int map_kernel_page(unsigned long ea, unsigned long pa, int flags)
 							  __pgprot(flags)));
 	} else {
 #ifdef CONFIG_PPC_MMU_NOHASH
-		/* Warning ! This will blow up if bootmem is not initialized
-		 * which our ppc64 code is keen to do that, we'll need to
-		 * fix it and/or be more careful
-		 */
 		pgdp = pgd_offset_k(ea);
 #ifdef PUD_TABLE_SIZE
 		if (pgd_none(*pgdp)) {
