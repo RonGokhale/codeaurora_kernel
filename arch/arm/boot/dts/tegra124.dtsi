@@ -12,13 +12,6 @@
 	#address-cells = <2>;
 	#size-cells = <2>;
 
-	aliases {
-		serial0 = &uarta;
-		serial1 = &uartb;
-		serial2 = &uartc;
-		serial3 = &uartd;
-	};
-
 	pcie-controller@0,01003000 {
 		compatible = "nvidia,tegra124-pcie";
 		device_type = "pci";
