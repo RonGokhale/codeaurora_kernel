@@ -37,11 +37,6 @@ struct msi_controller * __weak pcibios_msi_controller(struct pci_bus *bus)
 
 static struct msi_controller *pci_msi_controller(struct pci_bus *bus)
 {
-	struct msi_controller *msi_ctrl = bus->msi;
-
-	if (msi_ctrl)
-		return msi_ctrl;
-
 	return pcibios_msi_controller(bus);
 }
 
