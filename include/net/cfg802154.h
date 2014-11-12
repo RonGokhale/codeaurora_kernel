@@ -52,14 +52,9 @@ struct wpan_phy {
 	u32 channels_supported[32];
 	s8 transmit_power;
 	u8 cca_mode;
-	u8 min_be;
-	u8 max_be;
-	u8 csma_retries;
-	s8 frame_retries;
 
 	__le64 perm_extended_addr;
 
-	bool lbt;
 	s32 cca_ed_level;
 
 	struct device dev;
@@ -69,12 +64,38 @@ struct wpan_phy {
 
 struct wpan_dev {
 	struct wpan_phy *wpan_phy;
+	int iftype;
+
+	/* the remainder of this struct should be private to cfg802154 */
+	struct list_head list;
+	struct net_device *netdev;
+
+	u32 identifier;
+
+	/* MAC PIB */
+	__le16 pan_id;
+	__le16 short_addr;
+	__le64 extended_addr;
+
+	/* MAC BSN field */
+	u8 bsn;
+	/* MAC DSN field */
+	u8 dsn;
+
+	u8 min_be;
+	u8 max_be;
+	u8 csma_retries;
+	s8 frame_retries;
+
+	bool lbt;
+
+	bool promiscuous_mode;
 };
 
 #define to_phy(_dev)	container_of(_dev, struct wpan_phy, dev)
 
 struct wpan_phy *
-wpan_phy_alloc(const struct cfg802154_ops *ops, size_t priv_size);
+wpan_phy_new(const struct cfg802154_ops *ops, size_t priv_size);
 static inline void wpan_phy_set_dev(struct wpan_phy *phy, struct device *dev)
 {
 	phy->dev.parent = dev;
