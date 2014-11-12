@@ -195,16 +195,12 @@ static void update_pageblock_skip(struct compact_control *cc,
 
 	/* Update where async and sync compaction should restart */
 	if (migrate_scanner) {
-		if (cc->finished_update_migrate)
-			return;
 		if (pfn > zone->compact_cached_migrate_pfn[0])
 			zone->compact_cached_migrate_pfn[0] = pfn;
 		if (cc->mode != MIGRATE_ASYNC &&
 		    pfn > zone->compact_cached_migrate_pfn[1])
 			zone->compact_cached_migrate_pfn[1] = pfn;
 	} else {
-		if (cc->finished_update_free)
-			return;
 		if (pfn < zone->compact_cached_free_pfn)
 			zone->compact_cached_free_pfn = pfn;
 	}
@@ -479,6 +475,16 @@ isolate_freepages_range(struct compact_control *cc,
 
 		block_end_pfn = min(block_end_pfn, end_pfn);
 
+		/*
+		 * pfn could pass the block_end_pfn if isolated freepage
+		 * is more than pageblock order. In this case, we adjust
+		 * scanning range to right one.
+		 */
+		if (pfn >= block_end_pfn) {
+			block_end_pfn = ALIGN(pfn + 1, pageblock_nr_pages);
+			block_end_pfn = min(block_end_pfn, end_pfn);
+		}
+
 		if (!pageblock_pfn_to_page(pfn, block_end_pfn, cc->zone))
 			break;
 
@@ -705,7 +711,6 @@ isolate_migratepages_block(struct compact_control *cc, unsigned long low_pfn,
 		del_page_from_lru_list(page, lruvec, page_lru(page));
 
 isolate_success:
-		cc->finished_update_migrate = true;
 		list_add(&page->lru, migratelist);
 		cc->nr_migratepages++;
 		nr_isolated++;
@@ -877,15 +882,6 @@ static void isolate_freepages(struct compact_control *cc)
 		cc->free_pfn = (isolate_start_pfn < block_end_pfn) ?
 				isolate_start_pfn :
 				block_start_pfn - pageblock_nr_pages;
-
-		/*
-		 * Set a flag that we successfully isolated in this pageblock.
-		 * In the next loop iteration, zone->compact_cached_free_pfn
-		 * will not be updated and thus it will effectively contain the
-		 * highest pageblock we isolated pages from.
-		 */
-		if (isolated)
-			cc->finished_update_free = true;
 
 		/*
 		 * isolate_freepages_block() might have aborted due to async
@@ -1072,9 +1068,9 @@ static int compact_finished(struct zone *zone, struct compact_control *cc,
 
 	/* Compaction run is not finished if the watermark is not met */
 	watermark = low_wmark_pages(zone);
-	watermark += (1 << cc->order);
 
-	if (!zone_watermark_ok(zone, cc->order, watermark, 0, 0))
+	if (!zone_watermark_ok(zone, cc->order, watermark, cc->classzone_idx,
+							cc->alloc_flags))
 		return COMPACT_CONTINUE;
 
 	/* Direct compactor: Is a suitable page free? */
@@ -1100,7 +1096,8 @@ static int compact_finished(struct zone *zone, struct compact_control *cc,
  *   COMPACT_PARTIAL  - If the allocation would succeed without compaction
  *   COMPACT_CONTINUE - If compaction should run now
  */
-unsigned long compaction_suitable(struct zone *zone, int order)
+unsigned long compaction_suitable(struct zone *zone, int order,
+					int alloc_flags, int classzone_idx)
 {
 	int fragindex;
 	unsigned long watermark;
@@ -1137,7 +1134,7 @@ unsigned long compaction_suitable(struct zone *zone, int order)
 		return COMPACT_SKIPPED;
 
 	if (fragindex == -1000 && zone_watermark_ok(zone, order, watermark,
-	    0, 0))
+	    classzone_idx, alloc_flags))
 		return COMPACT_PARTIAL;
 
 	return COMPACT_CONTINUE;
@@ -1151,7 +1148,8 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 	const int migratetype = gfpflags_to_migratetype(cc->gfp_mask);
 	const bool sync = cc->mode != MIGRATE_ASYNC;
 
-	ret = compaction_suitable(zone, cc->order);
+	ret = compaction_suitable(zone, cc->order, cc->alloc_flags,
+							cc->classzone_idx);
 	switch (ret) {
 	case COMPACT_PARTIAL:
 	case COMPACT_SKIPPED:
@@ -1194,6 +1192,7 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 	while ((ret = compact_finished(zone, cc, migratetype)) ==
 						COMPACT_CONTINUE) {
 		int err;
+		unsigned long last_migrated_pfn = 0;
 
 		switch (isolate_migratepages(zone, cc)) {
 		case ISOLATE_ABORT:
@@ -1202,7 +1201,12 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 			cc->nr_migratepages = 0;
 			goto out;
 		case ISOLATE_NONE:
-			continue;
+			/*
+			 * We haven't isolated and migrated anything, but
+			 * there might still be unflushed migrations from
+			 * previous cc->order aligned block.
+			 */
+			goto check_drain;
 		case ISOLATE_SUCCESS:
 			;
 		}
@@ -1227,6 +1231,39 @@ static int compact_zone(struct zone *zone, struct compact_control *cc)
 				goto out;
 			}
 		}
+
+		/*
+		 * Record where we have freed pages by migration and not yet
+		 * flushed them to buddy allocator. Subtract 1, because often
+		 * we finish a pageblock and migrate_pfn points to the first
+		 * page* of the next one. In that case we want the drain below
+		 * to happen immediately.
+		 */
+		if (!last_migrated_pfn)
+			last_migrated_pfn = cc->migrate_pfn - 1;
+
+check_drain:
+		/*
+		 * Have we moved away from the previous cc->order aligned block
+		 * where we migrated from? If yes, flush the pages that were
+		 * freed, so that they can merge and compact_finished() can
+		 * detect immediately if allocation should succeed.
+		 */
+		if (cc->order > 0 && last_migrated_pfn) {
+			int cpu;
+			unsigned long current_block_start =
+				cc->migrate_pfn & ~((1UL << cc->order) - 1);
+
+			if (last_migrated_pfn < current_block_start) {
+				cpu = get_cpu();
+				lru_add_drain_cpu(cpu);
+				drain_local_pages(zone);
+				put_cpu();
+				/* No more flushing until we migrate again */
+				last_migrated_pfn = 0;
+			}
+		}
+
 	}
 
 out:
@@ -1240,7 +1277,8 @@ out:
 }
 
 static unsigned long compact_zone_order(struct zone *zone, int order,
-		gfp_t gfp_mask, enum migrate_mode mode, int *contended)
+		gfp_t gfp_mask, enum migrate_mode mode, int *contended,
+		int alloc_flags, int classzone_idx)
 {
 	unsigned long ret;
 	struct compact_control cc = {
@@ -1250,6 +1288,8 @@ static unsigned long compact_zone_order(struct zone *zone, int order,
 		.gfp_mask = gfp_mask,
 		.zone = zone,
 		.mode = mode,
+		.alloc_flags = alloc_flags,
+		.classzone_idx = classzone_idx,
 	};
 	INIT_LIST_HEAD(&cc.freepages);
 	INIT_LIST_HEAD(&cc.migratepages);
@@ -1274,14 +1314,13 @@ int sysctl_extfrag_threshold = 500;
  * @mode: The migration mode for async, sync light, or sync migration
  * @contended: Return value that determines if compaction was aborted due to
  *	       need_resched() or lock contention
- * @candidate_zone: Return the zone where we think allocation should succeed
  *
  * This is the main entry point for direct page compaction.
  */
 unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			int order, gfp_t gfp_mask, nodemask_t *nodemask,
 			enum migrate_mode mode, int *contended,
-			struct zone **candidate_zone)
+			int alloc_flags, int classzone_idx)
 {
 	enum zone_type high_zoneidx = gfp_zone(gfp_mask);
 	int may_enter_fs = gfp_mask & __GFP_FS;
@@ -1289,7 +1328,6 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	struct zoneref *z;
 	struct zone *zone;
 	int rc = COMPACT_DEFERRED;
-	int alloc_flags = 0;
 	int all_zones_contended = COMPACT_CONTENDED_LOCK; /* init for &= op */
 
 	*contended = COMPACT_CONTENDED_NONE;
@@ -1298,10 +1336,6 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 	if (!order || !may_enter_fs || !may_perform_io)
 		return COMPACT_SKIPPED;
 
-#ifdef CONFIG_CMA
-	if (gfpflags_to_migratetype(gfp_mask) == MIGRATE_MOVABLE)
-		alloc_flags |= ALLOC_CMA;
-#endif
 	/* Compact each zone in the list */
 	for_each_zone_zonelist_nodemask(zone, z, zonelist, high_zoneidx,
 								nodemask) {
@@ -1312,7 +1346,7 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			continue;
 
 		status = compact_zone_order(zone, order, gfp_mask, mode,
-							&zone_contended);
+				&zone_contended, alloc_flags, classzone_idx);
 		rc = max(status, rc);
 		/*
 		 * It takes at least one zone that wasn't lock contended
@@ -1321,9 +1355,8 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 		all_zones_contended &= zone_contended;
 
 		/* If a normal allocation would succeed, stop compacting */
-		if (zone_watermark_ok(zone, order, low_wmark_pages(zone), 0,
-				      alloc_flags)) {
-			*candidate_zone = zone;
+		if (zone_watermark_ok(zone, order, low_wmark_pages(zone),
+					classzone_idx, alloc_flags)) {
 			/*
 			 * We think the allocation will succeed in this zone,
 			 * but it is not certain, hence the false. The caller
@@ -1345,7 +1378,7 @@ unsigned long try_to_compact_pages(struct zonelist *zonelist,
 			goto break_loop;
 		}
 
-		if (mode != MIGRATE_ASYNC) {
+		if (mode != MIGRATE_ASYNC && status == COMPACT_COMPLETE) {
 			/*
 			 * We think that allocation won't succeed in this zone
 			 * so we defer compaction there. If it ends up
