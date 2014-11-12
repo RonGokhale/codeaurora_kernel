@@ -2124,7 +2124,7 @@ static int s3c_hsotg_corereset(struct s3c_hsotg *hsotg)
  *
  * Issue a soft reset to the core, and await the core finishing it.
  */
-static void s3c_hsotg_core_init(struct s3c_hsotg *hsotg)
+static void s3c_hsotg_core_init_disconnected(struct s3c_hsotg *hsotg)
 {
 	s3c_hsotg_corereset(hsotg);
 
@@ -2241,12 +2241,23 @@ static void s3c_hsotg_core_init(struct s3c_hsotg *hsotg)
 		readl(hsotg->regs + DOEPCTL0));
 
 	/* clear global NAKs */
-	writel(DCTL_CGOUTNAK | DCTL_CGNPINNAK,
+	writel(DCTL_CGOUTNAK | DCTL_CGNPINNAK | DCTL_SFTDISCON,
 	       hsotg->regs + DCTL);
 
 	/* must be at-least 3ms to allow bus to see disconnect */
 	mdelay(3);
 
+	hsotg->last_rst = jiffies;
+}
+
+static void s3c_hsotg_core_disconnect(struct s3c_hsotg *hsotg)
+{
+	/* set the soft-disconnect bit */
+	__orr32(hsotg->regs + DCTL, DCTL_SFTDISCON);
+}
+
+static void s3c_hsotg_core_connect(struct s3c_hsotg *hsotg)
+{
 	/* remove the soft-disconnect and let's go */
 	__bic32(hsotg->regs + DCTL, DCTL_SFTDISCON);
 }
@@ -2340,8 +2351,8 @@ irq_retry:
 				kill_all_requests(hsotg, &hsotg->eps[0],
 							  -ECONNRESET, true);
 
-				s3c_hsotg_core_init(hsotg);
-				hsotg->last_rst = jiffies;
+				s3c_hsotg_core_init_disconnected(hsotg);
+				s3c_hsotg_core_connect(hsotg);
 			}
 		}
 	}
@@ -2869,6 +2880,7 @@ static int s3c_hsotg_udc_start(struct usb_gadget *gadget,
 			   struct usb_gadget_driver *driver)
 {
 	struct s3c_hsotg *hsotg = to_hsotg(gadget);
+	unsigned long flags;
 	int ret;
 
 	if (!hsotg) {
@@ -2905,8 +2917,15 @@ static int s3c_hsotg_udc_start(struct usb_gadget *gadget,
 		goto err;
 	}
 
-	hsotg->last_rst = jiffies;
+	s3c_hsotg_phy_enable(hsotg);
+
+	spin_lock_irqsave(&hsotg->lock, flags);
+	s3c_hsotg_init(hsotg);
+	s3c_hsotg_core_init_disconnected(hsotg);
+	spin_unlock_irqrestore(&hsotg->lock, flags);
+
 	dev_info(hsotg->dev, "bound driver %s\n", driver->driver.name);
+
 	return 0;
 
 err:
@@ -2921,8 +2940,7 @@ err:
  *
  * Stop udc hw block and stay tunned for future transmissions
  */
-static int s3c_hsotg_udc_stop(struct usb_gadget *gadget,
-			  struct usb_gadget_driver *driver)
+static int s3c_hsotg_udc_stop(struct usb_gadget *gadget)
 {
 	struct s3c_hsotg *hsotg = to_hsotg(gadget);
 	unsigned long flags = 0;
@@ -2941,6 +2959,8 @@ static int s3c_hsotg_udc_stop(struct usb_gadget *gadget,
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
 
 	spin_unlock_irqrestore(&hsotg->lock, flags);
+
+	s3c_hsotg_phy_disable(hsotg);
 
 	regulator_bulk_disable(ARRAY_SIZE(hsotg->supplies), hsotg->supplies);
 
@@ -2976,12 +2996,11 @@ static int s3c_hsotg_pullup(struct usb_gadget *gadget, int is_on)
 
 	spin_lock_irqsave(&hsotg->lock, flags);
 	if (is_on) {
-		s3c_hsotg_phy_enable(hsotg);
 		clk_enable(hsotg->clk);
-		s3c_hsotg_core_init(hsotg);
+		s3c_hsotg_core_connect(hsotg);
 	} else {
+		s3c_hsotg_core_disconnect(hsotg);
 		clk_disable(hsotg->clk);
-		s3c_hsotg_phy_disable(hsotg);
 	}
 
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
@@ -3606,14 +3625,7 @@ static int s3c_hsotg_remove(struct platform_device *pdev)
 	struct s3c_hsotg *hsotg = platform_get_drvdata(pdev);
 
 	usb_del_gadget_udc(&hsotg->gadget);
-
 	s3c_hsotg_delete_debug(hsotg);
-
-	if (hsotg->driver) {
-		/* should have been done already by driver model core */
-		usb_gadget_unregister_driver(hsotg->driver);
-	}
-
 	clk_disable_unprepare(hsotg->clk);
 
 	return 0;
@@ -3630,10 +3642,12 @@ static int s3c_hsotg_suspend(struct platform_device *pdev, pm_message_t state)
 			 hsotg->driver->driver.name);
 
 	spin_lock_irqsave(&hsotg->lock, flags);
+	s3c_hsotg_core_disconnect(hsotg);
 	s3c_hsotg_disconnect(hsotg);
-	s3c_hsotg_phy_disable(hsotg);
 	hsotg->gadget.speed = USB_SPEED_UNKNOWN;
 	spin_unlock_irqrestore(&hsotg->lock, flags);
+
+	s3c_hsotg_phy_disable(hsotg);
 
 	if (hsotg->driver) {
 		int ep;
@@ -3663,10 +3677,11 @@ static int s3c_hsotg_resume(struct platform_device *pdev)
 				      hsotg->supplies);
 	}
 
-	spin_lock_irqsave(&hsotg->lock, flags);
-	hsotg->last_rst = jiffies;
 	s3c_hsotg_phy_enable(hsotg);
-	s3c_hsotg_core_init(hsotg);
+
+	spin_lock_irqsave(&hsotg->lock, flags);
+	s3c_hsotg_core_init_disconnected(hsotg);
+	s3c_hsotg_core_connect(hsotg);
 	spin_unlock_irqrestore(&hsotg->lock, flags);
 
 	return ret;

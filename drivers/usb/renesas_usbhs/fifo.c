@@ -577,14 +577,6 @@ static int usbhsf_pio_try_push(struct usbhs_pkt *pkt, int *is_done)
 		usbhs_pipe_number(pipe),
 		pkt->length, pkt->actual, *is_done, pkt->zero);
 
-	/*
-	 * Transmission end
-	 */
-	if (*is_done) {
-		if (usbhs_pipe_is_dcp(pipe))
-			usbhs_dcp_control_transfer_done(pipe);
-	}
-
 	usbhsf_fifo_unselect(pipe, fifo);
 
 	return 0;
@@ -721,14 +713,6 @@ usbhs_fifo_read_end:
 	dev_dbg(dev, "  recv %d (%d/ %d/ %d/ %d)\n",
 		usbhs_pipe_number(pipe),
 		pkt->length, pkt->actual, *is_done, pkt->zero);
-
-	/*
-	 * Transmission end
-	 */
-	if (*is_done) {
-		if (usbhs_pipe_is_dcp(pipe))
-			usbhs_dcp_control_transfer_done(pipe);
-	}
 
 usbhs_fifo_read_busy:
 	usbhsf_fifo_unselect(pipe, fifo);
@@ -1174,6 +1158,24 @@ static void usbhsf_dma_complete(void *arg)
 	if (ret < 0)
 		dev_err(dev, "dma_complete run_error %d : %d\n",
 			usbhs_pipe_number(pipe), ret);
+}
+
+void usbhs_fifo_clear_dcp(struct usbhs_pipe *pipe)
+{
+	struct usbhs_priv *priv = usbhs_pipe_to_priv(pipe);
+	struct usbhs_fifo *fifo = usbhsf_get_cfifo(priv); /* CFIFO */
+
+	/* clear DCP FIFO of transmission */
+	if (usbhsf_fifo_select(pipe, fifo, 1) < 0)
+		return;
+	usbhsf_fifo_clear(pipe, fifo);
+	usbhsf_fifo_unselect(pipe, fifo);
+
+	/* clear DCP FIFO of reception */
+	if (usbhsf_fifo_select(pipe, fifo, 0) < 0)
+		return;
+	usbhsf_fifo_clear(pipe, fifo);
+	usbhsf_fifo_unselect(pipe, fifo);
 }
 
 /*
