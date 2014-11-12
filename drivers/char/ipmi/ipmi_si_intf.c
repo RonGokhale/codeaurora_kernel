@@ -111,10 +111,6 @@ enum si_type {
 };
 static char *si_to_str[] = { "kcs", "smic", "bt" };
 
-static char *ipmi_addr_src_to_str[] = { NULL, "hotmod", "hardcoded", "SPMI",
-					"ACPI", "SMBIOS", "PCI",
-					"device-tree", "default" };
-
 #define DEVICE_NAME "ipmi_si"
 
 static struct platform_driver ipmi_driver;
@@ -174,8 +170,7 @@ struct smi_info {
 	struct si_sm_handlers  *handlers;
 	enum si_type           si_type;
 	spinlock_t             si_lock;
-	struct list_head       xmit_msgs;
-	struct list_head       hp_xmit_msgs;
+	struct ipmi_smi_msg    *waiting_msg;
 	struct ipmi_smi_msg    *curr_msg;
 	enum si_intf_state     si_state;
 
@@ -254,9 +249,6 @@ struct smi_info {
 	/* The time (in jiffies) the last timeout occurred at. */
 	unsigned long       last_timeout_jiffies;
 
-	/* Used to gracefully stop the timer without race conditions. */
-	atomic_t            stop_operation;
-
 	/* Are we waiting for the events, pretimeouts, received msgs? */
 	atomic_t            need_watch;
 
@@ -332,7 +324,10 @@ static void deliver_recv_msg(struct smi_info *smi_info,
 			     struct ipmi_smi_msg *msg)
 {
 	/* Deliver the message to the upper layer. */
-	ipmi_smi_msg_received(smi_info->intf, msg);
+	if (smi_info->intf)
+		ipmi_smi_msg_received(smi_info->intf, msg);
+	else
+		ipmi_free_smi_msg(msg);
 }
 
 static void return_hosed_msg(struct smi_info *smi_info, int cCode)
@@ -356,28 +351,18 @@ static void return_hosed_msg(struct smi_info *smi_info, int cCode)
 static enum si_sm_result start_next_msg(struct smi_info *smi_info)
 {
 	int              rv;
-	struct list_head *entry = NULL;
 #ifdef DEBUG_TIMING
 	struct timeval t;
 #endif
 
-	/* Pick the high priority queue first. */
-	if (!list_empty(&(smi_info->hp_xmit_msgs))) {
-		entry = smi_info->hp_xmit_msgs.next;
-	} else if (!list_empty(&(smi_info->xmit_msgs))) {
-		entry = smi_info->xmit_msgs.next;
-	}
-
-	if (!entry) {
+	if (!smi_info->waiting_msg) {
 		smi_info->curr_msg = NULL;
 		rv = SI_SM_IDLE;
 	} else {
 		int err;
 
-		list_del(entry);
-		smi_info->curr_msg = list_entry(entry,
-						struct ipmi_smi_msg,
-						link);
+		smi_info->curr_msg = smi_info->waiting_msg;
+		smi_info->waiting_msg = NULL;
 #ifdef DEBUG_TIMING
 		do_gettimeofday(&t);
 		printk(KERN_DEBUG "**Start2: %d.%9.9d\n", t.tv_sec, t.tv_usec);
@@ -440,6 +425,32 @@ static void start_clear_flags(struct smi_info *smi_info)
 	smi_info->si_state = SI_CLEARING_FLAGS;
 }
 
+static void start_getting_msg_queue(struct smi_info *smi_info)
+{
+	smi_info->curr_msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
+	smi_info->curr_msg->data[1] = IPMI_GET_MSG_CMD;
+	smi_info->curr_msg->data_size = 2;
+
+	smi_info->handlers->start_transaction(
+		smi_info->si_sm,
+		smi_info->curr_msg->data,
+		smi_info->curr_msg->data_size);
+	smi_info->si_state = SI_GETTING_MESSAGES;
+}
+
+static void start_getting_events(struct smi_info *smi_info)
+{
+	smi_info->curr_msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
+	smi_info->curr_msg->data[1] = IPMI_READ_EVENT_MSG_BUFFER_CMD;
+	smi_info->curr_msg->data_size = 2;
+
+	smi_info->handlers->start_transaction(
+		smi_info->si_sm,
+		smi_info->curr_msg->data,
+		smi_info->curr_msg->data_size);
+	smi_info->si_state = SI_GETTING_EVENTS;
+}
+
 static void smi_mod_timer(struct smi_info *smi_info, unsigned long new_val)
 {
 	smi_info->last_timeout_jiffies = jiffies;
@@ -453,22 +464,45 @@ static void smi_mod_timer(struct smi_info *smi_info, unsigned long new_val)
  * polled until we can allocate some memory.  Once we have some
  * memory, we will re-enable the interrupt.
  */
-static inline void disable_si_irq(struct smi_info *smi_info)
+static inline bool disable_si_irq(struct smi_info *smi_info)
 {
 	if ((smi_info->irq) && (!smi_info->interrupt_disabled)) {
 		start_disable_irq(smi_info);
 		smi_info->interrupt_disabled = true;
-		if (!atomic_read(&smi_info->stop_operation))
-			smi_mod_timer(smi_info, jiffies + SI_TIMEOUT_JIFFIES);
+		return true;
 	}
+	return false;
 }
 
-static inline void enable_si_irq(struct smi_info *smi_info)
+static inline bool enable_si_irq(struct smi_info *smi_info)
 {
 	if ((smi_info->irq) && (smi_info->interrupt_disabled)) {
 		start_enable_irq(smi_info);
 		smi_info->interrupt_disabled = false;
+		return true;
 	}
+	return false;
+}
+
+/*
+ * Allocate a message.  If unable to allocate, start the interrupt
+ * disable process and return NULL.  If able to allocate but
+ * interrupts are disabled, free the message and return NULL after
+ * starting the interrupt enable process.
+ */
+static struct ipmi_smi_msg *alloc_msg_handle_irq(struct smi_info *smi_info)
+{
+	struct ipmi_smi_msg *msg;
+
+	msg = ipmi_alloc_smi_msg();
+	if (!msg) {
+		if (!disable_si_irq(smi_info))
+			smi_info->si_state = SI_NORMAL;
+	} else if (enable_si_irq(smi_info)) {
+		ipmi_free_smi_msg(msg);
+		msg = NULL;
+	}
+	return msg;
 }
 
 static void handle_flags(struct smi_info *smi_info)
@@ -480,45 +514,22 @@ static void handle_flags(struct smi_info *smi_info)
 
 		start_clear_flags(smi_info);
 		smi_info->msg_flags &= ~WDT_PRE_TIMEOUT_INT;
-		ipmi_smi_watchdog_pretimeout(smi_info->intf);
+		if (smi_info->intf)
+			ipmi_smi_watchdog_pretimeout(smi_info->intf);
 	} else if (smi_info->msg_flags & RECEIVE_MSG_AVAIL) {
 		/* Messages available. */
-		smi_info->curr_msg = ipmi_alloc_smi_msg();
-		if (!smi_info->curr_msg) {
-			disable_si_irq(smi_info);
-			smi_info->si_state = SI_NORMAL;
+		smi_info->curr_msg = alloc_msg_handle_irq(smi_info);
+		if (!smi_info->curr_msg)
 			return;
-		}
-		enable_si_irq(smi_info);
 
-		smi_info->curr_msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
-		smi_info->curr_msg->data[1] = IPMI_GET_MSG_CMD;
-		smi_info->curr_msg->data_size = 2;
-
-		smi_info->handlers->start_transaction(
-			smi_info->si_sm,
-			smi_info->curr_msg->data,
-			smi_info->curr_msg->data_size);
-		smi_info->si_state = SI_GETTING_MESSAGES;
+		start_getting_msg_queue(smi_info);
 	} else if (smi_info->msg_flags & EVENT_MSG_BUFFER_FULL) {
 		/* Events available. */
-		smi_info->curr_msg = ipmi_alloc_smi_msg();
-		if (!smi_info->curr_msg) {
-			disable_si_irq(smi_info);
-			smi_info->si_state = SI_NORMAL;
+		smi_info->curr_msg = alloc_msg_handle_irq(smi_info);
+		if (!smi_info->curr_msg)
 			return;
-		}
-		enable_si_irq(smi_info);
 
-		smi_info->curr_msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
-		smi_info->curr_msg->data[1] = IPMI_READ_EVENT_MSG_BUFFER_CMD;
-		smi_info->curr_msg->data_size = 2;
-
-		smi_info->handlers->start_transaction(
-			smi_info->si_sm,
-			smi_info->curr_msg->data,
-			smi_info->curr_msg->data_size);
-		smi_info->si_state = SI_GETTING_EVENTS;
+		start_getting_events(smi_info);
 	} else if (smi_info->msg_flags & OEM_DATA_AVAIL &&
 		   smi_info->oem_data_avail_handler) {
 		if (smi_info->oem_data_avail_handler(smi_info))
@@ -713,7 +724,9 @@ static void handle_transaction_done(struct smi_info *smi_info)
 				 "Maybe ok, but ipmi might run very slowly.\n");
 		} else
 			smi_info->interrupt_disabled = false;
-		smi_info->si_state = SI_NORMAL;
+
+		/* We enabled interrupts, flags may be pending. */
+		handle_flags(smi_info);
 		break;
 	}
 
@@ -879,8 +892,7 @@ static void check_start_timer_thread(struct smi_info *smi_info)
 }
 
 static void sender(void                *send_info,
-		   struct ipmi_smi_msg *msg,
-		   int                 priority)
+		   struct ipmi_smi_msg *msg)
 {
 	struct smi_info   *smi_info = send_info;
 	enum si_sm_result result;
@@ -889,14 +901,8 @@ static void sender(void                *send_info,
 	struct timeval    t;
 #endif
 
-	if (atomic_read(&smi_info->stop_operation)) {
-		msg->rsp[0] = msg->data[0] | 4;
-		msg->rsp[1] = msg->data[1];
-		msg->rsp[2] = IPMI_ERR_UNSPECIFIED;
-		msg->rsp_size = 3;
-		deliver_recv_msg(smi_info, msg);
-		return;
-	}
+	BUG_ON(smi_info->waiting_msg);
+	smi_info->waiting_msg = msg;
 
 #ifdef DEBUG_TIMING
 	do_gettimeofday(&t);
@@ -905,16 +911,16 @@ static void sender(void                *send_info,
 
 	if (smi_info->run_to_completion) {
 		/*
-		 * If we are running to completion, then throw it in
-		 * the list and run transactions until everything is
-		 * clear.  Priority doesn't matter here.
+		 * If we are running to completion, start it and run
+		 * transactions until everything is clear.
 		 */
+		smi_info->curr_msg = smi_info->waiting_msg;
+		smi_info->waiting_msg = NULL;
 
 		/*
 		 * Run to completion means we are single-threaded, no
 		 * need for locks.
 		 */
-		list_add_tail(&(msg->link), &(smi_info->xmit_msgs));
 
 		result = smi_event_handler(smi_info, 0);
 		while (result != SI_SM_IDLE) {
@@ -926,11 +932,6 @@ static void sender(void                *send_info,
 	}
 
 	spin_lock_irqsave(&smi_info->si_lock, flags);
-	if (priority > 0)
-		list_add_tail(&msg->link, &smi_info->hp_xmit_msgs);
-	else
-		list_add_tail(&msg->link, &smi_info->xmit_msgs);
-
 	check_start_timer_thread(smi_info);
 	spin_unlock_irqrestore(&smi_info->si_lock, flags);
 }
@@ -1068,8 +1069,7 @@ static void request_events(void *send_info)
 {
 	struct smi_info *smi_info = send_info;
 
-	if (atomic_read(&smi_info->stop_operation) ||
-				!smi_info->has_event_buffer)
+	if (!smi_info->has_event_buffer)
 		return;
 
 	atomic_set(&smi_info->req_events, 1);
@@ -1697,7 +1697,7 @@ static int parse_str(struct hotmod_vals *v, int *val, char *name, char **curr)
 	}
 	*s = '\0';
 	s++;
-	for (i = 0; hotmod_ops[i].name; i++) {
+	for (i = 0; v[i].name; i++) {
 		if (strcmp(*curr, v[i].name) == 0) {
 			*val = v[i].val;
 			*curr = s;
@@ -2133,6 +2133,9 @@ static int try_init_spmi(struct SPMITable *spmi)
 	case 3:	/* BT */
 		info->si_type = SI_BT;
 		break;
+	case 4: /* SSIF, just ignore */
+		kfree(info);
+		return -EIO;
 	default:
 		printk(KERN_INFO PFX "Unknown ACPI/SPMI SI type %d\n",
 		       spmi->InterfaceType);
@@ -2250,6 +2253,8 @@ static int ipmi_pnp_probe(struct pnp_dev *dev,
 	case 3:
 		info->si_type = SI_BT;
 		break;
+	case 4: /* SSIF, just ignore */
+		goto err_free;
 	default:
 		dev_info(&dev->dev, "unknown IPMI type %lld\n", tmp);
 		goto err_free;
@@ -3188,15 +3193,10 @@ static void setup_xaction_handlers(struct smi_info *smi_info)
 
 static inline void wait_for_timer_and_thread(struct smi_info *smi_info)
 {
-	if (smi_info->intf) {
-		/*
-		 * The timer and thread are only running if the
-		 * interface has been started up and registered.
-		 */
-		if (smi_info->thread != NULL)
-			kthread_stop(smi_info->thread);
+	if (smi_info->thread != NULL)
+		kthread_stop(smi_info->thread);
+	if (smi_info->timer_running)
 		del_timer_sync(&smi_info->si_timer);
-	}
 }
 
 static struct ipmi_default_vals
@@ -3274,8 +3274,8 @@ static int add_smi(struct smi_info *new_smi)
 	int rv = 0;
 
 	printk(KERN_INFO PFX "Adding %s-specified %s state machine",
-			ipmi_addr_src_to_str[new_smi->addr_source],
-			si_to_str[new_smi->si_type]);
+	       ipmi_addr_src_to_str(new_smi->addr_source),
+	       si_to_str[new_smi->si_type]);
 	mutex_lock(&smi_infos_lock);
 	if (!is_new_interface(new_smi)) {
 		printk(KERN_CONT " duplicate interface\n");
@@ -3305,7 +3305,7 @@ static int try_smi_init(struct smi_info *new_smi)
 	printk(KERN_INFO PFX "Trying %s-specified %s state"
 	       " machine at %s address 0x%lx, slave address 0x%x,"
 	       " irq %d\n",
-	       ipmi_addr_src_to_str[new_smi->addr_source],
+	       ipmi_addr_src_to_str(new_smi->addr_source),
 	       si_to_str[new_smi->si_type],
 	       addr_space_to_str[new_smi->io.addr_type],
 	       new_smi->io.addr_data,
@@ -3371,8 +3371,7 @@ static int try_smi_init(struct smi_info *new_smi)
 	setup_oem_data_handler(new_smi);
 	setup_xaction_handlers(new_smi);
 
-	INIT_LIST_HEAD(&(new_smi->xmit_msgs));
-	INIT_LIST_HEAD(&(new_smi->hp_xmit_msgs));
+	new_smi->waiting_msg = NULL;
 	new_smi->curr_msg = NULL;
 	atomic_set(&new_smi->req_events, 0);
 	new_smi->run_to_completion = false;
@@ -3380,7 +3379,6 @@ static int try_smi_init(struct smi_info *new_smi)
 		atomic_set(&new_smi->stats[i], 0);
 
 	new_smi->interrupt_disabled = true;
-	atomic_set(&new_smi->stop_operation, 0);
 	atomic_set(&new_smi->need_watch, 0);
 	new_smi->intf_num = smi_num;
 	smi_num++;
@@ -3428,7 +3426,6 @@ static int try_smi_init(struct smi_info *new_smi)
 			       new_smi,
 			       &new_smi->device_id,
 			       new_smi->dev,
-			       "bmc",
 			       new_smi->slave_addr);
 	if (rv) {
 		dev_err(new_smi->dev, "Unable to register device: error %d\n",
@@ -3466,15 +3463,15 @@ static int try_smi_init(struct smi_info *new_smi)
 	return 0;
 
  out_err_stop_timer:
-	atomic_inc(&new_smi->stop_operation);
 	wait_for_timer_and_thread(new_smi);
 
  out_err:
 	new_smi->interrupt_disabled = true;
 
 	if (new_smi->intf) {
-		ipmi_unregister_smi(new_smi->intf);
+		ipmi_smi_t intf = new_smi->intf;
 		new_smi->intf = NULL;
+		ipmi_unregister_smi(intf);
 	}
 
 	if (new_smi->irq_cleanup) {
@@ -3653,58 +3650,47 @@ module_init(init_ipmi_si);
 static void cleanup_one_si(struct smi_info *to_clean)
 {
 	int           rv = 0;
-	unsigned long flags;
 
 	if (!to_clean)
 		return;
+
+	if (to_clean->intf) {
+		ipmi_smi_t intf = to_clean->intf;
+		to_clean->intf = NULL;
+		rv = ipmi_unregister_smi(intf);
+		if (rv) {
+			printk(KERN_ERR PFX
+			       "Unable to unregister device: errno=%d\n",
+			       rv);
+		}
+	}
 
 	if (to_clean->dev)
 		dev_set_drvdata(to_clean->dev, NULL);
 
 	list_del(&to_clean->link);
 
-	/* Tell the driver that we are shutting down. */
-	atomic_inc(&to_clean->stop_operation);
-
 	/*
-	 * Make sure the timer and thread are stopped and will not run
-	 * again.
+	 * Make sure that interrupts, the timer and the thread are
+	 * stopped and will not run again.
 	 */
+	if (to_clean->irq_cleanup)
+		to_clean->irq_cleanup(to_clean);
 	wait_for_timer_and_thread(to_clean);
 
 	/*
 	 * Timeouts are stopped, now make sure the interrupts are off
-	 * for the device.  A little tricky with locks to make sure
-	 * there are no races.
+	 * in the BMC.  Note that timers and CPU interrupts are off,
+	 * so no need for locks.
 	 */
-	spin_lock_irqsave(&to_clean->si_lock, flags);
 	while (to_clean->curr_msg || (to_clean->si_state != SI_NORMAL)) {
-		spin_unlock_irqrestore(&to_clean->si_lock, flags);
 		poll(to_clean);
 		schedule_timeout_uninterruptible(1);
-		spin_lock_irqsave(&to_clean->si_lock, flags);
 	}
 	disable_si_irq(to_clean);
-	spin_unlock_irqrestore(&to_clean->si_lock, flags);
 	while (to_clean->curr_msg || (to_clean->si_state != SI_NORMAL)) {
 		poll(to_clean);
 		schedule_timeout_uninterruptible(1);
-	}
-
-	/* Clean up interrupts and make sure that everything is done. */
-	if (to_clean->irq_cleanup)
-		to_clean->irq_cleanup(to_clean);
-	while (to_clean->curr_msg || (to_clean->si_state != SI_NORMAL)) {
-		poll(to_clean);
-		schedule_timeout_uninterruptible(1);
-	}
-
-	if (to_clean->intf)
-		rv = ipmi_unregister_smi(to_clean->intf);
-
-	if (rv) {
-		printk(KERN_ERR PFX "Unable to unregister device: errno=%d\n",
-		       rv);
 	}
 
 	if (to_clean->handlers)
