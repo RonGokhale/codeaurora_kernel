@@ -191,12 +191,12 @@ nfsd3_proc_write(struct svc_rqst *rqstp, struct nfsd3_writeargs *argp,
 				argp->stable? " stable" : "");
 
 	fh_copy(&resp->fh, &argp->fh);
-	resp->committed = argp->stable;
 	nfserr = nfsd_write(rqstp, &resp->fh, NULL,
 				   argp->offset,
 				   rqstp->rq_vec, argp->vlen,
 				   &cnt,
-				   &resp->committed);
+				   argp->stable);
+	resp->committed = argp->stable;
 	resp->count = cnt;
 	RETURN_STATUS(nfserr);
 }
