@@ -53,6 +53,7 @@ config MIPS
 	select HAVE_CC_STACKPROTECTOR
 	select CPU_PM if CPU_IDLE
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
+	select ARCH_BINFMT_ELF_STATE
 
 menu "Machine selection"
 
@@ -114,6 +115,32 @@ config ATH79
 	select SYS_SUPPORTS_MIPS16
 	help
 	  Support for the Atheros AR71XX/AR724X/AR913X SoCs.
+
+config BCM3384
+	bool "Broadcom BCM3384 based boards"
+	select BOOT_RAW
+	select NO_EXCEPT_FILL
+	select USE_OF
+	select CEVT_R4K
+	select CSRC_R4K
+	select SYNC_R4K
+	select COMMON_CLK
+	select DMA_NONCOHERENT
+	select IRQ_CPU
+	select SYS_SUPPORTS_32BIT_KERNEL
+	select SYS_SUPPORTS_BIG_ENDIAN
+	select SYS_SUPPORTS_HIGHMEM
+	select SYS_HAS_CPU_BMIPS5000
+	select SWAP_IO_SPACE
+	select USB_EHCI_BIG_ENDIAN_DESC
+	select USB_EHCI_BIG_ENDIAN_MMIO
+	select USB_OHCI_BIG_ENDIAN_DESC
+	select USB_OHCI_BIG_ENDIAN_MMIO
+	help
+	  Support for BCM3384 based boards.  BCM3384/BCM33843 is a cable modem
+	  chipset with a Linux application processor that is often used to
+	  provide Samba services, a CUPS print server, and/or advanced routing
+	  features.
 
 config BCM47XX
 	bool "Broadcom BCM47XX based boards"
@@ -320,12 +347,13 @@ config MIPS_MALTA
 	select GENERIC_ISA_DMA
 	select HAVE_PCSPKR_PLATFORM
 	select IRQ_CPU
-	select IRQ_GIC
+	select MIPS_GIC
 	select HW_HAS_PCI
 	select I8253
 	select I8259
 	select MIPS_BONITO64
 	select MIPS_CPU_SCACHE
+	select MIPS_L1_CACHE_SHIFT_6
 	select PCI_GT64XXX_PCI0
 	select MIPS_MSC
 	select SWAP_IO_SPACE
@@ -362,7 +390,7 @@ config MIPS_SEAD3
 	select CPU_MIPSR2_IRQ_EI
 	select DMA_NONCOHERENT
 	select IRQ_CPU
-	select IRQ_GIC
+	select MIPS_GIC
 	select LIBFDT
 	select MIPS_MSC
 	select SYS_HAS_CPU_MIPS32_R1
@@ -975,6 +1003,7 @@ config SYS_SUPPORTS_HOTPLUG_CPU
 
 config I8259
 	bool
+	select IRQ_DOMAIN
 
 config MIPS_BONITO64
 	bool
@@ -1055,6 +1084,7 @@ config MIPS_HUGE_TLB_SUPPORT
 
 config IRQ_CPU
 	bool
+	select IRQ_DOMAIN
 
 config IRQ_CPU_RM7K
 	bool
@@ -1069,10 +1099,6 @@ config IRQ_TXX9
 	bool
 
 config IRQ_GT641XX
-	bool
-
-config IRQ_GIC
-	select MIPS_CM
 	bool
 
 config PCI_GT64XXX_PCI0
@@ -1574,6 +1600,7 @@ config CPU_LOONGSON1
 	select CPU_HAS_PREFETCH
 	select CPU_SUPPORTS_32BIT_KERNEL
 	select CPU_SUPPORTS_HIGHMEM
+	select CPU_SUPPORTS_CPUFREQ
 
 config CPU_BMIPS32_3300
 	select SMP_UP if SMP
@@ -1586,12 +1613,14 @@ config CPU_BMIPS4350
 
 config CPU_BMIPS4380
 	bool
+	select MIPS_L1_CACHE_SHIFT_6
 	select SYS_SUPPORTS_SMP
 	select SYS_SUPPORTS_HOTPLUG_CPU
 
 config CPU_BMIPS5000
 	bool
 	select MIPS_CPU_SCACHE
+	select MIPS_L1_CACHE_SHIFT_7
 	select SYS_SUPPORTS_SMP
 	select SYS_SUPPORTS_HOTPLUG_CPU
 
@@ -1888,7 +1917,7 @@ config FORCE_MAX_ZONEORDER
 
 config CEVT_GIC
 	bool "Use GIC global counter for clock events"
-	depends on IRQ_GIC && !MIPS_SEAD3
+	depends on MIPS_GIC && !MIPS_SEAD3
 	help
 	  Use the GIC global counter for the clock events. The R4K clock
 	  event driver is always present, so if the platform ends up not
@@ -1908,7 +1937,6 @@ config IP22_CPU_SCACHE
 config MIPS_CPU_SCACHE
 	bool
 	select BOARD_SCACHE
-	select MIPS_L1_CACHE_SHIFT_6
 
 config R5000_CPU_SCACHE
 	bool
