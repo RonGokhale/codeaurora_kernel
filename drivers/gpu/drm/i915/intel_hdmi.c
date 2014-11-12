@@ -166,6 +166,15 @@ static void g4x_write_infoframe(struct drm_encoder *encoder,
 	POSTING_READ(VIDEO_DIP_CTL);
 }
 
+static bool g4x_infoframe_enabled(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val = I915_READ(VIDEO_DIP_CTL);
+
+	return val & VIDEO_DIP_ENABLE;
+}
+
 static void ibx_write_infoframe(struct drm_encoder *encoder,
 				enum hdmi_infoframe_type type,
 				const void *frame, ssize_t len)
@@ -202,6 +211,17 @@ static void ibx_write_infoframe(struct drm_encoder *encoder,
 
 	I915_WRITE(reg, val);
 	POSTING_READ(reg);
+}
+
+static bool ibx_infoframe_enabled(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	int reg = TVIDEO_DIP_CTL(intel_crtc->pipe);
+	u32 val = I915_READ(reg);
+
+	return val & VIDEO_DIP_ENABLE;
 }
 
 static void cpt_write_infoframe(struct drm_encoder *encoder,
@@ -245,6 +265,17 @@ static void cpt_write_infoframe(struct drm_encoder *encoder,
 	POSTING_READ(reg);
 }
 
+static bool cpt_infoframe_enabled(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	int reg = TVIDEO_DIP_CTL(intel_crtc->pipe);
+	u32 val = I915_READ(reg);
+
+	return val & VIDEO_DIP_ENABLE;
+}
+
 static void vlv_write_infoframe(struct drm_encoder *encoder,
 				enum hdmi_infoframe_type type,
 				const void *frame, ssize_t len)
@@ -283,6 +314,17 @@ static void vlv_write_infoframe(struct drm_encoder *encoder,
 	POSTING_READ(reg);
 }
 
+static bool vlv_infoframe_enabled(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	int reg = VLV_TVIDEO_DIP_CTL(intel_crtc->pipe);
+	u32 val = I915_READ(reg);
+
+	return val & VIDEO_DIP_ENABLE;
+}
+
 static void hsw_write_infoframe(struct drm_encoder *encoder,
 				enum hdmi_infoframe_type type,
 				const void *frame, ssize_t len)
@@ -318,6 +360,18 @@ static void hsw_write_infoframe(struct drm_encoder *encoder,
 	val |= hsw_infoframe_enable(type);
 	I915_WRITE(ctl_reg, val);
 	POSTING_READ(ctl_reg);
+}
+
+static bool hsw_infoframe_enabled(struct drm_encoder *encoder)
+{
+	struct drm_device *dev = encoder->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
+	u32 ctl_reg = HSW_TVIDEO_DIP_CTL(intel_crtc->config.cpu_transcoder);
+	u32 val = I915_READ(ctl_reg);
+
+	return val & (VIDEO_DIP_ENABLE_AVI_HSW | VIDEO_DIP_ENABLE_SPD_HSW |
+		      VIDEO_DIP_ENABLE_VS_HSW);
 }
 
 /*
@@ -661,14 +715,6 @@ static void intel_hdmi_prepare(struct intel_encoder *encoder)
 	if (crtc->config.has_hdmi_sink)
 		hdmi_val |= HDMI_MODE_SELECT_HDMI;
 
-	if (crtc->config.has_audio) {
-		WARN_ON(!crtc->config.has_hdmi_sink);
-		DRM_DEBUG_DRIVER("Enabling HDMI audio on pipe %c\n",
-				 pipe_name(crtc->pipe));
-		hdmi_val |= SDVO_AUDIO_ENABLE;
-		intel_write_eld(&encoder->base, adjusted_mode);
-	}
-
 	if (HAS_PCH_CPT(dev))
 		hdmi_val |= SDVO_PIPE_SEL_CPT(crtc->pipe);
 	else if (IS_CHERRYVIEW(dev))
@@ -732,6 +778,9 @@ static void intel_hdmi_get_config(struct intel_encoder *encoder,
 	if (tmp & HDMI_MODE_SELECT_HDMI)
 		pipe_config->has_hdmi_sink = true;
 
+	if (intel_hdmi->infoframe_enabled(&encoder->base))
+		pipe_config->has_infoframe = true;
+
 	if (tmp & SDVO_AUDIO_ENABLE)
 		pipe_config->has_audio = true;
 
@@ -791,6 +840,13 @@ static void intel_enable_hdmi(struct intel_encoder *encoder)
 		I915_WRITE(intel_hdmi->hdmi_reg, temp);
 		POSTING_READ(intel_hdmi->hdmi_reg);
 	}
+
+	if (intel_crtc->config.has_audio) {
+		WARN_ON(!intel_crtc->config.has_hdmi_sink);
+		DRM_DEBUG_DRIVER("Enabling HDMI audio on pipe %c\n",
+				 pipe_name(intel_crtc->pipe));
+		intel_audio_codec_enable(encoder);
+	}
 }
 
 static void vlv_enable_hdmi(struct intel_encoder *encoder)
@@ -802,8 +858,12 @@ static void intel_disable_hdmi(struct intel_encoder *encoder)
 	struct drm_device *dev = encoder->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_hdmi *intel_hdmi = enc_to_intel_hdmi(&encoder->base);
+	struct intel_crtc *crtc = to_intel_crtc(encoder->base.crtc);
 	u32 temp;
 	u32 enable_bits = SDVO_ENABLE | SDVO_AUDIO_ENABLE;
+
+	if (crtc->config.has_audio)
+		intel_audio_codec_disable(encoder);
 
 	temp = I915_READ(intel_hdmi->hdmi_reg);
 
@@ -1616,18 +1676,23 @@ void intel_hdmi_init_connector(struct intel_digital_port *intel_dig_port,
 	if (IS_VALLEYVIEW(dev)) {
 		intel_hdmi->write_infoframe = vlv_write_infoframe;
 		intel_hdmi->set_infoframes = vlv_set_infoframes;
+		intel_hdmi->infoframe_enabled = vlv_infoframe_enabled;
 	} else if (IS_G4X(dev)) {
 		intel_hdmi->write_infoframe = g4x_write_infoframe;
 		intel_hdmi->set_infoframes = g4x_set_infoframes;
+		intel_hdmi->infoframe_enabled = g4x_infoframe_enabled;
 	} else if (HAS_DDI(dev)) {
 		intel_hdmi->write_infoframe = hsw_write_infoframe;
 		intel_hdmi->set_infoframes = hsw_set_infoframes;
+		intel_hdmi->infoframe_enabled = hsw_infoframe_enabled;
 	} else if (HAS_PCH_IBX(dev)) {
 		intel_hdmi->write_infoframe = ibx_write_infoframe;
 		intel_hdmi->set_infoframes = ibx_set_infoframes;
+		intel_hdmi->infoframe_enabled = ibx_infoframe_enabled;
 	} else {
 		intel_hdmi->write_infoframe = cpt_write_infoframe;
 		intel_hdmi->set_infoframes = cpt_set_infoframes;
+		intel_hdmi->infoframe_enabled = cpt_infoframe_enabled;
 	}
 
 	if (HAS_DDI(dev))

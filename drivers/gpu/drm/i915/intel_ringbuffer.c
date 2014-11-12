@@ -788,20 +788,20 @@ static int chv_init_workarounds(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	/* WaDisablePartialInstShootdown:chv */
-	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
-		  PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE);
-
 	/* WaDisableThreadStallDopClockGating:chv */
 	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
-		  STALL_DOP_GATING_DISABLE);
+			  PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE |
+			  STALL_DOP_GATING_DISABLE);
 
-	/* WaDisableDopClockGating:chv (pre-production hw) */
-	WA_SET_BIT_MASKED(GEN7_ROW_CHICKEN2,
-		  DOP_CLOCK_GATING_DISABLE);
-
-	/* WaDisableSamplerPowerBypass:chv (pre-production hw) */
-	WA_SET_BIT_MASKED(HALF_SLICE_CHICKEN3,
-		  GEN8_SAMPLER_POWER_BYPASS_DIS);
+	/* Use Force Non-Coherent whenever executing a 3D context. This is a
+	 * workaround for a possible hang in the unlikely event a TLB
+	 * invalidation occurs during a PSD flush.
+	 */
+	/* WaForceEnableNonCoherent:chv */
+	/* WaHdcDisableFetchWhenMasked:chv */
+	WA_SET_BIT_MASKED(HDC_CHICKEN0,
+			  HDC_FORCE_NON_COHERENT |
+			  HDC_DONOT_FETCH_MEM_WHEN_MASKED);
 
 	return 0;
 }
@@ -1845,11 +1845,14 @@ error:
 
 void intel_cleanup_ring_buffer(struct intel_engine_cs *ring)
 {
-	struct drm_i915_private *dev_priv = to_i915(ring->dev);
-	struct intel_ringbuffer *ringbuf = ring->buffer;
+	struct drm_i915_private *dev_priv;
+	struct intel_ringbuffer *ringbuf;
 
 	if (!intel_ring_initialized(ring))
 		return;
+
+	dev_priv = to_i915(ring->dev);
+	ringbuf = ring->buffer;
 
 	intel_stop_ring_buffer(ring);
 	WARN_ON(!IS_GEN2(ring->dev) && (I915_READ_MODE(ring) & MODE_IDLE) == 0);
