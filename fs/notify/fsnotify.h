@@ -36,7 +36,7 @@ extern void fsnotify_destroy_vfsmount_mark(struct fsnotify_mark *mark);
 /* inode specific destruction of a mark */
 extern void fsnotify_destroy_inode_mark(struct fsnotify_mark *mark);
 /* Destroy all marks in the given list */
-extern void fsnotify_destroy_marks(struct list_head *to_free);
+extern void fsnotify_destroy_marks(struct hlist_head *to_free);
 /* Find mark belonging to given group in the list of marks */
 extern struct fsnotify_mark *fsnotify_find_mark(struct hlist_head *head,
 						struct fsnotify_group *group);
