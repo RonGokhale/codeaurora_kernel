@@ -58,7 +58,6 @@ struct device_node {
 	struct	device_node *child;
 	struct	device_node *sibling;
 	struct	device_node *next;	/* next device of same type */
-	struct	device_node *allnext;	/* next in list of all nodes */
 	struct	kobject kobj;
 	unsigned long _flags;
 	void	*data;
@@ -111,7 +110,7 @@ static inline void of_node_put(struct device_node *node) { }
 #ifdef CONFIG_OF
 
 /* Pointer for first entry in chain of all nodes. */
-extern struct device_node *of_allnodes;
+extern struct device_node *of_root;
 extern struct device_node *of_chosen;
 extern struct device_node *of_aliases;
 extern struct device_node *of_stdout;
@@ -129,7 +128,7 @@ static inline struct device_node *of_node(struct fwnode_handle *fwnode)
 
 static inline bool of_have_populated_dt(void)
 {
-	return of_allnodes != NULL;
+	return of_root != NULL;
 }
 
 static inline bool of_node_is_root(const struct device_node *node)
@@ -173,6 +172,7 @@ static inline void of_property_clear_flag(struct property *p, unsigned long flag
 	clear_bit(flag, &p->_flags);
 }
 
+extern struct device_node *__of_find_all_nodes(struct device_node *prev);
 extern struct device_node *of_find_all_nodes(struct device_node *prev);
 
 /*
@@ -228,8 +228,9 @@ static inline const char *of_node_full_name(const struct device_node *np)
 	return np ? np->full_name : "<no-node>";
 }
 
-#define for_each_of_allnodes(dn) \
-	for (dn = of_allnodes; dn; dn = dn->allnext)
+#define for_each_of_allnodes_from(from, dn) \
+	for (dn = __of_find_all_nodes(from); dn; dn = __of_find_all_nodes(dn))
+#define for_each_of_allnodes(dn) for_each_of_allnodes_from(NULL, dn)
 extern struct device_node *of_find_node_by_name(struct device_node *from,
 	const char *name);
 extern struct device_node *of_find_node_by_type(struct device_node *from,
@@ -794,6 +795,13 @@ static inline int of_property_read_u32(const struct device_node *np,
 	return of_property_read_u32_array(np, propname, out_value, 1);
 }
 
+static inline int of_property_read_s32(const struct device_node *np,
+				       const char *propname,
+				       s32 *out_value)
+{
+	return of_property_read_u32(np, propname, (u32*) out_value);
+}
+
 #define of_property_for_each_u32(np, propname, prop, p, u)	\
 	for (prop = of_find_property(np, propname, NULL),	\
 		p = of_prop_next_u32(prop, NULL, &u);		\
@@ -862,7 +870,7 @@ static inline int of_get_available_child_count(const struct device_node *np)
 		 = { .compatible = compat,				\
 		     .data = (fn == (fn_type)NULL) ? fn : fn  }
 #else
-#define _OF_DECLARE(table, name, compat, fn, fn_type)					\
+#define _OF_DECLARE(table, name, compat, fn, fn_type)			\
 	static const struct of_device_id __of_table_##name		\
 		__attribute__((unused))					\
 		 = { .compatible = compat,				\
