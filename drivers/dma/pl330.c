@@ -2464,11 +2464,8 @@ pl330_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dst,
 	 * parameters because our DMA programming algorithm doesn't cope with
 	 * transfers which straddle an entry in the DMA device's MFIFO.
 	 */
-	while (burst > 1) {
-		if (!((src | dst | len) % burst))
-			break;
+	while ((src | dst | len) & (burst - 1))
 		burst /= 2;
-	}
 
 	desc->rqcfg.brst_size = 0;
 	while (burst != (1 << desc->rqcfg.brst_size))
