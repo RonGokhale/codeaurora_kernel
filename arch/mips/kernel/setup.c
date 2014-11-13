@@ -89,7 +89,7 @@ void __init add_memory_region(phys_t start, phys_t size, long type)
 
 	/* Sanity check */
 	if (start + size < start) {
-		pr_warning("Trying to add an invalid memory region, skipped\n");
+		pr_warn("Trying to add an invalid memory region, skipped\n");
 		return;
 	}
 
@@ -485,7 +485,7 @@ static void __init bootmem_init(void)
  * NOTE: historically plat_mem_setup did the entire platform initialization.
  *	 This was rather impractical because it meant plat_mem_setup had to
  * get away without any kind of memory allocator.  To keep old code from
- * breaking plat_setup was just renamed to plat_setup and a second platform
+ * breaking plat_setup was just renamed to plat_mem_setup and a second platform
  * initialization hook for anything else was introduced.
  */
 
