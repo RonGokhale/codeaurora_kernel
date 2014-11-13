@@ -87,14 +87,14 @@ void fsnotify_clear_marks_by_inode(struct inode *inode)
 {
 	struct fsnotify_mark *mark;
 	struct hlist_node *n;
-	LIST_HEAD(free_list);
+	HLIST_HEAD(free_list);
 
+	/* Detach list from inode and grab us reference to each mark */
 	spin_lock(&inode->i_lock);
 	hlist_for_each_entry_safe(mark, n, &inode->i_fsnotify_marks, obj_list) {
-		list_add(&mark->free_list, &free_list);
-		hlist_del_init_rcu(&mark->obj_list);
 		fsnotify_get_mark(mark);
 	}
+	hlist_move_list(&inode->i_fsnotify_marks, &free_list);
 	spin_unlock(&inode->i_lock);
 
 	fsnotify_destroy_marks(&free_list);
