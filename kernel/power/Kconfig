@@ -271,7 +271,7 @@ config PM_CLK
 
 config PM_GENERIC_DOMAINS
 	bool
-	depends on PM
+	select PM_RUNTIME
 
 config WQ_POWER_EFFICIENT_DEFAULT
 	bool "Enable workqueue power-efficient mode by default"
