@@ -107,11 +107,7 @@ static void blk_mq_usage_counter_release(struct percpu_ref *ref)
 	wake_up_all(&q->mq_freeze_wq);
 }
 
-/*
- * Guarantee no request is in use, so we can change any data structure of
- * the queue afterward.
- */
-void blk_mq_freeze_queue(struct request_queue *q)
+static void blk_mq_freeze_queue_start(struct request_queue *q)
 {
 	bool freeze;
 
@@ -123,7 +119,21 @@ void blk_mq_freeze_queue(struct request_queue *q)
 		percpu_ref_kill(&q->mq_usage_counter);
 		blk_mq_run_queues(q, false);
 	}
+}
+
+static void blk_mq_freeze_queue_wait(struct request_queue *q)
+{
 	wait_event(q->mq_freeze_wq, percpu_ref_is_zero(&q->mq_usage_counter));
+}
+
+/*
+ * Guarantee no request is in use, so we can change any data structure of
+ * the queue afterward.
+ */
+void blk_mq_freeze_queue(struct request_queue *q)
+{
+	blk_mq_freeze_queue_start(q);
+	blk_mq_freeze_queue_wait(q);
 }
 
 static void blk_mq_unfreeze_queue(struct request_queue *q)
@@ -680,6 +690,8 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 	struct request_queue *q = hctx->queue;
 	struct request *rq;
 	LIST_HEAD(rq_list);
+	LIST_HEAD(driver_list);
+	struct list_head *dptr;
 	int queued;
 
 	WARN_ON(!cpumask_test_cpu(raw_smp_processor_id(), hctx->cpumask));
@@ -706,16 +718,27 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 	}
 
 	/*
+	 * Start off with dptr being NULL, so we start the first request
+	 * immediately, even if we have more pending.
+	 */
+	dptr = NULL;
+
+	/*
 	 * Now process all the entries, sending them to the driver.
 	 */
 	queued = 0;
 	while (!list_empty(&rq_list)) {
+		struct blk_mq_queue_data bd;
 		int ret;
 
 		rq = list_first_entry(&rq_list, struct request, queuelist);
 		list_del_init(&rq->queuelist);
 
-		ret = q->mq_ops->queue_rq(hctx, rq, list_empty(&rq_list));
+		bd.rq = rq;
+		bd.list = dptr;
+		bd.last = list_empty(&rq_list);
+
+		ret = q->mq_ops->queue_rq(hctx, &bd);
 		switch (ret) {
 		case BLK_MQ_RQ_QUEUE_OK:
 			queued++;
@@ -734,6 +757,13 @@ static void __blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx)
 
 		if (ret == BLK_MQ_RQ_QUEUE_BUSY)
 			break;
+
+		/*
+		 * We've done the first request. If we have more than 1
+		 * left in the list, set dptr to defer issue.
+		 */
+		if (!dptr && rq_list.next != rq_list.prev)
+			dptr = &driver_list;
 	}
 
 	if (!queued)
@@ -781,9 +811,18 @@ void blk_mq_run_hw_queue(struct blk_mq_hw_ctx *hctx, bool async)
 	if (unlikely(test_bit(BLK_MQ_S_STOPPED, &hctx->state)))
 		return;
 
-	if (!async && cpumask_test_cpu(smp_processor_id(), hctx->cpumask))
-		__blk_mq_run_hw_queue(hctx);
-	else if (hctx->queue->nr_hw_queues == 1)
+	if (!async) {
+		int cpu = get_cpu();
+		if (cpumask_test_cpu(cpu, hctx->cpumask)) {
+			__blk_mq_run_hw_queue(hctx);
+			put_cpu();
+			return;
+		}
+
+		put_cpu();
+	}
+
+	if (hctx->queue->nr_hw_queues == 1)
 		kblockd_schedule_delayed_work(&hctx->run_work, 0);
 	else {
 		unsigned int cpu;
@@ -804,9 +843,7 @@ void blk_mq_run_queues(struct request_queue *q, bool async)
 		    test_bit(BLK_MQ_S_STOPPED, &hctx->state))
 			continue;
 
-		preempt_disable();
 		blk_mq_run_hw_queue(hctx, async);
-		preempt_enable();
 	}
 }
 EXPORT_SYMBOL(blk_mq_run_queues);
@@ -833,9 +870,7 @@ void blk_mq_start_hw_queue(struct blk_mq_hw_ctx *hctx)
 {
 	clear_bit(BLK_MQ_S_STOPPED, &hctx->state);
 
-	preempt_disable();
 	blk_mq_run_hw_queue(hctx, false);
-	preempt_enable();
 }
 EXPORT_SYMBOL(blk_mq_start_hw_queue);
 
@@ -860,9 +895,7 @@ void blk_mq_start_stopped_hw_queues(struct request_queue *q, bool async)
 			continue;
 
 		clear_bit(BLK_MQ_S_STOPPED, &hctx->state);
-		preempt_disable();
 		blk_mq_run_hw_queue(hctx, async);
-		preempt_enable();
 	}
 }
 EXPORT_SYMBOL(blk_mq_start_stopped_hw_queues);
@@ -1152,7 +1185,17 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 		goto run_queue;
 	}
 
-	if (is_sync) {
+	/*
+	 * If the driver supports defer issued based on 'last', then
+	 * queue it up like normal since we can potentially save some
+	 * CPU this way.
+	 */
+	if (is_sync && !(data.hctx->flags & BLK_MQ_F_DEFER_ISSUE)) {
+		struct blk_mq_queue_data bd = {
+			.rq = rq,
+			.list = NULL,
+			.last = 1
+		};
 		int ret;
 
 		blk_mq_bio_to_request(rq, bio);
@@ -1162,7 +1205,7 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 		 * error (busy), just add it to our list as we previously
 		 * would have done
 		 */
-		ret = q->mq_ops->queue_rq(data.hctx, rq, true);
+		ret = q->mq_ops->queue_rq(data.hctx, &bd);
 		if (ret == BLK_MQ_RQ_QUEUE_OK)
 			goto done;
 		else {
@@ -1921,7 +1964,7 @@ void blk_mq_free_queue(struct request_queue *q)
 /* Basically redo blk_mq_init_queue with queue frozen */
 static void blk_mq_queue_reinit(struct request_queue *q)
 {
-	blk_mq_freeze_queue(q);
+	WARN_ON_ONCE(!q->mq_freeze_depth);
 
 	blk_mq_sysfs_unregister(q);
 
@@ -1936,8 +1979,6 @@ static void blk_mq_queue_reinit(struct request_queue *q)
 	blk_mq_map_swqueue(q);
 
 	blk_mq_sysfs_register(q);
-
-	blk_mq_unfreeze_queue(q);
 }
 
 static int blk_mq_queue_reinit_notify(struct notifier_block *nb,
@@ -1956,8 +1997,25 @@ static int blk_mq_queue_reinit_notify(struct notifier_block *nb,
 		return NOTIFY_OK;
 
 	mutex_lock(&all_q_mutex);
+
+	/*
+	 * We need to freeze and reinit all existing queues.  Freezing
+	 * involves synchronous wait for an RCU grace period and doing it
+	 * one by one may take a long time.  Start freezing all queues in
+	 * one swoop and then wait for the completions so that freezing can
+	 * take place in parallel.
+	 */
+	list_for_each_entry(q, &all_q_list, all_q_node)
+		blk_mq_freeze_queue_start(q);
+	list_for_each_entry(q, &all_q_list, all_q_node)
+		blk_mq_freeze_queue_wait(q);
+
 	list_for_each_entry(q, &all_q_list, all_q_node)
 		blk_mq_queue_reinit(q);
+
+	list_for_each_entry(q, &all_q_list, all_q_node)
+		blk_mq_unfreeze_queue(q);
+
 	mutex_unlock(&all_q_mutex);
 	return NOTIFY_OK;
 }
