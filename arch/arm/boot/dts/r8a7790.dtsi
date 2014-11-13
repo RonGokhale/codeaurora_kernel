@@ -423,6 +423,8 @@
 		reg = <0 0xe6500000 0 0x425>;
 		interrupts = <0 174 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&mstp3_clks R8A7790_CLK_IIC0>;
+		dmas = <&dmac0 0x61>, <&dmac0 0x62>;
+		dma-names = "tx", "rx";
 		status = "disabled";
 	};
 
@@ -433,6 +435,8 @@
 		reg = <0 0xe6510000 0 0x425>;
 		interrupts = <0 175 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&mstp3_clks R8A7790_CLK_IIC1>;
+		dmas = <&dmac0 0x65>, <&dmac0 0x66>;
+		dma-names = "tx", "rx";
 		status = "disabled";
 	};
 
@@ -443,6 +447,8 @@
 		reg = <0 0xe6520000 0 0x425>;
 		interrupts = <0 176 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&mstp3_clks R8A7790_CLK_IIC2>;
+		dmas = <&dmac0 0x69>, <&dmac0 0x6a>;
+		dma-names = "tx", "rx";
 		status = "disabled";
 	};
 
@@ -453,6 +459,8 @@
 		reg = <0 0xe60b0000 0 0x425>;
 		interrupts = <0 173 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&mstp9_clks R8A7790_CLK_IICDVFS>;
+		dmas = <&dmac0 0x77>, <&dmac0 0x78>;
+		dma-names = "tx", "rx";
 		status = "disabled";
 	};
 
@@ -1477,7 +1485,18 @@
 				<&audmapp 0x0f32>,	<&audmapp 0x0f33>,	<&audmapp 0x0f34>,	<&audmapp 0x0f35>,	<&audmapp 0x0f36>,
 				<&audmapp 0x1032>,	<&audmapp 0x1033>,	<&audmapp 0x1034>,	<&audmapp 0x1035>,	<&audmapp 0x1036>,
 				<&audmapp 0x1132>,	<&audmapp 0x1133>,	<&audmapp 0x1134>,	<&audmapp 0x1135>,	<&audmapp 0x1136>,
-				<&audmapp 0x1232>,	<&audmapp 0x1233>,	<&audmapp 0x1234>,	<&audmapp 0x1235>,	<&audmapp 0x1236>;
+				<&audmapp 0x1232>,	<&audmapp 0x1233>,	<&audmapp 0x1234>,	<&audmapp 0x1235>,	<&audmapp 0x1236>,
+
+				<&audmapp 0x3700>,	<&audmapp 0x3800>,
+				<&audmapp 0x3704>,	<&audmapp 0x3804>,
+				<&audmapp 0x3708>,	<&audmapp 0x3808>,
+				<&audmapp 0x370c>,	<&audmapp 0x380c>,
+				<&audmapp 0x370d>,	<&audmapp 0x380d>,
+				<&audmapp 0x370e>,	<&audmapp 0x380e>,
+				<&audmapp 0x370f>,	<&audmapp 0x380f>,
+				<&audmapp 0x3710>,	<&audmapp 0x3810>,
+				<&audmapp 0x3711>,	<&audmapp 0x3811>,
+				<&audmapp 0x3712>,	<&audmapp 0x3812>;
 
 		dma-names =	"mem_ssi0",	"ssi0_mem",	"mem_ssiu0",	"ssiu0_mem",
 				"mem_ssi1",	"ssi1_mem",	"mem_ssiu1",	"ssiu1_mem",
@@ -1543,7 +1562,18 @@
 				"ssiu6_src5",		"ssiu6_src6",		"ssiu6_src7",		"ssiu6_src8",		"ssiu6_src9",
 				"ssiu7_src5",		"ssiu7_src6",		"ssiu7_src7",		"ssiu7_src8",		"ssiu7_src9",
 				"ssiu8_src5",		"ssiu8_src6",		"ssiu8_src7",		"ssiu8_src8",		"ssiu8_src9",
-				"ssiu9_src5",		"ssiu9_src6",		"ssiu9_src7",		"ssiu9_src8",		"ssiu9_src9";
+				"ssiu9_src5",		"ssiu9_src6",		"ssiu9_src7",		"ssiu9_src8",		"ssiu9_src9",
+
+				"dvc0_ssiu0",		"dvc1_ssiu0",
+				"dvc0_ssiu1",		"dvc1_ssiu1",
+				"dvc0_ssiu2",		"dvc1_ssiu2",
+				"dvc0_ssiu3",		"dvc1_ssiu3",
+				"dvc0_ssiu4",		"dvc1_ssiu4",
+				"dvc0_ssiu5",		"dvc1_ssiu5",
+				"dvc0_ssiu6",		"dvc1_ssiu6",
+				"dvc0_ssiu7",		"dvc1_ssiu7",
+				"dvc0_ssiu8",		"dvc1_ssiu8",
+				"dvc0_ssiu9",		"dvc1_ssiu9";
 
 		status = "disabled";
 
