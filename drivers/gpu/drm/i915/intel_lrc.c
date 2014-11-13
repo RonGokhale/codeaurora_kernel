@@ -1063,7 +1063,7 @@ static bool gen8_logical_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -1660,7 +1660,7 @@ static uint32_t get_lr_context_size(struct intel_engine_cs *ring)
  * the creation is a deferred call: it's better to make sure first that we need to use
  * a given ring with the context.
  *
- * Return: non-zero on eror.
+ * Return: non-zero on error.
  */
 int intel_lr_context_deferred_create(struct intel_context *ctx,
 				     struct intel_engine_cs *ring)

@@ -55,7 +55,7 @@
 
 #define DRIVER_NAME		"i915"
 #define DRIVER_DESC		"Intel Graphics"
-#define DRIVER_DATE		"20140905"
+#define DRIVER_DATE		"20141024"
 
 enum pipe {
 	INVALID_PIPE = -1,
@@ -75,6 +75,14 @@ enum transcoder {
 	I915_MAX_TRANSCODERS
 };
 #define transcoder_name(t) ((t) + 'A')
+
+/*
+ * This is the maximum (across all platforms) number of planes (primary +
+ * sprites) that can be active at the same time on one pipe.
+ *
+ * This value doesn't count the cursor plane.
+ */
+#define I915_MAX_PLANES	3
 
 enum plane {
 	PLANE_A = 0,
@@ -452,7 +460,7 @@ struct drm_i915_display_funcs {
 	 * Returns true on success, false on failure.
 	 */
 	bool (*find_dpll)(const struct intel_limit *limit,
-			  struct drm_crtc *crtc,
+			  struct intel_crtc *crtc,
 			  int target, int refclk,
 			  struct dpll *match_clock,
 			  struct dpll *best_clock);
@@ -468,7 +476,7 @@ struct drm_i915_display_funcs {
 				struct intel_crtc_config *);
 	void (*get_plane_config)(struct intel_crtc *,
 				 struct intel_plane_config *);
-	int (*crtc_mode_set)(struct drm_crtc *crtc,
+	int (*crtc_mode_set)(struct intel_crtc *crtc,
 			     int x, int y,
 			     struct drm_framebuffer *old_fb);
 	void (*crtc_enable)(struct drm_crtc *crtc);
@@ -551,6 +559,7 @@ struct intel_uncore {
 	func(is_ivybridge) sep \
 	func(is_valleyview) sep \
 	func(is_haswell) sep \
+	func(is_skylake) sep \
 	func(is_preliminary) sep \
 	func(has_fbc) sep \
 	func(has_pipe_cxsr) sep \
@@ -663,6 +672,18 @@ struct i915_fbc {
 
 	bool false_color;
 
+	/* Tracks whether the HW is actually enabled, not whether the feature is
+	 * possible. */
+	bool enabled;
+
+	/* On gen8 some rings cannont perform fbc clean operation so for now
+	 * we are doing this on SW with mmio.
+	 * This variable works in the opposite information direction
+	 * of ring->fbc_dirty telling software on frontbuffer tracking
+	 * to perform the cache clean on sw side.
+	 */
+	bool need_sw_cache_clean;
+
 	struct intel_fbc_work {
 		struct delayed_work work;
 		struct drm_crtc *crtc;
@@ -704,6 +725,7 @@ enum intel_pch {
 	PCH_IBX,	/* Ibexpeak PCH */
 	PCH_CPT,	/* Cougarpoint PCH */
 	PCH_LPT,	/* Lynxpoint PCH */
+	PCH_SPT,        /* Sunrisepoint PCH */
 	PCH_NOP,
 };
 
@@ -1369,7 +1391,7 @@ struct ilk_wm_values {
  *
  * Our driver uses the autosuspend delay feature, which means we'll only really
  * suspend if we stay with zero refcount for a certain amount of time. The
- * default value is currently very conservative (see intel_init_runtime_pm), but
+ * default value is currently very conservative (see intel_runtime_pm_enable), but
  * it can be changed with the standard runtime PM files from sysfs.
  *
  * The irqs_disabled variable becomes true exactly after we disable the IRQs and
@@ -1382,7 +1404,7 @@ struct ilk_wm_values {
  */
 struct i915_runtime_pm {
 	bool suspended;
-	bool _irqs_disabled;
+	bool irqs_enabled;
 };
 
 enum intel_pipe_crc_source {
@@ -1424,6 +1446,20 @@ struct i915_frontbuffer_tracking {
 	 */
 	unsigned busy_bits;
 	unsigned flip_bits;
+};
+
+struct i915_wa_reg {
+	u32 addr;
+	u32 value;
+	/* bitmask representing WA bits */
+	u32 mask;
+};
+
+#define I915_MAX_WA_REGS 16
+
+struct i915_workarounds {
+	struct i915_wa_reg reg[I915_MAX_WA_REGS];
+	u32 count;
 };
 
 struct drm_i915_private {
@@ -1505,11 +1541,13 @@ struct drm_i915_private {
 	struct intel_opregion opregion;
 	struct intel_vbt_data vbt;
 
+	bool preserve_bios_swizzle;
+
 	/* overlay */
 	struct intel_overlay *overlay;
 
 	/* backlight registers and fields in struct intel_panel */
-	spinlock_t backlight_lock;
+	struct mutex backlight_lock;
 
 	/* LVDS info */
 	bool no_aux_handshake;
@@ -1568,19 +1606,7 @@ struct drm_i915_private {
 	struct intel_shared_dpll shared_dplls[I915_NUM_PLLS];
 	int dpio_phy_iosf_port[I915_NUM_PHYS_VLV];
 
-	/*
-	 * workarounds are currently applied at different places and
-	 * changes are being done to consolidate them so exact count is
-	 * not clear at this point, use a max value for now.
-	 */
-#define I915_MAX_WA_REGS  16
-	struct {
-		u32 addr;
-		u32 value;
-		/* bitmask representing WA bits */
-		u32 mask;
-	} intel_wa_regs[I915_MAX_WA_REGS];
-	u32 num_wa_regs;
+	struct i915_workarounds workarounds;
 
 	/* Reclocking support */
 	bool render_reclock_avail;
@@ -2073,6 +2099,7 @@ struct drm_i915_cmd_table {
 #define IS_CHERRYVIEW(dev)	(INTEL_INFO(dev)->is_valleyview && IS_GEN8(dev))
 #define IS_HASWELL(dev)	(INTEL_INFO(dev)->is_haswell)
 #define IS_BROADWELL(dev)	(!INTEL_INFO(dev)->is_valleyview && IS_GEN8(dev))
+#define IS_SKYLAKE(dev)	(INTEL_INFO(dev)->is_skylake)
 #define IS_MOBILE(dev)		(INTEL_INFO(dev)->is_mobile)
 #define IS_HSW_EARLY_SDV(dev)	(IS_HASWELL(dev) && \
 				 (INTEL_DEVID(dev) & 0xFF00) == 0x0C00)
@@ -2080,9 +2107,10 @@ struct drm_i915_cmd_table {
 				 ((INTEL_DEVID(dev) & 0xf) == 0x2  || \
 				 (INTEL_DEVID(dev) & 0xf) == 0x6 || \
 				 (INTEL_DEVID(dev) & 0xf) == 0xe))
+#define IS_BDW_GT3(dev)		(IS_BROADWELL(dev) && \
+				 (INTEL_DEVID(dev) & 0x00F0) == 0x0020)
 #define IS_HSW_ULT(dev)		(IS_HASWELL(dev) && \
 				 (INTEL_DEVID(dev) & 0xFF00) == 0x0A00)
-#define IS_ULT(dev)		(IS_HSW_ULT(dev) || IS_BDW_ULT(dev))
 #define IS_HSW_GT3(dev)		(IS_HASWELL(dev) && \
 				 (INTEL_DEVID(dev) & 0x00F0) == 0x0020)
 /* ULX machines are also considered ULT. */
@@ -2103,6 +2131,7 @@ struct drm_i915_cmd_table {
 #define IS_GEN6(dev)	(INTEL_INFO(dev)->gen == 6)
 #define IS_GEN7(dev)	(INTEL_INFO(dev)->gen == 7)
 #define IS_GEN8(dev)	(INTEL_INFO(dev)->gen == 8)
+#define IS_GEN9(dev)	(INTEL_INFO(dev)->gen == 9)
 
 #define RENDER_RING		(1<<RCS)
 #define BSD_RING		(1<<VCS)
@@ -2115,13 +2144,11 @@ struct drm_i915_cmd_table {
 #define HAS_VEBOX(dev)		(INTEL_INFO(dev)->ring_mask & VEBOX_RING)
 #define HAS_LLC(dev)		(INTEL_INFO(dev)->has_llc)
 #define HAS_WT(dev)		((IS_HASWELL(dev) || IS_BROADWELL(dev)) && \
-				 to_i915(dev)->ellc_size)
+				 __I915__(dev)->ellc_size)
 #define I915_NEED_GFX_HWS(dev)	(INTEL_INFO(dev)->need_gfx_hws)
 
 #define HAS_HW_CONTEXTS(dev)	(INTEL_INFO(dev)->gen >= 6)
 #define HAS_LOGICAL_RING_CONTEXTS(dev)	(INTEL_INFO(dev)->gen >= 8)
-#define HAS_ALIASING_PPGTT(dev)	(INTEL_INFO(dev)->gen >= 6)
-#define HAS_PPGTT(dev)		(INTEL_INFO(dev)->gen >= 7 && !IS_GEN8(dev))
 #define USES_PPGTT(dev)		(i915.enable_ppgtt)
 #define USES_FULL_PPGTT(dev)	(i915.enable_ppgtt == 2)
 
@@ -2154,13 +2181,15 @@ struct drm_i915_cmd_table {
 #define HAS_PIPE_CXSR(dev) (INTEL_INFO(dev)->has_pipe_cxsr)
 #define HAS_FBC(dev) (INTEL_INFO(dev)->has_fbc)
 
-#define HAS_IPS(dev)		(IS_ULT(dev) || IS_BROADWELL(dev))
+#define HAS_IPS(dev)		(IS_HSW_ULT(dev) || IS_BROADWELL(dev))
 
 #define HAS_DDI(dev)		(INTEL_INFO(dev)->has_ddi)
 #define HAS_FPGA_DBG_UNCLAIMED(dev)	(INTEL_INFO(dev)->has_fpga_dbg)
 #define HAS_PSR(dev)		(IS_HASWELL(dev) || IS_BROADWELL(dev))
 #define HAS_RUNTIME_PM(dev)	(IS_GEN6(dev) || IS_HASWELL(dev) || \
 				 IS_BROADWELL(dev) || IS_VALLEYVIEW(dev))
+#define HAS_RC6(dev)		(INTEL_INFO(dev)->gen >= 6)
+#define HAS_RC6p(dev)		(INTEL_INFO(dev)->gen == 6 || IS_IVYBRIDGE(dev))
 
 #define INTEL_PCH_DEVICE_ID_MASK		0xff00
 #define INTEL_PCH_IBX_DEVICE_ID_TYPE		0x3b00
@@ -2168,8 +2197,11 @@ struct drm_i915_cmd_table {
 #define INTEL_PCH_PPT_DEVICE_ID_TYPE		0x1e00
 #define INTEL_PCH_LPT_DEVICE_ID_TYPE		0x8c00
 #define INTEL_PCH_LPT_LP_DEVICE_ID_TYPE		0x9c00
+#define INTEL_PCH_SPT_DEVICE_ID_TYPE		0xA100
+#define INTEL_PCH_SPT_LP_DEVICE_ID_TYPE		0x9D00
 
-#define INTEL_PCH_TYPE(dev) (to_i915(dev)->pch_type)
+#define INTEL_PCH_TYPE(dev) (__I915__(dev)->pch_type)
+#define HAS_PCH_SPT(dev) (INTEL_PCH_TYPE(dev) == PCH_SPT)
 #define HAS_PCH_LPT(dev) (INTEL_PCH_TYPE(dev) == PCH_LPT)
 #define HAS_PCH_CPT(dev) (INTEL_PCH_TYPE(dev) == PCH_CPT)
 #define HAS_PCH_IBX(dev) (INTEL_PCH_TYPE(dev) == PCH_IBX)
@@ -2189,8 +2221,8 @@ struct drm_i915_cmd_table {
 extern const struct drm_ioctl_desc i915_ioctls[];
 extern int i915_max_ioctl;
 
-extern int i915_suspend(struct drm_device *dev, pm_message_t state);
-extern int i915_resume(struct drm_device *dev);
+extern int i915_suspend_legacy(struct drm_device *dev, pm_message_t state);
+extern int i915_resume_legacy(struct drm_device *dev);
 extern int i915_master_create(struct drm_device *dev, struct drm_master *master);
 extern void i915_master_destroy(struct drm_device *dev, struct drm_master *master);
 
@@ -2262,8 +2294,10 @@ void i915_handle_error(struct drm_device *dev, bool wedged,
 
 void gen6_set_pm_mask(struct drm_i915_private *dev_priv, u32 pm_iir,
 							int new_delay);
-extern void intel_irq_init(struct drm_device *dev);
-extern void intel_hpd_init(struct drm_device *dev);
+extern void intel_irq_init(struct drm_i915_private *dev_priv);
+extern void intel_hpd_init(struct drm_i915_private *dev_priv);
+int intel_irq_install(struct drm_i915_private *dev_priv);
+void intel_irq_uninstall(struct drm_i915_private *dev_priv);
 
 extern void intel_uncore_sanitize(struct drm_device *dev);
 extern void intel_uncore_early_sanitize(struct drm_device *dev,
@@ -2283,6 +2317,17 @@ i915_disable_pipestat(struct drm_i915_private *dev_priv, enum pipe pipe,
 
 void valleyview_enable_display_irqs(struct drm_i915_private *dev_priv);
 void valleyview_disable_display_irqs(struct drm_i915_private *dev_priv);
+void
+ironlake_enable_display_irq(struct drm_i915_private *dev_priv, u32 mask);
+void
+ironlake_disable_display_irq(struct drm_i915_private *dev_priv, u32 mask);
+void ibx_display_interrupt_update(struct drm_i915_private *dev_priv,
+				  uint32_t interrupt_mask,
+				  uint32_t enabled_irq_mask);
+#define ibx_enable_display_interrupt(dev_priv, bits) \
+	ibx_display_interrupt_update((dev_priv), (bits), (bits))
+#define ibx_disable_display_interrupt(dev_priv, bits) \
+	ibx_display_interrupt_update((dev_priv), (bits), 0)
 
 /* i915_gem.c */
 int i915_gem_init_ioctl(struct drm_device *dev, void *data,
@@ -2793,7 +2838,6 @@ static inline void intel_unregister_dsm_handler(void) { return; }
 
 /* modesetting */
 extern void intel_modeset_init_hw(struct drm_device *dev);
-extern void intel_modeset_suspend_hw(struct drm_device *dev);
 extern void intel_modeset_init(struct drm_device *dev);
 extern void intel_modeset_gem_init(struct drm_device *dev);
 extern void intel_modeset_cleanup(struct drm_device *dev);
@@ -2804,7 +2848,7 @@ extern void intel_modeset_setup_hw_state(struct drm_device *dev,
 extern void i915_redisable_vga(struct drm_device *dev);
 extern void i915_redisable_vga_power_on(struct drm_device *dev);
 extern bool intel_fbc_enabled(struct drm_device *dev);
-extern void gen8_fbc_sw_flush(struct drm_device *dev, u32 value);
+extern void bdw_fbc_sw_flush(struct drm_device *dev, u32 value);
 extern void intel_disable_fbc(struct drm_device *dev);
 extern bool ironlake_set_drps(struct drm_device *dev, u8 val);
 extern void intel_init_pch_refclk(struct drm_device *dev);

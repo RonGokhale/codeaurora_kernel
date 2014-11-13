@@ -516,7 +516,6 @@ static int i915_gem_pageflip_info(struct seq_file *m, void *data)
 	struct drm_info_node *node = m->private;
 	struct drm_device *dev = node->minor->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	unsigned long flags;
 	struct intel_crtc *crtc;
 	int ret;
 
@@ -529,7 +528,7 @@ static int i915_gem_pageflip_info(struct seq_file *m, void *data)
 		const char plane = plane_name(crtc->plane);
 		struct intel_unpin_work *work;
 
-		spin_lock_irqsave(&dev->event_lock, flags);
+		spin_lock_irq(&dev->event_lock);
 		work = crtc->unpin_work;
 		if (work == NULL) {
 			seq_printf(m, "No flip due on pipe %c (plane %c)\n",
@@ -575,7 +574,7 @@ static int i915_gem_pageflip_info(struct seq_file *m, void *data)
 				seq_printf(m, "MMIO update completed? %d\n",  addr == work->gtt_offset);
 			}
 		}
-		spin_unlock_irqrestore(&dev->event_lock, flags);
+		spin_unlock_irq(&dev->event_lock);
 	}
 
 	mutex_unlock(&dev->struct_mutex);
@@ -717,7 +716,7 @@ static int i915_interrupt_info(struct seq_file *m, void *data)
 		}
 
 		for_each_pipe(dev_priv, pipe) {
-			if (!intel_display_power_enabled(dev_priv,
+			if (!intel_display_power_is_enabled(dev_priv,
 						POWER_DOMAIN_PIPE(pipe))) {
 				seq_printf(m, "Pipe %c power disabled\n",
 					   pipe_name(pipe));
@@ -1849,6 +1848,8 @@ static int i915_execlists(struct seq_file *m, void *data)
 	if (ret)
 		return ret;
 
+	intel_runtime_pm_get(dev_priv);
+
 	for_each_ring(ring, dev_priv, ring_id) {
 		struct intel_ctx_submit_request *head_req = NULL;
 		int count = 0;
@@ -1900,6 +1901,7 @@ static int i915_execlists(struct seq_file *m, void *data)
 		seq_putc(m, '\n');
 	}
 
+	intel_runtime_pm_put(dev_priv);
 	mutex_unlock(&dev->struct_mutex);
 
 	return 0;
@@ -1986,7 +1988,7 @@ static int i915_swizzle_info(struct seq_file *m, void *data)
 			   I915_READ(MAD_DIMM_C2));
 		seq_printf(m, "TILECTL = 0x%08x\n",
 			   I915_READ(TILECTL));
-		if (IS_GEN8(dev))
+		if (INTEL_INFO(dev)->gen >= 8)
 			seq_printf(m, "GAMTARBMODE = 0x%08x\n",
 				   I915_READ(GAMTARBMODE));
 		else
@@ -2656,18 +2658,18 @@ static int i915_wa_registers(struct seq_file *m, void *unused)
 
 	intel_runtime_pm_get(dev_priv);
 
-	seq_printf(m, "Workarounds applied: %d\n", dev_priv->num_wa_regs);
-	for (i = 0; i < dev_priv->num_wa_regs; ++i) {
-		u32 addr, mask;
+	seq_printf(m, "Workarounds applied: %d\n", dev_priv->workarounds.count);
+	for (i = 0; i < dev_priv->workarounds.count; ++i) {
+		u32 addr, mask, value, read;
+		bool ok;
 
-		addr = dev_priv->intel_wa_regs[i].addr;
-		mask = dev_priv->intel_wa_regs[i].mask;
-		dev_priv->intel_wa_regs[i].value = I915_READ(addr) | mask;
-		if (dev_priv->intel_wa_regs[i].addr)
-			seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X\n",
-				   dev_priv->intel_wa_regs[i].addr,
-				   dev_priv->intel_wa_regs[i].value,
-				   dev_priv->intel_wa_regs[i].mask);
+		addr = dev_priv->workarounds.reg[i].addr;
+		mask = dev_priv->workarounds.reg[i].mask;
+		value = dev_priv->workarounds.reg[i].value;
+		read = I915_READ(addr);
+		ok = (value & mask) == (read & mask);
+		seq_printf(m, "0x%X: 0x%08X, mask: 0x%08X, read: 0x%08x, status: %s\n",
+			   addr, value, mask, read, ok ? "OK" : "FAIL");
 	}
 
 	intel_runtime_pm_put(dev_priv);
@@ -3256,6 +3258,8 @@ static int pipe_crc_set_source(struct drm_device *dev, enum pipe pipe,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_pipe_crc *pipe_crc = &dev_priv->pipe_crc[pipe];
+	struct intel_crtc *crtc = to_intel_crtc(intel_get_crtc_for_pipe(dev,
+									pipe));
 	u32 val = 0; /* shut up gcc */
 	int ret;
 
@@ -3290,6 +3294,14 @@ static int pipe_crc_set_source(struct drm_device *dev, enum pipe pipe,
 					    GFP_KERNEL);
 		if (!pipe_crc->entries)
 			return -ENOMEM;
+
+		/*
+		 * When IPS gets enabled, the pipe CRC changes. Since IPS gets
+		 * enabled and disabled dynamically based on package C states,
+		 * user space can't make reliable use of the CRCs, so let's just
+		 * completely disable it.
+		 */
+		hsw_disable_ips(crtc);
 
 		spin_lock_irq(&pipe_crc->lock);
 		pipe_crc->head = 0;
@@ -3329,6 +3341,8 @@ static int pipe_crc_set_source(struct drm_device *dev, enum pipe pipe,
 			vlv_undo_pipe_scramble_reset(dev, pipe);
 		else if (IS_HASWELL(dev) && pipe == PIPE_A)
 			hsw_undo_trans_edp_pipe_A_crc_wa(dev);
+
+		hsw_enable_ips(crtc);
 	}
 
 	return 0;

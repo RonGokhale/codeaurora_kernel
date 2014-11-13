@@ -194,13 +194,15 @@ static void vlv_force_wake_reset(struct drm_i915_private *dev_priv)
 static void __vlv_force_wake_get(struct drm_i915_private *dev_priv,
 						int fw_engine)
 {
+	/*
+	 * WaRsDontPollForAckOnClearingFWBits:vlv
+	 * Hardware clears ack bits lazily (only when all ack
+	 * bits become 0) so don't poll for individiual ack
+	 * bits to be clear here like on other platforms.
+	 */
+
 	/* Check for Render Engine */
 	if (FORCEWAKE_RENDER & fw_engine) {
-		if (wait_for_atomic((__raw_i915_read32(dev_priv,
-						FORCEWAKE_ACK_VLV) &
-						FORCEWAKE_KERNEL) == 0,
-					FORCEWAKE_ACK_TIMEOUT_MS))
-			DRM_ERROR("Timed out: Render forcewake old ack to clear.\n");
 
 		__raw_i915_write32(dev_priv, FORCEWAKE_VLV,
 				   _MASKED_BIT_ENABLE(FORCEWAKE_KERNEL));
@@ -214,11 +216,6 @@ static void __vlv_force_wake_get(struct drm_i915_private *dev_priv,
 
 	/* Check for Media Engine */
 	if (FORCEWAKE_MEDIA & fw_engine) {
-		if (wait_for_atomic((__raw_i915_read32(dev_priv,
-						FORCEWAKE_ACK_MEDIA_VLV) &
-						FORCEWAKE_KERNEL) == 0,
-					FORCEWAKE_ACK_TIMEOUT_MS))
-			DRM_ERROR("Timed out: Media forcewake old ack to clear.\n");
 
 		__raw_i915_write32(dev_priv, FORCEWAKE_MEDIA_VLV,
 				   _MASKED_BIT_ENABLE(FORCEWAKE_KERNEL));
@@ -363,7 +360,8 @@ void intel_uncore_forcewake_reset(struct drm_device *dev, bool restore)
 	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
 }
 
-void intel_uncore_early_sanitize(struct drm_device *dev, bool restore_forcewake)
+static void __intel_uncore_early_sanitize(struct drm_device *dev,
+					  bool restore_forcewake)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
@@ -387,6 +385,12 @@ void intel_uncore_early_sanitize(struct drm_device *dev, bool restore_forcewake)
 				   __raw_i915_read32(dev_priv, GTFIFODBG));
 
 	intel_uncore_forcewake_reset(dev, restore_forcewake);
+}
+
+void intel_uncore_early_sanitize(struct drm_device *dev, bool restore_forcewake)
+{
+	__intel_uncore_early_sanitize(dev, restore_forcewake);
+	i915_check_and_clear_faults(dev);
 }
 
 void intel_uncore_sanitize(struct drm_device *dev)
@@ -826,6 +830,22 @@ __gen4_write(64)
 #undef REG_WRITE_FOOTER
 #undef REG_WRITE_HEADER
 
+#define ASSIGN_WRITE_MMIO_VFUNCS(x) \
+do { \
+	dev_priv->uncore.funcs.mmio_writeb = x##_write8; \
+	dev_priv->uncore.funcs.mmio_writew = x##_write16; \
+	dev_priv->uncore.funcs.mmio_writel = x##_write32; \
+	dev_priv->uncore.funcs.mmio_writeq = x##_write64; \
+} while (0)
+
+#define ASSIGN_READ_MMIO_VFUNCS(x) \
+do { \
+	dev_priv->uncore.funcs.mmio_readb = x##_read8; \
+	dev_priv->uncore.funcs.mmio_readw = x##_read16; \
+	dev_priv->uncore.funcs.mmio_readl = x##_read32; \
+	dev_priv->uncore.funcs.mmio_readq = x##_read64; \
+} while (0)
+
 void intel_uncore_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -833,7 +853,7 @@ void intel_uncore_init(struct drm_device *dev)
 	setup_timer(&dev_priv->uncore.force_wake_timer,
 		    gen6_force_wake_timer, (unsigned long)dev_priv);
 
-	intel_uncore_early_sanitize(dev, false);
+	__intel_uncore_early_sanitize(dev, false);
 
 	if (IS_VALLEYVIEW(dev)) {
 		dev_priv->uncore.funcs.force_wake_get = __vlv_force_wake_get;
@@ -882,76 +902,44 @@ void intel_uncore_init(struct drm_device *dev)
 	switch (INTEL_INFO(dev)->gen) {
 	default:
 		if (IS_CHERRYVIEW(dev)) {
-			dev_priv->uncore.funcs.mmio_writeb  = chv_write8;
-			dev_priv->uncore.funcs.mmio_writew  = chv_write16;
-			dev_priv->uncore.funcs.mmio_writel  = chv_write32;
-			dev_priv->uncore.funcs.mmio_writeq  = chv_write64;
-			dev_priv->uncore.funcs.mmio_readb  = chv_read8;
-			dev_priv->uncore.funcs.mmio_readw  = chv_read16;
-			dev_priv->uncore.funcs.mmio_readl  = chv_read32;
-			dev_priv->uncore.funcs.mmio_readq  = chv_read64;
+			ASSIGN_WRITE_MMIO_VFUNCS(chv);
+			ASSIGN_READ_MMIO_VFUNCS(chv);
 
 		} else {
-			dev_priv->uncore.funcs.mmio_writeb  = gen8_write8;
-			dev_priv->uncore.funcs.mmio_writew  = gen8_write16;
-			dev_priv->uncore.funcs.mmio_writel  = gen8_write32;
-			dev_priv->uncore.funcs.mmio_writeq  = gen8_write64;
-			dev_priv->uncore.funcs.mmio_readb  = gen6_read8;
-			dev_priv->uncore.funcs.mmio_readw  = gen6_read16;
-			dev_priv->uncore.funcs.mmio_readl  = gen6_read32;
-			dev_priv->uncore.funcs.mmio_readq  = gen6_read64;
+			ASSIGN_WRITE_MMIO_VFUNCS(gen8);
+			ASSIGN_READ_MMIO_VFUNCS(gen6);
 		}
 		break;
 	case 7:
 	case 6:
 		if (IS_HASWELL(dev)) {
-			dev_priv->uncore.funcs.mmio_writeb  = hsw_write8;
-			dev_priv->uncore.funcs.mmio_writew  = hsw_write16;
-			dev_priv->uncore.funcs.mmio_writel  = hsw_write32;
-			dev_priv->uncore.funcs.mmio_writeq  = hsw_write64;
+			ASSIGN_WRITE_MMIO_VFUNCS(hsw);
 		} else {
-			dev_priv->uncore.funcs.mmio_writeb  = gen6_write8;
-			dev_priv->uncore.funcs.mmio_writew  = gen6_write16;
-			dev_priv->uncore.funcs.mmio_writel  = gen6_write32;
-			dev_priv->uncore.funcs.mmio_writeq  = gen6_write64;
+			ASSIGN_WRITE_MMIO_VFUNCS(gen6);
 		}
 
 		if (IS_VALLEYVIEW(dev)) {
-			dev_priv->uncore.funcs.mmio_readb  = vlv_read8;
-			dev_priv->uncore.funcs.mmio_readw  = vlv_read16;
-			dev_priv->uncore.funcs.mmio_readl  = vlv_read32;
-			dev_priv->uncore.funcs.mmio_readq  = vlv_read64;
+			ASSIGN_READ_MMIO_VFUNCS(vlv);
 		} else {
-			dev_priv->uncore.funcs.mmio_readb  = gen6_read8;
-			dev_priv->uncore.funcs.mmio_readw  = gen6_read16;
-			dev_priv->uncore.funcs.mmio_readl  = gen6_read32;
-			dev_priv->uncore.funcs.mmio_readq  = gen6_read64;
+			ASSIGN_READ_MMIO_VFUNCS(gen6);
 		}
 		break;
 	case 5:
-		dev_priv->uncore.funcs.mmio_writeb  = gen5_write8;
-		dev_priv->uncore.funcs.mmio_writew  = gen5_write16;
-		dev_priv->uncore.funcs.mmio_writel  = gen5_write32;
-		dev_priv->uncore.funcs.mmio_writeq  = gen5_write64;
-		dev_priv->uncore.funcs.mmio_readb  = gen5_read8;
-		dev_priv->uncore.funcs.mmio_readw  = gen5_read16;
-		dev_priv->uncore.funcs.mmio_readl  = gen5_read32;
-		dev_priv->uncore.funcs.mmio_readq  = gen5_read64;
+		ASSIGN_WRITE_MMIO_VFUNCS(gen5);
+		ASSIGN_READ_MMIO_VFUNCS(gen5);
 		break;
 	case 4:
 	case 3:
 	case 2:
-		dev_priv->uncore.funcs.mmio_writeb  = gen4_write8;
-		dev_priv->uncore.funcs.mmio_writew  = gen4_write16;
-		dev_priv->uncore.funcs.mmio_writel  = gen4_write32;
-		dev_priv->uncore.funcs.mmio_writeq  = gen4_write64;
-		dev_priv->uncore.funcs.mmio_readb  = gen4_read8;
-		dev_priv->uncore.funcs.mmio_readw  = gen4_read16;
-		dev_priv->uncore.funcs.mmio_readl  = gen4_read32;
-		dev_priv->uncore.funcs.mmio_readq  = gen4_read64;
+		ASSIGN_WRITE_MMIO_VFUNCS(gen4);
+		ASSIGN_READ_MMIO_VFUNCS(gen4);
 		break;
 	}
+
+	i915_check_and_clear_faults(dev);
 }
+#undef ASSIGN_WRITE_MMIO_VFUNCS
+#undef ASSIGN_READ_MMIO_VFUNCS
 
 void intel_uncore_fini(struct drm_device *dev)
 {
@@ -968,7 +956,7 @@ static const struct register_whitelist {
 	/* supported gens, 0x10 for 4, 0x30 for 4 and 5, etc. */
 	uint32_t gen_bitmask;
 } whitelist[] = {
-	{ RING_TIMESTAMP(RENDER_RING_BASE), 8, GEN_RANGE(4, 8) },
+	{ RING_TIMESTAMP(RENDER_RING_BASE), 8, GEN_RANGE(4, 9) },
 };
 
 int i915_reg_read_ioctl(struct drm_device *dev,
