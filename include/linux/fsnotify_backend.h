@@ -215,7 +215,6 @@ struct fsnotify_mark {
 	struct list_head g_list;	/* list of marks by group->i_fsnotify_marks */
 	spinlock_t lock;		/* protect group and inode */
 	struct hlist_node obj_list;	/* list of marks for inode / vfsmount */
-	struct list_head free_list;	/* tmp list used when freeing this mark */
 	union {
 		struct inode *inode;	/* inode this mark is associated with */
 		struct vfsmount *mnt;	/* vfsmount this mark is associated with */
