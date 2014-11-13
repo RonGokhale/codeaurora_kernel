@@ -131,8 +131,7 @@ int vfs_lstat(const char __user *name, struct kstat *stat)
 EXPORT_SYMBOL(vfs_lstat);
 
 
-#ifdef __ARCH_WANT_OLD_STAT
-
+#if defined(__ARCH_WANT_OLD_STAT) && defined(CONFIG_OBSOLETE_SYSCALLS)
 /*
  * For backward compatibility?  Maybe this should be moved
  * into arch/i386 instead?
@@ -211,7 +210,7 @@ SYSCALL_DEFINE2(fstat, unsigned int, fd, struct __old_kernel_stat __user *, stat
 	return error;
 }
 
-#endif /* __ARCH_WANT_OLD_STAT */
+#endif /* __ARCH_WANT_OLD_STAT && CONFIG_OBSOLETE_SYSCALLS*/
 
 #if BITS_PER_LONG == 32
 #  define choose_32_64(a,b) a

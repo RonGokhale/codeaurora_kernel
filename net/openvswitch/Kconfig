@@ -5,6 +5,7 @@
 config OPENVSWITCH
 	tristate "Open vSwitch"
 	select LIBCRC32C
+	select FLEX_ARRAY
 	---help---
 	  Open vSwitch is a multilayer Ethernet switch targeted at virtualized
 	  environments.  In addition to supporting a variety of features
