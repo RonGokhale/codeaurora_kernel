@@ -196,12 +196,13 @@ void fsnotify_destroy_mark(struct fsnotify_mark *mark,
  * Destroy all marks in the given list. The marks must be already detached from
  * the original inode / vfsmount.
  */
-void fsnotify_destroy_marks(struct list_head *to_free)
+void fsnotify_destroy_marks(struct hlist_head *to_free)
 {
-	struct fsnotify_mark *mark, *lmark;
+	struct fsnotify_mark *mark;
+	struct hlist_node *next;
 	struct fsnotify_group *group;
 
-	list_for_each_entry_safe(mark, lmark, to_free, free_list) {
+	hlist_for_each_entry_safe(mark, next, to_free, obj_list) {
 		spin_lock(&mark->lock);
 		fsnotify_get_group(mark->group);
 		group = mark->group;
