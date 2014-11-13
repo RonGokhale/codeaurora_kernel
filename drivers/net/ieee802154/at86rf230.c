@@ -1047,23 +1047,11 @@ at86rf230_channel(struct ieee802154_hw *hw, u8 page, u8 channel)
 	struct at86rf230_local *lp = hw->priv;
 	int rc;
 
-	if (page > 31 ||
-	    !(lp->hw->phy->channels_supported[page] & BIT(channel))) {
-		WARN_ON(1);
-		return -EINVAL;
-	}
-
 	rc = lp->data->set_channel(lp, page, channel);
-	if (rc < 0)
-		return rc;
-
 	/* Wait for PLL */
 	usleep_range(lp->data->t_channel_switch,
 		     lp->data->t_channel_switch + 10);
-	hw->phy->current_channel = channel;
-	hw->phy->current_page = page;
-
-	return 0;
+	return rc;
 }
 
 static int
@@ -1179,9 +1167,6 @@ at86rf230_set_csma_params(struct ieee802154_hw *hw, u8 min_be, u8 max_be,
 	struct at86rf230_local *lp = hw->priv;
 	int rc;
 
-	if (min_be > max_be || max_be > 8 || retries > 5)
-		return -EINVAL;
-
 	rc = at86rf230_write_subreg(lp, SR_MIN_BE, min_be);
 	if (rc)
 		return rc;
@@ -1198,9 +1183,6 @@ at86rf230_set_frame_retries(struct ieee802154_hw *hw, s8 retries)
 {
 	struct at86rf230_local *lp = hw->priv;
 	int rc = 0;
-
-	if (retries < -1 || retries > 15)
-		return -EINVAL;
 
 	lp->tx_aret = retries >= 0;
 	lp->max_frame_retries = retries;

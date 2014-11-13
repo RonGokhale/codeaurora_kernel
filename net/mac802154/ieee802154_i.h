@@ -84,18 +84,6 @@ struct ieee802154_sub_if_data {
 
 	spinlock_t mib_lock;
 
-	__le16 pan_id;
-	__le16 short_addr;
-	__le64 extended_addr;
-	bool promiscuous_mode;
-
-	struct ieee802154_mac_params mac_params;
-
-	/* MAC BSN field */
-	u8 bsn;
-	/* MAC DSN field */
-	u8 dsn;
-
 	/* protects sec from concurrent access by netlink. access by
 	 * encrypt/decrypt/header_create safe without additional protection.
 	 */
@@ -107,6 +95,9 @@ struct ieee802154_sub_if_data {
 };
 
 #define MAC802154_CHAN_NONE		0xff /* No channel is assigned */
+
+/* utility functions/constants */
+extern const void *const mac802154_wpan_phy_privid; /*  for wpan_phy privid */
 
 static inline struct ieee802154_local *
 hw_to_local(struct ieee802154_hw *hw)
@@ -178,11 +169,15 @@ void mac802154_get_table(struct net_device *dev,
 			 struct ieee802154_llsec_table **t);
 void mac802154_unlock_table(struct net_device *dev);
 
+/* interface handling */
+int ieee802154_iface_init(void);
+void ieee802154_iface_exit(void);
 struct net_device *
 mac802154_add_iface(struct wpan_phy *phy, const char *name, int type);
 void ieee802154_if_remove(struct ieee802154_sub_if_data *sdata);
 struct net_device *
 ieee802154_if_add(struct ieee802154_local *local, const char *name,
 		  struct wpan_dev **new_wpan_dev, int type);
+void ieee802154_remove_interfaces(struct ieee802154_local *local);
 
 #endif /* __IEEE802154_I_H */

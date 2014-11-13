@@ -35,12 +35,36 @@ struct cfg802154_ops {
 	struct net_device * (*add_virtual_intf_deprecated)(struct wpan_phy *wpan_phy,
 							   const char *name,
 							   int type);
-	void (*del_virtual_intf_deprecated)(struct wpan_phy *wpan_phy,
-					    struct net_device *dev);
+	void	(*del_virtual_intf_deprecated)(struct wpan_phy *wpan_phy,
+					       struct net_device *dev);
+	int	(*set_channel)(struct wpan_phy *wpan_phy, u8 page, u8 channel);
+	int	(*set_pan_id)(struct wpan_phy *wpan_phy,
+			      struct wpan_dev *wpan_dev, u16 pan_id);
+	int	(*set_short_addr)(struct wpan_phy *wpan_phy,
+				  struct wpan_dev *wpan_dev, u16 short_addr);
+	int	(*set_backoff_exponent)(struct wpan_phy *wpan_phy,
+					struct wpan_dev *wpan_dev, u8 min_be,
+					u8 max_be);
+	int	(*set_max_csma_backoffs)(struct wpan_phy *wpan_phy,
+					 struct wpan_dev *wpan_dev,
+					 u8 max_csma_backoffs);
+	int	(*set_max_frame_retries)(struct wpan_phy *wpan_phy,
+					 struct wpan_dev *wpan_dev,
+					 s8 max_frame_retries);
+	int	(*set_lbt_mode)(struct wpan_phy *wpan_phy,
+				struct wpan_dev *wpan_dev, bool mode);
 };
 
 struct wpan_phy {
 	struct mutex pib_lock;
+
+	/* If multiple wpan_phys are registered and you're handed e.g.
+	 * a regular netdev with assigned ieee802154_ptr, you won't
+	 * know whether it points to a wpan_phy your driver has registered
+	 * or not. Assign this to something global to your driver to
+	 * help determine whether you own this wpan_phy or not.
+	 */
+	const void *privid;
 
 	/*
 	 * This is a PIB according to 802.15.4-2011.
@@ -52,14 +76,9 @@ struct wpan_phy {
 	u32 channels_supported[32];
 	s8 transmit_power;
 	u8 cca_mode;
-	u8 min_be;
-	u8 max_be;
-	u8 csma_retries;
-	s8 frame_retries;
 
 	__le64 perm_extended_addr;
 
-	bool lbt;
 	s32 cca_ed_level;
 
 	struct device dev;
@@ -69,12 +88,38 @@ struct wpan_phy {
 
 struct wpan_dev {
 	struct wpan_phy *wpan_phy;
+	int iftype;
+
+	/* the remainder of this struct should be private to cfg802154 */
+	struct list_head list;
+	struct net_device *netdev;
+
+	u32 identifier;
+
+	/* MAC PIB */
+	__le16 pan_id;
+	__le16 short_addr;
+	__le64 extended_addr;
+
+	/* MAC BSN field */
+	u8 bsn;
+	/* MAC DSN field */
+	u8 dsn;
+
+	u8 min_be;
+	u8 max_be;
+	u8 csma_retries;
+	s8 frame_retries;
+
+	bool lbt;
+
+	bool promiscuous_mode;
 };
 
 #define to_phy(_dev)	container_of(_dev, struct wpan_phy, dev)
 
 struct wpan_phy *
-wpan_phy_alloc(const struct cfg802154_ops *ops, size_t priv_size);
+wpan_phy_new(const struct cfg802154_ops *ops, size_t priv_size);
 static inline void wpan_phy_set_dev(struct wpan_phy *phy, struct device *dev)
 {
 	phy->dev.parent = dev;
