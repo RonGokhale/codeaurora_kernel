@@ -27,25 +27,19 @@
 #include <linux/of.h>
 #include <linux/of_net.h>
 #include <linux/of_device.h>
+
 #include "stmmac.h"
+#include "stmmac_platform.h"
 
 static const struct of_device_id stmmac_dt_ids[] = {
-#ifdef CONFIG_DWMAC_MESON
+	/* SoC specific glue layers should come before generic bindings */
 	{ .compatible = "amlogic,meson6-dwmac", .data = &meson6_dwmac_data},
-#endif
-#ifdef CONFIG_DWMAC_SUNXI
 	{ .compatible = "allwinner,sun7i-a20-gmac", .data = &sun7i_gmac_data},
-#endif
-#ifdef CONFIG_DWMAC_STI
 	{ .compatible = "st,stih415-dwmac", .data = &stih4xx_dwmac_data},
 	{ .compatible = "st,stih416-dwmac", .data = &stih4xx_dwmac_data},
 	{ .compatible = "st,stid127-dwmac", .data = &stid127_dwmac_data},
 	{ .compatible = "st,stih407-dwmac", .data = &stih4xx_dwmac_data},
-#endif
-#ifdef CONFIG_DWMAC_SOCFPGA
 	{ .compatible = "altr,socfpga-stmmac", .data = &socfpga_gmac_data },
-#endif
-	/* SoC specific glue layers should come before generic bindings */
 	{ .compatible = "st,spear600-gmac"},
 	{ .compatible = "snps,dwmac-3.610"},
 	{ .compatible = "snps,dwmac-3.70a"},
@@ -368,7 +362,7 @@ static int stmmac_pltfr_remove(struct platform_device *pdev)
 	return ret;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int stmmac_pltfr_suspend(struct device *dev)
 {
 	int ret;
@@ -394,13 +388,12 @@ static int stmmac_pltfr_resume(struct device *dev)
 
 	return stmmac_resume(ndev);
 }
-
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(stmmac_pltfr_pm_ops,
-			stmmac_pltfr_suspend, stmmac_pltfr_resume);
+			 stmmac_pltfr_suspend, stmmac_pltfr_resume);
 
-struct platform_driver stmmac_pltfr_driver = {
+static struct platform_driver stmmac_pltfr_driver = {
 	.probe = stmmac_pltfr_probe,
 	.remove = stmmac_pltfr_remove,
 	.driver = {
@@ -408,8 +401,10 @@ struct platform_driver stmmac_pltfr_driver = {
 		   .owner = THIS_MODULE,
 		   .pm = &stmmac_pltfr_pm_ops,
 		   .of_match_table = of_match_ptr(stmmac_dt_ids),
-		   },
+	},
 };
+
+module_platform_driver(stmmac_pltfr_driver);
 
 MODULE_DESCRIPTION("STMMAC 10/100/1000 Ethernet PLATFORM driver");
 MODULE_AUTHOR("Giuseppe Cavallaro <peppe.cavallaro@st.com>");

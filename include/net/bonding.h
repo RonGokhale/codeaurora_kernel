@@ -12,8 +12,8 @@
  *
  */
 
-#ifndef _LINUX_BONDING_H
-#define _LINUX_BONDING_H
+#ifndef _NET_BONDING_H
+#define _NET_BONDING_H
 
 #include <linux/timer.h>
 #include <linux/proc_fs.h>
@@ -26,9 +26,9 @@
 #include <linux/reciprocal_div.h>
 #include <linux/if_link.h>
 
-#include "bond_3ad.h"
-#include "bond_alb.h"
-#include "bond_options.h"
+#include <net/bond_3ad.h>
+#include <net/bond_alb.h>
+#include <net/bond_options.h>
 
 #define DRV_VERSION	"3.7.1"
 #define DRV_RELDATE	"April 27, 2011"
@@ -645,4 +645,10 @@ extern struct bond_parm_tbl ad_select_tbl[];
 /* exported from bond_netlink.c */
 extern struct rtnl_link_ops bond_link_ops;
 
-#endif /* _LINUX_BONDING_H */
+static inline void bond_tx_drop(struct net_device *dev, struct sk_buff *skb)
+{
+	atomic_long_inc(&dev->tx_dropped);
+	dev_kfree_skb_any(skb);
+}
+
+#endif /* _NET_BONDING_H */
