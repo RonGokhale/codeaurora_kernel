@@ -54,6 +54,9 @@ config ARCH_USE_CMPXCHG_LOCKREF
 config ARCH_HAS_FAST_MULTIPLIER
 	bool
 
+config RHASHTABLE
+	bool
+
 config CRC_CCITT
 	tristate "CRC-CCITT functions"
 	help

@@ -82,6 +82,7 @@ struct rhashtable {
 	struct rhashtable_params	p;
 };
 
+#ifdef CONFIG_RHASHTABLE
 #ifdef CONFIG_PROVE_LOCKING
 int lockdep_rht_mutex_is_held(const struct rhashtable *ht);
 #else
@@ -112,6 +113,7 @@ void *rhashtable_lookup_compare(const struct rhashtable *ht, u32 hash,
 				bool (*compare)(void *, void *), void *arg);
 
 void rhashtable_destroy(const struct rhashtable *ht);
+#endif /* CONFIG_RHASHTABLE */
 
 #define rht_dereference(p, ht) \
 	rcu_dereference_protected(p, lockdep_rht_mutex_is_held(ht))
