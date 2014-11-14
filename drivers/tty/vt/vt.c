@@ -1367,9 +1367,11 @@ static void csi_m(struct vc_data *vc)
 						rgb_from_256(vc->vc_par[i]));
 				} else if (vc->vc_par[i] == 2 &&  /* 24 bit */
 				           i <= vc->vc_npar + 3) {/* extremely rare */
-					struct rgb c = {r:vc->vc_par[i+1],
-							g:vc->vc_par[i+2],
-							b:vc->vc_par[i+3]};
+					struct rgb c = {
+						.r = vc->vc_par[i + 1],
+						.g = vc->vc_par[i + 2],
+						.b = vc->vc_par[i + 3],
+					};
 					rgb_foreground(vc, c);
 					i += 3;
 				}
@@ -1388,9 +1390,11 @@ static void csi_m(struct vc_data *vc)
 						rgb_from_256(vc->vc_par[i]));
 				} else if (vc->vc_par[i] == 2 && /* 24 bit */
 				           i <= vc->vc_npar + 3) {
-					struct rgb c = {r:vc->vc_par[i+1],
-							g:vc->vc_par[i+2],
-							b:vc->vc_par[i+3]};
+					struct rgb c = {
+						.r = vc->vc_par[i + 1],
+						.g = vc->vc_par[i + 2],
+						.b = vc->vc_par[i + 3],
+					};
 					rgb_background(vc, c);
 					i += 3;
 				}
@@ -2508,6 +2512,8 @@ int vt_kmsg_redirect(int new)
 	else
 		return kmsg_con;
 }
+
+#define vt_get_kmsg_redirect() vt_kmsg_redirect(-1)
 
 /*
  *	Console on virtual terminal
