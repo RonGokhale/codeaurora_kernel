@@ -6874,7 +6874,7 @@ F:	fs/exofs/
 
 OVERLAYFS FILESYSTEM
 M:	Miklos Szeredi <miklos@szeredi.hu>
-L:	linux-fsdevel@vger.kernel.org
+L:	linux-unionfs@vger.kernel.org
 S:	Supported
 F:	fs/overlayfs/*
 F:	Documentation/filesystems/overlayfs.txt
