@@ -665,76 +665,108 @@ err:
 	return ret;
 }
 
-static inline void intel_ring_emit_wa(struct intel_engine_cs *ring,
-				       u32 addr, u32 value)
+static int intel_ring_workarounds_emit(struct intel_engine_cs *ring)
 {
+	int ret, i;
 	struct drm_device *dev = ring->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_workarounds *w = &dev_priv->workarounds;
 
-	if (WARN_ON(dev_priv->num_wa_regs >= I915_MAX_WA_REGS))
-		return;
+	if (WARN_ON(w->count == 0))
+		return 0;
 
-	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(1));
-	intel_ring_emit(ring, addr);
-	intel_ring_emit(ring, value);
-
-	dev_priv->intel_wa_regs[dev_priv->num_wa_regs].addr = addr;
-	dev_priv->intel_wa_regs[dev_priv->num_wa_regs].mask = value & 0xFFFF;
-	/* value is updated with the status of remaining bits of this
-	 * register when it is read from debugfs file
-	 */
-	dev_priv->intel_wa_regs[dev_priv->num_wa_regs].value = value;
-	dev_priv->num_wa_regs++;
-
-	return;
-}
-
-static int bdw_init_workarounds(struct intel_engine_cs *ring)
-{
-	int ret;
-	struct drm_device *dev = ring->dev;
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	/*
-	 * workarounds applied in this fn are part of register state context,
-	 * they need to be re-initialized followed by gpu reset, suspend/resume,
-	 * module reload.
-	 */
-	dev_priv->num_wa_regs = 0;
-	memset(dev_priv->intel_wa_regs, 0, sizeof(dev_priv->intel_wa_regs));
-
-	/*
-	 * update the number of dwords required based on the
-	 * actual number of workarounds applied
-	 */
-	ret = intel_ring_begin(ring, 18);
+	ring->gpu_caches_dirty = true;
+	ret = intel_ring_flush_all_caches(ring);
 	if (ret)
 		return ret;
 
+	ret = intel_ring_begin(ring, (w->count * 2 + 2));
+	if (ret)
+		return ret;
+
+	intel_ring_emit(ring, MI_LOAD_REGISTER_IMM(w->count));
+	for (i = 0; i < w->count; i++) {
+		intel_ring_emit(ring, w->reg[i].addr);
+		intel_ring_emit(ring, w->reg[i].value);
+	}
+	intel_ring_emit(ring, MI_NOOP);
+
+	intel_ring_advance(ring);
+
+	ring->gpu_caches_dirty = true;
+	ret = intel_ring_flush_all_caches(ring);
+	if (ret)
+		return ret;
+
+	DRM_DEBUG_DRIVER("Number of Workarounds emitted: %d\n", w->count);
+
+	return 0;
+}
+
+static int wa_add(struct drm_i915_private *dev_priv,
+		  const u32 addr, const u32 val, const u32 mask)
+{
+	const u32 idx = dev_priv->workarounds.count;
+
+	if (WARN_ON(idx >= I915_MAX_WA_REGS))
+		return -ENOSPC;
+
+	dev_priv->workarounds.reg[idx].addr = addr;
+	dev_priv->workarounds.reg[idx].value = val;
+	dev_priv->workarounds.reg[idx].mask = mask;
+
+	dev_priv->workarounds.count++;
+
+	return 0;
+}
+
+#define WA_REG(addr, val, mask) { \
+		const int r = wa_add(dev_priv, (addr), (val), (mask)); \
+		if (r) \
+			return r; \
+	}
+
+#define WA_SET_BIT_MASKED(addr, mask) \
+	WA_REG(addr, _MASKED_BIT_ENABLE(mask), (mask) & 0xffff)
+
+#define WA_CLR_BIT_MASKED(addr, mask) \
+	WA_REG(addr, _MASKED_BIT_DISABLE(mask), (mask) & 0xffff)
+
+#define WA_SET_BIT(addr, mask) WA_REG(addr, I915_READ(addr) | (mask), mask)
+#define WA_CLR_BIT(addr, mask) WA_REG(addr, I915_READ(addr) & ~(mask), mask)
+
+#define WA_WRITE(addr, val) WA_REG(addr, val, 0xffffffff)
+
+static int bdw_init_workarounds(struct intel_engine_cs *ring)
+{
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	/* WaDisablePartialInstShootdown:bdw */
-	/* WaDisableThreadStallDopClockGating:bdw */
-	/* FIXME: Unclear whether we really need this on production bdw. */
-	intel_ring_emit_wa(ring, GEN8_ROW_CHICKEN,
-			   _MASKED_BIT_ENABLE(PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE
-					     | STALL_DOP_GATING_DISABLE));
+	/* WaDisableThreadStallDopClockGating:bdw (pre-production) */
+	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
+			  PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE |
+			  STALL_DOP_GATING_DISABLE);
 
-	/* WaDisableDopClockGating:bdw May not be needed for production */
-	intel_ring_emit_wa(ring, GEN7_ROW_CHICKEN2,
-			   _MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	/* WaDisableDopClockGating:bdw */
+	WA_SET_BIT_MASKED(GEN7_ROW_CHICKEN2,
+			  DOP_CLOCK_GATING_DISABLE);
 
-	intel_ring_emit_wa(ring, HALF_SLICE_CHICKEN3,
-			   _MASKED_BIT_ENABLE(GEN8_SAMPLER_POWER_BYPASS_DIS));
+	WA_SET_BIT_MASKED(HALF_SLICE_CHICKEN3,
+			  GEN8_SAMPLER_POWER_BYPASS_DIS);
 
 	/* Use Force Non-Coherent whenever executing a 3D context. This is a
 	 * workaround for for a possible hang in the unlikely event a TLB
 	 * invalidation occurs during a PSD flush.
 	 */
-	intel_ring_emit_wa(ring, HDC_CHICKEN0,
-			   _MASKED_BIT_ENABLE(HDC_FORCE_NON_COHERENT));
+	/* WaDisableFenceDestinationToSLM:bdw (GT3 pre-production) */
+	WA_SET_BIT_MASKED(HDC_CHICKEN0,
+			  HDC_FORCE_NON_COHERENT |
+			  (IS_BDW_GT3(dev) ? HDC_FENCE_DEST_SLM_DISABLE : 0));
 
 	/* Wa4x4STCOptimizationDisable:bdw */
-	intel_ring_emit_wa(ring, CACHE_MODE_1,
-			   _MASKED_BIT_ENABLE(GEN8_4x4_STC_OPTIMIZATION_DISABLE));
+	WA_SET_BIT_MASKED(CACHE_MODE_1,
+			  GEN8_4x4_STC_OPTIMIZATION_DISABLE);
 
 	/*
 	 * BSpec recommends 8x4 when MSAA is used,
@@ -744,52 +776,50 @@ static int bdw_init_workarounds(struct intel_engine_cs *ring)
 	 * disable bit, which we don't touch here, but it's good
 	 * to keep in mind (see 3DSTATE_PS and 3DSTATE_WM).
 	 */
-	intel_ring_emit_wa(ring, GEN7_GT_MODE,
-			   GEN6_WIZ_HASHING_MASK | GEN6_WIZ_HASHING_16x4);
-
-	intel_ring_advance(ring);
-
-	DRM_DEBUG_DRIVER("Number of Workarounds applied: %d\n",
-			 dev_priv->num_wa_regs);
+	WA_SET_BIT_MASKED(GEN7_GT_MODE,
+			  GEN6_WIZ_HASHING_MASK | GEN6_WIZ_HASHING_16x4);
 
 	return 0;
 }
 
 static int chv_init_workarounds(struct intel_engine_cs *ring)
 {
-	int ret;
 	struct drm_device *dev = ring->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	/*
-	 * workarounds applied in this fn are part of register state context,
-	 * they need to be re-initialized followed by gpu reset, suspend/resume,
-	 * module reload.
-	 */
-	dev_priv->num_wa_regs = 0;
-	memset(dev_priv->intel_wa_regs, 0, sizeof(dev_priv->intel_wa_regs));
-
-	ret = intel_ring_begin(ring, 12);
-	if (ret)
-		return ret;
-
 	/* WaDisablePartialInstShootdown:chv */
-	intel_ring_emit_wa(ring, GEN8_ROW_CHICKEN,
-			   _MASKED_BIT_ENABLE(PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE));
+	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
+		  PARTIAL_INSTRUCTION_SHOOTDOWN_DISABLE);
 
 	/* WaDisableThreadStallDopClockGating:chv */
-	intel_ring_emit_wa(ring, GEN8_ROW_CHICKEN,
-			   _MASKED_BIT_ENABLE(STALL_DOP_GATING_DISABLE));
+	WA_SET_BIT_MASKED(GEN8_ROW_CHICKEN,
+		  STALL_DOP_GATING_DISABLE);
 
 	/* WaDisableDopClockGating:chv (pre-production hw) */
-	intel_ring_emit_wa(ring, GEN7_ROW_CHICKEN2,
-			   _MASKED_BIT_ENABLE(DOP_CLOCK_GATING_DISABLE));
+	WA_SET_BIT_MASKED(GEN7_ROW_CHICKEN2,
+		  DOP_CLOCK_GATING_DISABLE);
 
 	/* WaDisableSamplerPowerBypass:chv (pre-production hw) */
-	intel_ring_emit_wa(ring, HALF_SLICE_CHICKEN3,
-			   _MASKED_BIT_ENABLE(GEN8_SAMPLER_POWER_BYPASS_DIS));
+	WA_SET_BIT_MASKED(HALF_SLICE_CHICKEN3,
+		  GEN8_SAMPLER_POWER_BYPASS_DIS);
 
-	intel_ring_advance(ring);
+	return 0;
+}
+
+static int init_workarounds_ring(struct intel_engine_cs *ring)
+{
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	WARN_ON(ring->id != RCS);
+
+	dev_priv->workarounds.count = 0;
+
+	if (IS_BROADWELL(dev))
+		return bdw_init_workarounds(ring);
+
+	if (IS_CHERRYVIEW(dev))
+		return chv_init_workarounds(ring);
 
 	return 0;
 }
@@ -812,7 +842,7 @@ static int init_render_ring(struct intel_engine_cs *ring)
 	 *
 	 * WaDisableAsyncFlipPerfMode:snb,ivb,hsw,vlv,bdw,chv
 	 */
-	if (INTEL_INFO(dev)->gen >= 6)
+	if (INTEL_INFO(dev)->gen >= 6 && INTEL_INFO(dev)->gen < 9)
 		I915_WRITE(MI_MODE, _MASKED_BIT_ENABLE(ASYNC_FLIP_PERF_DISABLE));
 
 	/* Required for the hardware to program scanline values for waiting */
@@ -849,7 +879,7 @@ static int init_render_ring(struct intel_engine_cs *ring)
 	if (HAS_L3_DPF(dev))
 		I915_WRITE_IMR(ring, ~GT_PARITY_ERROR(dev));
 
-	return ret;
+	return init_workarounds_ring(ring);
 }
 
 static void render_ring_cleanup(struct intel_engine_cs *ring)
@@ -1186,7 +1216,7 @@ gen5_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -1217,7 +1247,7 @@ i9xx_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (!intel_irqs_enabled(dev_priv))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -1254,7 +1284,7 @@ i8xx_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (!intel_irqs_enabled(dev_priv))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -1388,8 +1418,8 @@ gen6_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
-	       return false;
+	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
+		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (ring->irq_refcount++ == 0) {
@@ -1431,7 +1461,7 @@ hsw_vebox_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -1451,9 +1481,6 @@ hsw_vebox_put_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
-		return;
-
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
 	if (--ring->irq_refcount == 0) {
 		I915_WRITE_IMR(ring, ~0);
@@ -1469,7 +1496,7 @@ gen8_ring_get_irq(struct intel_engine_cs *ring)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned long flags;
 
-	if (!dev->irq_enabled)
+	if (WARN_ON(!intel_irqs_enabled(dev_priv)))
 		return false;
 
 	spin_lock_irqsave(&dev_priv->irq_lock, flags);
@@ -2229,6 +2256,7 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 			   u32 invalidate, u32 flush)
 {
 	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
 	uint32_t cmd;
 	int ret;
 
@@ -2259,8 +2287,12 @@ static int gen6_ring_flush(struct intel_engine_cs *ring,
 	}
 	intel_ring_advance(ring);
 
-	if (IS_GEN7(dev) && !invalidate && flush)
-		return gen7_ring_fbc_flush(ring, FBC_REND_CACHE_CLEAN);
+	if (!invalidate && flush) {
+		if (IS_GEN7(dev))
+			return gen7_ring_fbc_flush(ring, FBC_REND_CACHE_CLEAN);
+		else if (IS_BROADWELL(dev))
+			dev_priv->fbc.need_sw_cache_clean = true;
+	}
 
 	return 0;
 }
@@ -2293,10 +2325,8 @@ int intel_init_render_ring_buffer(struct drm_device *dev)
 					dev_priv->semaphore_obj = obj;
 			}
 		}
-		if (IS_CHERRYVIEW(dev))
-			ring->init_context = chv_init_workarounds;
-		else
-			ring->init_context = bdw_init_workarounds;
+
+		ring->init_context = intel_ring_workarounds_emit;
 		ring->add_request = gen6_add_request;
 		ring->flush = gen8_render_ring_flush;
 		ring->irq_get = gen8_ring_get_irq;
