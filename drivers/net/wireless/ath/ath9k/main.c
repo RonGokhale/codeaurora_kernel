@@ -233,8 +233,9 @@ static bool ath_complete_reset(struct ath_softc *sc, bool start)
 
 	ath9k_calculate_summary_state(sc, sc->cur_chan);
 	ath_startrecv(sc);
-	ath9k_cmn_update_txpow(ah, sc->curtxpow,
-			       sc->cur_chan->txpower, &sc->curtxpow);
+	ath9k_cmn_update_txpow(ah, sc->cur_chan->cur_txpower,
+			       sc->cur_chan->txpower,
+			       &sc->cur_chan->cur_txpower);
 	clear_bit(ATH_OP_HW_RESET, &common->op_flags);
 
 	if (!sc->cur_chan->offchannel && start) {
@@ -1339,78 +1340,6 @@ static void ath9k_disable_ps(struct ath_softc *sc)
 	ath_dbg(common, PS, "PowerSave disabled\n");
 }
 
-void ath9k_spectral_scan_trigger(struct ieee80211_hw *hw)
-{
-	struct ath_softc *sc = hw->priv;
-	struct ath_hw *ah = sc->sc_ah;
-	struct ath_common *common = ath9k_hw_common(ah);
-	u32 rxfilter;
-
-	if (config_enabled(CONFIG_ATH9K_TX99))
-		return;
-
-	if (!ath9k_hw_ops(ah)->spectral_scan_trigger) {
-		ath_err(common, "spectrum analyzer not implemented on this hardware\n");
-		return;
-	}
-
-	ath9k_ps_wakeup(sc);
-	rxfilter = ath9k_hw_getrxfilter(ah);
-	ath9k_hw_setrxfilter(ah, rxfilter |
-				 ATH9K_RX_FILTER_PHYRADAR |
-				 ATH9K_RX_FILTER_PHYERR);
-
-	/* TODO: usually this should not be neccesary, but for some reason
-	 * (or in some mode?) the trigger must be called after the
-	 * configuration, otherwise the register will have its values reset
-	 * (on my ar9220 to value 0x01002310)
-	 */
-	ath9k_spectral_scan_config(hw, sc->spectral_mode);
-	ath9k_hw_ops(ah)->spectral_scan_trigger(ah);
-	ath9k_ps_restore(sc);
-}
-
-int ath9k_spectral_scan_config(struct ieee80211_hw *hw,
-			       enum spectral_mode spectral_mode)
-{
-	struct ath_softc *sc = hw->priv;
-	struct ath_hw *ah = sc->sc_ah;
-	struct ath_common *common = ath9k_hw_common(ah);
-
-	if (!ath9k_hw_ops(ah)->spectral_scan_trigger) {
-		ath_err(common, "spectrum analyzer not implemented on this hardware\n");
-		return -1;
-	}
-
-	switch (spectral_mode) {
-	case SPECTRAL_DISABLED:
-		sc->spec_config.enabled = 0;
-		break;
-	case SPECTRAL_BACKGROUND:
-		/* send endless samples.
-		 * TODO: is this really useful for "background"?
-		 */
-		sc->spec_config.endless = 1;
-		sc->spec_config.enabled = 1;
-		break;
-	case SPECTRAL_CHANSCAN:
-	case SPECTRAL_MANUAL:
-		sc->spec_config.endless = 0;
-		sc->spec_config.enabled = 1;
-		break;
-	default:
-		return -1;
-	}
-
-	ath9k_ps_wakeup(sc);
-	ath9k_hw_ops(ah)->spectral_scan_config(ah, &sc->spec_config);
-	ath9k_ps_restore(sc);
-
-	sc->spectral_mode = spectral_mode;
-
-	return 0;
-}
-
 static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 {
 	struct ath_softc *sc = hw->priv;
@@ -1471,8 +1400,9 @@ static int ath9k_config(struct ieee80211_hw *hw, u32 changed)
 	if (changed & IEEE80211_CONF_CHANGE_POWER) {
 		ath_dbg(common, CONFIG, "Set power: %d\n", conf->power_level);
 		sc->cur_chan->txpower = 2 * conf->power_level;
-		ath9k_cmn_update_txpow(ah, sc->curtxpow,
-				       sc->cur_chan->txpower, &sc->curtxpow);
+		ath9k_cmn_update_txpow(ah, sc->cur_chan->cur_txpower,
+				       sc->cur_chan->txpower,
+				       &sc->cur_chan->cur_txpower);
 	}
 
 	mutex_unlock(&sc->mutex);
@@ -2594,6 +2524,24 @@ void ath9k_fill_chanctx_ops(void)
 
 #endif
 
+static int ath9k_get_txpower(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
+			     int *dbm)
+{
+	struct ath_softc *sc = hw->priv;
+	struct ath_vif *avp = (void *)vif->drv_priv;
+
+	mutex_lock(&sc->mutex);
+	if (avp->chanctx)
+		*dbm = avp->chanctx->cur_txpower;
+	else
+		*dbm = sc->cur_chan->cur_txpower;
+	mutex_unlock(&sc->mutex);
+
+	*dbm /= 2;
+
+	return 0;
+}
+
 struct ieee80211_ops ath9k_ops = {
 	.tx 		    = ath9k_tx,
 	.start 		    = ath9k_start,
@@ -2640,4 +2588,5 @@ struct ieee80211_ops ath9k_ops = {
 #endif
 	.sw_scan_start	    = ath9k_sw_scan_start,
 	.sw_scan_complete   = ath9k_sw_scan_complete,
+	.get_txpower        = ath9k_get_txpower,
 };
