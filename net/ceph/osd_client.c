@@ -1007,8 +1007,8 @@ static void put_osd(struct ceph_osd *osd)
 static void __remove_osd(struct ceph_osd_client *osdc, struct ceph_osd *osd)
 {
 	dout("__remove_osd %p\n", osd);
-	BUG_ON(!list_empty(&osd->o_requests));
-	BUG_ON(!list_empty(&osd->o_linger_requests));
+	WARN_ON(!list_empty(&osd->o_requests));
+	WARN_ON(!list_empty(&osd->o_linger_requests));
 
 	rb_erase(&osd->o_node, &osdc->osds);
 	list_del_init(&osd->o_osd_lru);
@@ -1254,6 +1254,8 @@ static void __unregister_linger_request(struct ceph_osd_client *osdc,
 		if (list_empty(&req->r_osd_item))
 			req->r_osd = NULL;
 	}
+
+	list_del_init(&req->r_req_lru_item); /* can be on notarget */
 	ceph_osdc_put_request(req);
 }
 
@@ -1395,6 +1397,7 @@ static int __map_request(struct ceph_osd_client *osdc,
 	if (req->r_osd) {
 		__cancel_request(req);
 		list_del_init(&req->r_osd_item);
+		list_del_init(&req->r_linger_osd_item);
 		req->r_osd = NULL;
 	}
 
@@ -2917,6 +2920,20 @@ static int invalidate_authorizer(struct ceph_connection *con)
 	return ceph_monc_validate_auth(&osdc->client->monc);
 }
 
+static int sign_message(struct ceph_connection *con, struct ceph_msg *msg)
+{
+	struct ceph_osd *o = con->private;
+	struct ceph_auth_handshake *auth = &o->o_auth;
+	return ceph_auth_sign_message(auth, msg);
+}
+
+static int check_message_signature(struct ceph_connection *con, struct ceph_msg *msg)
+{
+	struct ceph_osd *o = con->private;
+	struct ceph_auth_handshake *auth = &o->o_auth;
+	return ceph_auth_check_message_signature(auth, msg);
+}
+
 static const struct ceph_connection_operations osd_con_ops = {
 	.get = get_osd_con,
 	.put = put_osd_con,
@@ -2925,5 +2942,7 @@ static const struct ceph_connection_operations osd_con_ops = {
 	.verify_authorizer_reply = verify_authorizer_reply,
 	.invalidate_authorizer = invalidate_authorizer,
 	.alloc_msg = alloc_msg,
+	.sign_message = sign_message,
+	.check_message_signature = check_message_signature,
 	.fault = osd_reset,
 };
