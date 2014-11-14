@@ -271,7 +271,7 @@ struct pl330_config {
 #define DMAC_MODE_NS	(1 << 0)
 	unsigned int	mode;
 	unsigned int	data_bus_width:10; /* In number of bits */
-	unsigned int	data_buf_dep:10;
+	unsigned int	data_buf_dep:11;
 	unsigned int	num_chan:4;
 	unsigned int	num_peri:6;
 	u32		peri_ns;
@@ -2336,7 +2336,7 @@ static inline int get_burst_len(struct dma_pl330_desc *desc, size_t len)
 	int burst_len;
 
 	burst_len = pl330->pcfg.data_bus_width / 8;
-	burst_len *= pl330->pcfg.data_buf_dep;
+	burst_len *= pl330->pcfg.data_buf_dep / pl330->pcfg.num_chan;
 	burst_len >>= desc->rqcfg.brst_size;
 
 	/* src/dst_burst_len can't be more than 16 */
@@ -2459,15 +2459,24 @@ pl330_prep_dma_memcpy(struct dma_chan *chan, dma_addr_t dst,
 	/* Select max possible burst size */
 	burst = pl330->pcfg.data_bus_width / 8;
 
-	while (burst > 1) {
-		if (!(len % burst))
-			break;
+	/*
+	 * Make sure we use a burst size that aligns with all the memcpy
+	 * parameters because our DMA programming algorithm doesn't cope with
+	 * transfers which straddle an entry in the DMA device's MFIFO.
+	 */
+	while ((src | dst | len) & (burst - 1))
 		burst /= 2;
-	}
 
 	desc->rqcfg.brst_size = 0;
 	while (burst != (1 << desc->rqcfg.brst_size))
 		desc->rqcfg.brst_size++;
+
+	/*
+	 * If burst size is smaller than bus width then make sure we only
+	 * transfer one at a time to avoid a burst stradling an MFIFO entry.
+	 */
+	if (desc->rqcfg.brst_size * 8 < pl330->pcfg.data_bus_width)
+		desc->rqcfg.brst_len = 1;
 
 	desc->rqcfg.brst_len = get_burst_len(desc, len);
 
@@ -2610,6 +2619,9 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		return -ENOMEM;
 	}
 
+	pd = &pl330->ddma;
+	pd->dev = &adev->dev;
+
 	pl330->mcbufsz = pdat ? pdat->mcbuf_sz : 0;
 
 	res = &adev->res;
@@ -2646,7 +2658,6 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 	if (!add_desc(pl330, GFP_KERNEL, NR_DEFAULT_DESC))
 		dev_warn(&adev->dev, "unable to allocate desc\n");
 
-	pd = &pl330->ddma;
 	INIT_LIST_HEAD(&pd->channels);
 
 	/* Initialize channel parameters */
@@ -2683,7 +2694,6 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 		list_add_tail(&pch->chan.device_node, &pd->channels);
 	}
 
-	pd->dev = &adev->dev;
 	if (pdat) {
 		pd->cap_mask = pdat->cap_mask;
 	} else {
@@ -2732,7 +2742,7 @@ pl330_probe(struct amba_device *adev, const struct amba_id *id)
 
 
 	dev_info(&adev->dev,
-		"Loaded driver for PL330 DMAC-%d\n", adev->periphid);
+		"Loaded driver for PL330 DMAC-%x\n", adev->periphid);
 	dev_info(&adev->dev,
 		"\tDBUFF-%ux%ubytes Num_Chans-%u Num_Peri-%u Num_Events-%u\n",
 		pcfg->data_buf_dep, pcfg->data_bus_width / 8, pcfg->num_chan,
