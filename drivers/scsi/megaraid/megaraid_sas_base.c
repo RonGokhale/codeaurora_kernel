@@ -2594,8 +2594,7 @@ static int megasas_change_queue_depth(struct scsi_device *sdev,
 
 	if (queue_depth > sdev->host->can_queue)
 		queue_depth = sdev->host->can_queue;
-	scsi_adjust_queue_depth(sdev, scsi_get_tag_type(sdev),
-				queue_depth);
+	scsi_adjust_queue_depth(sdev, queue_depth);
 
 	return queue_depth;
 }
@@ -4453,7 +4452,7 @@ static int megasas_init_fw(struct megasas_instance *instance)
 			instance->msixentry[i].entry = i;
 		i = pci_enable_msix_range(instance->pdev, instance->msixentry,
 					  1, instance->msix_vectors);
-		if (i)
+		if (i > 0)
 			instance->msix_vectors = i;
 		else
 			instance->msix_vectors = 0;
