@@ -1358,6 +1358,17 @@ config UID16
 	help
 	  This enables the legacy 16-bit UID syscall wrappers.
 
+config OBSOLETE_SYSCALLS
+	bool "Enable obsolete system calls" if EXPERT
+	default y
+	---help---
+	  Some syscalls are obsolete and only supported for compatibility.
+
+	  Note that saying yes here increases the size of the kernel somewhat,
+	  as multiple syscall definitions will be compiled.
+
+	  If unsure, say Y here.
+
 config SGETMASK_SYSCALL
 	bool "sgetmask/ssetmask syscalls support" if EXPERT
 	def_bool PARISC || MN10300 || BLACKFIN || M68K || PPC || MIPS || X86 || SPARC || CRIS || MICROBLAZE || SUPERH
