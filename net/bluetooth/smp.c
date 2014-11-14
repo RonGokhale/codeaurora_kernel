@@ -514,8 +514,6 @@ static int tk_request(struct l2cap_conn *conn, u8 remote_oob, u8 auth,
 		set_bit(SMP_FLAG_TK_VALID, &smp->flags);
 	}
 
-	hci_dev_lock(hcon->hdev);
-
 	if (method == REQ_PASSKEY)
 		ret = mgmt_user_passkey_request(hcon->hdev, &hcon->dst,
 						hcon->type, hcon->dst_type);
@@ -527,8 +525,6 @@ static int tk_request(struct l2cap_conn *conn, u8 remote_oob, u8 auth,
 		ret = mgmt_user_passkey_notify(hcon->hdev, &hcon->dst,
 						hcon->type, hcon->dst_type,
 						passkey, 0);
-
-	hci_dev_unlock(hcon->hdev);
 
 	return ret;
 }
@@ -1662,6 +1658,13 @@ static inline struct l2cap_chan *smp_new_conn_cb(struct l2cap_chan *pchan)
 	chan->omtu	= pchan->omtu;
 	chan->mode	= pchan->mode;
 
+	/* Other L2CAP channels may request SMP routines in order to
+	 * change the security level. This means that the SMP channel
+	 * lock must be considered in its own category to avoid lockdep
+	 * warnings.
+	 */
+	atomic_set(&chan->nesting, L2CAP_NESTING_SMP);
+
 	BT_DBG("created chan %p", chan);
 
 	return chan;
@@ -1718,6 +1721,9 @@ int smp_register(struct hci_dev *hdev)
 	chan->mode = L2CAP_MODE_BASIC;
 	chan->imtu = L2CAP_DEFAULT_MTU;
 	chan->ops = &smp_root_chan_ops;
+
+	/* Set correct nesting level for a parent/listening channel */
+	atomic_set(&chan->nesting, L2CAP_NESTING_PARENT);
 
 	hdev->smp_data = chan;
 
