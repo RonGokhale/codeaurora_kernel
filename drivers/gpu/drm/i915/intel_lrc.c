@@ -356,9 +356,9 @@ static int execlists_ctx_write_tail(struct drm_i915_gem_object *ctx_obj, u32 tai
 	return 0;
 }
 
-static int execlists_submit_context(struct intel_engine_cs *ring,
-				    struct intel_context *to0, u32 tail0,
-				    struct intel_context *to1, u32 tail1)
+static void execlists_submit_contexts(struct intel_engine_cs *ring,
+				      struct intel_context *to0, u32 tail0,
+				      struct intel_context *to1, u32 tail1)
 {
 	struct drm_i915_gem_object *ctx_obj0;
 	struct drm_i915_gem_object *ctx_obj1 = NULL;
@@ -378,8 +378,6 @@ static int execlists_submit_context(struct intel_engine_cs *ring,
 	}
 
 	execlists_elsp_write(ring, ctx_obj0, ctx_obj1);
-
-	return 0;
 }
 
 static void execlists_context_unqueue(struct intel_engine_cs *ring)
@@ -413,9 +411,9 @@ static void execlists_context_unqueue(struct intel_engine_cs *ring)
 
 	WARN_ON(req1 && req1->elsp_submitted);
 
-	WARN_ON(execlists_submit_context(ring, req0->ctx, req0->tail,
-					 req1 ? req1->ctx : NULL,
-					 req1 ? req1->tail : 0));
+	execlists_submit_contexts(ring, req0->ctx, req0->tail,
+				  req1 ? req1->ctx : NULL,
+				  req1 ? req1->tail : 0);
 
 	req0->elsp_submitted++;
 	if (req1)
@@ -991,6 +989,44 @@ int intel_logical_ring_begin(struct intel_ringbuffer *ringbuf, int num_dwords)
 	return 0;
 }
 
+static int intel_logical_ring_workarounds_emit(struct intel_engine_cs *ring,
+					       struct intel_context *ctx)
+{
+	int ret, i;
+	struct intel_ringbuffer *ringbuf = ctx->engine[ring->id].ringbuf;
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct i915_workarounds *w = &dev_priv->workarounds;
+
+	if (WARN_ON(w->count == 0))
+		return 0;
+
+	ring->gpu_caches_dirty = true;
+	ret = logical_ring_flush_all_caches(ringbuf);
+	if (ret)
+		return ret;
+
+	ret = intel_logical_ring_begin(ringbuf, w->count * 2 + 2);
+	if (ret)
+		return ret;
+
+	intel_logical_ring_emit(ringbuf, MI_LOAD_REGISTER_IMM(w->count));
+	for (i = 0; i < w->count; i++) {
+		intel_logical_ring_emit(ringbuf, w->reg[i].addr);
+		intel_logical_ring_emit(ringbuf, w->reg[i].value);
+	}
+	intel_logical_ring_emit(ringbuf, MI_NOOP);
+
+	intel_logical_ring_advance(ringbuf);
+
+	ring->gpu_caches_dirty = true;
+	ret = logical_ring_flush_all_caches(ringbuf);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
 static int gen8_init_common_ring(struct intel_engine_cs *ring)
 {
 	struct drm_device *dev = ring->dev;
@@ -1034,7 +1070,7 @@ static int gen8_init_render_ring(struct intel_engine_cs *ring)
 
 	I915_WRITE(INSTPM, _MASKED_BIT_ENABLE(INSTPM_FORCE_ORDERING));
 
-	return ret;
+	return init_workarounds_ring(ring);
 }
 
 static int gen8_emit_bb_start(struct intel_ringbuffer *ringbuf,
@@ -1214,10 +1250,12 @@ static int gen8_emit_request(struct intel_ringbuffer *ringbuf)
  */
 void intel_logical_ring_cleanup(struct intel_engine_cs *ring)
 {
-	struct drm_i915_private *dev_priv = ring->dev->dev_private;
+	struct drm_i915_private *dev_priv;
 
 	if (!intel_ring_initialized(ring))
 		return;
+
+	dev_priv = ring->dev->dev_private;
 
 	intel_logical_ring_stop(ring);
 	WARN_ON((I915_READ_MODE(ring) & MODE_IDLE) == 0);
@@ -1282,6 +1320,7 @@ static int logical_render_ring_init(struct drm_device *dev)
 		ring->irq_keep_mask |= GT_RENDER_L3_PARITY_ERROR_INTERRUPT;
 
 	ring->init = gen8_init_render_ring;
+	ring->init_context = intel_logical_ring_workarounds_emit;
 	ring->cleanup = intel_fini_pipe_control;
 	ring->get_seqno = gen8_get_seqno;
 	ring->set_seqno = gen8_set_seqno;
@@ -1649,6 +1688,27 @@ static uint32_t get_lr_context_size(struct intel_engine_cs *ring)
 	return ret;
 }
 
+static int lrc_setup_hardware_status_page(struct intel_engine_cs *ring,
+		struct drm_i915_gem_object *default_ctx_obj)
+{
+	struct drm_i915_private *dev_priv = ring->dev->dev_private;
+
+	/* The status page is offset 0 from the default context object
+	 * in LRC mode. */
+	ring->status_page.gfx_addr = i915_gem_obj_ggtt_offset(default_ctx_obj);
+	ring->status_page.page_addr =
+			kmap(sg_page(default_ctx_obj->pages->sgl));
+	if (ring->status_page.page_addr == NULL)
+		return -ENOMEM;
+	ring->status_page.obj = default_ctx_obj;
+
+	I915_WRITE(RING_HWS_PGA(ring->mmio_base),
+			(u32)ring->status_page.gfx_addr);
+	POSTING_READ(RING_HWS_PGA(ring->mmio_base));
+
+	return 0;
+}
+
 /**
  * intel_lr_context_deferred_create() - create the LRC specific bits of a context
  * @ctx: LR context to create.
@@ -1734,17 +1794,20 @@ int intel_lr_context_deferred_create(struct intel_context *ctx,
 	ctx->engine[ring->id].state = ctx_obj;
 
 	if (ctx == ring->default_context) {
-		/* The status page is offset 0 from the default context object
-		 * in LRC mode. */
-		ring->status_page.gfx_addr = i915_gem_obj_ggtt_offset(ctx_obj);
-		ring->status_page.page_addr =
-				kmap(sg_page(ctx_obj->pages->sgl));
-		if (ring->status_page.page_addr == NULL)
-			return -ENOMEM;
-		ring->status_page.obj = ctx_obj;
+		ret = lrc_setup_hardware_status_page(ring, ctx_obj);
+		if (ret) {
+			DRM_ERROR("Failed to setup hardware status page\n");
+			goto error;
+		}
 	}
 
 	if (ring->id == RCS && !ctx->rcs_initialized) {
+		if (ring->init_context) {
+			ret = ring->init_context(ring, ctx);
+			if (ret)
+				DRM_ERROR("ring init context: %d\n", ret);
+		}
+
 		ret = intel_lr_context_render_state_init(ring, ctx);
 		if (ret) {
 			DRM_ERROR("Init render state failed: %d\n", ret);
