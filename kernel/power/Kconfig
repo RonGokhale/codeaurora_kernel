@@ -131,7 +131,6 @@ config PM_WAKELOCKS_GC
 
 config PM_RUNTIME
 	bool "Run-time PM core functionality"
-	depends on !IA64_HP_SIM
 	---help---
 	  Enable functionality allowing I/O devices to be put into energy-saving
 	  (low power) states at run time (or autosuspended) after a specified
@@ -272,7 +271,7 @@ config PM_CLK
 
 config PM_GENERIC_DOMAINS
 	bool
-	depends on PM
+	select PM_RUNTIME
 
 config WQ_POWER_EFFICIENT_DEFAULT
 	bool "Enable workqueue power-efficient mode by default"
