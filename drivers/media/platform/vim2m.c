@@ -1059,7 +1059,6 @@ static struct platform_driver vim2m_pdrv = {
 	.remove		= vim2m_remove,
 	.driver		= {
 		.name	= MEM2MEM_NAME,
-		.owner	= THIS_MODULE,
 	},
 };
 
