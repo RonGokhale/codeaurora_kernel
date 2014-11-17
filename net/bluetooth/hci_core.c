@@ -748,16 +748,15 @@ static const struct file_operations white_list_fops = {
 static int identity_resolving_keys_show(struct seq_file *f, void *ptr)
 {
 	struct hci_dev *hdev = f->private;
-	struct list_head *p, *n;
+	struct smp_irk *irk;
 
-	hci_dev_lock(hdev);
-	list_for_each_safe(p, n, &hdev->identity_resolving_keys) {
-		struct smp_irk *irk = list_entry(p, struct smp_irk, list);
+	rcu_read_lock();
+	list_for_each_entry_rcu(irk, &hdev->identity_resolving_keys, list) {
 		seq_printf(f, "%pMR (type %u) %*phN %pMR\n",
 			   &irk->bdaddr, irk->addr_type,
 			   16, irk->val, &irk->rpa);
 	}
-	hci_dev_unlock(hdev);
+	rcu_read_unlock();
 
 	return 0;
 }
@@ -778,17 +777,15 @@ static const struct file_operations identity_resolving_keys_fops = {
 static int long_term_keys_show(struct seq_file *f, void *ptr)
 {
 	struct hci_dev *hdev = f->private;
-	struct list_head *p, *n;
+	struct smp_ltk *ltk;
 
-	hci_dev_lock(hdev);
-	list_for_each_safe(p, n, &hdev->long_term_keys) {
-		struct smp_ltk *ltk = list_entry(p, struct smp_ltk, list);
+	rcu_read_lock();
+	list_for_each_entry_rcu(ltk, &hdev->long_term_keys, list)
 		seq_printf(f, "%pMR (type %u) %u 0x%02x %u %.4x %.16llx %*phN\n",
 			   &ltk->bdaddr, ltk->bdaddr_type, ltk->authenticated,
 			   ltk->type, ltk->enc_size, __le16_to_cpu(ltk->ediv),
 			   __le64_to_cpu(ltk->rand), 16, ltk->val);
-	}
-	hci_dev_unlock(hdev);
+	rcu_read_unlock();
 
 	return 0;
 }
@@ -3106,21 +3103,21 @@ void hci_link_keys_clear(struct hci_dev *hdev)
 
 void hci_smp_ltks_clear(struct hci_dev *hdev)
 {
-	struct smp_ltk *k, *tmp;
+	struct smp_ltk *k;
 
-	list_for_each_entry_safe(k, tmp, &hdev->long_term_keys, list) {
-		list_del(&k->list);
-		kfree(k);
+	list_for_each_entry_rcu(k, &hdev->long_term_keys, list) {
+		list_del_rcu(&k->list);
+		kfree_rcu(k, rcu);
 	}
 }
 
 void hci_smp_irks_clear(struct hci_dev *hdev)
 {
-	struct smp_irk *k, *tmp;
+	struct smp_irk *k;
 
-	list_for_each_entry_safe(k, tmp, &hdev->identity_resolving_keys, list) {
-		list_del(&k->list);
-		kfree(k);
+	list_for_each_entry_rcu(k, &hdev->identity_resolving_keys, list) {
+		list_del_rcu(&k->list);
+		kfree_rcu(k, rcu);
 	}
 }
 
@@ -3184,15 +3181,18 @@ struct smp_ltk *hci_find_ltk(struct hci_dev *hdev, __le16 ediv, __le64 rand,
 {
 	struct smp_ltk *k;
 
-	list_for_each_entry(k, &hdev->long_term_keys, list) {
+	rcu_read_lock();
+	list_for_each_entry_rcu(k, &hdev->long_term_keys, list) {
 		if (k->ediv != ediv || k->rand != rand)
 			continue;
 
 		if (ltk_role(k->type) != role)
 			continue;
 
+		rcu_read_unlock();
 		return k;
 	}
+	rcu_read_unlock();
 
 	return NULL;
 }
@@ -3202,11 +3202,16 @@ struct smp_ltk *hci_find_ltk_by_addr(struct hci_dev *hdev, bdaddr_t *bdaddr,
 {
 	struct smp_ltk *k;
 
-	list_for_each_entry(k, &hdev->long_term_keys, list)
+	rcu_read_lock();
+	list_for_each_entry_rcu(k, &hdev->long_term_keys, list) {
 		if (addr_type == k->bdaddr_type &&
 		    bacmp(bdaddr, &k->bdaddr) == 0 &&
-		    ltk_role(k->type) == role)
+		    ltk_role(k->type) == role) {
+			rcu_read_unlock();
 			return k;
+		}
+	}
+	rcu_read_unlock();
 
 	return NULL;
 }
@@ -3215,17 +3220,22 @@ struct smp_irk *hci_find_irk_by_rpa(struct hci_dev *hdev, bdaddr_t *rpa)
 {
 	struct smp_irk *irk;
 
-	list_for_each_entry(irk, &hdev->identity_resolving_keys, list) {
-		if (!bacmp(&irk->rpa, rpa))
-			return irk;
-	}
-
-	list_for_each_entry(irk, &hdev->identity_resolving_keys, list) {
-		if (smp_irk_matches(hdev, irk->val, rpa)) {
-			bacpy(&irk->rpa, rpa);
+	rcu_read_lock();
+	list_for_each_entry_rcu(irk, &hdev->identity_resolving_keys, list) {
+		if (!bacmp(&irk->rpa, rpa)) {
+			rcu_read_unlock();
 			return irk;
 		}
 	}
+
+	list_for_each_entry_rcu(irk, &hdev->identity_resolving_keys, list) {
+		if (smp_irk_matches(hdev, irk->val, rpa)) {
+			bacpy(&irk->rpa, rpa);
+			rcu_read_unlock();
+			return irk;
+		}
+	}
+	rcu_read_unlock();
 
 	return NULL;
 }
@@ -3239,11 +3249,15 @@ struct smp_irk *hci_find_irk_by_addr(struct hci_dev *hdev, bdaddr_t *bdaddr,
 	if (addr_type == ADDR_LE_DEV_RANDOM && (bdaddr->b[5] & 0xc0) != 0xc0)
 		return NULL;
 
-	list_for_each_entry(irk, &hdev->identity_resolving_keys, list) {
+	rcu_read_lock();
+	list_for_each_entry_rcu(irk, &hdev->identity_resolving_keys, list) {
 		if (addr_type == irk->addr_type &&
-		    bacmp(bdaddr, &irk->bdaddr) == 0)
+		    bacmp(bdaddr, &irk->bdaddr) == 0) {
+			rcu_read_unlock();
 			return irk;
+		}
 	}
+	rcu_read_unlock();
 
 	return NULL;
 }
@@ -3309,7 +3323,7 @@ struct smp_ltk *hci_add_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr,
 		key = kzalloc(sizeof(*key), GFP_KERNEL);
 		if (!key)
 			return NULL;
-		list_add(&key->list, &hdev->long_term_keys);
+		list_add_rcu(&key->list, &hdev->long_term_keys);
 	}
 
 	bacpy(&key->bdaddr, bdaddr);
@@ -3338,7 +3352,7 @@ struct smp_irk *hci_add_irk(struct hci_dev *hdev, bdaddr_t *bdaddr,
 		bacpy(&irk->bdaddr, bdaddr);
 		irk->addr_type = addr_type;
 
-		list_add(&irk->list, &hdev->identity_resolving_keys);
+		list_add_rcu(&irk->list, &hdev->identity_resolving_keys);
 	}
 
 	memcpy(irk->val, val, 16);
@@ -3365,17 +3379,17 @@ int hci_remove_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr)
 
 int hci_remove_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 bdaddr_type)
 {
-	struct smp_ltk *k, *tmp;
+	struct smp_ltk *k;
 	int removed = 0;
 
-	list_for_each_entry_safe(k, tmp, &hdev->long_term_keys, list) {
+	list_for_each_entry_rcu(k, &hdev->long_term_keys, list) {
 		if (bacmp(bdaddr, &k->bdaddr) || k->bdaddr_type != bdaddr_type)
 			continue;
 
 		BT_DBG("%s removing %pMR", hdev->name, bdaddr);
 
-		list_del(&k->list);
-		kfree(k);
+		list_del_rcu(&k->list);
+		kfree_rcu(k, rcu);
 		removed++;
 	}
 
@@ -3384,16 +3398,16 @@ int hci_remove_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 bdaddr_type)
 
 void hci_remove_irk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 addr_type)
 {
-	struct smp_irk *k, *tmp;
+	struct smp_irk *k;
 
-	list_for_each_entry_safe(k, tmp, &hdev->identity_resolving_keys, list) {
+	list_for_each_entry_rcu(k, &hdev->identity_resolving_keys, list) {
 		if (bacmp(bdaddr, &k->bdaddr) || k->addr_type != addr_type)
 			continue;
 
 		BT_DBG("%s removing %pMR", hdev->name, bdaddr);
 
-		list_del(&k->list);
-		kfree(k);
+		list_del_rcu(&k->list);
+		kfree_rcu(k, rcu);
 	}
 }
 
