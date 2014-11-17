@@ -30,8 +30,6 @@
 #include <sound/initval.h>
 #include <sound/soc.h>
 
-#include "ad1980.h"
-
 /*
  * AD1980 register cache
  */
@@ -211,7 +209,8 @@ static int ad1980_reset(struct snd_soc_codec *codec, int try_warm)
 			return 0;
 	} while (retry_cnt++ < 10);
 
-	printk(KERN_ERR "AD1980 AC97 reset failed\n");
+	dev_err(codec->dev, "Failed to reset: AC97 link error\n");
+
 	return -EIO;
 }
 
@@ -221,19 +220,15 @@ static int ad1980_soc_probe(struct snd_soc_codec *codec)
 	u16 vendor_id2;
 	u16 ext_status;
 
-	printk(KERN_INFO "AD1980 SoC Audio Codec\n");
-
 	ret = snd_soc_new_ac97_codec(codec, soc_ac97_ops, 0);
 	if (ret < 0) {
-		printk(KERN_ERR "ad1980: failed to register AC97 codec\n");
+		dev_err(codec->dev, "Failed to register AC97 codec\n");
 		return ret;
 	}
 
 	ret = ad1980_reset(codec, 0);
-	if (ret < 0) {
-		printk(KERN_ERR "Failed to reset AD1980: AC97 link error\n");
+	if (ret < 0)
 		goto reset_err;
-	}
 
 	/* Read out vendor ID to make sure it is ad1980 */
 	if (ac97_read(codec, AC97_VENDOR_ID1) != 0x4144) {
@@ -248,9 +243,8 @@ static int ad1980_soc_probe(struct snd_soc_codec *codec)
 			ret = -ENODEV;
 			goto reset_err;
 		} else {
-			printk(KERN_WARNING "ad1980: "
-				"Found AD1981 - only 2/2 IN/OUT Channels "
-				"supported\n");
+			dev_warn(codec->dev,
+				"Found AD1981 - only 2/2 IN/OUT Channels supported\n");
 		}
 	}
 
@@ -264,9 +258,6 @@ static int ad1980_soc_probe(struct snd_soc_codec *codec)
 	/*power on LFE/CENTER/Surround DACs*/
 	ext_status = ac97_read(codec, AC97_EXTENDED_STATUS);
 	ac97_write(codec, AC97_EXTENDED_STATUS, ext_status&~0x3800);
-
-	snd_soc_add_codec_controls(codec, ad1980_snd_ac97_controls,
-				ARRAY_SIZE(ad1980_snd_ac97_controls));
 
 	return 0;
 
@@ -291,6 +282,8 @@ static struct snd_soc_codec_driver soc_codec_dev_ad1980 = {
 	.write = ac97_write,
 	.read = ac97_read,
 
+	.controls = ad1980_snd_ac97_controls,
+	.num_controls = ARRAY_SIZE(ad1980_snd_ac97_controls),
 	.dapm_widgets = ad1980_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(ad1980_dapm_widgets),
 	.dapm_routes = ad1980_dapm_routes,
