@@ -2559,7 +2559,7 @@ static int lpc32xx_pullup(struct usb_gadget *gadget, int is_on)
 }
 
 static int lpc32xx_start(struct usb_gadget *, struct usb_gadget_driver *);
-static int lpc32xx_stop(struct usb_gadget *, struct usb_gadget_driver *);
+static int lpc32xx_stop(struct usb_gadget *);
 
 static const struct usb_gadget_ops lpc32xx_udc_ops = {
 	.get_frame		= lpc32xx_get_frame,
@@ -2961,14 +2961,10 @@ static int lpc32xx_start(struct usb_gadget *gadget,
 	return 0;
 }
 
-static int lpc32xx_stop(struct usb_gadget *gadget,
-			struct usb_gadget_driver *driver)
+static int lpc32xx_stop(struct usb_gadget *gadget)
 {
 	int i;
 	struct lpc32xx_udc *udc = to_udc(gadget);
-
-	if (!driver || driver != udc->driver)
-		return -EINVAL;
 
 	for (i = IRQ_USB_LP; i <= IRQ_USB_ATX; i++)
 		disable_irq(udc->udp_irq[i]);
