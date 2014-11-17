@@ -213,10 +213,15 @@ enum intel_dpll_id {
 	/* real shared dpll ids must be >= 0 */
 	DPLL_ID_PCH_PLL_A = 0,
 	DPLL_ID_PCH_PLL_B = 1,
+	/* hsw/bdw */
 	DPLL_ID_WRPLL1 = 0,
 	DPLL_ID_WRPLL2 = 1,
+	/* skl */
+	DPLL_ID_SKL_DPLL1 = 0,
+	DPLL_ID_SKL_DPLL2 = 1,
+	DPLL_ID_SKL_DPLL3 = 2,
 };
-#define I915_NUM_PLLS 2
+#define I915_NUM_PLLS 3
 
 struct intel_dpll_hw_state {
 	/* i9xx, pch plls */
@@ -227,6 +232,17 @@ struct intel_dpll_hw_state {
 
 	/* hsw, bdw */
 	uint32_t wrpll;
+
+	/* skl */
+	/*
+	 * DPLL_CTRL1 has 6 bits for each each this DPLL. We store those in
+	 * lower part of crtl1 and they get shifted into position when writing
+	 * the register.  This allows us to easily compare the state to share
+	 * the DPLL.
+	 */
+	uint32_t ctrl1;
+	/* HDMI only, 0 when used for DP */
+	uint32_t cfgcr1, cfgcr2;
 };
 
 struct intel_shared_dpll_config {
@@ -255,6 +271,11 @@ struct intel_shared_dpll {
 			     struct intel_shared_dpll *pll,
 			     struct intel_dpll_hw_state *hw_state);
 };
+
+#define SKL_DPLL0 0
+#define SKL_DPLL1 1
+#define SKL_DPLL2 2
+#define SKL_DPLL3 3
 
 /* Used by dp and fdi links */
 struct intel_link_m_n {
@@ -510,7 +531,7 @@ struct drm_i915_display_funcs {
 	/* display clock increase/decrease */
 	/* pll clock increase/decrease */
 
-	int (*setup_backlight)(struct intel_connector *connector);
+	int (*setup_backlight)(struct intel_connector *connector, enum pipe pipe);
 	uint32_t (*get_backlight)(struct intel_connector *connector);
 	void (*set_backlight)(struct intel_connector *connector,
 			      uint32_t level);
@@ -799,7 +820,6 @@ struct i915_suspend_saved_registers {
 	u32 saveBLC_HIST_CTL;
 	u32 saveBLC_PWM_CTL;
 	u32 saveBLC_PWM_CTL2;
-	u32 saveBLC_HIST_CTL_B;
 	u32 saveBLC_CPU_PWM_CTL;
 	u32 saveBLC_CPU_PWM_CTL2;
 	u32 saveFPB0;
@@ -1957,10 +1977,10 @@ struct drm_i915_gem_object {
 	unsigned long user_pin_count;
 	struct drm_file *pin_filp;
 
-	/** for phy allocated objects */
-	struct drm_dma_handle *phys_handle;
-
 	union {
+		/** for phy allocated objects */
+		struct drm_dma_handle *phys_handle;
+
 		struct i915_gem_userptr {
 			uintptr_t ptr;
 			unsigned read_only :1;

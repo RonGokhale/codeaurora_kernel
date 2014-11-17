@@ -4519,50 +4519,11 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	trace_intel_gpu_freq_change(vlv_gpu_freq(dev_priv, val));
 }
 
-static void gen8_disable_rps_interrupts(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	I915_WRITE(GEN6_PMINTRMSK, ~GEN8_PMINTR_REDIRECT_TO_NON_DISP);
-	I915_WRITE(GEN8_GT_IER(2), I915_READ(GEN8_GT_IER(2)) &
-				   ~dev_priv->pm_rps_events);
-	/* Complete PM interrupt masking here doesn't race with the rps work
-	 * item again unmasking PM interrupts because that is using a different
-	 * register (GEN8_GT_IMR(2)) to mask PM interrupts. The only risk is in
-	 * leaving stale bits in GEN8_GT_IIR(2) and GEN8_GT_IMR(2) which
-	 * gen8_enable_rps will clean up. */
-
-	spin_lock_irq(&dev_priv->irq_lock);
-	dev_priv->rps.pm_iir = 0;
-	spin_unlock_irq(&dev_priv->irq_lock);
-
-	I915_WRITE(GEN8_GT_IIR(2), dev_priv->pm_rps_events);
-}
-
 static void gen9_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
-}
-
-static void gen6_disable_rps_interrupts(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	I915_WRITE(GEN6_PMINTRMSK, 0xffffffff);
-	I915_WRITE(GEN6_PMIER, I915_READ(GEN6_PMIER) &
-				~dev_priv->pm_rps_events);
-	/* Complete PM interrupt masking here doesn't race with the rps work
-	 * item again unmasking PM interrupts because that is using a different
-	 * register (PMIMR) to mask PM interrupts. The only risk is in leaving
-	 * stale bits in PMIIR and PMIMR which gen6_enable_rps will clean up. */
-
-	spin_lock_irq(&dev_priv->irq_lock);
-	dev_priv->rps.pm_iir = 0;
-	spin_unlock_irq(&dev_priv->irq_lock);
-
-	I915_WRITE(GEN6_PMIIR, dev_priv->pm_rps_events);
 }
 
 static void gen6_disable_rps(struct drm_device *dev)
@@ -4572,10 +4533,7 @@ static void gen6_disable_rps(struct drm_device *dev)
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
 
-	if (IS_BROADWELL(dev))
-		gen8_disable_rps_interrupts(dev);
-	else
-		gen6_disable_rps_interrupts(dev);
+	gen6_disable_rps_interrupts(dev);
 }
 
 static void cherryview_disable_rps(struct drm_device *dev)
@@ -4584,7 +4542,7 @@ static void cherryview_disable_rps(struct drm_device *dev)
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 
-	gen8_disable_rps_interrupts(dev);
+	gen6_disable_rps_interrupts(dev);
 }
 
 static void valleyview_disable_rps(struct drm_device *dev)
@@ -4661,28 +4619,6 @@ static int sanitize_rc6_option(const struct drm_device *dev, int enable_rc6)
 int intel_enable_rc6(const struct drm_device *dev)
 {
 	return i915.enable_rc6;
-}
-
-static void gen8_enable_rps_interrupts(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	spin_lock_irq(&dev_priv->irq_lock);
-	WARN_ON(dev_priv->rps.pm_iir);
-	gen8_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
-	I915_WRITE(GEN8_GT_IIR(2), dev_priv->pm_rps_events);
-	spin_unlock_irq(&dev_priv->irq_lock);
-}
-
-static void gen6_enable_rps_interrupts(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	spin_lock_irq(&dev_priv->irq_lock);
-	WARN_ON(dev_priv->rps.pm_iir);
-	gen6_enable_pm_irq(dev_priv, dev_priv->pm_rps_events);
-	I915_WRITE(GEN6_PMIIR, dev_priv->pm_rps_events);
-	spin_unlock_irq(&dev_priv->irq_lock);
 }
 
 static void parse_rp_state_cap(struct drm_i915_private *dev_priv, u32 rp_state_cap)
@@ -4823,7 +4759,7 @@ static void gen8_enable_rps(struct drm_device *dev)
 
 	gen6_set_rps(dev, (I915_READ(GEN6_GT_PERF_STATUS) & 0xff00) >> 8);
 
-	gen8_enable_rps_interrupts(dev);
+	gen6_enable_rps_interrupts(dev);
 
 	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -5259,7 +5195,10 @@ static void cherryview_init_gt_powersave(struct drm_device *dev)
 
 	mutex_lock(&dev_priv->rps.hw_lock);
 
-	val = vlv_punit_read(dev_priv, CCK_FUSE_REG);
+	mutex_lock(&dev_priv->dpio_lock);
+	val = vlv_cck_read(dev_priv, CCK_FUSE_REG);
+	mutex_unlock(&dev_priv->dpio_lock);
+
 	switch ((val >> 2) & 0x7) {
 	case 0:
 	case 1:
@@ -5414,7 +5353,7 @@ static void cherryview_enable_rps(struct drm_device *dev)
 
 	valleyview_set_rps(dev_priv->dev, dev_priv->rps.efficient_freq);
 
-	gen8_enable_rps_interrupts(dev);
+	gen6_enable_rps_interrupts(dev);
 
 	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
@@ -6953,18 +6892,6 @@ static void cherryview_init_clock_gating(struct drm_device *dev)
 	/* WaDisableSDEUnitClockGating:chv */
 	I915_WRITE(GEN8_UCGCTL6, I915_READ(GEN8_UCGCTL6) |
 		   GEN8_SDEUNIT_CLOCK_GATE_DISABLE);
-
-	/* WaDisableGunitClockGating:chv (pre-production hw) */
-	I915_WRITE(VLV_GUNIT_CLOCK_GATE, I915_READ(VLV_GUNIT_CLOCK_GATE) |
-		   GINT_DIS);
-
-	/* WaDisableFfDopClockGating:chv (pre-production hw) */
-	I915_WRITE(GEN6_RC_SLEEP_PSMI_CONTROL,
-		   _MASKED_BIT_ENABLE(GEN8_FF_DOP_CLOCK_GATE_DISABLE));
-
-	/* WaDisableDopClockGating:chv (pre-production hw) */
-	I915_WRITE(GEN6_UCGCTL1, I915_READ(GEN6_UCGCTL1) |
-		   GEN6_EU_TCUNIT_CLOCK_GATE_DISABLE);
 }
 
 static void g4x_init_clock_gating(struct drm_device *dev)
@@ -7135,7 +7062,7 @@ void intel_init_pm(struct drm_device *dev)
 		i915_ironlake_get_mem_freq(dev);
 
 	/* For FIFO watermark updates */
-	if (IS_GEN9(dev)) {
+	if (INTEL_INFO(dev)->gen >= 9) {
 		skl_setup_wm_latency(dev);
 
 		dev_priv->display.init_clock_gating = gen9_init_clock_gating;
@@ -7232,8 +7159,7 @@ int sandybridge_pcode_read(struct drm_i915_private *dev_priv, u8 mbox, u32 *val)
 	}
 
 	I915_WRITE(GEN6_PCODE_DATA, *val);
-	if (INTEL_INFO(dev_priv)->gen >= 9)
-		I915_WRITE(GEN9_PCODE_DATA1, 0);
+	I915_WRITE(GEN6_PCODE_DATA1, 0);
 	I915_WRITE(GEN6_PCODE_MAILBOX, GEN6_PCODE_READY | mbox);
 
 	if (wait_for((I915_READ(GEN6_PCODE_MAILBOX) & GEN6_PCODE_READY) == 0,
