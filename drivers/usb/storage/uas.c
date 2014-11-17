@@ -788,8 +788,7 @@ static int uas_slave_configure(struct scsi_device *sdev)
 	if (devinfo->flags & US_FL_NO_REPORT_OPCODES)
 		sdev->no_report_opcodes = 1;
 
-	scsi_set_tag_type(sdev, MSG_ORDERED_TAG);
-	scsi_activate_tcq(sdev, devinfo->qdepth - 2);
+	scsi_adjust_queue_depth(sdev, devinfo->qdepth - 2);
 	return 0;
 }
 
@@ -806,7 +805,7 @@ static struct scsi_host_template uas_host_template = {
 	.sg_tablesize = SG_NONE,
 	.cmd_per_lun = 1,	/* until we override it */
 	.skip_settle_delay = 1,
-	.ordered_tag = 1,
+	.use_blk_tags = 1,
 };
 
 #define UNUSUAL_DEV(id_vendor, id_product, bcdDeviceMin, bcdDeviceMax, \

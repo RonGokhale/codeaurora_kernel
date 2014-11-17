@@ -527,9 +527,9 @@ void scsi_log_send(struct scsi_cmnd *cmd)
 	 *
 	 * 1: nothing (match completion)
 	 *
-	 * 2: log opcode + command of all commands
+	 * 2: log opcode + command of all commands + cmd address
 	 *
-	 * 3: same as 2 plus dump cmd address
+	 * 3: same as 2
 	 *
 	 * 4: same as 3 plus dump extra junk
 	 */
@@ -537,10 +537,8 @@ void scsi_log_send(struct scsi_cmnd *cmd)
 		level = SCSI_LOG_LEVEL(SCSI_LOG_MLQUEUE_SHIFT,
 				       SCSI_LOG_MLQUEUE_BITS);
 		if (level > 1) {
-			scmd_printk(KERN_INFO, cmd, "Send: ");
-			if (level > 2)
-				printk("0x%p ", cmd);
-			printk("\n");
+			scmd_printk(KERN_INFO, cmd,
+				    "Send: scmd 0x%p\n", cmd);
 			scsi_print_command(cmd);
 			if (level > 3) {
 				printk(KERN_INFO "buffer = 0x%p, bufflen = %d,"
@@ -565,7 +563,7 @@ void scsi_log_completion(struct scsi_cmnd *cmd, int disposition)
 	 *
 	 * 2: same as 1 but for all command completions.
 	 *
-	 * 3: same as 2 plus dump cmd address
+	 * 3: same as 2
 	 *
 	 * 4: same as 3 plus dump extra junk
 	 */
@@ -574,39 +572,10 @@ void scsi_log_completion(struct scsi_cmnd *cmd, int disposition)
 				       SCSI_LOG_MLCOMPLETE_BITS);
 		if (((level > 0) && (cmd->result || disposition != SUCCESS)) ||
 		    (level > 1)) {
-			scmd_printk(KERN_INFO, cmd, "Done: ");
-			if (level > 2)
-				printk("0x%p ", cmd);
-			/*
-			 * Dump truncated values, so we usually fit within
-			 * 80 chars.
-			 */
-			switch (disposition) {
-			case SUCCESS:
-				printk("SUCCESS\n");
-				break;
-			case NEEDS_RETRY:
-				printk("RETRY\n");
-				break;
-			case ADD_TO_MLQUEUE:
-				printk("MLQUEUE\n");
-				break;
-			case FAILED:
-				printk("FAILED\n");
-				break;
-			case TIMEOUT_ERROR:
-				/* 
-				 * If called via scsi_times_out.
-				 */
-				printk("TIMEOUT\n");
-				break;
-			default:
-				printk("UNKNOWN\n");
-			}
-			scsi_print_result(cmd);
+			scsi_print_result(cmd, "Done: ", disposition);
 			scsi_print_command(cmd);
 			if (status_byte(cmd->result) & CHECK_CONDITION)
-				scsi_print_sense("", cmd);
+				scsi_print_sense(cmd);
 			if (level > 3)
 				scmd_printk(KERN_INFO, cmd,
 					    "scsi host busy %d failed %d\n",
@@ -775,8 +744,6 @@ void scsi_finish_command(struct scsi_cmnd *cmd)
 /**
  * scsi_adjust_queue_depth - Let low level drivers change a device's queue depth
  * @sdev: SCSI Device in question
- * @tagged: Do we use tagged queueing (non-0) or do we treat
- *          this device as an untagged device (0)
  * @tags: Number of tags allowed if tagged queueing enabled,
  *        or number of commands the low level driver can
  *        queue up in non-tagged mode (as per cmd_per_lun).
@@ -790,7 +757,7 @@ void scsi_finish_command(struct scsi_cmnd *cmd)
  * 		currently active and whether or not it even has the
  * 		command blocks built yet.
  */
-void scsi_adjust_queue_depth(struct scsi_device *sdev, int tagged, int tags)
+void scsi_adjust_queue_depth(struct scsi_device *sdev, int tags)
 {
 	unsigned long flags;
 
@@ -818,26 +785,6 @@ void scsi_adjust_queue_depth(struct scsi_device *sdev, int tagged, int tags)
 	}
 
 	sdev->queue_depth = tags;
-	switch (tagged) {
-		case 0:
-			sdev->ordered_tags = 0;
-			sdev->simple_tags = 0;
-			break;
-		case MSG_ORDERED_TAG:
-			sdev->ordered_tags = 1;
-			sdev->simple_tags = 1;
-			break;
-		case MSG_SIMPLE_TAG:
-			sdev->ordered_tags = 0;
-			sdev->simple_tags = 1;
-			break;
-		default:
-			sdev->ordered_tags = 0;
-			sdev->simple_tags = 0;
-			sdev_printk(KERN_WARNING, sdev,
-				    "scsi_adjust_queue_depth, bad queue type, "
-				    "disabled\n");
-	}
  out:
 	spin_unlock_irqrestore(sdev->request_queue->queue_lock, flags);
 }
@@ -885,17 +832,31 @@ int scsi_track_queue_full(struct scsi_device *sdev, int depth)
 		return 0;
 	if (sdev->last_queue_full_depth < 8) {
 		/* Drop back to untagged */
-		scsi_adjust_queue_depth(sdev, 0, sdev->host->cmd_per_lun);
+		scsi_set_tag_type(sdev, 0);
+		scsi_adjust_queue_depth(sdev, sdev->host->cmd_per_lun);
 		return -1;
 	}
-	
-	if (sdev->ordered_tags)
-		scsi_adjust_queue_depth(sdev, MSG_ORDERED_TAG, depth);
-	else
-		scsi_adjust_queue_depth(sdev, MSG_SIMPLE_TAG, depth);
+
+	scsi_adjust_queue_depth(sdev, depth);
 	return depth;
 }
 EXPORT_SYMBOL(scsi_track_queue_full);
+
+/**
+ * scsi_change_queue_type() - Change a device's queue type
+ * @sdev:     The SCSI device whose queue depth is to change
+ * @tag_type: Identifier for queue type
+ */
+int scsi_change_queue_type(struct scsi_device *sdev, int tag_type)
+{
+	if (!sdev->tagged_supported)
+		return 0;
+
+	scsi_set_tag_type(sdev, tag_type);
+	return tag_type;
+
+}
+EXPORT_SYMBOL(scsi_change_queue_type);
 
 /**
  * scsi_vpd_inquiry - Request a device provide us with a VPD page
