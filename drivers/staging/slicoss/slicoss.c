@@ -596,8 +596,7 @@ static void slic_mac_address_config(struct adapter *adapter)
 	u32 value2;
 	__iomem struct slic_regs *slic_regs = adapter->slic_regs;
 
-	value = *(u32 *) &adapter->currmacaddr[2];
-	value = ntohl(value);
+	value = ntohl(*(__be32 *) &adapter->currmacaddr[2]);
 	slic_reg32_write(&slic_regs->slic_wraddral, value, FLUSH);
 	slic_reg32_write(&slic_regs->slic_wraddrbl, value, FLUSH);
 
@@ -1612,7 +1611,7 @@ static int slic_rcvqueue_init(struct adapter *adapter)
 	rcvq->size = SLIC_RCVQ_ENTRIES;
 	rcvq->errors = 0;
 	rcvq->count = 0;
-	i = (SLIC_RCVQ_ENTRIES / SLIC_RCVQ_FILLENTRIES);
+	i = SLIC_RCVQ_ENTRIES / SLIC_RCVQ_FILLENTRIES;
 	count = 0;
 	while (i) {
 		count += slic_rcvqueue_fill(adapter);
@@ -1788,7 +1787,7 @@ static int slic_mcast_add_list(struct adapter *adapter, char *address)
 	if (mcaddr == NULL)
 		return 1;
 
-	memcpy(mcaddr->address, address, ETH_ALEN);
+	ether_addr_copy(mcaddr->address, address);
 
 	mcaddr->next = adapter->mcastaddrs;
 	adapter->mcastaddrs = mcaddr;
