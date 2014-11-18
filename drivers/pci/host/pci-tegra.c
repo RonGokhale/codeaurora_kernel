@@ -238,7 +238,7 @@
 	)
 
 struct tegra_msi {
-	struct msi_chip chip;
+	struct msi_controller chip;
 	DECLARE_BITMAP(used, INT_PCI_MSI_NR);
 	struct irq_domain *domain;
 	unsigned long pages;
@@ -259,7 +259,7 @@ struct tegra_pcie_soc_data {
 	bool has_gen2;
 };
 
-static inline struct tegra_msi *to_tegra_msi(struct msi_chip *chip)
+static inline struct tegra_msi *to_tegra_msi(struct msi_controller *chip)
 {
 	return container_of(chip, struct tegra_msi, chip);
 }
@@ -692,15 +692,6 @@ static int tegra_pcie_map_irq(const struct pci_dev *pdev, u8 slot, u8 pin)
 		irq = pcie->irq;
 
 	return irq;
-}
-
-static void tegra_pcie_add_bus(struct pci_bus *bus)
-{
-	if (IS_ENABLED(CONFIG_PCI_MSI)) {
-		struct tegra_pcie *pcie = sys_to_pcie(bus->sysdata);
-
-		bus->msi = &pcie->msi.chip;
-	}
 }
 
 static struct pci_bus *tegra_pcie_scan_bus(int nr, struct pci_sys_data *sys)
@@ -1283,8 +1274,8 @@ static irqreturn_t tegra_pcie_msi_irq(int irq, void *data)
 	return processed > 0 ? IRQ_HANDLED : IRQ_NONE;
 }
 
-static int tegra_msi_setup_irq(struct msi_chip *chip, struct pci_dev *pdev,
-			       struct msi_desc *desc)
+static int tegra_msi_setup_irq(struct msi_controller *chip,
+			       struct pci_dev *pdev, struct msi_desc *desc)
 {
 	struct tegra_msi *msi = to_tegra_msi(chip);
 	struct msi_msg msg;
@@ -1313,7 +1304,8 @@ static int tegra_msi_setup_irq(struct msi_chip *chip, struct pci_dev *pdev,
 	return 0;
 }
 
-static void tegra_msi_teardown_irq(struct msi_chip *chip, unsigned int irq)
+static void tegra_msi_teardown_irq(struct msi_controller *chip,
+				   unsigned int irq)
 {
 	struct tegra_msi *msi = to_tegra_msi(chip);
 	struct irq_data *d = irq_get_irq_data(irq);
@@ -1881,11 +1873,14 @@ static int tegra_pcie_enable(struct tegra_pcie *pcie)
 
 	memset(&hw, 0, sizeof(hw));
 
+#ifdef CONFIG_PCI_MSI
+	hw.msi_ctrl = &pcie->msi.chip;
+#endif
+
 	hw.nr_controllers = 1;
 	hw.private_data = (void **)&pcie;
 	hw.setup = tegra_pcie_setup;
 	hw.map_irq = tegra_pcie_map_irq;
-	hw.add_bus = tegra_pcie_add_bus;
 	hw.scan = tegra_pcie_scan_bus;
 	hw.ops = &tegra_pcie_ops;
 
