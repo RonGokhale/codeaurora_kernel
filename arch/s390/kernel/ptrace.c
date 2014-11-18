@@ -248,14 +248,25 @@ static unsigned long __peek_user(struct task_struct *child, addr_t addr)
 		 */
 		tmp = 0;
 
-	} else if (addr < (addr_t) (&dummy->regs.fp_regs + 1)) {
-		/* 
-		 * floating point regs. are stored in the thread structure
+	} else if (addr == (addr_t) &dummy->regs.fp_regs.fpc) {
+		/*
+		 * floating point control reg. is in the thread structure
 		 */
-		offset = addr - (addr_t) &dummy->regs.fp_regs;
-		tmp = *(addr_t *)((addr_t) &child->thread.fp_regs + offset);
-		if (addr == (addr_t) &dummy->regs.fp_regs.fpc)
-			tmp <<= BITS_PER_LONG - 32;
+		tmp = child->thread.fp_regs.fpc;
+		tmp <<= BITS_PER_LONG - 32;
+
+	} else if (addr < (addr_t) (&dummy->regs.fp_regs + 1)) {
+		/*
+		 * floating point regs. are either in child->thread.fp_regs
+		 * or the child->thread.vxrs array
+		 */
+		offset = addr - (addr_t) &dummy->regs.fp_regs.fprs;
+		if (child->thread.vxrs)
+			tmp = *(addr_t *)
+			       ((addr_t) child->thread.vxrs + 2*offset);
+		else
+			tmp = *(addr_t *)
+			       ((addr_t) &child->thread.fp_regs.fprs + offset);
 
 	} else if (addr < (addr_t) (&dummy->regs.per_info + 1)) {
 		/*
@@ -383,16 +394,27 @@ static int __poke_user(struct task_struct *child, addr_t addr, addr_t data)
 		 */
 		return 0;
 
+	} else if (addr == (addr_t) &dummy->regs.fp_regs.fpc) {
+		/*
+		 * floating point control reg. is in the thread structure
+		 */
+		if ((unsigned int) data != 0 ||
+		    test_fp_ctl(data >> (BITS_PER_LONG - 32)))
+			return -EINVAL;
+		child->thread.fp_regs.fpc = data >> (BITS_PER_LONG - 32);
+
 	} else if (addr < (addr_t) (&dummy->regs.fp_regs + 1)) {
 		/*
-		 * floating point regs. are stored in the thread structure
+		 * floating point regs. are either in child->thread.fp_regs
+		 * or the child->thread.vxrs array
 		 */
-		if (addr == (addr_t) &dummy->regs.fp_regs.fpc)
-			if ((unsigned int) data != 0 ||
-			    test_fp_ctl(data >> (BITS_PER_LONG - 32)))
-				return -EINVAL;
-		offset = addr - (addr_t) &dummy->regs.fp_regs;
-		*(addr_t *)((addr_t) &child->thread.fp_regs + offset) = data;
+		offset = addr - (addr_t) &dummy->regs.fp_regs.fprs;
+		if (child->thread.vxrs)
+			*(addr_t *)((addr_t)
+				child->thread.vxrs + 2*offset) = data;
+		else
+			*(addr_t *)((addr_t)
+				&child->thread.fp_regs.fprs + offset) = data;
 
 	} else if (addr < (addr_t) (&dummy->regs.per_info + 1)) {
 		/*
@@ -611,12 +633,24 @@ static u32 __peek_user_compat(struct task_struct *child, addr_t addr)
 		 */
 		tmp = 0;
 
+	} else if (addr == (addr_t) &dummy32->regs.fp_regs.fpc) {
+		/*
+		 * floating point control reg. is in the thread structure
+		 */
+		tmp = child->thread.fp_regs.fpc;
+
 	} else if (addr < (addr_t) (&dummy32->regs.fp_regs + 1)) {
 		/*
-		 * floating point regs. are stored in the thread structure 
+		 * floating point regs. are either in child->thread.fp_regs
+		 * or the child->thread.vxrs array
 		 */
-	        offset = addr - (addr_t) &dummy32->regs.fp_regs;
-		tmp = *(__u32 *)((addr_t) &child->thread.fp_regs + offset);
+		offset = addr - (addr_t) &dummy32->regs.fp_regs.fprs;
+		if (child->thread.vxrs)
+			tmp = *(__u32 *)
+			       ((addr_t) child->thread.vxrs + 2*offset);
+		else
+			tmp = *(__u32 *)
+			       ((addr_t) &child->thread.fp_regs.fprs + offset);
 
 	} else if (addr < (addr_t) (&dummy32->regs.per_info + 1)) {
 		/*
@@ -722,15 +756,26 @@ static int __poke_user_compat(struct task_struct *child,
 		 */
 		return 0;
 
+	} else if (addr == (addr_t) &dummy32->regs.fp_regs.fpc) {
+		/*
+		 * floating point control reg. is in the thread structure
+		 */
+		if (test_fp_ctl(tmp))
+			return -EINVAL;
+		child->thread.fp_regs.fpc = data;
+
 	} else if (addr < (addr_t) (&dummy32->regs.fp_regs + 1)) {
 		/*
-		 * floating point regs. are stored in the thread structure 
+		 * floating point regs. are either in child->thread.fp_regs
+		 * or the child->thread.vxrs array
 		 */
-		if (addr == (addr_t) &dummy32->regs.fp_regs.fpc &&
-		    test_fp_ctl(tmp))
-			return -EINVAL;
-	        offset = addr - (addr_t) &dummy32->regs.fp_regs;
-		*(__u32 *)((addr_t) &child->thread.fp_regs + offset) = tmp;
+		offset = addr - (addr_t) &dummy32->regs.fp_regs.fprs;
+		if (child->thread.vxrs)
+			*(__u32 *)((addr_t)
+				child->thread.vxrs + 2*offset) = tmp;
+		else
+			*(__u32 *)((addr_t)
+				&child->thread.fp_regs.fprs + offset) = tmp;
 
 	} else if (addr < (addr_t) (&dummy32->regs.per_info + 1)) {
 		/*
