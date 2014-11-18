@@ -2701,10 +2701,6 @@ static int scsi_debug_slave_configure(struct scsi_device *sdp)
 	if (NULL == devip)
 		return 1;	/* no resources, will be marked offline */
 	sdp->hostdata = devip;
-	sdp->tagged_supported = 1;
-	if (sdp->host->cmd_per_lun)
-		scsi_adjust_queue_depth(sdp, DEF_TAGGED_QUEUING,
-					DEF_CMD_PER_LUN);
 	blk_queue_max_segment_size(sdp->request_queue, -1U);
 	if (scsi_debug_no_uld)
 		sdp->no_uld_attach = 1;
@@ -4494,7 +4490,7 @@ sdebug_change_qdepth(struct scsi_device *sdev, int qdepth, int reason)
 		/* allow to exceed max host queued_arr elements for testing */
 		if (qdepth > SCSI_DEBUG_CANQUEUE + 10)
 			qdepth = SCSI_DEBUG_CANQUEUE + 10;
-		scsi_adjust_queue_depth(sdev, scsi_get_tag_type(sdev), qdepth);
+		scsi_adjust_queue_depth(sdev, qdepth);
 	} else if (reason == SCSI_QDEPTH_QFULL)
 		scsi_track_queue_full(sdev, qdepth);
 	else
@@ -4532,14 +4528,7 @@ sdebug_change_qdepth(struct scsi_device *sdev, int qdepth, int reason)
 static int
 sdebug_change_qtype(struct scsi_device *sdev, int qtype)
 {
-	if (sdev->tagged_supported) {
-		scsi_set_tag_type(sdev, qtype);
-		if (qtype)
-			scsi_activate_tcq(sdev, sdev->queue_depth);
-		else
-			scsi_deactivate_tcq(sdev, sdev->queue_depth);
-	} else
-		qtype = 0;
+	qtype = scsi_change_queue_type(sdev, qtype);
 	if (SCSI_DEBUG_OPT_Q_NOISE & scsi_debug_opts) {
 		const char *cp;
 
@@ -4603,7 +4592,7 @@ static int sdebug_driver_probe(struct device * dev)
 		sdebug_driver_template.use_clustering = ENABLE_CLUSTERING;
 	hpnt = scsi_host_alloc(&sdebug_driver_template, sizeof(sdbg_host));
 	if (NULL == hpnt) {
-		printk(KERN_ERR "%s: scsi_register failed\n", __func__);
+		pr_err("%s: scsi_host_alloc failed\n", __func__);
 		error = -ENODEV;
 		return error;
 	}
