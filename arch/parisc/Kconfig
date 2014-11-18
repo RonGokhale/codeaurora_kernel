@@ -293,6 +293,7 @@ config AUDIT_ARCH
 
 config HPUX
 	bool "Support for HP-UX binaries"
+	select OBSOLETE_SYSCALLS
 	depends on !64BIT
 
 config NR_CPUS
