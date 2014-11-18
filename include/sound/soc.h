@@ -369,8 +369,6 @@ struct snd_soc_jack_gpio;
 
 typedef int (*hw_write_t)(void *,const char* ,int);
 
-extern struct snd_ac97_bus_ops *soc_ac97_ops;
-
 enum snd_soc_pcm_subclass {
 	SND_SOC_PCM_CLASS_PCM	= 0,
 	SND_SOC_PCM_CLASS_BE	= 1,
@@ -503,13 +501,27 @@ int snd_soc_update_bits_locked(struct snd_soc_codec *codec,
 int snd_soc_test_bits(struct snd_soc_codec *codec, unsigned int reg,
 				unsigned int mask, unsigned int value);
 
-int snd_soc_new_ac97_codec(struct snd_soc_codec *codec,
-	struct snd_ac97_bus_ops *ops, int num);
-void snd_soc_free_ac97_codec(struct snd_soc_codec *codec);
+#ifdef CONFIG_SND_SOC_AC97_BUS
+struct snd_ac97 *snd_soc_new_ac97_codec(struct snd_soc_codec *codec);
+void snd_soc_free_ac97_codec(struct snd_ac97 *ac97);
 
 int snd_soc_set_ac97_ops(struct snd_ac97_bus_ops *ops);
 int snd_soc_set_ac97_ops_of_reset(struct snd_ac97_bus_ops *ops,
 		struct platform_device *pdev);
+
+extern struct snd_ac97_bus_ops *soc_ac97_ops;
+#else
+static inline int snd_soc_set_ac97_ops_of_reset(struct snd_ac97_bus_ops *ops,
+	struct platform_device *pdev)
+{
+	return 0;
+}
+
+static inline int snd_soc_set_ac97_ops(struct snd_ac97_bus_ops *ops)
+{
+	return 0;
+}
+#endif
 
 /*
  *Controls
@@ -782,11 +794,8 @@ struct snd_soc_codec {
 	struct list_head card_list;
 
 	/* runtime */
-	struct snd_ac97 *ac97;  /* for ad-hoc ac97 devices */
 	unsigned int cache_bypass:1; /* Suppress access to the cache */
 	unsigned int suspended:1; /* Codec is in suspend PM state */
-	unsigned int ac97_registered:1; /* Codec has been AC97 registered */
-	unsigned int ac97_created:1; /* Codec has been created by SoC */
 	unsigned int cache_init:1; /* codec cache has been initialized */
 	u32 cache_sync; /* Cache needs to be synced to hardware */
 
