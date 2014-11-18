@@ -114,14 +114,14 @@ static atomic_t nl_table_users = ATOMIC_INIT(0);
 DEFINE_MUTEX(nl_sk_hash_lock);
 EXPORT_SYMBOL_GPL(nl_sk_hash_lock);
 
-static int lockdep_nl_sk_hash_is_held(void)
+#ifdef CONFIG_PROVE_LOCKING
+static int lockdep_nl_sk_hash_is_held(void *parent)
 {
-#ifdef CONFIG_LOCKDEP
 	if (debug_locks)
 		return lockdep_is_held(&nl_sk_hash_lock) || lockdep_is_held(&nl_table_lock);
-#endif
 	return 1;
 }
+#endif
 
 static ATOMIC_NOTIFIER_HEAD(netlink_chain);
 
@@ -1092,7 +1092,7 @@ static int netlink_insert(struct sock *sk, struct net *net, u32 portid)
 
 	nlk_sk(sk)->portid = portid;
 	sock_hold(sk);
-	rhashtable_insert(&table->hash, &nlk_sk(sk)->node, GFP_KERNEL);
+	rhashtable_insert(&table->hash, &nlk_sk(sk)->node);
 	err = 0;
 err:
 	mutex_unlock(&nl_sk_hash_lock);
@@ -1105,7 +1105,7 @@ static void netlink_remove(struct sock *sk)
 
 	mutex_lock(&nl_sk_hash_lock);
 	table = &nl_table[sk->sk_protocol];
-	if (rhashtable_remove(&table->hash, &nlk_sk(sk)->node, GFP_KERNEL)) {
+	if (rhashtable_remove(&table->hash, &nlk_sk(sk)->node)) {
 		WARN_ON(atomic_read(&sk->sk_refcnt) == 1);
 		__sock_put(sk);
 	}
@@ -2401,7 +2401,7 @@ static int netlink_recvmsg(struct kiocb *kiocb, struct socket *sock,
 	}
 
 	skb_reset_transport_header(data_skb);
-	err = skb_copy_datagram_iovec(data_skb, 0, msg->msg_iov, copied);
+	err = skb_copy_datagram_msg(data_skb, 0, msg, copied);
 
 	if (msg->msg_name) {
 		DECLARE_SOCKADDR(struct sockaddr_nl *, addr, msg->msg_name);
@@ -3134,7 +3134,9 @@ static int __init netlink_proto_init(void)
 		.max_shift = 16, /* 64K */
 		.grow_decision = rht_grow_above_75,
 		.shrink_decision = rht_shrink_below_30,
+#ifdef CONFIG_PROVE_LOCKING
 		.mutex_is_held = lockdep_nl_sk_hash_is_held,
+#endif
 	};
 
 	if (err != 0)
