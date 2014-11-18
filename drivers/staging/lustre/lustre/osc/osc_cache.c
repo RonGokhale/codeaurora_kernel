@@ -536,10 +536,9 @@ static int osc_extent_merge(const struct lu_env *env, struct osc_extent *cur,
 /**
  * Drop user count of osc_extent, and unplug IO asynchronously.
  */
-int osc_extent_release(const struct lu_env *env, struct osc_extent *ext)
+void osc_extent_release(const struct lu_env *env, struct osc_extent *ext)
 {
 	struct osc_object *obj = ext->oe_obj;
-	int rc = 0;
 
 	LASSERT(atomic_read(&ext->oe_users) > 0);
 	LASSERT(sanity_check(ext) == 0);
@@ -571,7 +570,6 @@ int osc_extent_release(const struct lu_env *env, struct osc_extent *ext)
 		osc_io_unplug_async(env, osc_cli(obj), obj);
 	}
 	osc_extent_put(env, ext);
-	return rc;
 }
 
 static inline int overlapped(struct osc_extent *ex1, struct osc_extent *ex2)
