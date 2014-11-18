@@ -296,9 +296,6 @@ static void soc_init_codec_debugfs(struct snd_soc_component *component)
 {
 	struct snd_soc_codec *codec = snd_soc_component_to_codec(component);
 
-	debugfs_create_bool("cache_sync", 0444, codec->component.debugfs_root,
-			    &codec->cache_sync);
-
 	codec->debugfs_reg = debugfs_create_file("codec_reg", 0644,
 						 codec->component.debugfs_root,
 						 codec, &codec_reg_fops);
@@ -604,7 +601,6 @@ int snd_soc_suspend(struct device *dev)
 				if (codec->driver->suspend)
 					codec->driver->suspend(codec);
 				codec->suspended = 1;
-				codec->cache_sync = 1;
 				if (codec->component.regmap)
 					regcache_mark_dirty(codec->component.regmap);
 				/* deactivate pins to sleep state */
@@ -2973,7 +2969,6 @@ int snd_soc_register_codec(struct device *dev,
 	codec->dev = dev;
 	codec->driver = codec_drv;
 	codec->component.val_bytes = codec_drv->reg_word_size;
-	mutex_init(&codec->mutex);
 
 #ifdef CONFIG_DEBUG_FS
 	codec->component.init_debugfs = soc_init_codec_debugfs;
