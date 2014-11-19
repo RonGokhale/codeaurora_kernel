@@ -853,13 +853,19 @@ static int __init selftest_data_add(void)
 
 		for_each_of_allnodes(np)
 			__of_attach_node_sysfs(np);
-		of_aliases = of_find_node_by_path("/aliases");
-		of_chosen = of_find_node_by_path("/chosen");
-		return 0;
+	} else {
+		/* attach the sub-tree to live tree */
+		rc = attach_node_and_children(selftest_data_node);
+		if (WARN_ON(rc))
+			return rc;
 	}
 
-	/* attach the sub-tree to live tree */
-	return attach_node_and_children(selftest_data_node);
+	/* Make sure of_aliases and of_chosen are up-to-date */
+	if (!of_aliases)
+		of_aliases = of_find_node_by_path("/aliases");
+	if (!of_chosen)
+		of_chosen = of_find_node_by_path("/chosen");
+	return rc;
 }
 
 /**
@@ -899,8 +905,12 @@ static void selftest_data_remove(void)
 	while (last_node_index-- > 0) {
 		if (nodes[last_node_index]) {
 			np = of_find_node_by_path(nodes[last_node_index]->full_name);
-			if (strcmp(np->full_name, "/aliases") != 0) {
+			if (np == nodes[last_node_index]) {
 				detach_node_and_children(np);
+				if (of_aliases == np)
+					of_aliases = NULL;
+				if (of_chosen == np)
+					of_chosen = NULL;
 			} else {
 				for_each_property_of_node(np, prop) {
 					if (strcmp(prop->name, "testcase-alias") == 0)
