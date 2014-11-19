@@ -122,6 +122,7 @@ struct acpi_ec {
 	unsigned long data_addr;
 	unsigned long global_lock;
 	unsigned long flags;
+	unsigned long reference_count;
 	struct mutex mutex;
 	wait_queue_head_t wait;
 	struct list_head list;
@@ -172,5 +173,11 @@ static inline void suspend_nvs_restore(void) {}
 #if defined(CONFIG_ACPI_VIDEO) || defined(CONFIG_ACPI_VIDEO_MODULE)
 bool acpi_osi_is_win8(void);
 #endif
+
+/*--------------------------------------------------------------------------
+				Device properties
+  -------------------------------------------------------------------------- */
+void acpi_init_properties(struct acpi_device *adev);
+void acpi_free_properties(struct acpi_device *adev);
 
 #endif /* _ACPI_INTERNAL_H_ */
