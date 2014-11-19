@@ -353,6 +353,8 @@ static void kvm_multiple_exception(struct kvm_vcpu *vcpu,
 
 	if (!vcpu->arch.exception.pending) {
 	queue:
+		if (has_error && !is_protmode(vcpu))
+			has_error = false;
 		vcpu->arch.exception.pending = true;
 		vcpu->arch.exception.has_error_code = has_error;
 		vcpu->arch.exception.nr = nr;
@@ -454,6 +456,16 @@ bool kvm_require_cpl(struct kvm_vcpu *vcpu, int required_cpl)
 	return false;
 }
 EXPORT_SYMBOL_GPL(kvm_require_cpl);
+
+bool kvm_require_dr(struct kvm_vcpu *vcpu, int dr)
+{
+	if ((dr != 4 && dr != 5) || !kvm_read_cr4_bits(vcpu, X86_CR4_DE))
+		return true;
+
+	kvm_queue_exception(vcpu, UD_VECTOR);
+	return false;
+}
+EXPORT_SYMBOL_GPL(kvm_require_dr);
 
 /*
  * This function will be used to read from the physical memory of the currently
@@ -656,6 +668,12 @@ int __kvm_set_xcr(struct kvm_vcpu *vcpu, u32 index, u64 xcr)
 	if ((!(xcr0 & XSTATE_BNDREGS)) != (!(xcr0 & XSTATE_BNDCSR)))
 		return 1;
 
+	if (xcr0 & XSTATE_AVX512) {
+		if (!(xcr0 & XSTATE_YMM))
+			return 1;
+		if ((xcr0 & XSTATE_AVX512) != XSTATE_AVX512)
+			return 1;
+	}
 	kvm_put_guest_xcr0(vcpu);
 	vcpu->arch.xcr0 = xcr0;
 
@@ -732,6 +750,8 @@ EXPORT_SYMBOL_GPL(kvm_set_cr4);
 
 int kvm_set_cr3(struct kvm_vcpu *vcpu, unsigned long cr3)
 {
+	cr3 &= ~CR3_PCID_INVD;
+
 	if (cr3 == kvm_read_cr3(vcpu) && !pdptrs_changed(vcpu)) {
 		kvm_mmu_sync_roots(vcpu);
 		kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
@@ -811,8 +831,6 @@ static int __kvm_set_dr(struct kvm_vcpu *vcpu, int dr, unsigned long val)
 			vcpu->arch.eff_db[dr] = val;
 		break;
 	case 4:
-		if (kvm_read_cr4_bits(vcpu, X86_CR4_DE))
-			return 1; /* #UD */
 		/* fall through */
 	case 6:
 		if (val & 0xffffffff00000000ULL)
@@ -821,8 +839,6 @@ static int __kvm_set_dr(struct kvm_vcpu *vcpu, int dr, unsigned long val)
 		kvm_update_dr6(vcpu);
 		break;
 	case 5:
-		if (kvm_read_cr4_bits(vcpu, X86_CR4_DE))
-			return 1; /* #UD */
 		/* fall through */
 	default: /* 7 */
 		if (val & 0xffffffff00000000ULL)
@@ -837,27 +853,21 @@ static int __kvm_set_dr(struct kvm_vcpu *vcpu, int dr, unsigned long val)
 
 int kvm_set_dr(struct kvm_vcpu *vcpu, int dr, unsigned long val)
 {
-	int res;
-
-	res = __kvm_set_dr(vcpu, dr, val);
-	if (res > 0)
-		kvm_queue_exception(vcpu, UD_VECTOR);
-	else if (res < 0)
+	if (__kvm_set_dr(vcpu, dr, val)) {
 		kvm_inject_gp(vcpu, 0);
-
-	return res;
+		return 1;
+	}
+	return 0;
 }
 EXPORT_SYMBOL_GPL(kvm_set_dr);
 
-static int _kvm_get_dr(struct kvm_vcpu *vcpu, int dr, unsigned long *val)
+int kvm_get_dr(struct kvm_vcpu *vcpu, int dr, unsigned long *val)
 {
 	switch (dr) {
 	case 0 ... 3:
 		*val = vcpu->arch.db[dr];
 		break;
 	case 4:
-		if (kvm_read_cr4_bits(vcpu, X86_CR4_DE))
-			return 1;
 		/* fall through */
 	case 6:
 		if (vcpu->guest_debug & KVM_GUESTDBG_USE_HW_BP)
@@ -866,22 +876,10 @@ static int _kvm_get_dr(struct kvm_vcpu *vcpu, int dr, unsigned long *val)
 			*val = kvm_x86_ops->get_dr6(vcpu);
 		break;
 	case 5:
-		if (kvm_read_cr4_bits(vcpu, X86_CR4_DE))
-			return 1;
 		/* fall through */
 	default: /* 7 */
 		*val = vcpu->arch.dr7;
 		break;
-	}
-
-	return 0;
-}
-
-int kvm_get_dr(struct kvm_vcpu *vcpu, int dr, unsigned long *val)
-{
-	if (_kvm_get_dr(vcpu, dr, val)) {
-		kvm_queue_exception(vcpu, UD_VECTOR);
-		return 1;
 	}
 	return 0;
 }
@@ -1237,21 +1235,22 @@ void kvm_track_tsc_matching(struct kvm_vcpu *vcpu)
 {
 #ifdef CONFIG_X86_64
 	bool vcpus_matched;
-	bool do_request = false;
 	struct kvm_arch *ka = &vcpu->kvm->arch;
 	struct pvclock_gtod_data *gtod = &pvclock_gtod_data;
 
 	vcpus_matched = (ka->nr_vcpus_matched_tsc + 1 ==
 			 atomic_read(&vcpu->kvm->online_vcpus));
 
-	if (vcpus_matched && gtod->clock.vclock_mode == VCLOCK_TSC)
-		if (!ka->use_master_clock)
-			do_request = 1;
-
-	if (!vcpus_matched && ka->use_master_clock)
-			do_request = 1;
-
-	if (do_request)
+	/*
+	 * Once the masterclock is enabled, always perform request in
+	 * order to update it.
+	 *
+	 * In order to enable masterclock, the host clocksource must be TSC
+	 * and the vcpus need to have matched TSCs.  When that happens,
+	 * perform request to enable masterclock.
+	 */
+	if (ka->use_master_clock ||
+	    (gtod->clock.vclock_mode == VCLOCK_TSC && vcpus_matched))
 		kvm_make_request(KVM_REQ_MASTERCLOCK_UPDATE, vcpu);
 
 	trace_kvm_track_tsc(vcpu->vcpu_id, ka->nr_vcpus_matched_tsc,
@@ -1637,16 +1636,16 @@ static int kvm_guest_time_update(struct kvm_vcpu *v)
 	vcpu->hv_clock.system_time = kernel_ns + v->kvm->arch.kvmclock_offset;
 	vcpu->last_guest_tsc = tsc_timestamp;
 
+	if (unlikely(kvm_read_guest_cached(v->kvm, &vcpu->pv_time,
+		&guest_hv_clock, sizeof(guest_hv_clock))))
+		return 0;
+
 	/*
 	 * The interface expects us to write an even number signaling that the
 	 * update is finished. Since the guest won't see the intermediate
 	 * state, we just increase by 2 at the end.
 	 */
-	vcpu->hv_clock.version += 2;
-
-	if (unlikely(kvm_read_guest_cached(v->kvm, &vcpu->pv_time,
-		&guest_hv_clock, sizeof(guest_hv_clock))))
-		return 0;
+	vcpu->hv_clock.version = guest_hv_clock.version + 2;
 
 	/* retain PVCLOCK_GUEST_STOPPED if set in guest copy */
 	pvclock_flags = (guest_hv_clock.flags & PVCLOCK_GUEST_STOPPED);
@@ -1661,6 +1660,8 @@ static int kvm_guest_time_update(struct kvm_vcpu *v)
 		pvclock_flags |= PVCLOCK_TSC_STABLE_BIT;
 
 	vcpu->hv_clock.flags = pvclock_flags;
+
+	trace_kvm_pvclock_update(v->vcpu_id, &vcpu->hv_clock);
 
 	kvm_write_guest_cached(v->kvm, &vcpu->pv_time,
 				&vcpu->hv_clock,
@@ -3106,7 +3107,7 @@ static void kvm_vcpu_ioctl_x86_get_debugregs(struct kvm_vcpu *vcpu,
 	unsigned long val;
 
 	memcpy(dbgregs->db, vcpu->arch.db, sizeof(vcpu->arch.db));
-	_kvm_get_dr(vcpu, 6, &val);
+	kvm_get_dr(vcpu, 6, &val);
 	dbgregs->dr6 = val;
 	dbgregs->dr7 = vcpu->arch.dr7;
 	dbgregs->flags = 0;
@@ -4667,7 +4668,7 @@ static void emulator_wbinvd(struct x86_emulate_ctxt *ctxt)
 
 int emulator_get_dr(struct x86_emulate_ctxt *ctxt, int dr, unsigned long *dest)
 {
-	return _kvm_get_dr(emul_to_vcpu(ctxt), dr, dest);
+	return kvm_get_dr(emul_to_vcpu(ctxt), dr, dest);
 }
 
 int emulator_set_dr(struct x86_emulate_ctxt *ctxt, int dr, unsigned long value)
@@ -5211,21 +5212,17 @@ static void kvm_vcpu_check_singlestep(struct kvm_vcpu *vcpu, unsigned long rflag
 
 static bool kvm_vcpu_check_breakpoint(struct kvm_vcpu *vcpu, int *r)
 {
-	struct kvm_run *kvm_run = vcpu->run;
-	unsigned long eip = vcpu->arch.emulate_ctxt.eip;
-	u32 dr6 = 0;
-
 	if (unlikely(vcpu->guest_debug & KVM_GUESTDBG_USE_HW_BP) &&
 	    (vcpu->arch.guest_debug_dr7 & DR7_BP_EN_MASK)) {
-		dr6 = kvm_vcpu_check_hw_bp(eip, 0,
+		struct kvm_run *kvm_run = vcpu->run;
+		unsigned long eip = kvm_get_linear_rip(vcpu);
+		u32 dr6 = kvm_vcpu_check_hw_bp(eip, 0,
 					   vcpu->arch.guest_debug_dr7,
 					   vcpu->arch.eff_db);
 
 		if (dr6 != 0) {
 			kvm_run->debug.arch.dr6 = dr6 | DR6_FIXED_1 | DR6_RTM;
-			kvm_run->debug.arch.pc = kvm_rip_read(vcpu) +
-				get_segment_base(vcpu, VCPU_SREG_CS);
-
+			kvm_run->debug.arch.pc = eip;
 			kvm_run->debug.arch.exception = DB_VECTOR;
 			kvm_run->exit_reason = KVM_EXIT_DEBUG;
 			*r = EMULATE_USER_EXIT;
@@ -5235,7 +5232,8 @@ static bool kvm_vcpu_check_breakpoint(struct kvm_vcpu *vcpu, int *r)
 
 	if (unlikely(vcpu->arch.dr7 & DR7_BP_EN_MASK) &&
 	    !(kvm_get_rflags(vcpu) & X86_EFLAGS_RF)) {
-		dr6 = kvm_vcpu_check_hw_bp(eip, 0,
+		unsigned long eip = kvm_get_linear_rip(vcpu);
+		u32 dr6 = kvm_vcpu_check_hw_bp(eip, 0,
 					   vcpu->arch.dr7,
 					   vcpu->arch.db);
 
@@ -5365,7 +5363,9 @@ restart:
 		kvm_rip_write(vcpu, ctxt->eip);
 		if (r == EMULATE_DONE)
 			kvm_vcpu_check_singlestep(vcpu, rflags, &r);
-		__kvm_set_rflags(vcpu, ctxt->eflags);
+		if (!ctxt->have_exception ||
+		    exception_type(ctxt->exception.vector) == EXCPT_TRAP)
+			__kvm_set_rflags(vcpu, ctxt->eflags);
 
 		/*
 		 * For STI, interrupts are shadowed; so KVM_REQ_EVENT will
@@ -5964,6 +5964,12 @@ static int inject_pending_event(struct kvm_vcpu *vcpu, bool req_int_win)
 		if (exception_type(vcpu->arch.exception.nr) == EXCPT_FAULT)
 			__kvm_set_rflags(vcpu, kvm_get_rflags(vcpu) |
 					     X86_EFLAGS_RF);
+
+		if (vcpu->arch.exception.nr == DB_VECTOR &&
+		    (vcpu->arch.dr7 & DR7_GD)) {
+			vcpu->arch.dr7 &= ~DR7_GD;
+			kvm_update_dr7(vcpu);
+		}
 
 		kvm_x86_ops->queue_exception(vcpu, vcpu->arch.exception.nr,
 					  vcpu->arch.exception.has_error_code,
@@ -7536,12 +7542,18 @@ int kvm_arch_interrupt_allowed(struct kvm_vcpu *vcpu)
 	return kvm_x86_ops->interrupt_allowed(vcpu);
 }
 
+unsigned long kvm_get_linear_rip(struct kvm_vcpu *vcpu)
+{
+	if (is_64_bit_mode(vcpu))
+		return kvm_rip_read(vcpu);
+	return (u32)(get_segment_base(vcpu, VCPU_SREG_CS) +
+		     kvm_rip_read(vcpu));
+}
+EXPORT_SYMBOL_GPL(kvm_get_linear_rip);
+
 bool kvm_is_linear_rip(struct kvm_vcpu *vcpu, unsigned long linear_rip)
 {
-	unsigned long current_rip = kvm_rip_read(vcpu) +
-		get_segment_base(vcpu, VCPU_SREG_CS);
-
-	return current_rip == linear_rip;
+	return kvm_get_linear_rip(vcpu) == linear_rip;
 }
 EXPORT_SYMBOL_GPL(kvm_is_linear_rip);
 
