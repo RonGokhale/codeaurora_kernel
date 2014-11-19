@@ -361,7 +361,7 @@ static void filter_cpuid_features(struct cpuinfo_x86 *c, bool warn)
 /* Look up CPU names by table lookup. */
 static const char *table_lookup_model(struct cpuinfo_x86 *c)
 {
-#ifdef CONFIG_X86_32
+#ifdef CONFIG_X86_MODEL_TABLE
 	const struct legacy_cpu_model_info *info;
 
 	if (c->x86_model >= 16)
@@ -479,27 +479,6 @@ void cpu_detect_cache_sizes(struct cpuinfo_x86 *c)
 #endif
 
 	c->x86_cache_size = l2size;
-}
-
-u16 __read_mostly tlb_lli_4k[NR_INFO];
-u16 __read_mostly tlb_lli_2m[NR_INFO];
-u16 __read_mostly tlb_lli_4m[NR_INFO];
-u16 __read_mostly tlb_lld_4k[NR_INFO];
-u16 __read_mostly tlb_lld_2m[NR_INFO];
-u16 __read_mostly tlb_lld_4m[NR_INFO];
-u16 __read_mostly tlb_lld_1g[NR_INFO];
-
-void cpu_detect_tlb(struct cpuinfo_x86 *c)
-{
-	if (this_cpu->c_detect_tlb)
-		this_cpu->c_detect_tlb(c);
-
-	printk(KERN_INFO "Last level iTLB entries: 4KB %d, 2MB %d, 4MB %d\n"
-		"Last level dTLB entries: 4KB %d, 2MB %d, 4MB %d, 1GB %d\n",
-		tlb_lli_4k[ENTRIES], tlb_lli_2m[ENTRIES],
-		tlb_lli_4m[ENTRIES], tlb_lld_4k[ENTRIES],
-		tlb_lld_2m[ENTRIES], tlb_lld_4m[ENTRIES],
-		tlb_lld_1g[ENTRIES]);
 }
 
 void detect_ht(struct cpuinfo_x86 *c)
@@ -999,7 +978,6 @@ void __init identify_boot_cpu(void)
 	sysenter_setup();
 	enable_sep_cpu();
 #endif
-	cpu_detect_tlb(&boot_cpu_data);
 }
 
 void identify_secondary_cpu(struct cpuinfo_x86 *c)
