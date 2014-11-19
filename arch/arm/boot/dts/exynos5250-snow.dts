@@ -628,4 +628,8 @@
 	vbus-supply = <&usb3_vbus_reg>;
 };
 
+&usbdrd_dwc3 {
+	dr_mode = "host";
+};
+
 #include "cros-ec-keyboard.dtsi"
