@@ -699,6 +699,7 @@ print_graph_irq(struct trace_iterator *iter, unsigned long addr,
 {
 	int ret;
 	struct trace_seq *s = &iter->seq;
+	struct trace_entry *ent = iter->ent;
 
 	if (addr < (unsigned long)__irqentry_text_start ||
 		addr >= (unsigned long)__irqentry_text_end)
@@ -728,6 +729,14 @@ print_graph_irq(struct trace_iterator *iter, unsigned long addr,
 			if (!ret)
 				return TRACE_TYPE_PARTIAL_LINE;
 		}
+
+		/* Latency format */
+		if (trace_flags & TRACE_ITER_LATENCY_FMT) {
+			ret = print_graph_lat_fmt(s, ent);
+			if (ret == TRACE_TYPE_PARTIAL_LINE)
+				return TRACE_TYPE_PARTIAL_LINE;
+		}
+
 	}
 
 	/* No overhead */
@@ -759,19 +768,19 @@ trace_print_graph_duration(unsigned long long duration, struct trace_seq *s)
 {
 	unsigned long nsecs_rem = do_div(duration, 1000);
 	/* log10(ULONG_MAX) + '\0' */
-	char msecs_str[21];
+	char usecs_str[21];
 	char nsecs_str[5];
 	int ret, len;
 	int i;
 
-	sprintf(msecs_str, "%lu", (unsigned long) duration);
+	sprintf(usecs_str, "%lu", (unsigned long) duration);
 
 	/* Print msecs */
-	ret = trace_seq_printf(s, "%s", msecs_str);
+	ret = trace_seq_printf(s, "%s", usecs_str);
 	if (!ret)
 		return TRACE_TYPE_PARTIAL_LINE;
 
-	len = strlen(msecs_str);
+	len = strlen(usecs_str);
 
 	/* Print nsecs (we don't want to exceed 7 numbers) */
 	if (len < 7) {
@@ -822,10 +831,10 @@ print_graph_duration(unsigned long long duration, struct trace_seq *s,
 
 	/* Signal a overhead of time execution to the output */
 	if (flags & TRACE_GRAPH_PRINT_OVERHEAD) {
-		/* Duration exceeded 100 msecs */
+		/* Duration exceeded 100 usecs */
 		if (duration > 100000ULL)
 			ret = trace_seq_puts(s, "! ");
-		/* Duration exceeded 10 msecs */
+		/* Duration exceeded 10 usecs */
 		else if (duration > 10000ULL)
 			ret = trace_seq_puts(s, "+ ");
 	}
@@ -1407,32 +1416,32 @@ static void __print_graph_headers_flags(struct seq_file *s, u32 flags)
 		print_lat_header(s, flags);
 
 	/* 1st line */
-	seq_printf(s, "#");
+	seq_putc(s, '#');
 	if (flags & TRACE_GRAPH_PRINT_ABS_TIME)
-		seq_printf(s, "     TIME       ");
+		seq_puts(s, "     TIME       ");
 	if (flags & TRACE_GRAPH_PRINT_CPU)
-		seq_printf(s, " CPU");
+		seq_puts(s, " CPU");
 	if (flags & TRACE_GRAPH_PRINT_PROC)
-		seq_printf(s, "  TASK/PID       ");
+		seq_puts(s, "  TASK/PID       ");
 	if (lat)
-		seq_printf(s, "||||");
+		seq_puts(s, "||||");
 	if (flags & TRACE_GRAPH_PRINT_DURATION)
-		seq_printf(s, "  DURATION   ");
-	seq_printf(s, "               FUNCTION CALLS\n");
+		seq_puts(s, "  DURATION   ");
+	seq_puts(s, "               FUNCTION CALLS\n");
 
 	/* 2nd line */
-	seq_printf(s, "#");
+	seq_putc(s, '#');
 	if (flags & TRACE_GRAPH_PRINT_ABS_TIME)
-		seq_printf(s, "      |         ");
+		seq_puts(s, "      |         ");
 	if (flags & TRACE_GRAPH_PRINT_CPU)
-		seq_printf(s, " |  ");
+		seq_puts(s, " |  ");
 	if (flags & TRACE_GRAPH_PRINT_PROC)
-		seq_printf(s, "   |    |        ");
+		seq_puts(s, "   |    |        ");
 	if (lat)
-		seq_printf(s, "||||");
+		seq_puts(s, "||||");
 	if (flags & TRACE_GRAPH_PRINT_DURATION)
-		seq_printf(s, "   |   |      ");
-	seq_printf(s, "               |   |   |   |\n");
+		seq_puts(s, "   |   |      ");
+	seq_puts(s, "               |   |   |   |\n");
 }
 
 static void print_graph_headers(struct seq_file *s)
