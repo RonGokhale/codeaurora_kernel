@@ -522,13 +522,13 @@ static int pvscsi_change_queue_depth(struct scsi_device *sdev,
 		max_depth = 1;
 	if (qdepth > max_depth)
 		qdepth = max_depth;
-	scsi_adjust_queue_depth(sdev, scsi_get_tag_type(sdev), qdepth);
+	scsi_adjust_queue_depth(sdev, qdepth);
 
 	if (sdev->inquiry_len > 7)
 		sdev_printk(KERN_INFO, sdev,
-			    "qdepth(%d), tagged(%d), simple(%d), ordered(%d), scsi_level(%d), cmd_que(%d)\n",
+			    "qdepth(%d), tagged(%d), simple(%d), scsi_level(%d), cmd_que(%d)\n",
 			    sdev->queue_depth, sdev->tagged_supported,
-			    sdev->simple_tags, sdev->ordered_tags,
+			    sdev->simple_tags,
 			    sdev->scsi_level, (sdev->inquiry[7] & 2) >> 1);
 	return sdev->queue_depth;
 }
@@ -723,10 +723,6 @@ static int pvscsi_queue_ring(struct pvscsi_adapter *adapter,
 	memcpy(e->cdb, cmd->cmnd, e->cdbLen);
 
 	e->tag = SIMPLE_QUEUE_TAG;
-	if (sdev->tagged_supported &&
-	    (cmd->tag == HEAD_OF_QUEUE_TAG ||
-	     cmd->tag == ORDERED_QUEUE_TAG))
-		e->tag = cmd->tag;
 
 	if (cmd->sc_data_direction == DMA_FROM_DEVICE)
 		e->flags = PVSCSI_FLAG_CMD_DIR_TOHOST;
