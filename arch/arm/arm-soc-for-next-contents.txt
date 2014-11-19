@@ -1,0 +1,67 @@
+next/fixes-non-critical
+
+next/cleanup
+	cleanup/dts-subdirs
+		git://git.kernel.org/pub/scm/linux/kernel/git/rric/linux tags/dts-subdirs-for-arm-soc-v3.19
+	samsung/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup
+	renesas/cleanup-kconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-kconfig-cleanups-for-v3.19
+	renesas/cleanup-boards
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-cleanups-for-v3.19
+	renesas/cleanup-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanups-for-v3.19
+	renesas/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-cleanup-for-v3.19
+	at91/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup
+	patch
+		ARM: at91: fix build breakage due to legacy board removals
+
+next/soc
+	rk/cpufreq
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.18-rockchip-cpufreqdev-v2
+	brcm/stb-smp-uart
+		http://github.com/brcm/linux tags/brcmstb-smp-uart-for-3.19
+	integrator/multiplatform
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-multiplatform-for-arm-soc
+	samsung/pm2
+		http://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung v3.19-next/pm-samsung-2
+	berlin/soc
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-3.19-1
+	ux500/core
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-stericsson tags/ux500-core-for-arm-soc
+	patch
+		ARM: fix multiplatform allmodcompile
+
+next/boards
+
+next/dt
+	samsung/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt
+	realview/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/arm-realview-dt-for-arm-soc
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/dt-timers
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-r8a73a4-dt-timers-for-v3.19
+	rk/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts1
+	renesas/dt-clocksource
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-clocksource-for-v3.19
+	sti/dt
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.19-1
+	berlin/dt
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-dt-3.19-1
+	at91/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-dt
+	nomadik/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-nomadik tags/nomadik-for-v3.19
+
+next/drivers
+	berlin/drivers
+		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-driver-3.19-1
+
+next/defconfig
+
+fixes
