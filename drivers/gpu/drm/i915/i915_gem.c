@@ -2410,7 +2410,6 @@ int __i915_add_request(struct intel_engine_cs *ring,
 		       struct drm_i915_gem_object *obj,
 		       u32 *out_seqno)
 {
-	struct drm_i915_private *dev_priv = ring->dev->dev_private;
 	struct drm_i915_gem_request *request;
 	struct intel_ringbuffer *ringbuf;
 	u32 request_ring_position, request_start;
@@ -2500,16 +2499,6 @@ int __i915_add_request(struct intel_engine_cs *ring,
 	trace_i915_gem_request_add(ring, request->seqno);
 	ring->outstanding_lazy_seqno = 0;
 	ring->preallocated_lazy_request = NULL;
-
-	if (!dev_priv->ums.mm_suspended) {
-		i915_queue_hangcheck(ring->dev);
-
-		cancel_delayed_work_sync(&dev_priv->mm.idle_work);
-		queue_delayed_work(dev_priv->wq,
-				   &dev_priv->mm.retire_work,
-				   round_jiffies_up_relative(HZ));
-		intel_mark_busy(dev_priv->dev);
-	}
 
 	if (out_seqno)
 		*out_seqno = request->seqno;
@@ -4651,9 +4640,6 @@ i915_gem_suspend(struct drm_device *dev)
 	int ret = 0;
 
 	mutex_lock(&dev->struct_mutex);
-	if (dev_priv->ums.mm_suspended)
-		goto err;
-
 	ret = i915_gpu_idle(dev);
 	if (ret)
 		goto err;
@@ -4665,13 +4651,6 @@ i915_gem_suspend(struct drm_device *dev)
 		i915_gem_evict_everything(dev);
 
 	i915_gem_stop_ringbuffers(dev);
-
-	/* Hack!  Don't let anybody do execbuf while we don't control the chip.
-	 * We need to replace this with a semaphore, or something.
-	 * And not confound ums.mm_suspended!
-	 */
-	dev_priv->ums.mm_suspended = !drm_core_check_feature(dev,
-							     DRIVER_MODESET);
 	mutex_unlock(&dev->struct_mutex);
 
 	del_timer_sync(&dev_priv->gpu_error.hangcheck_timer);
