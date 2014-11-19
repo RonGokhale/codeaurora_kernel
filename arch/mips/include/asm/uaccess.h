@@ -301,7 +301,8 @@ do {									\
 			__get_kernel_common((x), size, __gu_ptr);	\
 		else							\
 			__get_user_common((x), size, __gu_ptr);		\
-	}								\
+	} else								\
+		(x) = 0;						\
 									\
 	__gu_err;							\
 })
@@ -316,6 +317,7 @@ do {									\
 	"	.insn						\n"	\
 	"	.section .fixup,\"ax\"				\n"	\
 	"3:	li	%0, %4					\n"	\
+	"	move	%1, $0					\n"	\
 	"	j	2b					\n"	\
 	"	.previous					\n"	\
 	"	.section __ex_table,\"a\"			\n"	\
@@ -630,6 +632,7 @@ do {									\
 	"	.insn						\n"	\
 	"	.section .fixup,\"ax\"				\n"	\
 	"3:	li	%0, %4					\n"	\
+	"	move	%1, $0					\n"	\
 	"	j	2b					\n"	\
 	"	.previous					\n"	\
 	"	.section __ex_table,\"a\"			\n"	\
@@ -773,10 +776,11 @@ extern void __put_user_unaligned_unknown(void);
 	"jal\t" #destination "\n\t"
 #endif
 
-#ifndef CONFIG_CPU_DADDI_WORKAROUNDS
-#define DADDI_SCRATCH "$0"
-#else
+#if defined(CONFIG_CPU_DADDI_WORKAROUNDS) || (defined(CONFIG_EVA) &&	\
+					      defined(CONFIG_CPU_HAS_PREFETCH))
 #define DADDI_SCRATCH "$3"
+#else
+#define DADDI_SCRATCH "$0"
 #endif
 
 extern size_t __copy_user(void *__to, const void *__from, size_t __n);
@@ -1316,33 +1320,6 @@ strncpy_from_user(char *__to, const char __user *__from, long __len)
 			: "=r" (res)
 			: "r" (__to), "r" (__from), "r" (__len)
 			: "$2", "$3", "$4", "$5", "$6", __UA_t0, "$31", "memory");
-	}
-
-	return res;
-}
-
-/* Returns: 0 if bad, string length+1 (memory size) of string if ok */
-static inline long __strlen_user(const char __user *s)
-{
-	long res;
-
-	if (segment_eq(get_fs(), get_ds())) {
-		__asm__ __volatile__(
-			"move\t$4, %1\n\t"
-			__MODULE_JAL(__strlen_kernel_nocheck_asm)
-			"move\t%0, $2"
-			: "=r" (res)
-			: "r" (s)
-			: "$2", "$4", __UA_t0, "$31");
-	} else {
-		might_fault();
-		__asm__ __volatile__(
-			"move\t$4, %1\n\t"
-			__MODULE_JAL(__strlen_user_nocheck_asm)
-			"move\t%0, $2"
-			: "=r" (res)
-			: "r" (s)
-			: "$2", "$4", __UA_t0, "$31");
 	}
 
 	return res;
