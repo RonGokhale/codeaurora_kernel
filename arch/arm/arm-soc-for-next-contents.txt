@@ -37,6 +37,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-koelsch-board-removal-for-v3.19
 	at91/cleanup2
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
+	davinci/cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.19/cleanup
 
 next/soc
 	rk/cpufreq
@@ -77,6 +79,16 @@ next/soc
 		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-defconfig-v2
 	mediatek/soc
 		https://github.com/mbgg/linux-mediatek tags/v3.19-next-soc
+	patch
+		socfpga: hotplug: put cpu1 in wfi
+	integrator/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/linusw/linux-integrator tags/integrator-v3.19-arm-soc-2
+	rk/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-soc2
+	meson/soc
+		https://github.com/carlocaione/linux-meson tags/v3.19-meson-soc
+	sunxi/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-core-for-3.19
 
 next/boards
 
@@ -129,6 +141,14 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
 	mediatek/dts
 		https://github.com/mbgg/linux-mediatek tags/v3.19-next-dts
+	sti/dt2
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-dt-for-v3.19-2
+	meson/dts
+		https://github.com/carlocaione/linux-meson tags/v3.19-meson-dts
+	sunxi/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-dt-for-3.19
+	rk/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts2
 
 next/drivers
 	berlin/drivers
@@ -143,6 +163,8 @@ next/drivers
 		git://git.kernel.org/pub/scm/linux/kernel/git/will/linux tags/arm-perf-3.19
 	at91/cleanup
 		Merge branch 'at91/cleanup' into next/drivers
+	davinci/edma
+		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.19/edma
 
 next/defconfig
 	renesas/defconfig
@@ -158,6 +180,8 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
 	patch
 		ARM: multi_v7_defconfig: Enable cgroups
+	sti/defconfig
+		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.19-1
 
 next/arm64
 
