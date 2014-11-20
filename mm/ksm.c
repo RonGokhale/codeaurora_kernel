@@ -542,15 +542,14 @@ static struct page *get_ksm_page(struct stable_node *stable_node, bool lock_it)
 	expected_mapping = (void *)stable_node +
 				(PAGE_MAPPING_ANON | PAGE_MAPPING_KSM);
 again:
-	kpfn = ACCESS_ONCE(stable_node->kpfn);
-	page = pfn_to_page(kpfn);
-
 	/*
 	 * page is computed from kpfn, so on most architectures reading
 	 * page->mapping is naturally ordered after reading node->kpfn,
 	 * but on Alpha we need to be more careful.
 	 */
-	smp_read_barrier_depends();
+	kpfn = lockless_dereference(stable_node->kpfn);
+	page = pfn_to_page(kpfn);
+
 	if (ACCESS_ONCE(page->mapping) != expected_mapping)
 		goto stale;
 
@@ -892,7 +891,7 @@ static int write_protect_page(struct vm_area_struct *vma, struct page *page,
 		 * this assure us that no O_DIRECT can happen after the check
 		 * or in the middle of the check.
 		 */
-		entry = ptep_clear_flush(vma, addr, ptep);
+		entry = ptep_clear_flush_notify(vma, addr, ptep);
 		/*
 		 * Check that no O_DIRECT or similar I/O is in progress on the
 		 * page
@@ -960,7 +959,7 @@ static int replace_page(struct vm_area_struct *vma, struct page *page,
 	page_add_anon_rmap(kpage, vma, addr);
 
 	flush_cache_page(vma, addr, pte_pfn(*ptep));
-	ptep_clear_flush(vma, addr, ptep);
+	ptep_clear_flush_notify(vma, addr, ptep);
 	set_pte_at_notify(mm, addr, ptep, mk_pte(kpage, vma->vm_page_prot));
 
 	page_remove_rmap(page);
