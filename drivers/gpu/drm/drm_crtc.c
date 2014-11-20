@@ -867,6 +867,8 @@ int drm_connector_init(struct drm_device *dev,
 
 	drm_connector_get_cmdline_mode(connector);
 
+	/* We should add connectors at the end to avoid upsetting the connector
+	 * index too much. */
 	list_add_tail(&connector->head, &dev->mode_config.connector_list);
 	dev->mode_config.num_connector++;
 
@@ -930,6 +932,9 @@ unsigned int drm_connector_index(struct drm_connector *connector)
 {
 	unsigned int index = 0;
 	struct drm_connector *tmp;
+	struct drm_mode_config *config = &connector->dev->mode_config;
+
+	WARN_ON(!drm_modeset_is_locked(&config->connection_mutex));
 
 	list_for_each_entry(tmp, &connector->dev->mode_config.connector_list, head) {
 		if (tmp == connector)
@@ -1485,7 +1490,7 @@ EXPORT_SYMBOL(drm_mode_create_scaling_mode_property);
  * connectors.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_create_aspect_ratio_property(struct drm_device *dev)
 {
@@ -1669,7 +1674,7 @@ static void drm_crtc_convert_to_umode(struct drm_mode_modeinfo *out,
  * the caller.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 static int drm_crtc_convert_umode(struct drm_display_mode *out,
 				  const struct drm_mode_modeinfo *in)
@@ -1712,7 +1717,7 @@ static int drm_crtc_convert_umode(struct drm_display_mode *out,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getresources(struct drm_device *dev, void *data,
 			  struct drm_file *file_priv)
@@ -1900,7 +1905,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getcrtc(struct drm_device *dev,
 		     void *data, struct drm_file *file_priv)
@@ -1961,7 +1966,7 @@ static bool drm_mode_expose_to_userspace(const struct drm_display_mode *mode,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getconnector(struct drm_device *dev, void *data,
 			  struct drm_file *file_priv)
@@ -2105,7 +2110,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getencoder(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
@@ -2146,7 +2151,7 @@ int drm_mode_getencoder(struct drm_device *dev, void *data,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getplane_res(struct drm_device *dev, void *data,
 			  struct drm_file *file_priv)
@@ -2207,7 +2212,7 @@ int drm_mode_getplane_res(struct drm_device *dev, void *data,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getplane(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv)
@@ -2381,7 +2386,7 @@ static int setplane_internal(struct drm_plane *plane,
  * valid crtc).
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_setplane(struct drm_device *dev, void *data,
 		      struct drm_file *file_priv)
@@ -2456,7 +2461,7 @@ int drm_mode_setplane(struct drm_device *dev, void *data,
  * interface. The only thing it adds is correct refcounting dance.
  * 
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_set_config_internal(struct drm_mode_set *set)
 {
@@ -2549,7 +2554,7 @@ EXPORT_SYMBOL(drm_crtc_check_viewport);
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_setcrtc(struct drm_device *dev, void *data,
 		     struct drm_file *file_priv)
@@ -2712,7 +2717,7 @@ out:
  * userspace wants to make use of these capabilities.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 static int drm_mode_cursor_universal(struct drm_crtc *crtc,
 				     struct drm_mode_cursor2 *req,
@@ -2860,7 +2865,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_cursor_ioctl(struct drm_device *dev,
 			  void *data, struct drm_file *file_priv)
@@ -2887,7 +2892,7 @@ int drm_mode_cursor_ioctl(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_cursor2_ioctl(struct drm_device *dev,
 			   void *data, struct drm_file *file_priv)
@@ -2951,7 +2956,7 @@ EXPORT_SYMBOL(drm_mode_legacy_fb_format);
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_addfb(struct drm_device *dev,
 		   void *data, struct drm_file *file_priv)
@@ -3156,7 +3161,7 @@ static struct drm_framebuffer *add_framebuffer_internal(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_addfb2(struct drm_device *dev,
 		    void *data, struct drm_file *file_priv)
@@ -3184,7 +3189,7 @@ int drm_mode_addfb2(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_rmfb(struct drm_device *dev,
 		   void *data, struct drm_file *file_priv)
@@ -3238,7 +3243,7 @@ fail_lookup:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getfb(struct drm_device *dev,
 		   void *data, struct drm_file *file_priv)
@@ -3299,7 +3304,7 @@ int drm_mode_getfb(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_dirtyfb_ioctl(struct drm_device *dev,
 			   void *data, struct drm_file *file_priv)
@@ -3379,7 +3384,7 @@ out_err1:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 void drm_fb_release(struct drm_file *priv)
 {
@@ -3452,7 +3457,7 @@ struct drm_property *drm_property_create(struct drm_device *dev, int flags,
 
 	property->flags = flags;
 	property->num_values = num_values;
-	INIT_LIST_HEAD(&property->enum_blob_list);
+	INIT_LIST_HEAD(&property->enum_list);
 
 	if (name) {
 		strncpy(property->name, name, DRM_PROP_NAME_LEN);
@@ -3674,8 +3679,8 @@ int drm_property_add_enum(struct drm_property *property, int index,
 			(value > 63))
 		return -EINVAL;
 
-	if (!list_empty(&property->enum_blob_list)) {
-		list_for_each_entry(prop_enum, &property->enum_blob_list, head) {
+	if (!list_empty(&property->enum_list)) {
+		list_for_each_entry(prop_enum, &property->enum_list, head) {
 			if (prop_enum->value == value) {
 				strncpy(prop_enum->name, name, DRM_PROP_NAME_LEN);
 				prop_enum->name[DRM_PROP_NAME_LEN-1] = '\0';
@@ -3693,7 +3698,7 @@ int drm_property_add_enum(struct drm_property *property, int index,
 	prop_enum->value = value;
 
 	property->values[index] = value;
-	list_add_tail(&prop_enum->head, &property->enum_blob_list);
+	list_add_tail(&prop_enum->head, &property->enum_list);
 	return 0;
 }
 EXPORT_SYMBOL(drm_property_add_enum);
@@ -3710,7 +3715,7 @@ void drm_property_destroy(struct drm_device *dev, struct drm_property *property)
 {
 	struct drm_property_enum *prop_enum, *pt;
 
-	list_for_each_entry_safe(prop_enum, pt, &property->enum_blob_list, head) {
+	list_for_each_entry_safe(prop_enum, pt, &property->enum_list, head) {
 		list_del(&prop_enum->head);
 		kfree(prop_enum);
 	}
@@ -3813,17 +3818,20 @@ int drm_object_property_get_value(struct drm_mode_object *obj,
 EXPORT_SYMBOL(drm_object_property_get_value);
 
 /**
- * drm_mode_getproperty_ioctl - get the current value of a connector's property
+ * drm_mode_getproperty_ioctl - get the property metadata
  * @dev: DRM device
  * @data: ioctl data
  * @file_priv: DRM file info
  *
- * This function retrieves the current value for an connectors's property.
+ * This function retrieves the metadata for a given property, like the different
+ * possible values for an enum property or the limits for a range property.
+ *
+ * Blob properties are special
  *
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getproperty_ioctl(struct drm_device *dev,
 			       void *data, struct drm_file *file_priv)
@@ -3831,16 +3839,12 @@ int drm_mode_getproperty_ioctl(struct drm_device *dev,
 	struct drm_mode_get_property *out_resp = data;
 	struct drm_property *property;
 	int enum_count = 0;
-	int blob_count = 0;
 	int value_count = 0;
 	int ret = 0, i;
 	int copied;
 	struct drm_property_enum *prop_enum;
 	struct drm_mode_property_enum __user *enum_ptr;
-	struct drm_property_blob *prop_blob;
-	uint32_t __user *blob_id_ptr;
 	uint64_t __user *values_ptr;
-	uint32_t __user *blob_length_ptr;
 
 	if (!drm_core_check_feature(dev, DRIVER_MODESET))
 		return -EINVAL;
@@ -3854,11 +3858,8 @@ int drm_mode_getproperty_ioctl(struct drm_device *dev,
 
 	if (drm_property_type_is(property, DRM_MODE_PROP_ENUM) ||
 			drm_property_type_is(property, DRM_MODE_PROP_BITMASK)) {
-		list_for_each_entry(prop_enum, &property->enum_blob_list, head)
+		list_for_each_entry(prop_enum, &property->enum_list, head)
 			enum_count++;
-	} else if (drm_property_type_is(property, DRM_MODE_PROP_BLOB)) {
-		list_for_each_entry(prop_blob, &property->enum_blob_list, head)
-			blob_count++;
 	}
 
 	value_count = property->num_values;
@@ -3883,7 +3884,7 @@ int drm_mode_getproperty_ioctl(struct drm_device *dev,
 		if ((out_resp->count_enum_blobs >= enum_count) && enum_count) {
 			copied = 0;
 			enum_ptr = (struct drm_mode_property_enum __user *)(unsigned long)out_resp->enum_blob_ptr;
-			list_for_each_entry(prop_enum, &property->enum_blob_list, head) {
+			list_for_each_entry(prop_enum, &property->enum_list, head) {
 
 				if (copy_to_user(&enum_ptr[copied].value, &prop_enum->value, sizeof(uint64_t))) {
 					ret = -EFAULT;
@@ -3901,28 +3902,16 @@ int drm_mode_getproperty_ioctl(struct drm_device *dev,
 		out_resp->count_enum_blobs = enum_count;
 	}
 
-	if (drm_property_type_is(property, DRM_MODE_PROP_BLOB)) {
-		if ((out_resp->count_enum_blobs >= blob_count) && blob_count) {
-			copied = 0;
-			blob_id_ptr = (uint32_t __user *)(unsigned long)out_resp->enum_blob_ptr;
-			blob_length_ptr = (uint32_t __user *)(unsigned long)out_resp->values_ptr;
-
-			list_for_each_entry(prop_blob, &property->enum_blob_list, head) {
-				if (put_user(prop_blob->base.id, blob_id_ptr + copied)) {
-					ret = -EFAULT;
-					goto done;
-				}
-
-				if (put_user(prop_blob->length, blob_length_ptr + copied)) {
-					ret = -EFAULT;
-					goto done;
-				}
-
-				copied++;
-			}
-		}
-		out_resp->count_enum_blobs = blob_count;
-	}
+	/*
+	 * NOTE: The idea seems to have been to use this to read all the blob
+	 * property values. But nothing ever added them to the corresponding
+	 * list, userspace always used the special-purpose get_blob ioctl to
+	 * read the value for a blob property. It also doesn't make a lot of
+	 * sense to return values here when everything else is just metadata for
+	 * the property itself.
+	 */
+	if (drm_property_type_is(property, DRM_MODE_PROP_BLOB))
+		out_resp->count_enum_blobs = 0;
 done:
 	drm_modeset_unlock_all(dev);
 	return ret;
@@ -3976,7 +3965,7 @@ static void drm_property_destroy_blob(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_getblob_ioctl(struct drm_device *dev,
 			   void *data, struct drm_file *file_priv)
@@ -4021,7 +4010,7 @@ done:
  * them more meaningful names.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_connector_set_path_property(struct drm_connector *connector,
 					 const char *path)
@@ -4051,7 +4040,7 @@ EXPORT_SYMBOL(drm_mode_connector_set_path_property);
  * connector's edid property.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_connector_update_edid_property(struct drm_connector *connector,
 					    const struct edid *edid)
@@ -4148,7 +4137,7 @@ static bool drm_property_change_is_valid(struct drm_property *property,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_connector_property_set_ioctl(struct drm_device *dev,
 				       void *data, struct drm_file *file_priv)
@@ -4231,7 +4220,7 @@ int drm_mode_plane_set_obj_prop(struct drm_plane *plane,
 EXPORT_SYMBOL(drm_mode_plane_set_obj_prop);
 
 /**
- * drm_mode_getproperty_ioctl - get the current value of a object's property
+ * drm_mode_obj_get_properties_ioctl - get the current value of a object's property
  * @dev: DRM device
  * @data: ioctl data
  * @file_priv: DRM file info
@@ -4243,7 +4232,7 @@ EXPORT_SYMBOL(drm_mode_plane_set_obj_prop);
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_obj_get_properties_ioctl(struct drm_device *dev, void *data,
 				      struct drm_file *file_priv)
@@ -4315,7 +4304,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_obj_set_property_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv)
@@ -4387,7 +4376,7 @@ out:
  * possible_clones and possible_crtcs bitmasks.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_connector_attach_encoder(struct drm_connector *connector,
 				      struct drm_encoder *encoder)
@@ -4414,7 +4403,7 @@ EXPORT_SYMBOL(drm_mode_connector_attach_encoder);
  * fixed gamma table size.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_crtc_set_gamma_size(struct drm_crtc *crtc,
 				 int gamma_size)
@@ -4443,7 +4432,7 @@ EXPORT_SYMBOL(drm_mode_crtc_set_gamma_size);
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_gamma_set_ioctl(struct drm_device *dev,
 			     void *data, struct drm_file *file_priv)
@@ -4515,7 +4504,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_gamma_get_ioctl(struct drm_device *dev,
 			     void *data, struct drm_file *file_priv)
@@ -4581,7 +4570,7 @@ out:
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_page_flip_ioctl(struct drm_device *dev,
 			     void *data, struct drm_file *file_priv)
@@ -4747,7 +4736,7 @@ EXPORT_SYMBOL(drm_mode_config_reset);
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_create_dumb_ioctl(struct drm_device *dev,
 			       void *data, struct drm_file *file_priv)
@@ -4799,7 +4788,7 @@ int drm_mode_create_dumb_ioctl(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_mmap_dumb_ioctl(struct drm_device *dev,
 			     void *data, struct drm_file *file_priv)
@@ -4826,7 +4815,7 @@ int drm_mode_mmap_dumb_ioctl(struct drm_device *dev,
  * Called by the user via ioctl.
  *
  * Returns:
- * Zero on success, errno on failure.
+ * Zero on success, negative errno on failure.
  */
 int drm_mode_destroy_dumb_ioctl(struct drm_device *dev,
 				void *data, struct drm_file *file_priv)
