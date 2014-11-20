@@ -46,6 +46,7 @@ static void update_general_status(struct f2fs_sb_info *sbi)
 	si->valid_node_count = valid_node_count(sbi);
 	si->valid_inode_count = valid_inode_count(sbi);
 	si->inline_inode = sbi->inline_inode;
+	si->inline_dir = sbi->inline_dir;
 	si->utilization = utilization(sbi);
 
 	si->free_segs = free_segments(sbi);
@@ -118,6 +119,7 @@ static void update_mem_info(struct f2fs_sb_info *sbi)
 {
 	struct f2fs_stat_info *si = F2FS_STAT(sbi);
 	unsigned npages;
+	int i;
 
 	if (si->base_mem)
 		goto get_cache;
@@ -167,8 +169,9 @@ get_cache:
 	si->cache_mem += npages << PAGE_CACHE_SHIFT;
 	npages = META_MAPPING(sbi)->nrpages;
 	si->cache_mem += npages << PAGE_CACHE_SHIFT;
-	si->cache_mem += sbi->n_orphans * sizeof(struct ino_entry);
 	si->cache_mem += sbi->n_dirty_dirs * sizeof(struct dir_inode_entry);
+	for (i = 0; i <= UPDATE_INO; i++)
+		si->cache_mem += sbi->ino_num[i] * sizeof(struct ino_entry);
 }
 
 static int stat_show(struct seq_file *s, void *v)
@@ -200,6 +203,8 @@ static int stat_show(struct seq_file *s, void *v)
 			   si->valid_count - si->valid_node_count);
 		seq_printf(s, "  - Inline_data Inode: %u\n",
 			   si->inline_inode);
+		seq_printf(s, "  - Inline_dentry Inode: %u\n",
+			   si->inline_dir);
 		seq_printf(s, "\nMain area: %d segs, %d secs %d zones\n",
 			   si->main_area_segs, si->main_area_sections,
 			   si->main_area_zones);
