@@ -1,4 +1,12 @@
 next/fixes-non-critical
+	omap/fixes-not-urgent
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/fixes-not-urgent-part1
+	bcm/cygnus-maintainers
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-maintainers-v2
+	patch
+		MAINTAINERS: update email address and cleanup for exynos entry
+		MAINTAINERS: update brcmstb entries
+		MAINTAINERS: add entry for the GISB arbiter driver
 
 next/cleanup
 	cleanup/dts-subdirs
@@ -23,6 +31,12 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-du-for-v3.19
 	patch
 		ARM: at91: remove useless init_time for DT-only SoCs
+	renesas/cleanup-dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-cleanups-for-v3.19
+	renesas/koelsch-board-removal
+		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-koelsch-board-removal-for-v3.19
+	at91/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup2
 
 next/soc
 	rk/cpufreq
@@ -49,6 +63,20 @@ next/soc
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc3-for-v3.19
 	renesas/boards
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-boards-for-v3.19
+	pxa/soc
+		https://github.com/rjarzmik/linux tags/pxa-for-3.19
+	omap/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/clocks-and-pm
+	omap/prcm-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/prcm-cleanup
+	patch
+		ARM: debug: move StrongARM debug include to arch/arm/include/debug
+	bcm/cygnus-platform
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-platform-v2
+	bcm/cygnus-defconfig
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-defconfig-v2
+	mediatek/soc
+		https://github.com/mbgg/linux-mediatek tags/v3.19-next-soc
 
 next/boards
 
@@ -87,10 +115,34 @@ next/dt
 		git://github.com/hisilicon/linux-hisi tags/hix5hd2-dt-for-3.19
 	mvebu/dt
 		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.19
+	omap/dt
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/dt-part1
+	patch
+		ARM: bcm2835: Add device tree for Raspberry Pi model B+
+		dt-bindings: Document correct and deprecated vendor-prefix with device isl29028
+		dt-bindings: Document deprecated device vendor name to fix related warning
+		Staging: iio: light: Added correct vendor-prefix for device isl29028
+		arch: arm: boot: dts: Correct vendor-prefix for iio device isl29028 in compatible property
+	bcm/cygnus-dts
+		http://github.com/brcm/linux tags/arm-soc/for-3.19/cygnus-dts-v2
+	keystone/dts
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-dts
+	mediatek/dts
+		https://github.com/mbgg/linux-mediatek tags/v3.19-next-dts
 
 next/drivers
 	berlin/drivers
 		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-driver-3.19-1
+	omap/w1-and-l3-noc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/w1-and-l3-noc
+	keystone/drivers-soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-driver-soc
+	at91/drivers
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-drivers
+	drivers/arm-perf
+		git://git.kernel.org/pub/scm/linux/kernel/git/will/linux tags/arm-perf-3.19
+	at91/cleanup
+		Merge branch 'at91/cleanup' into next/drivers
 
 next/defconfig
 	renesas/defconfig
@@ -99,8 +151,23 @@ next/defconfig
 		git://github.com/hisilicon/linux-hisi tags/hix5hd2-config-for-3.19
 	mvebu/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.19
+	patch
+		ARM: multi_v7_defconfig: remove one level of menu from Kconfig
+		ARM: multi_v7_defconfig: Enable Broadcom Cygnus
+	keystone/soc
+		git://git.kernel.org/pub/scm/linux/kernel/git/ssantosh/linux-keystone tags/keystone-soc
+	patch
+		ARM: multi_v7_defconfig: Enable cgroups
 
 next/arm64
+
+next/omap-gpmc
+	omap/dt
+		Merge branch 'omap/dt' into next/omap-gpmc
+	omap/gpmc
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/gpmc-timings
+	omap/gpmc-cleanup
+		git://git.kernel.org/pub/scm/linux/kernel/git/tmlind/linux-omap tags/omap-for-v3.19/cleanup-part1
 
 next/late
 
