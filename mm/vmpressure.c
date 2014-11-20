@@ -174,12 +174,12 @@ static void vmpressure_work_fn(struct work_struct *work)
 	 * here. No need for any locks here since we don't care if
 	 * vmpr->reclaimed is in sync.
 	 */
-	if (!vmpr->scanned) {
+	scanned = vmpr->scanned;
+	if (!scanned) {
 		spin_unlock(&vmpr->sr_lock);
 		return;
 	}
 
-	scanned = vmpr->scanned;
 	reclaimed = vmpr->reclaimed;
 	vmpr->scanned = 0;
 	vmpr->reclaimed = 0;
