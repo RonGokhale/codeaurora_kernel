@@ -472,26 +472,19 @@ static unsigned int defragment_dma_buffer(struct comedi_device *dev,
 	return j;
 }
 
-static int move_block_from_dma(struct comedi_device *dev,
-			       struct comedi_subdevice *s,
-			       unsigned short *dma_buffer,
-			       unsigned int num_samples)
+static void move_block_from_dma(struct comedi_device *dev,
+				struct comedi_subdevice *s,
+				unsigned short *dma_buffer,
+				unsigned int num_samples)
 {
 	struct pci9118_private *devpriv = dev->private;
 	struct comedi_cmd *cmd = &s->async->cmd;
-	unsigned int num_bytes;
 
 	num_samples = defragment_dma_buffer(dev, s, dma_buffer, num_samples);
 	devpriv->ai_act_scan +=
 	    (s->async->cur_chan + num_samples) / cmd->scan_end_arg;
-	s->async->cur_chan += num_samples;
-	s->async->cur_chan %= cmd->scan_end_arg;
-	num_bytes =
-	    cfc_write_array_to_buffer(s, dma_buffer,
-				      num_samples * sizeof(short));
-	if (num_bytes < num_samples * sizeof(short))
-		return -1;
-	return 0;
+
+	comedi_buf_write_samples(s, dma_buffer, num_samples);
 }
 
 static void pci9118_exttrg_enable(struct comedi_device *dev, bool enable)
@@ -580,7 +573,6 @@ static int pci9118_ai_cancel(struct comedi_device *dev,
 
 	devpriv->ai_act_scan = 0;
 	devpriv->ai_act_dmapos = 0;
-	s->async->cur_chan = 0;
 	s->async->inttrig = NULL;
 	devpriv->ai_neverending = 0;
 	devpriv->dma_actbuf = 0;
@@ -594,8 +586,9 @@ static void pci9118_ai_munge(struct comedi_device *dev,
 			     unsigned int start_chan_index)
 {
 	struct pci9118_private *devpriv = dev->private;
-	unsigned int i, num_samples = num_bytes / sizeof(short);
 	unsigned short *array = data;
+	unsigned int num_samples = comedi_bytes_to_samples(s, num_bytes);
+	unsigned int i;
 
 	for (i = 0; i < num_samples; i++) {
 		if (devpriv->usedma)
@@ -617,11 +610,9 @@ static void interrupt_pci9118_ai_onesample(struct comedi_device *dev,
 
 	sampl = inl(dev->iobase + PCI9118_AI_FIFO_REG);
 
-	cfc_write_to_buffer(s, sampl);
-	s->async->cur_chan++;
-	if (s->async->cur_chan >= cmd->scan_end_arg) {
-							/* one scan done */
-		s->async->cur_chan %= cmd->scan_end_arg;
+	comedi_buf_write_samples(s, &sampl, 1);
+
+	if (s->async->cur_chan == 0) {
 		devpriv->ai_act_scan++;
 		if (!devpriv->ai_neverending) {
 			/* all data sampled? */
@@ -766,7 +757,7 @@ static irqreturn_t pci9118_interrupt(int irq, void *d)
 		interrupt_pci9118_ai_onesample(dev, s);
 
 interrupt_exit:
-	cfc_handle_events(dev, s);
+	comedi_handle_events(dev, s);
 	return IRQ_HANDLED;
 }
 
@@ -1125,7 +1116,6 @@ static int pci9118_ai_cmd(struct comedi_device *dev, struct comedi_subdevice *s)
 
 	devpriv->ai_act_scan = 0;
 	devpriv->ai_act_dmapos = 0;
-	s->async->cur_chan = 0;
 
 	if (devpriv->usedma) {
 		Compute_and_setup_dma(dev, s);
