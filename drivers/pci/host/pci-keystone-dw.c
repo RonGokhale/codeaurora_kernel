@@ -201,11 +201,11 @@ static int ks_dw_pcie_msi_map(struct irq_domain *domain, unsigned int irq,
 	return 0;
 }
 
-const struct irq_domain_ops ks_dw_pcie_msi_domain_ops = {
+static const struct irq_domain_ops ks_dw_pcie_msi_domain_ops = {
 	.map = ks_dw_pcie_msi_map,
 };
 
-int ks_dw_pcie_msi_host_init(struct pcie_port *pp, struct msi_chip *chip)
+int ks_dw_pcie_msi_host_init(struct pcie_port *pp, struct msi_controller *chip)
 {
 	struct keystone_pcie *ks_pcie = to_keystone_pcie(pp);
 	int i;
