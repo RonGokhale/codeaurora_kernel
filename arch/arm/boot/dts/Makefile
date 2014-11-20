@@ -54,12 +54,12 @@ dtb-$(CONFIG_ARCH_AT91)	+= at91-sama5d4ek.dtb
 dtb-$(CONFIG_ARCH_ATLAS6) += atlas6-evb.dtb
 dtb-$(CONFIG_ARCH_AXXIA) += axm5516-amarillo.dtb
 dtb-$(CONFIG_ARCH_BCM2835) += bcm2835-rpi-b.dtb
-dtb-$(CONFIG_ARCH_BCM_CYGNUS) += \
-	bcm911360_entphn.dtb \
-	bcm911360k.dtb \
-	bcm958300k.dtb
+dtb-$(CONFIG_ARCH_BCM2835) += bcm2835-rpi-b-plus.dtb
 dtb-$(CONFIG_ARCH_BCM_5301X) += bcm4708-netgear-r6250.dtb
 dtb-$(CONFIG_ARCH_BCM_63XX) += bcm963138dvt.dtb
+dtb-$(CONFIG_ARCH_BCM_CYGNUS) += bcm911360_entphn.dtb \
+	bcm911360k.dtb \
+	bcm958300k.dtb
 dtb-$(CONFIG_ARCH_BCM_MOBILE) += bcm28155-ap.dtb \
 	bcm21664-garnet.dtb
 dtb-$(CONFIG_ARCH_BERLIN) += \
@@ -309,7 +309,9 @@ dtb-$(CONFIG_ARCH_OMAP3) += am3517-craneboard.dtb \
 	omap3-ha.dtb \
 	omap3-ha-lcd.dtb \
 	omap3-igep0020.dtb \
+	omap3-igep0020-rev-f.dtb \
 	omap3-igep0030.dtb \
+	omap3-igep0030-rev-g.dtb \
 	omap3-ldp.dtb \
 	omap3-lilly-dbb056.dtb \
 	omap3-n900.dtb \
@@ -354,6 +356,7 @@ dtb-$(CONFIG_SOC_OMAP5) += omap5-cm-t54.dtb \
 	omap5-sbc-t54.dtb \
 	omap5-uevm.dtb
 dtb-$(CONFIG_SOC_DRA7XX) += dra7-evm.dtb \
+	am57xx-beagle-x15.dtb \
 	dra72-evm.dtb
 dtb-$(CONFIG_ARCH_ORION5X) += orion5x-lacie-d2-network.dtb \
 	orion5x-lacie-ethernet-disk-mini-v2.dtb \
@@ -522,7 +525,10 @@ dtb-$(CONFIG_MACH_DOVE) += dove-cm-a510.dtb \
 	dove-d2plug.dtb \
 	dove-d3plug.dtb \
 	dove-dove-db.dtb
-dtb-$(CONFIG_ARCH_MEDIATEK) += mt6589-aquaris5.dtb
+dtb-$(CONFIG_ARCH_MEDIATEK) += mt6589-aquaris5.dtb \
+	mt6592-evb.dtb \
+	mt8127-moose.dtb \
+	mt8135-evbp1.dtb
 
 endif
 
