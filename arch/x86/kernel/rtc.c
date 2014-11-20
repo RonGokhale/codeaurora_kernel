@@ -40,9 +40,10 @@ EXPORT_SYMBOL(rtc_lock);
  */
 int mach_set_rtc_mmss(const struct timespec *now)
 {
+	int retval = 0;
+#ifdef CONFIG_RTC_X86_CMOS_SYSTOHC
 	unsigned long nowtime = now->tv_sec;
 	struct rtc_time tm;
-	int retval = 0;
 
 	rtc_time_to_tm(nowtime, &tm);
 	if (!rtc_valid_tm(&tm)) {
@@ -56,6 +57,7 @@ int mach_set_rtc_mmss(const struct timespec *now)
 			__FUNCTION__, nowtime);
 		retval = -EINVAL;
 	}
+#endif
 	return retval;
 }
 
