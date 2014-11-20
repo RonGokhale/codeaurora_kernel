@@ -49,17 +49,11 @@ assert_device_not_suspended(struct drm_i915_private *dev_priv)
 
 static void __gen6_gt_wait_for_thread_c0(struct drm_i915_private *dev_priv)
 {
-	u32 gt_thread_status_mask;
-
-	if (IS_HASWELL(dev_priv->dev))
-		gt_thread_status_mask = GEN6_GT_THREAD_STATUS_CORE_MASK_HSW;
-	else
-		gt_thread_status_mask = GEN6_GT_THREAD_STATUS_CORE_MASK;
-
 	/* w/a for a sporadic read returning 0 by waiting for the GT
 	 * thread to wake up.
 	 */
-	if (wait_for_atomic_us((__raw_i915_read32(dev_priv, GEN6_GT_THREAD_STATUS_REG) & gt_thread_status_mask) == 0, 500))
+	if (wait_for_atomic_us((__raw_i915_read32(dev_priv, GEN6_GT_THREAD_STATUS_REG) &
+				GEN6_GT_THREAD_STATUS_CORE_MASK) == 0, 500))
 		DRM_ERROR("GT thread status wait timed out\n");
 }
 
@@ -120,8 +114,7 @@ static void __gen7_gt_force_wake_mt_get(struct drm_i915_private *dev_priv,
 		DRM_ERROR("Timed out waiting for forcewake to ack request.\n");
 
 	/* WaRsForcewakeWaitTC0:ivb,hsw */
-	if (INTEL_INFO(dev_priv->dev)->gen < 8)
-		__gen6_gt_wait_for_thread_c0(dev_priv);
+	__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
 static void gen6_gt_check_fifodbg(struct drm_i915_private *dev_priv)
@@ -229,10 +222,6 @@ static void __vlv_force_wake_get(struct drm_i915_private *dev_priv,
 					FORCEWAKE_ACK_TIMEOUT_MS))
 			DRM_ERROR("Timed out: waiting for media to ack.\n");
 	}
-
-	/* WaRsForcewakeWaitTC0:vlv */
-	if (!IS_CHERRYVIEW(dev_priv->dev))
-		__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
 static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
