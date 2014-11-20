@@ -94,6 +94,13 @@ ftrace_func_t ftrace_ops_get_func(struct ftrace_ops *ops);
  * ADDING  - The ops is in the process of being added.
  * REMOVING - The ops is in the process of being removed.
  * MODIFYING - The ops is in the process of changing its filter functions.
+ * ALLOC_TRAMP - A dynamic trampoline was allocated by the core code.
+ *            The arch specific code sets this flag when it allocated a
+ *            trampoline. This lets the arch know that it can update the
+ *            trampoline in case the callback function changes.
+ *            The ftrace_ops trampoline can be set by the ftrace users, and
+ *            in such cases the arch must not modify it. Only the arch ftrace
+ *            core code should set this flag.
  */
 enum {
 	FTRACE_OPS_FL_ENABLED			= 1 << 0,
@@ -108,6 +115,7 @@ enum {
 	FTRACE_OPS_FL_ADDING			= 1 << 9,
 	FTRACE_OPS_FL_REMOVING			= 1 << 10,
 	FTRACE_OPS_FL_MODIFYING			= 1 << 11,
+	FTRACE_OPS_FL_ALLOC_TRAMP		= 1 << 12,
 };
 
 #ifdef CONFIG_DYNAMIC_FTRACE
@@ -255,7 +263,9 @@ struct ftrace_func_command {
 int ftrace_arch_code_modify_prepare(void);
 int ftrace_arch_code_modify_post_process(void);
 
-void ftrace_bug(int err, unsigned long ip);
+struct dyn_ftrace;
+
+void ftrace_bug(int err, struct dyn_ftrace *rec);
 
 struct seq_file;
 
