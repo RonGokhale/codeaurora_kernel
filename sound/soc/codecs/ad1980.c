@@ -30,8 +30,6 @@
 #include <sound/initval.h>
 #include <sound/soc.h>
 
-#include "ad1980.h"
-
 /*
  * AD1980 register cache
  */
@@ -137,6 +135,7 @@ static const struct snd_soc_dapm_route ad1980_dapm_routes[] = {
 static unsigned int ac97_read(struct snd_soc_codec *codec,
 	unsigned int reg)
 {
+	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
 	u16 *cache = codec->reg_cache;
 
 	switch (reg) {
@@ -146,7 +145,7 @@ static unsigned int ac97_read(struct snd_soc_codec *codec,
 	case AC97_EXTENDED_STATUS:
 	case AC97_VENDOR_ID1:
 	case AC97_VENDOR_ID2:
-		return soc_ac97_ops->read(codec->ac97, reg);
+		return soc_ac97_ops->read(ac97, reg);
 	default:
 		reg = reg >> 1;
 
@@ -160,9 +159,10 @@ static unsigned int ac97_read(struct snd_soc_codec *codec,
 static int ac97_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int val)
 {
+	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
 	u16 *cache = codec->reg_cache;
 
-	soc_ac97_ops->write(codec->ac97, reg, val);
+	soc_ac97_ops->write(ac97, reg, val);
 	reg = reg >> 1;
 	if (reg < ARRAY_SIZE(ad1980_reg))
 		cache[reg] = val;
@@ -172,7 +172,6 @@ static int ac97_write(struct snd_soc_codec *codec, unsigned int reg,
 
 static struct snd_soc_dai_driver ad1980_dai = {
 	.name = "ad1980-hifi",
-	.ac97_control = 1,
 	.playback = {
 		.stream_name = "Playback",
 		.channels_min = 2,
@@ -189,16 +188,17 @@ static struct snd_soc_dai_driver ad1980_dai = {
 
 static int ad1980_reset(struct snd_soc_codec *codec, int try_warm)
 {
+	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
 	unsigned int retry_cnt = 0;
 
 	do {
 		if (try_warm && soc_ac97_ops->warm_reset) {
-			soc_ac97_ops->warm_reset(codec->ac97);
+			soc_ac97_ops->warm_reset(ac97);
 			if (ac97_read(codec, AC97_RESET) == 0x0090)
 				return 1;
 		}
 
-		soc_ac97_ops->reset(codec->ac97);
+		soc_ac97_ops->reset(ac97);
 		/*
 		 * Set bit 16slot in register 74h, then every slot will has only
 		 * 16 bits. This command is sent out in 20bit mode, in which
@@ -211,29 +211,30 @@ static int ad1980_reset(struct snd_soc_codec *codec, int try_warm)
 			return 0;
 	} while (retry_cnt++ < 10);
 
-	printk(KERN_ERR "AD1980 AC97 reset failed\n");
+	dev_err(codec->dev, "Failed to reset: AC97 link error\n");
+
 	return -EIO;
 }
 
 static int ad1980_soc_probe(struct snd_soc_codec *codec)
 {
+	struct snd_ac97 *ac97;
 	int ret;
 	u16 vendor_id2;
 	u16 ext_status;
 
-	printk(KERN_INFO "AD1980 SoC Audio Codec\n");
-
-	ret = snd_soc_new_ac97_codec(codec, soc_ac97_ops, 0);
-	if (ret < 0) {
-		printk(KERN_ERR "ad1980: failed to register AC97 codec\n");
+	ac97 = snd_soc_new_ac97_codec(codec);
+	if (IS_ERR(ac97)) {
+		ret = PTR_ERR(ac97);
+		dev_err(codec->dev, "Failed to register AC97 codec: %d\n", ret);
 		return ret;
 	}
 
+	snd_soc_codec_set_drvdata(codec, ac97);
+
 	ret = ad1980_reset(codec, 0);
-	if (ret < 0) {
-		printk(KERN_ERR "Failed to reset AD1980: AC97 link error\n");
+	if (ret < 0)
 		goto reset_err;
-	}
 
 	/* Read out vendor ID to make sure it is ad1980 */
 	if (ac97_read(codec, AC97_VENDOR_ID1) != 0x4144) {
@@ -248,9 +249,8 @@ static int ad1980_soc_probe(struct snd_soc_codec *codec)
 			ret = -ENODEV;
 			goto reset_err;
 		} else {
-			printk(KERN_WARNING "ad1980: "
-				"Found AD1981 - only 2/2 IN/OUT Channels "
-				"supported\n");
+			dev_warn(codec->dev,
+				"Found AD1981 - only 2/2 IN/OUT Channels supported\n");
 		}
 	}
 
@@ -265,19 +265,18 @@ static int ad1980_soc_probe(struct snd_soc_codec *codec)
 	ext_status = ac97_read(codec, AC97_EXTENDED_STATUS);
 	ac97_write(codec, AC97_EXTENDED_STATUS, ext_status&~0x3800);
 
-	snd_soc_add_codec_controls(codec, ad1980_snd_ac97_controls,
-				ARRAY_SIZE(ad1980_snd_ac97_controls));
-
 	return 0;
 
 reset_err:
-	snd_soc_free_ac97_codec(codec);
+	snd_soc_free_ac97_codec(ac97);
 	return ret;
 }
 
 static int ad1980_soc_remove(struct snd_soc_codec *codec)
 {
-	snd_soc_free_ac97_codec(codec);
+	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
+
+	snd_soc_free_ac97_codec(ac97);
 	return 0;
 }
 
@@ -291,6 +290,8 @@ static struct snd_soc_codec_driver soc_codec_dev_ad1980 = {
 	.write = ac97_write,
 	.read = ac97_read,
 
+	.controls = ad1980_snd_ac97_controls,
+	.num_controls = ARRAY_SIZE(ad1980_snd_ac97_controls),
 	.dapm_widgets = ad1980_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(ad1980_dapm_widgets),
 	.dapm_routes = ad1980_dapm_routes,
