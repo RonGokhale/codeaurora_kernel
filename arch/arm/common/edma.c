@@ -1810,6 +1810,7 @@ static int edma_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int edma_pm_resume(struct device *dev)
 {
 	int i, j;
@@ -1849,6 +1850,7 @@ static int edma_pm_resume(struct device *dev)
 
 	return 0;
 }
+#endif
 
 static const struct dev_pm_ops edma_pm_ops = {
 	SET_LATE_SYSTEM_SLEEP_PM_OPS(NULL, edma_pm_resume)
