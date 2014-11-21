@@ -43,7 +43,7 @@
 #include "sh7372.h"
 
 static struct map_desc sh7372_io_desc[] __initdata = {
-	/* create a 1:1 entity map for 0xe6xxxxxx
+	/* create a 1:1 identity mapping for 0xe6xxxxxx
 	 * used by CPGA, INTC and PFC.
 	 */
 	{
@@ -56,6 +56,7 @@ static struct map_desc sh7372_io_desc[] __initdata = {
 
 void __init sh7372_map_io(void)
 {
+	debug_ll_io_init();
 	iotable_init(sh7372_io_desc, ARRAY_SIZE(sh7372_io_desc));
 }
 
