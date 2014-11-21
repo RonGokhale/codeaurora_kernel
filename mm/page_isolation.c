@@ -68,7 +68,7 @@ out:
 
 	spin_unlock_irqrestore(&zone->lock, flags);
 	if (!ret)
-		drain_all_pages();
+		drain_all_pages(zone);
 	return ret;
 }
 
@@ -176,8 +176,11 @@ int start_isolate_page_range(unsigned long start_pfn, unsigned long end_pfn,
 undo:
 	for (pfn = start_pfn;
 	     pfn < undo_pfn;
-	     pfn += pageblock_nr_pages)
-		unset_migratetype_isolate(pfn_to_page(pfn), migratetype);
+	     pfn += pageblock_nr_pages) {
+		page = __first_valid_page(pfn, pageblock_nr_pages);
+		if (page)
+			unset_migratetype_isolate(page, migratetype);
+	}
 
 	return -EBUSY;
 }
@@ -223,19 +226,12 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 		page = pfn_to_page(pfn);
 		if (PageBuddy(page)) {
 			/*
-			 * If race between isolatation and allocation happens,
-			 * some free pages could be in MIGRATE_MOVABLE list
-			 * although pageblock's migratation type of the page
-			 * is MIGRATE_ISOLATE. Catch it and move the page into
-			 * MIGRATE_ISOLATE list.
+			 * Use a WARN_ON_ONCE to catch a potential undetected
+			 * race between isolation and pages freeing, even though
+			 * we try to avoid this issue.
 			 */
-			if (get_freepage_migratetype(page) != MIGRATE_ISOLATE) {
-				struct page *end_page;
-
-				end_page = page + (1 << page_order(page)) - 1;
-				move_freepages(page_zone(page), page, end_page,
-						MIGRATE_ISOLATE);
-			}
+			WARN_ON_ONCE(get_freepage_migratetype(page) !=
+					MIGRATE_ISOLATE);
 			pfn += 1 << page_order(page);
 		}
 		else if (page_count(page) == 0 &&
