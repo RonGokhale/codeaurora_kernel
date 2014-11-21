@@ -1176,7 +1176,8 @@ int drm_atomic_helper_update_plane(struct drm_plane *plane,
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc,
+							    plane->dev);
 retry:
 	plane_state = drm_atomic_get_plane_state(state, plane);
 	if (IS_ERR(plane_state)) {
@@ -1244,7 +1245,8 @@ int drm_atomic_helper_disable_plane(struct drm_plane *plane)
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(plane->crtc);
+	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(plane->crtc,
+							    plane->dev);
 retry:
 	plane_state = drm_atomic_get_plane_state(state, plane);
 	if (IS_ERR(plane_state)) {
@@ -1395,7 +1397,8 @@ int drm_atomic_helper_set_config(struct drm_mode_set *set)
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc,
+							    crtc->dev);
 retry:
 	crtc_state = drm_atomic_get_crtc_state(state, crtc);
 	if (IS_ERR(crtc_state)) {
@@ -1680,7 +1683,8 @@ int drm_atomic_helper_page_flip(struct drm_crtc *crtc,
 	if (!state)
 		return -ENOMEM;
 
-	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc);
+	state->acquire_ctx = drm_modeset_legacy_acquire_ctx(crtc,
+							    crtc->dev);
 retry:
 	crtc_state = drm_atomic_get_crtc_state(state, crtc);
 	if (IS_ERR(crtc_state)) {
