@@ -326,7 +326,7 @@ static int omap24xxcam_vbq_alloc_mmap_buffer(struct videobuf_buffer *vb)
 		dma->sglen++;
 		i++;
 
-		alloc_size = (PAGE_SIZE << order);
+		alloc_size = PAGE_SIZE << order;
 
 		/* clear pages before giving them to user space */
 		memset(page_address(page), 0, alloc_size);
@@ -1737,10 +1737,8 @@ static int omap24xxcam_probe(struct platform_device *pdev)
 	int irq;
 
 	cam = kzalloc(sizeof(*cam), GFP_KERNEL);
-	if (!cam) {
-		dev_err(&pdev->dev, "could not allocate memory\n");
+	if (!cam)
 		goto err;
-	}
 
 	platform_set_drvdata(pdev, cam);
 
