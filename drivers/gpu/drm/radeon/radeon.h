@@ -474,7 +474,7 @@ struct radeon_bo {
 	struct list_head		list;
 	/* Protected by tbo.reserved */
 	u32				initial_domain;
-	struct ttm_place		placements[3];
+	struct ttm_place		placements[4];
 	struct ttm_placement		placement;
 	struct ttm_buffer_object	tbo;
 	struct ttm_bo_kmap_obj		kmap;
@@ -701,6 +701,10 @@ struct radeon_doorbell {
 
 int radeon_doorbell_get(struct radeon_device *rdev, u32 *page);
 void radeon_doorbell_free(struct radeon_device *rdev, u32 doorbell);
+void radeon_doorbell_get_kfd_info(struct radeon_device *rdev,
+				  phys_addr_t *aperture_base,
+				  size_t *aperture_size,
+				  size_t *start_offset);
 
 /*
  * IRQS.
@@ -1623,6 +1627,11 @@ struct radeon_pm {
 	/* internal thermal controller on rv6xx+ */
 	enum radeon_int_thermal_type int_thermal_type;
 	struct device	        *int_hwmon_dev;
+	/* fan control parameters */
+	bool                    no_fan;
+	u8                      fan_pulses_per_revolution;
+	u8                      fan_min_rpm;
+	u8                      fan_max_rpm;
 	/* dpm */
 	bool                    dpm_enabled;
 	struct radeon_dpm       dpm;
@@ -2388,6 +2397,8 @@ struct radeon_device {
 	struct radeon_atcs		atcs;
 	/* srbm instance registers */
 	struct mutex			srbm_mutex;
+	/* GRBM index mutex. Protects concurrents access to GRBM index */
+	struct mutex			grbm_idx_mutex;
 	/* clock, powergating flags */
 	u32 cg_flags;
 	u32 pg_flags;
@@ -2399,6 +2410,10 @@ struct radeon_device {
 	/* tracking pinned memory */
 	u64 vram_pin_size;
 	u64 gart_pin_size;
+
+	/* amdkfd interface */
+	struct kfd_dev		*kfd;
+	struct radeon_sa_manager	kfd_bo;
 
 	struct mutex	mn_lock;
 	DECLARE_HASHTABLE(mn_hash, 7);
