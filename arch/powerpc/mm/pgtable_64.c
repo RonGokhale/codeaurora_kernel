@@ -33,9 +33,9 @@
 #include <linux/swap.h>
 #include <linux/stddef.h>
 #include <linux/vmalloc.h>
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 #include <linux/slab.h>
+#include <linux/hugetlb.h>
 
 #include <asm/pgalloc.h>
 #include <asm/page.h>
@@ -51,6 +51,7 @@
 #include <asm/cputable.h>
 #include <asm/sections.h>
 #include <asm/firmware.h>
+#include <asm/dma.h>
 
 #include "mmu_decl.h"
 
@@ -75,11 +76,7 @@ static __ref void *early_alloc_pgtable(unsigned long size)
 {
 	void *pt;
 
-	if (init_bootmem_done)
-		pt = __alloc_bootmem(size, size, __pa(MAX_DMA_ADDRESS));
-	else
-		pt = __va(memblock_alloc_base(size, size,
-					 __pa(MAX_DMA_ADDRESS)));
+	pt = __va(memblock_alloc_base(size, size, __pa(MAX_DMA_ADDRESS)));
 	memset(pt, 0, size);
 
 	return pt;
@@ -113,10 +110,6 @@ int map_kernel_page(unsigned long ea, unsigned long pa, int flags)
 							  __pgprot(flags)));
 	} else {
 #ifdef CONFIG_PPC_MMU_NOHASH
-		/* Warning ! This will blow up if bootmem is not initialized
-		 * which our ppc64 code is keen to do that, we'll need to
-		 * fix it and/or be more careful
-		 */
 		pgdp = pgd_offset_k(ea);
 #ifdef PUD_TABLE_SIZE
 		if (pgd_none(*pgdp)) {
@@ -352,16 +345,31 @@ EXPORT_SYMBOL(iounmap);
 EXPORT_SYMBOL(__iounmap);
 EXPORT_SYMBOL(__iounmap_at);
 
+#ifndef __PAGETABLE_PUD_FOLDED
+/* 4 level page table */
+struct page *pgd_page(pgd_t pgd)
+{
+	if (pgd_huge(pgd))
+		return pte_page(pgd_pte(pgd));
+	return virt_to_page(pgd_page_vaddr(pgd));
+}
+#endif
+
+struct page *pud_page(pud_t pud)
+{
+	if (pud_huge(pud))
+		return pte_page(pud_pte(pud));
+	return virt_to_page(pud_page_vaddr(pud));
+}
+
 /*
  * For hugepage we have pfn in the pmd, we use PTE_RPN_SHIFT bits for flags
  * For PTE page, we have a PTE_FRAG_SIZE (4K) aligned virtual address.
  */
 struct page *pmd_page(pmd_t pmd)
 {
-#ifdef CONFIG_TRANSPARENT_HUGEPAGE
-	if (pmd_trans_huge(pmd))
+	if (pmd_trans_huge(pmd) || pmd_huge(pmd))
 		return pfn_to_page(pmd_pfn(pmd));
-#endif
 	return virt_to_page(pmd_page_vaddr(pmd));
 }
 
