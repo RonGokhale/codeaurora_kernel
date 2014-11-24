@@ -1435,9 +1435,16 @@ static int cxusb_tt_ct2_4400_attach(struct dvb_usb_adapter *adap)
 	msleep(100);
 
 	/* attach frontend */
+	memset(&si2168_config, 0, sizeof(si2168_config));
 	si2168_config.i2c_adapter = &adapter;
 	si2168_config.fe = &adap->fe_adap[0].fe;
 	si2168_config.ts_mode = SI2168_TS_PARALLEL;
+
+	/* CT2-4400v2 TS gets corrupted without this */
+	if (le16_to_cpu(d->udev->descriptor.idProduct) ==
+		USB_PID_TECHNOTREND_TVSTICK_CT2_4400)
+		si2168_config.ts_mode |= 0x40;
+
 	memset(&info, 0, sizeof(struct i2c_board_info));
 	strlcpy(info.type, "si2168", I2C_NAME_SIZE);
 	info.addr = 0x64;
@@ -1478,7 +1485,7 @@ static int cxusb_tt_ct2_4400_attach(struct dvb_usb_adapter *adap)
 	st->i2c_client_tuner = client_tuner;
 
 	/* initialize CI */
-	if (d->udev->descriptor.idProduct ==
+	if (le16_to_cpu(d->udev->descriptor.idProduct) ==
 		USB_PID_TECHNOTREND_CONNECT_CT2_4650_CI) {
 
 		memcpy(o, "\xc0\x01", 2);

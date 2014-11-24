@@ -1047,7 +1047,7 @@ static void em28xx_unregister_dvb(struct em28xx_dvb *dvb)
 
 static int em28xx_dvb_init(struct em28xx *dev)
 {
-	int result = 0, mfe_shared = 0;
+	int result = 0;
 	struct em28xx_dvb *dvb;
 
 	if (dev->is_audio_only) {
@@ -1553,6 +1553,7 @@ static int em28xx_dvb_init(struct em28xx *dev)
 			struct si2157_config si2157_config;
 
 			/* attach demod */
+			memset(&si2168_config, 0, sizeof(si2168_config));
 			si2168_config.i2c_adapter = &adapter;
 			si2168_config.fe = &dvb->fe[0];
 			si2168_config.ts_mode = SI2168_TS_PARALLEL;
@@ -1623,9 +1624,6 @@ static int em28xx_dvb_init(struct em28xx *dev)
 
 	if (result < 0)
 		goto out_free;
-
-	/* MFE lock */
-	dvb->adapter.mfe_shared = mfe_shared;
 
 	em28xx_info("DVB extension successfully initialized\n");
 
