@@ -28,9 +28,11 @@ ENTRY(function_hook)
 END(function_hook)
 
 /* skip is set if stack has been adjusted */
-.macro ftrace_caller_setup skip=0
+.macro ftrace_caller_setup trace_label skip=0
 	MCOUNT_SAVE_FRAME \skip
 
+	/* Save this location */
+GLOBAL(\trace_label)
 	/* Load the ftrace_ops into the 3rd parameter */
 	movq function_trace_op(%rip), %rdx
 
@@ -45,16 +47,60 @@ END(function_hook)
 #endif
 .endm
 
+#ifdef CONFIG_FRAME_POINTER
+/*
+ * Stack traces will stop at the ftrace trampoline if the frame pointer
+ * is not set up properly. If fentry is used, we need to save a frame
+ * pointer for the parent as well as the function traced, because the
+ * fentry is called before the stack frame is set up, where as mcount
+ * is called afterward.
+ */
+.macro create_frame parent rip
+#ifdef CC_USING_FENTRY
+	pushq \parent
+	pushq %rbp
+	movq %rsp, %rbp
+#endif
+	pushq \rip
+	pushq %rbp
+	movq %rsp, %rbp
+.endm
+
+.macro restore_frame
+#ifdef CC_USING_FENTRY
+	addq $16, %rsp
+#endif
+	popq %rbp
+	addq $8, %rsp
+.endm
+#else
+.macro create_frame parent rip
+.endm
+.macro restore_frame
+.endm
+#endif /* CONFIG_FRAME_POINTER */
+
 ENTRY(ftrace_caller)
-	ftrace_caller_setup
+	ftrace_caller_setup ftrace_caller_op_ptr
 	/* regs go into 4th parameter (but make it NULL) */
 	movq $0, %rcx
+
+	create_frame %rsi, %rdi
 
 GLOBAL(ftrace_call)
 	call ftrace_stub
 
+	restore_frame
+
 	MCOUNT_RESTORE_FRAME
-ftrace_return:
+
+	/*
+	 * The copied trampoline must call ftrace_return as it
+	 * still may need to call the function graph tracer.
+	 */
+GLOBAL(ftrace_caller_end)
+
+GLOBAL(ftrace_return)
 
 #ifdef CONFIG_FUNCTION_GRAPH_TRACER
 GLOBAL(ftrace_graph_call)
@@ -70,7 +116,7 @@ ENTRY(ftrace_regs_caller)
 	pushfq
 
 	/* skip=8 to skip flags saved in SS */
-	ftrace_caller_setup 8
+	ftrace_caller_setup ftrace_regs_caller_op_ptr 8
 
 	/* Save the rest of pt_regs */
 	movq %r15, R15(%rsp)
@@ -96,8 +142,12 @@ ENTRY(ftrace_regs_caller)
 	/* regs go into 4th parameter */
 	leaq (%rsp), %rcx
 
+	create_frame %rsi, %rdi
+
 GLOBAL(ftrace_regs_call)
 	call ftrace_stub
+
+	restore_frame
 
 	/* Copy flags back to SS, to restore them */
 	movq EFLAGS(%rsp), %rax
@@ -121,6 +171,14 @@ GLOBAL(ftrace_regs_call)
 
 	/* Restore flags */
 	popfq
+
+	/*
+	 * As this jmp to ftrace_return can be a short jump
+	 * it must not be copied into the trampoline.
+	 * The trampoline will add the code to jump
+	 * to the return.
+	 */
+GLOBAL(ftrace_regs_caller_end)
 
 	jmp ftrace_return
 
