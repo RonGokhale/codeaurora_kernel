@@ -1415,10 +1415,12 @@ i915_gem_object_wait_rendering__nonblocking(struct drm_i915_gem_object *obj,
 		return ret;
 
 	reset_counter = atomic_read(&dev_priv->gpu_error.reset_counter);
+	i915_gem_request_reference(req);
 	mutex_unlock(&dev->struct_mutex);
 	ret = __i915_wait_seqno(ring, seqno, reset_counter, true, NULL,
 				file_priv);
 	mutex_lock(&dev->struct_mutex);
+	i915_gem_request_unreference(req);
 	if (ret)
 		return ret;
 
@@ -2902,6 +2904,7 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_gem_wait *args = data;
 	struct drm_i915_gem_object *obj;
+	struct drm_i915_gem_request *req;
 	struct intel_engine_cs *ring = NULL;
 	unsigned reset_counter;
 	u32 seqno = 0;
@@ -2928,7 +2931,8 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 	if (!obj->active || !obj->last_read_req)
 		goto out;
 
-	seqno = i915_gem_request_get_seqno(obj->last_read_req);
+	req = obj->last_read_req;
+	seqno = i915_gem_request_get_seqno(req);
 	WARN_ON(seqno == 0);
 	ring = obj->ring;
 
@@ -2942,10 +2946,15 @@ i915_gem_wait_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 
 	drm_gem_object_unreference(&obj->base);
 	reset_counter = atomic_read(&dev_priv->gpu_error.reset_counter);
+	i915_gem_request_reference(req);
 	mutex_unlock(&dev->struct_mutex);
 
-	return __i915_wait_seqno(ring, seqno, reset_counter, true,
-				 &args->timeout_ns, file->driver_priv);
+	ret = __i915_wait_seqno(ring, seqno, reset_counter, true, &args->timeout_ns,
+			   file->driver_priv);
+	mutex_lock(&dev->struct_mutex);
+	i915_gem_request_unreference(req);
+	mutex_unlock(&dev->struct_mutex);
+	return ret;
 
 out:
 	drm_gem_object_unreference(&obj->base);
@@ -4100,6 +4109,8 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 		target = request;
 	}
 	reset_counter = atomic_read(&dev_priv->gpu_error.reset_counter);
+	if (target)
+		i915_gem_request_reference(target);
 	spin_unlock(&file_priv->mm.lock);
 
 	if (target == NULL)
@@ -4110,6 +4121,10 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 				reset_counter, true, NULL, NULL);
 	if (ret == 0)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, 0);
+
+	mutex_lock(&dev->struct_mutex);
+	i915_gem_request_unreference(target);
+	mutex_unlock(&dev->struct_mutex);
 
 	return ret;
 }
