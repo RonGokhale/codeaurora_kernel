@@ -283,12 +283,10 @@ static irqreturn_t enic_isr_legacy(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 
-	if (ENIC_TEST_INTR(pba, io_intr)) {
-		if (napi_schedule_prep(&enic->napi[0]))
-			__napi_schedule(&enic->napi[0]);
-	} else {
+	if (ENIC_TEST_INTR(pba, io_intr))
+		napi_schedule_irqoff(&enic->napi[0]);
+	else
 		vnic_intr_unmask(&enic->intr[io_intr]);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -313,7 +311,7 @@ static irqreturn_t enic_isr_msi(int irq, void *data)
 	 * writes).
 	 */
 
-	napi_schedule(&enic->napi[0]);
+	napi_schedule_irqoff(&enic->napi[0]);
 
 	return IRQ_HANDLED;
 }
@@ -322,7 +320,7 @@ static irqreturn_t enic_isr_msix(int irq, void *data)
 {
 	struct napi_struct *napi = data;
 
-	napi_schedule(napi);
+	napi_schedule_irqoff(napi);
 
 	return IRQ_HANDLED;
 }
@@ -531,8 +529,8 @@ static netdev_tx_t enic_hard_start_xmit(struct sk_buff *skb,
 {
 	struct enic *enic = netdev_priv(netdev);
 	struct vnic_wq *wq;
-	unsigned long flags;
 	unsigned int txq_map;
+	struct netdev_queue *txq;
 
 	if (skb->len <= 0) {
 		dev_kfree_skb_any(skb);
@@ -541,6 +539,7 @@ static netdev_tx_t enic_hard_start_xmit(struct sk_buff *skb,
 
 	txq_map = skb_get_queue_mapping(skb) % enic->wq_count;
 	wq = &enic->wq[txq_map];
+	txq = netdev_get_tx_queue(netdev, txq_map);
 
 	/* Non-TSO sends must fit within ENIC_NON_TSO_MAX_DESC descs,
 	 * which is very likely.  In the off chance it's going to take
@@ -554,23 +553,25 @@ static netdev_tx_t enic_hard_start_xmit(struct sk_buff *skb,
 		return NETDEV_TX_OK;
 	}
 
-	spin_lock_irqsave(&enic->wq_lock[txq_map], flags);
+	spin_lock(&enic->wq_lock[txq_map]);
 
 	if (vnic_wq_desc_avail(wq) <
 	    skb_shinfo(skb)->nr_frags + ENIC_DESC_MAX_SPLITS) {
-		netif_tx_stop_queue(netdev_get_tx_queue(netdev, txq_map));
+		netif_tx_stop_queue(txq);
 		/* This is a hard error, log it */
 		netdev_err(netdev, "BUG! Tx ring full when queue awake!\n");
-		spin_unlock_irqrestore(&enic->wq_lock[txq_map], flags);
+		spin_unlock(&enic->wq_lock[txq_map]);
 		return NETDEV_TX_BUSY;
 	}
 
 	enic_queue_wq_skb(enic, wq, skb);
 
 	if (vnic_wq_desc_avail(wq) < MAX_SKB_FRAGS + ENIC_DESC_MAX_SPLITS)
-		netif_tx_stop_queue(netdev_get_tx_queue(netdev, txq_map));
+		netif_tx_stop_queue(txq);
+	if (!skb->xmit_more || netif_xmit_stopped(txq))
+		vnic_wq_doorbell(wq);
 
-	spin_unlock_irqrestore(&enic->wq_lock[txq_map], flags);
+	spin_unlock(&enic->wq_lock[txq_map]);
 
 	return NETDEV_TX_OK;
 }
@@ -1312,9 +1313,10 @@ static int enic_poll_msix_wq(struct napi_struct *napi, int budget)
 	if (!wq_work_done) {
 		napi_complete(napi);
 		vnic_intr_unmask(&enic->intr[intr]);
+		return 0;
 	}
 
-	return 0;
+	return budget;
 }
 
 static int enic_poll_msix_rq(struct napi_struct *napi, int budget)
