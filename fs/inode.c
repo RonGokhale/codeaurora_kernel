@@ -1555,20 +1555,20 @@ static int update_time(struct inode *inode, struct timespec *time, int flags)
 	unsigned short days_since_boot;
 	int ret;
 
-	if (inode->i_op->update_time) {
-		ret = inode->i_op->update_time(inode, time, flags);
+	if (inode->i_op->is_readonly) {
+		ret = inode->i_op->is_readonly(inode);
 		if (ret)
 			return ret;
-	} else {
-		if (flags & S_ATIME)
-			inode->i_atime = *time;
-		if (flags & S_VERSION)
-			inode_inc_iversion(inode);
-		if (flags & S_CTIME)
-			inode->i_ctime = *time;
-		if (flags & S_MTIME)
-		inode->i_mtime = *time;
 	}
+	if (flags & S_ATIME)
+		inode->i_atime = *time;
+	if (flags & S_VERSION)
+		inode_inc_iversion(inode);
+	if (flags & S_CTIME)
+		inode->i_ctime = *time;
+	if (flags & S_MTIME)
+		inode->i_mtime = *time;
+
 	/*
 	 * If i_ts_dirty_day is zero, then either we have not deferred
 	 * timestamp updates, or the system has been up for less than
