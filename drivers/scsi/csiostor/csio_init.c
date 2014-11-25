@@ -128,10 +128,10 @@ static int csio_setup_debugfs(struct csio_hw *hw)
 	if (IS_ERR_OR_NULL(hw->debugfs_root))
 		return -1;
 
-	i = csio_rd_reg32(hw, MA_TARGET_MEM_ENABLE);
-	if (i & EDRAM0_ENABLE)
+	i = csio_rd_reg32(hw, MA_TARGET_MEM_ENABLE_A);
+	if (i & EDRAM0_ENABLE_F)
 		csio_add_debugfs_mem(hw, "edc0", MEM_EDC0, 5);
-	if (i & EDRAM1_ENABLE)
+	if (i & EDRAM1_ENABLE_F)
 		csio_add_debugfs_mem(hw, "edc1", MEM_EDC1, 5);
 
 	hw->chip_ops->chip_dfs_create_ext_mem(hw);
@@ -974,10 +974,10 @@ static int csio_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 
 	sprintf(hw->fwrev_str, "%u.%u.%u.%u\n",
-		    FW_HDR_FW_VER_MAJOR_GET(hw->fwrev),
-		    FW_HDR_FW_VER_MINOR_GET(hw->fwrev),
-		    FW_HDR_FW_VER_MICRO_GET(hw->fwrev),
-		    FW_HDR_FW_VER_BUILD_GET(hw->fwrev));
+		    FW_HDR_FW_VER_MAJOR_G(hw->fwrev),
+		    FW_HDR_FW_VER_MINOR_G(hw->fwrev),
+		    FW_HDR_FW_VER_MICRO_G(hw->fwrev),
+		    FW_HDR_FW_VER_BUILD_G(hw->fwrev));
 
 	for (i = 0; i < hw->num_pports; i++) {
 		ln = csio_shost_init(hw, &pdev->dev, true, NULL);
