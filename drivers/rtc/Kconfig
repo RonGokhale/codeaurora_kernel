@@ -5,6 +5,21 @@
 config RTC_LIB
 	bool
 
+config RTC_X86_CMOS_SYSTOHC
+	bool "Enable writing time to hwclock"
+	depends on GENERIC_CMOS_UPDATE
+	default y
+	select RTC_LIB
+	help
+	  If you say yes here, and you synchronize your system clock with NTP,
+	  the kernel will periodically write the NTP-synchronized system clock
+	  to the RTC in CMOS.
+
+	  This option enables special-case support for the PC RTC in CMOS. You
+	  can instead enable CONFIG_RTC_SYSTOHC for a generic solution that
+	  works with any RTC, and enable CONFIG_RTC_DRV_CMOS for the rtc-cmos
+	  driver.
+
 menuconfig RTC_CLASS
 	bool "Real Time Clock"
 	default n
