@@ -30,15 +30,17 @@ static struct device_node *nodes[NO_OF_NODES];
 static int last_node_index;
 static bool selftest_live_tree;
 
-#define selftest(result, fmt, ...) { \
-	if (!(result)) { \
+#define selftest(result, fmt, ...) ({ \
+	bool failed = !(result); \
+	if (failed) { \
 		selftest_results.failed++; \
 		pr_err("FAIL %s():%i " fmt, __func__, __LINE__, ##__VA_ARGS__); \
 	} else { \
 		selftest_results.passed++; \
 		pr_debug("pass %s():%i\n", __func__, __LINE__); \
 	} \
-}
+	failed; \
+})
 
 static void __init of_selftest_find_node_by_name(void)
 {
@@ -148,21 +150,13 @@ static void __init of_selftest_dynamic(void)
 
 static int __init of_selftest_check_node_linkage(struct device_node *np)
 {
-	struct device_node *child, *allnext_index = np;
+	struct device_node *child;
 	int count = 0, rc;
 
 	for_each_child_of_node(np, child) {
 		if (child->parent != np) {
 			pr_err("Child node %s links to wrong parent %s\n",
 				 child->name, np->name);
-			return -EINVAL;
-		}
-
-		while (allnext_index && allnext_index != child)
-			allnext_index = allnext_index->allnext;
-		if (allnext_index != child) {
-			pr_err("Node %s is ordered differently in sibling and allnode lists\n",
-				 child->name);
 			return -EINVAL;
 		}
 
@@ -180,12 +174,12 @@ static void __init of_selftest_check_tree_linkage(void)
 	struct device_node *np;
 	int allnode_count = 0, child_count;
 
-	if (!of_allnodes)
+	if (!of_root)
 		return;
 
 	for_each_of_allnodes(np)
 		allnode_count++;
-	child_count = of_selftest_check_node_linkage(of_allnodes);
+	child_count = of_selftest_check_node_linkage(of_root);
 
 	selftest(child_count > 0, "Device node data structure is corrupted\n");
 	selftest(child_count == allnode_count, "allnodes list size (%i) doesn't match"
@@ -702,10 +696,13 @@ static void __init of_selftest_match_node(void)
 	}
 }
 
+struct device test_bus = {
+	.init_name = "unittest-bus",
+};
 static void __init of_selftest_platform_populate(void)
 {
-	int irq;
-	struct device_node *np, *child;
+	int irq, rc;
+	struct device_node *np, *child, *grandchild;
 	struct platform_device *pdev;
 	struct of_device_id match[] = {
 		{ .compatible = "test-device", },
@@ -730,20 +727,32 @@ static void __init of_selftest_platform_populate(void)
 	irq = platform_get_irq(pdev, 0);
 	selftest(irq < 0 && irq != -EPROBE_DEFER, "device parsing error failed - %d\n", irq);
 
-	np = of_find_node_by_path("/testcase-data/platform-tests");
-	if (!np) {
-		pr_err("No testcase data in device tree\n");
+	if (selftest(np = of_find_node_by_path("/testcase-data/platform-tests"),
+		     "No testcase data in device tree\n"));
 		return;
-	}
+
+	if (selftest(!(rc = device_register(&test_bus)),
+		     "testbus registration failed; rc=%i\n", rc));
+		return;
 
 	for_each_child_of_node(np, child) {
-		struct device_node *grandchild;
-		of_platform_populate(child, match, NULL, NULL);
+		of_platform_populate(child, match, NULL, &test_bus);
 		for_each_child_of_node(child, grandchild)
 			selftest(of_find_device_by_node(grandchild),
 				 "Could not create device for node '%s'\n",
 				 grandchild->name);
 	}
+
+	of_platform_depopulate(&test_bus);
+	for_each_child_of_node(np, child) {
+		for_each_child_of_node(child, grandchild)
+			selftest(!of_find_device_by_node(grandchild),
+				 "device didn't get destroyed '%s'\n",
+				 grandchild->name);
+	}
+
+	device_unregister(&test_bus);
+	of_node_put(np);
 }
 
 /**
@@ -775,33 +784,29 @@ static void update_node_properties(struct device_node *np,
  */
 static int attach_node_and_children(struct device_node *np)
 {
-	struct device_node *next, *root = np, *dup;
+	struct device_node *next, *dup, *child;
 
-	/* skip root node */
-	np = np->child;
-	/* storing a copy in temporary node */
-	dup = np;
+	dup = of_find_node_by_path(np->full_name);
+	if (dup) {
+		update_node_properties(np, dup);
+		return 0;
+	}
 
-	while (dup) {
+	/* Children of the root need to be remembered for removal */
+	if (np->parent == of_root) {
 		if (WARN_ON(last_node_index >= NO_OF_NODES))
 			return -EINVAL;
-		nodes[last_node_index++] = dup;
-		dup = dup->sibling;
+		nodes[last_node_index++] = np;
 	}
-	dup = NULL;
 
-	while (np) {
-		next = np->allnext;
-		dup = of_find_node_by_path(np->full_name);
-		if (dup)
-			update_node_properties(np, dup);
-		else {
-			np->child = NULL;
-			if (np->parent == root)
-				np->parent = of_allnodes;
-			of_attach_node(np);
-		}
-		np = next;
+	child = np->child;
+	np->child = NULL;
+	np->sibling = NULL;
+	of_attach_node(np);
+	while (child) {
+		next = child->sibling;
+		attach_node_and_children(child);
+		child = next;
 	}
 
 	return 0;
@@ -846,10 +851,10 @@ static int __init selftest_data_add(void)
 		return -EINVAL;
 	}
 
-	if (!of_allnodes) {
+	if (!of_root) {
 		/* enabling flag for removing nodes */
 		selftest_live_tree = true;
-		of_allnodes = selftest_data_node;
+		of_root = selftest_data_node;
 
 		for_each_of_allnodes(np)
 			__of_attach_node_sysfs(np);
@@ -859,7 +864,14 @@ static int __init selftest_data_add(void)
 	}
 
 	/* attach the sub-tree to live tree */
-	return attach_node_and_children(selftest_data_node);
+	np = selftest_data_node->child;
+	while (np) {
+		struct device_node *next = np->sibling;
+		np->parent = of_root;
+		attach_node_and_children(np);
+		np = next;
+	}
+	return 0;
 }
 
 /**
@@ -889,10 +901,10 @@ static void selftest_data_remove(void)
 		of_node_put(of_chosen);
 		of_aliases = NULL;
 		of_chosen = NULL;
-		for_each_child_of_node(of_allnodes, np)
+		for_each_child_of_node(of_root, np)
 			detach_node_and_children(np);
-		__of_detach_node_sysfs(of_allnodes);
-		of_allnodes = NULL;
+		__of_detach_node_sysfs(of_root);
+		of_root = NULL;
 		return;
 	}
 
