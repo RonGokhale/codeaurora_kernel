@@ -1511,6 +1511,8 @@ static int relatime_need_update(struct vfsmount *mnt, struct inode *inode,
  */
 static int update_time(struct inode *inode, struct timespec *time, int flags)
 {
+	struct timespec uptime;
+	unsigned short days_since_boot;
 	int ret;
 
 	if (inode->i_op->update_time) {
@@ -1525,17 +1527,33 @@ static int update_time(struct inode *inode, struct timespec *time, int flags)
 		if (flags & S_CTIME)
 			inode->i_ctime = *time;
 		if (flags & S_MTIME)
-			inode->i_mtime = *time;
+		inode->i_mtime = *time;
 	}
+	/*
+	 * If i_ts_dirty_day is zero, then either we have not deferred
+	 * timestamp updates, or the system has been up for less than
+	 * a day (so days_since_boot is zero), so we defer timestamp
+	 * updates in that case and set the I_DIRTY_TIME flag.  If a
+	 * day or more has passed, then i_ts_dirty_day will be
+	 * different from days_since_boot, and then we should update
+	 * the on-disk inode and then we can clear i_ts_dirty_day.
+	 */
 	if ((inode->i_sb->s_flags & MS_LAZYTIME) &&
 	    !(flags & S_VERSION)) {
 		if (inode->i_state & I_DIRTY_TIME)
 			return 0;
-		spin_lock(&inode->i_lock);
-		inode->i_state |= I_DIRTY_TIME;
-		spin_unlock(&inode->i_lock);
-		return 0;
+		get_monotonic_boottime(&uptime);
+		days_since_boot = div_u64(uptime.tv_sec, 86400);
+		if (!inode->i_ts_dirty_day ||
+		    inode->i_ts_dirty_day == days_since_boot) {
+			spin_lock(&inode->i_lock);
+			inode->i_state |= I_DIRTY_TIME;
+			spin_unlock(&inode->i_lock);
+			inode->i_ts_dirty_day = days_since_boot;
+			return 0;
+		}
 	}
+	inode->i_ts_dirty_day = 0;
 	if (inode->i_op->write_time)
 		return inode->i_op->write_time(inode);
 	mark_inode_dirty_sync(inode);
