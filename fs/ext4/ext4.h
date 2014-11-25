@@ -1190,6 +1190,7 @@ struct ext4_sb_info {
 	struct buffer_head * s_sbh;	/* Buffer containing the super block */
 	struct ext4_super_block *s_es;	/* Pointer to the super block in the buffer */
 	struct buffer_head **s_group_desc;
+	seqcount_t s_group_desc_seq;	/* protects s_group_desc updates */
 	unsigned int s_mount_opt;
 	unsigned int s_mount_opt2;
 	unsigned int s_mount_flags;
