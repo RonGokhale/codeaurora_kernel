@@ -27,6 +27,7 @@
 #include <linux/backing-dev.h>
 #include <linux/tracepoint.h>
 #include <linux/device.h>
+#include <trace/events/fs.h>
 #include "internal.h"
 
 /*
@@ -1304,8 +1305,10 @@ static void flush_sb_dirty_time(struct super_block *sb)
 		iput(old_inode);
 		old_inode = inode;
 
-		if (dirty_time)
+		if (dirty_time) {
+			trace_fs_lazytime_flush(inode);
 			mark_inode_dirty(inode);
+		}
 		cond_resched();
 		spin_lock(&inode_sb_list_lock);
 	}
