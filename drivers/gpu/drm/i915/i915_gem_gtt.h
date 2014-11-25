@@ -146,11 +146,10 @@ struct i915_vma {
 
 	/**
 	 * How many users have pinned this object in GTT space. The following
-	 * users can each hold at most one reference: pwrite/pread, pin_ioctl
-	 * (via user_pin_count), execbuffer (objects are not allowed multiple
-	 * times for the same batchbuffer), and the framebuffer code. When
-	 * switching/pageflipping, the framebuffer code has at most two buffers
-	 * pinned per crtc.
+	 * users can each hold at most one reference: pwrite/pread, execbuffer
+	 * (objects are not allowed multiple times for the same batchbuffer),
+	 * and the framebuffer code. When switching/pageflipping, the
+	 * framebuffer code has at most two buffers pinned per crtc.
 	 *
 	 * In the worst case this is 1 + 1 + 1 + 2*2 = 7. That would fit into 3
 	 * bits with absolutely no headroom. So use 4 bits. */
@@ -274,8 +273,6 @@ struct i915_hw_ppgtt {
 
 int i915_gem_gtt_init(struct drm_device *dev);
 void i915_gem_init_global_gtt(struct drm_device *dev);
-int i915_gem_setup_global_gtt(struct drm_device *dev, unsigned long start,
-			      unsigned long mappable_end, unsigned long end);
 void i915_global_gtt_cleanup(struct drm_device *dev);
 
 
