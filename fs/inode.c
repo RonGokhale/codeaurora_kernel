@@ -1296,6 +1296,42 @@ struct inode *ilookup(struct super_block *sb, unsigned long ino)
 }
 EXPORT_SYMBOL(ilookup);
 
+/**
+ * find_active_inode_nowait - find an active inode in the inode cache
+ * @sb:		super block of file system to search
+ * @ino:	inode number to search for
+ *
+ * Search for an active inode @ino in the inode cache, and if the
+ * inode is in the cache, the inode is returned with an incremented
+ * reference count.  If the inode is being freed or is newly
+ * initialized, return nothing instead of trying to wait for the inode
+ * initialization or destruction to be complete.
+ */
+struct inode *find_active_inode_nowait(struct super_block *sb,
+				       unsigned long ino)
+{
+	struct hlist_head *head = inode_hashtable + hash(sb, ino);
+	struct inode *inode, *ret_inode = NULL;
+
+	spin_lock(&inode_hash_lock);
+	hlist_for_each_entry(inode, head, i_hash) {
+		if ((inode->i_ino != ino) ||
+		    (inode->i_sb != sb))
+			continue;
+		spin_lock(&inode->i_lock);
+		if ((inode->i_state & (I_FREEING | I_WILL_FREE | I_NEW)) == 0) {
+			__iget(inode);
+			ret_inode = inode;
+		}
+		spin_unlock(&inode->i_lock);
+		goto out;
+	}
+out:
+	spin_unlock(&inode_hash_lock);
+	return ret_inode;
+}
+EXPORT_SYMBOL(find_active_inode_nowait);
+
 int insert_inode_locked(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
