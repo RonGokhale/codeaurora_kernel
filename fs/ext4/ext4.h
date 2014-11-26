@@ -1741,18 +1741,22 @@ static inline u32 ext4_chksum(struct ext4_sb_info *sbi, u32 crc,
 		struct shash_desc shash;
 		char ctx[4];
 	} desc;
+	__le32 out_crc;
 	int err;
 
 	BUG_ON(crypto_shash_descsize(sbi->s_chksum_driver)!=sizeof(desc.ctx));
 
 	desc.shash.tfm = sbi->s_chksum_driver;
 	desc.shash.flags = 0;
-	*(u32 *)desc.ctx = crc;
+	out_crc = cpu_to_le32(crc);
+	crypto_shash_setkey(desc.shash.tfm, (u8 *)&out_crc, sizeof(out_crc));
+	crypto_shash_init(&desc.shash);
 
 	err = crypto_shash_update(&desc.shash, address, length);
 	BUG_ON(err);
 
-	return *(u32 *)desc.ctx;
+	crypto_shash_final(&desc.shash, (u8 *)&out_crc);
+	return le32_to_cpu(~out_crc);
 }
 
 #ifdef __KERNEL__
