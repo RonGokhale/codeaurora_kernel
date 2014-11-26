@@ -20,6 +20,9 @@
 #include <linux/list_lru.h>
 #include "internal.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/fs.h>
+
 /*
  * Inode locking rules:
  *
@@ -1443,6 +1446,7 @@ retry:
 				inode->i_op->write_time(inode);
 			else if (inode->i_sb->s_op->write_inode)
 				mark_inode_dirty_sync(inode);
+			trace_fs_lazytime_iput(inode);
 			goto retry;
 		}
 		iput_final(inode);
@@ -1561,6 +1565,7 @@ static int update_time(struct inode *inode, struct timespec *time, int flags)
 		inode->i_ts_dirty_day = days_since_boot;
 		spin_unlock(&inode->i_lock);
 		inode_requeue_dirtytime(inode);
+		trace_fs_lazytime_defer(inode);
 		return 0;
 	}
 force_dirty:
