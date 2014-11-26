@@ -2411,7 +2411,7 @@ kiblnd_hdev_setup_mrs(kib_hca_dev_t *hdev)
 		goto out;
 	}
 
-	mr_size = (1ULL << hdev->ibh_mr_shift);
+	mr_size = 1ULL << hdev->ibh_mr_shift;
 	mm_size = (unsigned long)high_memory - PAGE_OFFSET;
 
 	hdev->ibh_nmrs = (int)((mm_size + mr_size - 1) >> hdev->ibh_mr_shift);
@@ -3081,7 +3081,7 @@ kiblnd_startup (lnet_ni_t *ni)
 	LIBCFS_ALLOC(net, sizeof(*net));
 	ni->ni_data = net;
 	if (net == NULL)
-		goto failed;
+		goto net_failed;
 
 	do_gettimeofday(&tv);
 	net->ibn_incarnation = (((__u64)tv.tv_sec) * 1000000) + tv.tv_usec;
@@ -3147,6 +3147,7 @@ failed:
 	if (net->ibn_dev == NULL && ibdev != NULL)
 		kiblnd_destroy_dev(ibdev);
 
+net_failed:
 	kiblnd_shutdown(ni);
 
 	CDEBUG(D_NET, "kiblnd_startup failed\n");

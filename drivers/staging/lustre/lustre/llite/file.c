@@ -247,7 +247,7 @@ int ll_md_real_close(struct inode *inode, fmode_t fmode)
 		return 0;
 	}
 
-	och=*och_p;
+	och = *och_p;
 	*och_p = NULL;
 	mutex_unlock(&lli->lli_och_mutex);
 
@@ -269,7 +269,8 @@ static int ll_md_close(struct obd_export *md_exp, struct inode *inode,
 	int lockmode;
 	__u64 flags = LDLM_FL_BLOCK_GRANTED | LDLM_FL_TEST_LOCK;
 	struct lustre_handle lockh;
-	ldlm_policy_data_t policy = {.l_inodebits={MDS_INODELOCK_OPEN}};
+	ldlm_policy_data_t policy = {
+	.l_inodebits = {MDS_INODELOCK_OPEN} };
 	int rc = 0;
 
 	/* clear group lock, if present */
@@ -358,7 +359,7 @@ int ll_file_release(struct inode *inode, struct file *file)
 	fd = LUSTRE_FPRIVATE(file);
 	LASSERT(fd != NULL);
 
-	/* The last ref on @file, maybe not the the owner pid of statahead.
+	/* The last ref on @file, maybe not the owner pid of statahead.
 	 * Different processes can open the same dir, "ll_opendir_key" means:
 	 * it is me that should stop the statahead thread. */
 	if (S_ISDIR(inode->i_mode) && lli->lli_opendir_key == fd &&
@@ -2848,7 +2849,7 @@ ldlm_mode_t ll_take_md_lock(struct inode *inode, __u64 bits,
 			    struct lustre_handle *lockh, __u64 flags,
 			    ldlm_mode_t mode)
 {
-	ldlm_policy_data_t policy = { .l_inodebits = {bits}};
+	ldlm_policy_data_t policy = { .l_inodebits = {bits} };
 	struct lu_fid *fid;
 	ldlm_mode_t rc;
 

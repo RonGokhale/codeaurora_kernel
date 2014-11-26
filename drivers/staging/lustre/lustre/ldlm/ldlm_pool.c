@@ -265,7 +265,7 @@ static void ldlm_pool_recalc_slv(struct ldlm_pool *pl)
 	 * SLV. And the opposite, the more grant plan is over-consumed
 	 * (load time) the faster drops SLV.
 	 */
-	slv_factor = (grant_usage << LDLM_POOL_SLV_SHIFT);
+	slv_factor = grant_usage << LDLM_POOL_SLV_SHIFT;
 	do_div(slv_factor, limit);
 	slv = slv * slv_factor;
 	slv = dru(slv, LDLM_POOL_SLV_SHIFT, round_up);
@@ -1205,8 +1205,7 @@ int ldlm_pools_recalc(ldlm_side_t client)
 		 * The rest is given to greedy namespaces.
 		 */
 		list_for_each_entry(ns, ldlm_namespace_list(client),
-					ns_list_chain)
-		{
+				    ns_list_chain) {
 			if (!equal && ns->ns_appetite != LDLM_NAMESPACE_GREEDY)
 				continue;
 
