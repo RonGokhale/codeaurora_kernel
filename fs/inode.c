@@ -20,6 +20,9 @@
 #include <linux/list_lru.h>
 #include "internal.h"
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/fs.h>
+
 /*
  * Inode locking rules:
  *
@@ -530,6 +533,19 @@ static void evict(struct inode *inode)
 
 	BUG_ON(!(inode->i_state & I_FREEING));
 	BUG_ON(!list_empty(&inode->i_lru));
+
+	if (inode->i_nlink && inode->i_state & I_DIRTY_TIME) {
+		if (inode->i_op->write_time)
+			inode->i_op->write_time(inode);
+		else if (inode->i_sb->s_op->write_inode) {
+			struct writeback_control wbc = {
+				.sync_mode = WB_SYNC_NONE,
+			};
+			mark_inode_dirty(inode);
+			inode->i_sb->s_op->write_inode(inode, &wbc);
+		}
+		trace_fs_lazytime_evict(inode);
+	}
 
 	if (!list_empty(&inode->i_wb_list))
 		inode_wb_list_del(inode);
@@ -1277,6 +1293,42 @@ struct inode *ilookup(struct super_block *sb, unsigned long ino)
 }
 EXPORT_SYMBOL(ilookup);
 
+/**
+ * find_active_inode_nowait - find an active inode in the inode cache
+ * @sb:		super block of file system to search
+ * @ino:	inode number to search for
+ *
+ * Search for an active inode @ino in the inode cache, and if the
+ * inode is in the cache, the inode is returned with an incremented
+ * reference count.  If the inode is being freed or is newly
+ * initialized, return nothing instead of trying to wait for the inode
+ * initialization or destruction to be complete.
+ */
+struct inode *find_active_inode_nowait(struct super_block *sb,
+				       unsigned long ino)
+{
+	struct hlist_head *head = inode_hashtable + hash(sb, ino);
+	struct inode *inode, *ret_inode = NULL;
+
+	spin_lock(&inode_hash_lock);
+	hlist_for_each_entry(inode, head, i_hash) {
+		if ((inode->i_ino != ino) ||
+		    (inode->i_sb != sb))
+			continue;
+		spin_lock(&inode->i_lock);
+		if ((inode->i_state & (I_FREEING | I_WILL_FREE | I_NEW)) == 0) {
+			__iget(inode);
+			ret_inode = inode;
+		}
+		spin_unlock(&inode->i_lock);
+		goto out;
+	}
+out:
+	spin_unlock(&inode_hash_lock);
+	return ret_inode;
+}
+EXPORT_SYMBOL(find_active_inode_nowait);
+
 int insert_inode_locked(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
@@ -1496,9 +1548,15 @@ static int relatime_need_update(struct vfsmount *mnt, struct inode *inode,
  */
 static int update_time(struct inode *inode, struct timespec *time, int flags)
 {
-	if (inode->i_op->update_time)
-		return inode->i_op->update_time(inode, time, flags);
+	struct timespec uptime;
+	unsigned short days_since_boot;
+	int ret;
 
+	if (inode->i_op->is_readonly) {
+		ret = inode->i_op->is_readonly(inode);
+		if (ret)
+			return ret;
+	}
 	if (flags & S_ATIME)
 		inode->i_atime = *time;
 	if (flags & S_VERSION)
@@ -1507,6 +1565,35 @@ static int update_time(struct inode *inode, struct timespec *time, int flags)
 		inode->i_ctime = *time;
 	if (flags & S_MTIME)
 		inode->i_mtime = *time;
+
+	/*
+	 * If i_ts_dirty_day is zero, then either we have not deferred
+	 * timestamp updates, or the system has been up for less than
+	 * a day (so days_since_boot is zero), so we defer timestamp
+	 * updates in that case and set the I_DIRTY_TIME flag.  If a
+	 * day or more has passed, then i_ts_dirty_day will be
+	 * different from days_since_boot, and then we should update
+	 * the on-disk inode and then we can clear i_ts_dirty_day.
+	 */
+	if ((inode->i_sb->s_flags & MS_LAZYTIME) &&
+	    !(flags & S_VERSION)) {
+		if (inode->i_state & I_DIRTY_TIME)
+			return 0;
+		get_monotonic_boottime(&uptime);
+		days_since_boot = div_u64(uptime.tv_sec, 86400);
+		if (!inode->i_ts_dirty_day ||
+		    inode->i_ts_dirty_day == days_since_boot) {
+			spin_lock(&inode->i_lock);
+			inode->i_state |= I_DIRTY_TIME;
+			spin_unlock(&inode->i_lock);
+			inode->i_ts_dirty_day = days_since_boot;
+			trace_fs_lazytime_defer(inode);
+			return 0;
+		}
+	}
+	inode->i_ts_dirty_day = 0;
+	if (inode->i_op->write_time)
+		return inode->i_op->write_time(inode);
 	mark_inode_dirty_sync(inode);
 	return 0;
 }

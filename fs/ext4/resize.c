@@ -854,9 +854,11 @@ static int add_new_gdb(handle_t *handle, struct inode *inode,
 	memcpy(n_group_desc, o_group_desc,
 	       EXT4_SB(sb)->s_gdb_count * sizeof(struct buffer_head *));
 	n_group_desc[gdb_num] = gdb_bh;
+	write_seqcount_begin(&EXT4_SB(sb)->s_group_desc_seq);
 	EXT4_SB(sb)->s_group_desc = n_group_desc;
 	EXT4_SB(sb)->s_gdb_count++;
-	ext4_kvfree(o_group_desc);
+	write_seqcount_end(&EXT4_SB(sb)->s_group_desc_seq);
+	kvfree(o_group_desc);
 
 	le16_add_cpu(&es->s_reserved_gdt_blocks, -1);
 	err = ext4_handle_dirty_super(handle, sb);
@@ -866,7 +868,7 @@ static int add_new_gdb(handle_t *handle, struct inode *inode,
 	return err;
 
 exit_inode:
-	ext4_kvfree(n_group_desc);
+	kvfree(n_group_desc);
 	brelse(iloc.bh);
 exit_dind:
 	brelse(dind);
@@ -907,9 +909,11 @@ static int add_new_gdb_meta_bg(struct super_block *sb,
 	memcpy(n_group_desc, o_group_desc,
 	       EXT4_SB(sb)->s_gdb_count * sizeof(struct buffer_head *));
 	n_group_desc[gdb_num] = gdb_bh;
+	write_seqcount_begin(&EXT4_SB(sb)->s_group_desc_seq);
 	EXT4_SB(sb)->s_group_desc = n_group_desc;
 	EXT4_SB(sb)->s_gdb_count++;
-	ext4_kvfree(o_group_desc);
+	write_seqcount_end(&EXT4_SB(sb)->s_group_desc_seq);
+	kvfree(o_group_desc);
 	BUFFER_TRACE(gdb_bh, "get_write_access");
 	err = ext4_journal_get_write_access(handle, gdb_bh);
 	if (unlikely(err))

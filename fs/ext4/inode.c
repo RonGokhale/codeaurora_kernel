@@ -416,11 +416,6 @@ static void ext4_map_blocks_es_recheck(handle_t *handle,
 	}
 	if (!(flags & EXT4_GET_BLOCKS_NO_LOCK))
 		up_read((&EXT4_I(inode)->i_data_sem));
-	/*
-	 * Clear EXT4_MAP_FROM_CLUSTER and EXT4_MAP_BOUNDARY flag
-	 * because it shouldn't be marked in es_map->m_flags.
-	 */
-	map->m_flags &= ~(EXT4_MAP_FROM_CLUSTER | EXT4_MAP_BOUNDARY);
 
 	/*
 	 * We don't check m_len because extent will be collpased in status
@@ -491,7 +486,6 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 
 	/* Lookup extent status tree firstly */
 	if (ext4_es_lookup_extent(inode, map->m_lblk, &es)) {
-		ext4_es_lru_add(inode);
 		if (ext4_es_is_written(&es) || ext4_es_is_unwritten(&es)) {
 			map->m_pblk = ext4_es_pblock(&es) +
 					map->m_lblk - es.es_lblk;
@@ -1393,7 +1387,6 @@ static int ext4_da_map_blocks(struct inode *inode, sector_t iblock,
 
 	/* Lookup extent status tree firstly */
 	if (ext4_es_lookup_extent(inode, iblock, &es)) {
-		ext4_es_lru_add(inode);
 		if (ext4_es_is_hole(&es)) {
 			retval = 0;
 			down_read(&EXT4_I(inode)->i_data_sem);
@@ -1434,24 +1427,12 @@ static int ext4_da_map_blocks(struct inode *inode, sector_t iblock,
 	 * file system block.
 	 */
 	down_read(&EXT4_I(inode)->i_data_sem);
-	if (ext4_has_inline_data(inode)) {
-		/*
-		 * We will soon create blocks for this page, and let
-		 * us pretend as if the blocks aren't allocated yet.
-		 * In case of clusters, we have to handle the work
-		 * of mapping from cluster so that the reserved space
-		 * is calculated properly.
-		 */
-		if ((EXT4_SB(inode->i_sb)->s_cluster_ratio > 1) &&
-		    ext4_find_delalloc_cluster(inode, map->m_lblk))
-			map->m_flags |= EXT4_MAP_FROM_CLUSTER;
+	if (ext4_has_inline_data(inode))
 		retval = 0;
-	} else if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
-		retval = ext4_ext_map_blocks(NULL, inode, map,
-					     EXT4_GET_BLOCKS_NO_PUT_HOLE);
+	else if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))
+		retval = ext4_ext_map_blocks(NULL, inode, map, 0);
 	else
-		retval = ext4_ind_map_blocks(NULL, inode, map,
-					     EXT4_GET_BLOCKS_NO_PUT_HOLE);
+		retval = ext4_ind_map_blocks(NULL, inode, map, 0);
 
 add_delayed:
 	if (retval == 0) {
@@ -1465,7 +1446,8 @@ add_delayed:
 		 * then we don't need to reserve it again. However we still need
 		 * to reserve metadata for every block we're going to write.
 		 */
-		if (!(map->m_flags & EXT4_MAP_FROM_CLUSTER)) {
+		if (EXT4_SB(inode->i_sb)->s_cluster_ratio <= 1 ||
+		    !ext4_find_delalloc_cluster(inode, map->m_lblk)) {
 			ret = ext4_da_reserve_space(inode, iblock);
 			if (ret) {
 				/* not enough space to reserve */
@@ -1480,11 +1462,6 @@ add_delayed:
 			retval = ret;
 			goto out_unlock;
 		}
-
-		/* Clear EXT4_MAP_FROM_CLUSTER flag since its purpose is served
-		 * and it should not appear on the bh->b_state.
-		 */
-		map->m_flags &= ~EXT4_MAP_FROM_CLUSTER;
 
 		map_bh(bh, inode->i_sb, invalid_block);
 		set_buffer_new(bh);
@@ -4163,6 +4140,50 @@ static int ext4_inode_blocks_set(handle_t *handle,
 }
 
 /*
+ * Opportunistically update the other time fields for other inodes in
+ * the same inode table block.
+ */
+static void ext4_update_other_inodes_time(struct super_block *sb,
+					  unsigned long orig_ino, char *buf)
+{
+	struct ext4_inode_info	*ei;
+	struct ext4_inode	*raw_inode;
+	unsigned long		ino;
+	struct inode		*inode;
+	int		i, inodes_per_block = EXT4_SB(sb)->s_inodes_per_block;
+	int		inode_size = EXT4_INODE_SIZE(sb);
+
+	ino = orig_ino & ~(inodes_per_block - 1);
+	for (i = 0; i < inodes_per_block; i++, ino++, buf += inode_size) {
+		if (ino == orig_ino)
+			continue;
+		inode = find_active_inode_nowait(sb, ino);
+		if (!inode ||
+		    (inode->i_state & I_DIRTY_TIME) == 0 ||
+		    !spin_trylock(&inode->i_lock)) {
+			iput(inode);
+			continue;
+		}
+		inode->i_state &= ~I_DIRTY_TIME;
+		inode->i_ts_dirty_day = 0;
+		spin_unlock(&inode->i_lock);
+
+		ei = EXT4_I(inode);
+		raw_inode = (struct ext4_inode *) buf;
+
+		spin_lock(&ei->i_raw_lock);
+		EXT4_INODE_SET_XTIME(i_ctime, inode, raw_inode);
+		EXT4_INODE_SET_XTIME(i_mtime, inode, raw_inode);
+		EXT4_INODE_SET_XTIME(i_atime, inode, raw_inode);
+		ext4_inode_csum_set(inode, raw_inode, ei);
+		spin_unlock(&ei->i_raw_lock);
+		trace_ext4_other_inode_update_time(inode, orig_ino);
+		iput(inode);
+	}
+}
+
+
+/*
  * Post the struct inode info into an on-disk inode location in the
  * buffer-cache.  This gobbles the caller's reference to the
  * buffer_head in the inode location struct.
@@ -4260,7 +4281,6 @@ static int ext4_do_update_inode(handle_t *handle,
 		for (block = 0; block < EXT4_N_BLOCKS; block++)
 			raw_inode->i_block[block] = ei->i_data[block];
 	}
-
 	if (likely(!test_opt2(inode->i_sb, HURD_COMPAT))) {
 		raw_inode->i_disk_version = cpu_to_le32(inode->i_version);
 		if (ei->i_extra_isize) {
@@ -4271,10 +4291,9 @@ static int ext4_do_update_inode(handle_t *handle,
 				cpu_to_le16(ei->i_extra_isize);
 		}
 	}
-
 	ext4_inode_csum_set(inode, raw_inode, ei);
-
 	spin_unlock(&ei->i_raw_lock);
+	ext4_update_other_inodes_time(inode->i_sb, inode->i_ino, bh->b_data);
 
 	BUFFER_TRACE(bh, "call ext4_handle_dirty_metadata");
 	rc = ext4_handle_dirty_metadata(handle, NULL, bh);
