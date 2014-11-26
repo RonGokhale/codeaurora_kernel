@@ -1,6 +1,7 @@
 /*
  * Renesas R-Car GPIO Support
  *
+ *  Copyright (C) 2014 Renesas Electronics Corporation
  *  Copyright (C) 2013 Magnus Damm
  *
  * This program is free software; you can redistribute it and/or modify
@@ -38,6 +39,7 @@ struct gpio_rcar_priv {
 	struct gpio_chip gpio_chip;
 	struct irq_chip irq_chip;
 	struct irq_domain *irq_domain;
+	u32 no_suspend; /* do not disable this GPIO port during suspend */
 };
 
 #define IOINTSEL 0x00
@@ -82,6 +84,15 @@ static void gpio_rcar_modify_bit(struct gpio_rcar_priv *p, int offs,
 static void gpio_rcar_irq_disable(struct irq_data *d)
 {
 	struct gpio_rcar_priv *p = irq_data_get_irq_chip_data(d);
+
+	if (p->no_suspend & BIT(irqd_to_hwirq(d))) {
+		/*
+		 * This GPIO port is claimed as a wake-up source and
+		 * currently in a no-suspend-requested state.  Don't
+		 * disable this IRQ during suspend.
+		 */
+		return;
+	}
 
 	gpio_rcar_write(p, INTMSK, ~BIT(irqd_to_hwirq(d)));
 }
@@ -161,6 +172,20 @@ static int gpio_rcar_irq_set_type(struct irq_data *d, unsigned int type)
 	default:
 		return -EINVAL;
 	}
+	return 0;
+}
+
+static int gpio_rcar_irq_set_wake(struct irq_data *d, unsigned int on)
+{
+	struct gpio_rcar_priv *p = irq_data_get_irq_chip_data(d);
+	unsigned int hwirq = irqd_to_hwirq(d);
+
+	dev_dbg(&p->pdev->dev, "wake irq = %u %s\n", hwirq, on ? "on" : "off");
+
+	if (on)
+		p->no_suspend |= BIT(hwirq);
+	else
+		p->no_suspend &= ~BIT(hwirq);
 	return 0;
 }
 
@@ -291,22 +316,30 @@ struct gpio_rcar_info {
 	bool has_both_edge_trigger;
 };
 
+static const struct gpio_rcar_info gpio_rcar_info_gen1 = {
+	.has_both_edge_trigger = false,
+};
+
+static const struct gpio_rcar_info gpio_rcar_info_gen2 = {
+	.has_both_edge_trigger = true,
+};
+
 static const struct of_device_id gpio_rcar_of_table[] = {
 	{
 		.compatible = "renesas,gpio-r8a7790",
-		.data = (void *)&(const struct gpio_rcar_info) {
-			.has_both_edge_trigger = true,
-		},
+		.data = &gpio_rcar_info_gen2,
 	}, {
 		.compatible = "renesas,gpio-r8a7791",
-		.data = (void *)&(const struct gpio_rcar_info) {
-			.has_both_edge_trigger = true,
-		},
+		.data = &gpio_rcar_info_gen2,
+	}, {
+		.compatible = "renesas,gpio-r8a7793",
+		.data = &gpio_rcar_info_gen2,
+	}, {
+		.compatible = "renesas,gpio-r8a7794",
+		.data = &gpio_rcar_info_gen2,
 	}, {
 		.compatible = "renesas,gpio-rcar",
-		.data = (void *)&(const struct gpio_rcar_info) {
-			.has_both_edge_trigger = false,
-		},
+		.data = &gpio_rcar_info_gen1,
 	}, {
 		/* Terminator */
 	},
@@ -416,6 +449,7 @@ static int gpio_rcar_probe(struct platform_device *pdev)
 	irq_chip->irq_mask = gpio_rcar_irq_disable;
 	irq_chip->irq_unmask = gpio_rcar_irq_enable;
 	irq_chip->irq_set_type = gpio_rcar_irq_set_type;
+	irq_chip->irq_set_wake = gpio_rcar_irq_set_wake;
 	irq_chip->flags	= IRQCHIP_SKIP_SET_WAKE | IRQCHIP_SET_TYPE_MASKED
 			 | IRQCHIP_MASK_ON_SUSPEND;
 
