@@ -30,7 +30,7 @@
  * inode_sb_list_lock protects:
  *   sb->s_inodes, inode->i_sb_list
  * bdi->wb.list_lock protects:
- *   bdi->wb.b_{dirty,io,more_io}, inode->i_wb_list
+ *   bdi->wb.b_{dirty,io,more_io,dirty_time}, inode->i_wb_list
  * inode_hash_lock protects:
  *   inode_hashtable, inode->i_hash
  *
@@ -1430,11 +1430,22 @@ static void iput_final(struct inode *inode)
  */
 void iput(struct inode *inode)
 {
-	if (inode) {
-		BUG_ON(inode->i_state & I_CLEAR);
-
-		if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock))
-			iput_final(inode);
+	if (!inode)
+		return;
+	BUG_ON(inode->i_state & I_CLEAR);
+retry:
+	if (atomic_dec_and_lock(&inode->i_count, &inode->i_lock)) {
+		if (inode->i_nlink && (inode->i_state & I_DIRTY_TIME)) {
+			atomic_inc(&inode->i_count);
+			inode->i_state &= ~I_DIRTY_TIME;
+			spin_unlock(&inode->i_lock);
+			if (inode->i_op->write_time)
+				inode->i_op->write_time(inode);
+			else if (inode->i_sb->s_op->write_inode)
+				mark_inode_dirty_sync(inode);
+			goto retry;
+		}
+		iput_final(inode);
 	}
 }
 EXPORT_SYMBOL(iput);
@@ -1515,6 +1526,26 @@ static int update_time(struct inode *inode, struct timespec *time, int flags)
 		if (flags & S_MTIME)
 			inode->i_mtime = *time;
 	}
+	if ((inode->i_sb->s_flags & MS_LAZYTIME) &&
+	    !(flags & S_VERSION) &&
+	    !(inode->i_state & (I_DIRTY_SYNC | I_DIRTY_DATASYNC))) {
+		if (inode->i_state & I_DIRTY_TIME)
+			return 0;
+		spin_lock(&inode->i_lock);
+		if (inode->i_state & (I_DIRTY_SYNC | I_DIRTY_DATASYNC)) {
+			spin_unlock(&inode->i_lock);
+			goto force_dirty;
+		}
+		if (inode->i_state & I_DIRTY_TIME) {
+			spin_unlock(&inode->i_lock);
+			return 0;
+		}
+		inode->i_state |= I_DIRTY_TIME;
+		spin_unlock(&inode->i_lock);
+		inode_requeue_dirtytime(inode);
+		return 0;
+	}
+force_dirty:
 	if (inode->i_op->write_time)
 		return inode->i_op->write_time(inode);
 	mark_inode_dirty_sync(inode);
