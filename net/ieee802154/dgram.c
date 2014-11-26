@@ -12,10 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Written by:
  * Sergey Lapin <slapin@ossfans.org>
  * Dmitry Eremin-Solenikov <dbaryshkov@gmail.com>
@@ -27,9 +23,9 @@
 #include <linux/if_arp.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/ieee802154.h>
 #include <net/sock.h>
 #include <net/af_ieee802154.h>
-#include <net/ieee802154.h>
 #include <net/ieee802154_netdev.h>
 
 #include <asm/ioctls.h>
@@ -324,7 +320,7 @@ static int dgram_recvmsg(struct kiocb *iocb, struct sock *sk,
 	}
 
 	/* FIXME: skip headers if necessary ?! */
-	err = skb_copy_datagram_iovec(skb, 0, msg->msg_iov, copied);
+	err = skb_copy_datagram_msg(skb, 0, msg, copied);
 	if (err)
 		goto done;
 
