@@ -5574,6 +5574,11 @@ static int btrfs_update_time(struct inode *inode, struct timespec *now,
 		inode->i_mtime = *now;
 	if (flags & S_ATIME)
 		inode->i_atime = *now;
+	return 0;
+}
+
+static int btrfs_write_time(struct inode *inode)
+{
 	return btrfs_dirty_inode(inode);
 }
 
@@ -9462,6 +9467,7 @@ static const struct inode_operations btrfs_dir_inode_operations = {
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
 	.update_time	= btrfs_update_time,
+	.write_time	= btrfs_write_time,
 	.tmpfile        = btrfs_tmpfile,
 };
 static const struct inode_operations btrfs_dir_ro_inode_operations = {
@@ -9470,6 +9476,7 @@ static const struct inode_operations btrfs_dir_ro_inode_operations = {
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
 	.update_time	= btrfs_update_time,
+	.write_time	= btrfs_write_time,
 };
 
 static const struct file_operations btrfs_dir_file_operations = {
@@ -9540,6 +9547,7 @@ static const struct inode_operations btrfs_file_inode_operations = {
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
 	.update_time	= btrfs_update_time,
+	.write_time	= btrfs_write_time,
 };
 static const struct inode_operations btrfs_special_inode_operations = {
 	.getattr	= btrfs_getattr,
@@ -9552,6 +9560,7 @@ static const struct inode_operations btrfs_special_inode_operations = {
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
 	.update_time	= btrfs_update_time,
+	.write_time	= btrfs_write_time,
 };
 static const struct inode_operations btrfs_symlink_inode_operations = {
 	.readlink	= generic_readlink,
@@ -9565,6 +9574,7 @@ static const struct inode_operations btrfs_symlink_inode_operations = {
 	.listxattr	= btrfs_listxattr,
 	.removexattr	= btrfs_removexattr,
 	.update_time	= btrfs_update_time,
+	.write_time	= btrfs_write_time,
 };
 
 const struct dentry_operations btrfs_dentry_operations = {

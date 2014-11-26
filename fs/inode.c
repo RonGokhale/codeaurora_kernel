@@ -1499,17 +1499,24 @@ static int relatime_need_update(struct vfsmount *mnt, struct inode *inode,
  */
 static int update_time(struct inode *inode, struct timespec *time, int flags)
 {
-	if (inode->i_op->update_time)
-		return inode->i_op->update_time(inode, time, flags);
+	int ret;
 
-	if (flags & S_ATIME)
-		inode->i_atime = *time;
-	if (flags & S_VERSION)
-		inode_inc_iversion(inode);
-	if (flags & S_CTIME)
-		inode->i_ctime = *time;
-	if (flags & S_MTIME)
-		inode->i_mtime = *time;
+	if (inode->i_op->update_time) {
+		ret = inode->i_op->update_time(inode, time, flags);
+		if (ret)
+			return ret;
+	} else {
+		if (flags & S_ATIME)
+			inode->i_atime = *time;
+		if (flags & S_VERSION)
+			inode_inc_iversion(inode);
+		if (flags & S_CTIME)
+			inode->i_ctime = *time;
+		if (flags & S_MTIME)
+			inode->i_mtime = *time;
+	}
+	if (inode->i_op->write_time)
+		return inode->i_op->write_time(inode);
 	mark_inode_dirty_sync(inode);
 	return 0;
 }
