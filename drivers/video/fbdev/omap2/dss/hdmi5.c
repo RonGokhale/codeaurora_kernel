@@ -43,24 +43,7 @@
 #include "dss.h"
 #include "dss_features.h"
 
-static struct {
-	struct mutex lock;
-	struct platform_device *pdev;
-
-	struct hdmi_wp_data	wp;
-	struct hdmi_pll_data	pll;
-	struct hdmi_phy_data	phy;
-	struct hdmi_core_data	core;
-
-	struct hdmi_config cfg;
-
-	struct clk *sys_clk;
-	struct regulator *vdda_reg;
-
-	bool core_enabled;
-
-	struct omap_dss_device output;
-} hdmi;
+static struct omap_hdmi hdmi;
 
 static int hdmi_runtime_get(void)
 {
@@ -198,7 +181,7 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 	int r;
 	struct omap_video_timings *p;
 	struct omap_overlay_manager *mgr = hdmi.output.manager;
-	unsigned long phy;
+	struct dss_pll_clock_info hdmi_cinfo = { 0 };
 
 	r = hdmi_power_on_core(dssdev);
 	if (r)
@@ -208,24 +191,27 @@ static int hdmi_power_on_full(struct omap_dss_device *dssdev)
 
 	DSSDBG("hdmi_power_on x_res= %d y_res = %d\n", p->x_res, p->y_res);
 
-	/* the functions below use kHz pixel clock. TODO: change to Hz */
-	phy = p->pixelclock / 1000;
-
-	hdmi_pll_compute(&hdmi.pll, clk_get_rate(hdmi.sys_clk), phy);
+	hdmi_pll_compute(&hdmi.pll, p->pixelclock, &hdmi_cinfo);
 
 	/* disable and clear irqs */
 	hdmi_wp_clear_irqenable(&hdmi.wp, 0xffffffff);
 	hdmi_wp_set_irqstatus(&hdmi.wp,
 			hdmi_wp_get_irqstatus(&hdmi.wp));
 
-	/* config the PLL and PHY hdmi_set_pll_pwrfirst */
-	r = hdmi_pll_enable(&hdmi.pll, &hdmi.wp);
+	r = dss_pll_enable(&hdmi.pll.pll);
 	if (r) {
-		DSSDBG("Failed to lock PLL\n");
+		DSSERR("Failed to enable PLL\n");
 		goto err_pll_enable;
 	}
 
-	r = hdmi_phy_configure(&hdmi.phy, &hdmi.cfg);
+	r = dss_pll_set_config(&hdmi.pll.pll, &hdmi_cinfo);
+	if (r) {
+		DSSERR("Failed to configure PLL\n");
+		goto err_pll_cfg;
+	}
+
+	r = hdmi_phy_configure(&hdmi.phy, hdmi_cinfo.clkdco,
+		hdmi_cinfo.clkout[0]);
 	if (r) {
 		DSSDBG("Failed to start PHY\n");
 		goto err_phy_cfg;
@@ -262,7 +248,8 @@ err_vid_enable:
 	hdmi_wp_set_phy_pwr(&hdmi.wp, HDMI_PHYPWRCMD_OFF);
 err_phy_pwr:
 err_phy_cfg:
-	hdmi_pll_disable(&hdmi.pll, &hdmi.wp);
+err_pll_cfg:
+	dss_pll_disable(&hdmi.pll.pll);
 err_pll_enable:
 	hdmi_power_off_core(dssdev);
 	return -EIO;
@@ -280,7 +267,7 @@ static void hdmi_power_off_full(struct omap_dss_device *dssdev)
 
 	hdmi_wp_set_phy_pwr(&hdmi.wp, HDMI_PHYPWRCMD_OFF);
 
-	hdmi_pll_disable(&hdmi.pll, &hdmi.wp);
+	dss_pll_disable(&hdmi.pll.pll);
 
 	hdmi_power_off_core(dssdev);
 }
@@ -289,6 +276,10 @@ static int hdmi_display_check_timing(struct omap_dss_device *dssdev,
 					struct omap_video_timings *timings)
 {
 	struct omap_dss_device *out = &hdmi.output;
+
+	/* TODO: proper interlace support */
+	if (timings->interlace)
+		return -EINVAL;
 
 	if (!dispc_mgr_timings_ok(out->dispc_channel, timings))
 		return -EINVAL;
@@ -427,21 +418,6 @@ static void hdmi_core_disable(struct omap_dss_device *dssdev)
 	hdmi_power_off_core(dssdev);
 
 	mutex_unlock(&hdmi.lock);
-}
-
-static int hdmi_get_clocks(struct platform_device *pdev)
-{
-	struct clk *clk;
-
-	clk = devm_clk_get(&pdev->dev, "sys_clk");
-	if (IS_ERR(clk)) {
-		DSSERR("can't get sys_clk\n");
-		return PTR_ERR(clk);
-	}
-
-	hdmi.sys_clk = clk;
-
-	return 0;
 }
 
 static int hdmi_connect(struct omap_dss_device *dssdev,
@@ -703,6 +679,7 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	int irq;
 
 	hdmi.pdev = pdev;
+	dev_set_drvdata(&pdev->dev, &hdmi);
 
 	mutex_init(&hdmi.lock);
 
@@ -716,28 +693,23 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	if (r)
 		return r;
 
-	r = hdmi_pll_init(pdev, &hdmi.pll);
+	r = hdmi_pll_init(pdev, &hdmi.pll, &hdmi.wp);
 	if (r)
 		return r;
 
 	r = hdmi_phy_init(pdev, &hdmi.phy);
 	if (r)
-		return r;
+		goto err;
 
 	r = hdmi5_core_init(pdev, &hdmi.core);
 	if (r)
-		return r;
-
-	r = hdmi_get_clocks(pdev);
-	if (r) {
-		DSSERR("can't get clocks\n");
-		return r;
-	}
+		goto err;
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		DSSERR("platform_get_irq failed\n");
-		return -ENODEV;
+		r = -ENODEV;
+		goto err;
 	}
 
 	r = devm_request_threaded_irq(&pdev->dev, irq,
@@ -745,7 +717,7 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 			IRQF_ONESHOT, "OMAP HDMI", &hdmi.wp);
 	if (r) {
 		DSSERR("HDMI IRQ request failed\n");
-		return r;
+		goto err;
 	}
 
 	pm_runtime_enable(&pdev->dev);
@@ -755,11 +727,16 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	dss_debugfs_create_file("hdmi", hdmi_dump_regs);
 
 	return 0;
+err:
+	hdmi_pll_uninit(&hdmi.pll);
+	return r;
 }
 
 static int __exit omapdss_hdmihw_remove(struct platform_device *pdev)
 {
 	hdmi_uninit_output(pdev);
+
+	hdmi_pll_uninit(&hdmi.pll);
 
 	pm_runtime_disable(&pdev->dev);
 
@@ -768,8 +745,6 @@ static int __exit omapdss_hdmihw_remove(struct platform_device *pdev)
 
 static int hdmi_runtime_suspend(struct device *dev)
 {
-	clk_disable_unprepare(hdmi.sys_clk);
-
 	dispc_runtime_put();
 
 	return 0;
@@ -782,8 +757,6 @@ static int hdmi_runtime_resume(struct device *dev)
 	r = dispc_runtime_get();
 	if (r < 0)
 		return r;
-
-	clk_prepare_enable(hdmi.sys_clk);
 
 	return 0;
 }
