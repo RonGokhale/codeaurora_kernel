@@ -5554,26 +5554,12 @@ static int btrfs_dirty_inode(struct inode *inode)
 	return ret;
 }
 
-/*
- * This is a copy of file_update_time.  We need this so we can return error on
- * ENOSPC for updating the inode in the case of file write and mmap writes.
- */
-static int btrfs_update_time(struct inode *inode, struct timespec *now,
-			     int flags)
+static int btrfs_is_readonly(struct inode *inode)
 {
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 
 	if (btrfs_root_readonly(root))
 		return -EROFS;
-
-	if (flags & S_VERSION)
-		inode_inc_iversion(inode);
-	if (flags & S_CTIME)
-		inode->i_ctime = *now;
-	if (flags & S_MTIME)
-		inode->i_mtime = *now;
-	if (flags & S_ATIME)
-		inode->i_atime = *now;
 	return 0;
 }
 
@@ -9466,8 +9452,8 @@ static const struct inode_operations btrfs_dir_inode_operations = {
 	.permission	= btrfs_permission,
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
-	.update_time	= btrfs_update_time,
 	.write_time	= btrfs_write_time,
+	.is_readonly	= btrfs_is_readonly,
 	.tmpfile        = btrfs_tmpfile,
 };
 static const struct inode_operations btrfs_dir_ro_inode_operations = {
@@ -9475,8 +9461,8 @@ static const struct inode_operations btrfs_dir_ro_inode_operations = {
 	.permission	= btrfs_permission,
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
-	.update_time	= btrfs_update_time,
 	.write_time	= btrfs_write_time,
+	.is_readonly	= btrfs_is_readonly,
 };
 
 static const struct file_operations btrfs_dir_file_operations = {
@@ -9546,8 +9532,8 @@ static const struct inode_operations btrfs_file_inode_operations = {
 	.fiemap		= btrfs_fiemap,
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
-	.update_time	= btrfs_update_time,
 	.write_time	= btrfs_write_time,
+	.is_readonly	= btrfs_is_readonly,
 };
 static const struct inode_operations btrfs_special_inode_operations = {
 	.getattr	= btrfs_getattr,
@@ -9559,8 +9545,8 @@ static const struct inode_operations btrfs_special_inode_operations = {
 	.removexattr	= btrfs_removexattr,
 	.get_acl	= btrfs_get_acl,
 	.set_acl	= btrfs_set_acl,
-	.update_time	= btrfs_update_time,
 	.write_time	= btrfs_write_time,
+	.is_readonly	= btrfs_is_readonly,
 };
 static const struct inode_operations btrfs_symlink_inode_operations = {
 	.readlink	= generic_readlink,
@@ -9573,8 +9559,8 @@ static const struct inode_operations btrfs_symlink_inode_operations = {
 	.getxattr	= btrfs_getxattr,
 	.listxattr	= btrfs_listxattr,
 	.removexattr	= btrfs_removexattr,
-	.update_time	= btrfs_update_time,
 	.write_time	= btrfs_write_time,
+	.is_readonly	= btrfs_is_readonly,
 };
 
 const struct dentry_operations btrfs_dentry_operations = {
