@@ -470,6 +470,7 @@ config NFT_RBTREE
 
 config NFT_HASH
 	depends on NF_TABLES
+	select RHASHTABLE
 	tristate "Netfilter nf_tables hash set module"
 	help
 	  This option adds the "hash" set type that is used to build one-way
