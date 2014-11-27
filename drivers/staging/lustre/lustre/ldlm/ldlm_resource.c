@@ -215,8 +215,8 @@ static ssize_t lprocfs_lru_size_seq_write(struct file *file,
 						   LDLM_CANCEL_PASSED);
 			if (canceled < unused) {
 				CDEBUG(D_DLMTRACE,
-				       "not all requested locks are canceled, "
-				       "requested: %d, canceled: %d\n", unused,
+				       "not all requested locks are canceled, requested: %d, canceled: %d\n",
+				       unused,
 				       canceled);
 				return -EINVAL;
 			}
@@ -501,7 +501,7 @@ cfs_hash_ops_t ldlm_ns_fid_hash_ops = {
 	.hs_put	 = ldlm_res_hop_put
 };
 
-typedef struct {
+struct ldlm_ns_hash_def {
 	ldlm_ns_type_t  nsd_type;
 	/** hash bucket bits */
 	unsigned	nsd_bkt_bits;
@@ -509,9 +509,9 @@ typedef struct {
 	unsigned	nsd_all_bits;
 	/** hash operations */
 	cfs_hash_ops_t *nsd_hops;
-} ldlm_ns_hash_def_t;
+};
 
-ldlm_ns_hash_def_t ldlm_ns_hash_defs[] = {
+struct ldlm_ns_hash_def ldlm_ns_hash_defs[] = {
 	{
 		.nsd_type       = LDLM_NS_TYPE_MDC,
 		.nsd_bkt_bits   = 11,
@@ -563,7 +563,7 @@ struct ldlm_namespace *ldlm_namespace_new(struct obd_device *obd, char *name,
 {
 	struct ldlm_namespace *ns = NULL;
 	struct ldlm_ns_bucket *nsb;
-	ldlm_ns_hash_def_t    *nsd;
+	struct ldlm_ns_hash_def    *nsd;
 	struct cfs_hash_bd	  bd;
 	int		    idx;
 	int		    rc;
@@ -735,8 +735,7 @@ static void cleanup_resource(struct ldlm_resource *res, struct list_head *q,
 		} else {
 			ldlm_resource_unlink_lock(lock);
 			unlock_res(res);
-			LDLM_DEBUG(lock, "Freeing a lock still held by a "
-				   "client node");
+			LDLM_DEBUG(lock, "Freeing a lock still held by a client node");
 			ldlm_lock_destroy(lock);
 		}
 		LDLM_LOCK_RELEASE(lock);
@@ -818,16 +817,14 @@ force_wait:
 		/* Forced cleanups should be able to reclaim all references,
 		 * so it's safe to wait forever... we can't leak locks... */
 		if (force && rc == -ETIMEDOUT) {
-			LCONSOLE_ERROR("Forced cleanup waiting for %s "
-				       "namespace with %d resources in use, "
-				       "(rc=%d)\n", ldlm_ns_name(ns),
+			LCONSOLE_ERROR("Forced cleanup waiting for %s namespace with %d resources in use, (rc=%d)\n",
+				       ldlm_ns_name(ns),
 				       atomic_read(&ns->ns_bref), rc);
 			goto force_wait;
 		}
 
 		if (atomic_read(&ns->ns_bref)) {
-			LCONSOLE_ERROR("Cleanup waiting for %s namespace "
-				       "with %d resources in use, (rc=%d)\n",
+			LCONSOLE_ERROR("Cleanup waiting for %s namespace with %d resources in use, (rc=%d)\n",
 				       ldlm_ns_name(ns),
 				       atomic_read(&ns->ns_bref), rc);
 			return ELDLM_NAMESPACE_EXISTS;
@@ -1404,8 +1401,8 @@ void ldlm_resource_dump(int level, struct ldlm_resource *res)
 			LDLM_DEBUG_LIMIT(level, lock, "###");
 			if (!(level & D_CANTMASK) &&
 			    ++granted > ldlm_dump_granted_max) {
-				CDEBUG(level, "only dump %d granted locks to "
-				       "avoid DDOS.\n", granted);
+				CDEBUG(level, "only dump %d granted locks to avoid DDOS.\n",
+				       granted);
 				break;
 			}
 		}
