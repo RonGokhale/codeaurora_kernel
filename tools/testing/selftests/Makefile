@@ -1,21 +1,22 @@
 TARGETS = breakpoints
 TARGETS += cpu-hotplug
 TARGETS += efivarfs
+TARGETS += exec
+TARGETS += firmware
+TARGETS += ftrace
 TARGETS += kcmp
 TARGETS += memfd
 TARGETS += memory-hotplug
-TARGETS += mqueue
 TARGETS += mount
+TARGETS += mqueue
 TARGETS += net
-TARGETS += ptrace
-TARGETS += timers
-TARGETS += vm
 TARGETS += powerpc
-TARGETS += user
+TARGETS += ptrace
 TARGETS += sysctl
-TARGETS += firmware
-TARGETS += ftrace
-TARGETS += exec
+TARGETS += timers
+TARGETS += user
+TARGETS += vm
+#Please keep the TARGETS list alphabetically sorted
 
 INSTALL_TARGETS = breakpoints cpu-hotplug efivarfs firmware ipc
 INSTALL_TARGETS += kcmp memfd memory-hotplug mqueue mount net
