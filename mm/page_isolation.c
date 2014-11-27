@@ -227,7 +227,7 @@ __test_page_isolated_in_pageblock(unsigned long pfn, unsigned long end_pfn,
 		if (PageBuddy(page)) {
 			/*
 			 * Use a WARN_ON_ONCE to catch a potential undetected
-			 * race between isolatation and free pages, even if
+			 * race between isolation and pages freeing, even though
 			 * we try to avoid this issue.
 			 */
 			WARN_ON_ONCE(get_freepage_migratetype(page) !=
