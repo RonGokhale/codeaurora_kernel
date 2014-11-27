@@ -15,6 +15,7 @@ TARGETS += user
 TARGETS += sysctl
 TARGETS += firmware
 TARGETS += ftrace
+TARGETS += exec
 
 INSTALL_TARGETS = breakpoints cpu-hotplug efivarfs firmware ipc
 INSTALL_TARGETS += kcmp memfd memory-hotplug mqueue mount net
