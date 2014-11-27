@@ -395,7 +395,6 @@ struct kvm {
 	 * Update side is protected by irq_lock.
 	 */
 	struct kvm_irq_routing_table __rcu *irq_routing;
-	struct hlist_head mask_notifier_list;
 #endif
 #ifdef CONFIG_HAVE_KVM_IRQFD
 	struct hlist_head irq_ack_notifier_list;
@@ -446,6 +445,14 @@ void kvm_vcpu_uninit(struct kvm_vcpu *vcpu);
 
 int __must_check vcpu_load(struct kvm_vcpu *vcpu);
 void vcpu_put(struct kvm_vcpu *vcpu);
+
+#ifdef __KVM_HAVE_IOAPIC
+void kvm_vcpu_request_scan_ioapic(struct kvm *kvm);
+#else
+static inline void kvm_vcpu_request_scan_ioapic(struct kvm *kvm)
+{
+}
+#endif
 
 #ifdef CONFIG_HAVE_KVM_IRQFD
 int kvm_irqfd_init(void);
@@ -736,19 +743,6 @@ struct kvm_assigned_dev_kernel {
 	struct pci_saved_state *pci_saved_state;
 };
 
-struct kvm_irq_mask_notifier {
-	void (*func)(struct kvm_irq_mask_notifier *kimn, bool masked);
-	int irq;
-	struct hlist_node link;
-};
-
-void kvm_register_irq_mask_notifier(struct kvm *kvm, int irq,
-				    struct kvm_irq_mask_notifier *kimn);
-void kvm_unregister_irq_mask_notifier(struct kvm *kvm, int irq,
-				      struct kvm_irq_mask_notifier *kimn);
-void kvm_fire_mask_notifiers(struct kvm *kvm, unsigned irqchip, unsigned pin,
-			     bool mask);
-
 int kvm_irq_map_gsi(struct kvm *kvm,
 		    struct kvm_kernel_irq_routing_entry *entries, int gsi);
 int kvm_irq_map_chip_pin(struct kvm *kvm, unsigned irqchip, unsigned pin);
@@ -770,8 +764,6 @@ void kvm_free_irq_source_id(struct kvm *kvm, int irq_source_id);
 #ifdef CONFIG_KVM_DEVICE_ASSIGNMENT
 int kvm_iommu_map_pages(struct kvm *kvm, struct kvm_memory_slot *slot);
 void kvm_iommu_unmap_pages(struct kvm *kvm, struct kvm_memory_slot *slot);
-int kvm_iommu_map_guest(struct kvm *kvm);
-int kvm_iommu_unmap_guest(struct kvm *kvm);
 int kvm_assign_device(struct kvm *kvm,
 		      struct kvm_assigned_dev_kernel *assigned_dev);
 int kvm_deassign_device(struct kvm *kvm,
@@ -786,11 +778,6 @@ static inline int kvm_iommu_map_pages(struct kvm *kvm,
 static inline void kvm_iommu_unmap_pages(struct kvm *kvm,
 					 struct kvm_memory_slot *slot)
 {
-}
-
-static inline int kvm_iommu_unmap_guest(struct kvm *kvm)
-{
-	return 0;
 }
 #endif
 
@@ -1008,25 +995,6 @@ bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu);
 #else
 
 static inline bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu) { return true; }
-
-#endif
-
-#ifdef CONFIG_KVM_DEVICE_ASSIGNMENT
-
-long kvm_vm_ioctl_assigned_device(struct kvm *kvm, unsigned ioctl,
-				  unsigned long arg);
-
-void kvm_free_all_assigned_devices(struct kvm *kvm);
-
-#else
-
-static inline long kvm_vm_ioctl_assigned_device(struct kvm *kvm, unsigned ioctl,
-						unsigned long arg)
-{
-	return -ENOTTY;
-}
-
-static inline void kvm_free_all_assigned_devices(struct kvm *kvm) {}
 
 #endif
 
