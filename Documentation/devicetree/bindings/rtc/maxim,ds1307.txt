@@ -1,0 +1,23 @@
+* Maxim (Dallas) DS1307 and compatible Real Time Clock
+
+For example, compatible chips are Maxim DS1337, Microchip MCP794xx,
+STMicroelectronics M41T00 and Epson RX-8025.
+
+Required properties:
+- compatible: For example "maxim,ds1307" (see rtc-ds1307.c driver for a full
+  list).
+- reg: i2c address
+
+Example for DS1307:
+
+ds1307: rtc@68 {
+	compatible = "maxim,ds1307";
+	reg = <0x68>;
+};
+
+Example for MCP79401:
+
+mcp7940x: rtc@6f {
+	compatible = "microchip,mcp7940x";
+	reg = <0x6f>;
+};
