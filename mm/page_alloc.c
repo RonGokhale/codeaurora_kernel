@@ -627,6 +627,7 @@ static inline void __free_one_page(struct page *page,
 	}
 
 	list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
+	set_freepage_migratetype(page, migratetype);
 out:
 	zone->free_area[order].nr_free++;
 }
