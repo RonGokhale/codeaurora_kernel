@@ -76,7 +76,7 @@ static struct regulator_init_data *sky81452_reg_parse_dt(struct device *dev)
 		return NULL;
 	}
 
-	init_data = of_get_regulator_init_data(dev, np);
+	init_data = of_get_regulator_init_data(dev, np, &sky81452_reg);
 
 	of_node_put(np);
 	return init_data;
@@ -127,4 +127,3 @@ module_platform_driver(sky81452_reg_driver);
 MODULE_DESCRIPTION("Skyworks SKY81452 Regulator driver");
 MODULE_AUTHOR("Gyungoh Yoo <jack.yoo@skyworksinc.com>");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0");
