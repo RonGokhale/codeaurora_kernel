@@ -7,6 +7,10 @@ next/fixes-non-critical
 		MAINTAINERS: update email address and cleanup for exynos entry
 		MAINTAINERS: update brcmstb entries
 		MAINTAINERS: add entry for the GISB arbiter driver
+		MAINTAINERS: Add ahci_st.c to ARCH/STI architecture
+		arm: ep93xx: add dma_masks for the M2P and M2M DMA controllers
+	samsung/fixes
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-v3.19
 
 next/cleanup
 	cleanup/dts-subdirs
@@ -41,6 +45,8 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/nsekhar/linux-davinci tags/davinci-for-v3.19/cleanup
 	renesas/cleanup2
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-cleanups2-for-v3.19
+	samsung/cleanup2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-cleanup-2
 
 next/soc
 	rk/cpufreq
@@ -97,6 +103,12 @@ next/soc
 		git://git.infradead.org/users/hesselba/linux-berlin tags/berlin-soc-3.19-2
 	renesas/soc4
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc4-for-v3.19
+	samsung/exynos
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-exynos-v3.19
+		contains samsung/cleanup
+		contains samsung/fixes
+	samsung/pm-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-pm-3
 
 next/boards
 
@@ -163,6 +175,14 @@ next/dt
 		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt2-for-v3.19
 	socfgpa/dts
 		git://git.rocketboards.org/linux-socfpga-next tags/socfpga_dts_updates_for_v3.19
+	sunxi/dt
+		Merge branch 'sunxi/dt' into next/dt
+	rk/dts3
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts3
+	samsung/dt2
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-2
+	samsung/dt-3
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-dt-3
 
 next/drivers
 	berlin/drivers
@@ -182,6 +202,8 @@ next/drivers
 	patch
 		ARM: common: edma: edma_pm_resume may be unused
 		bus: brcmstb_gisb: resolve section mismatch
+	samsung/driver
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-driver
 
 next/defconfig
 	renesas/defconfig
@@ -199,6 +221,8 @@ next/defconfig
 		ARM: multi_v7_defconfig: Enable cgroups
 	sti/defconfig
 		git://git.stlinux.com/devel/kernel/linux-sti tags/sti-defconfig-for-v3.19-1
+	patch
+		ARM: exynos_defconfig: Use 16 minors per MMC block device
 
 next/arm64
 
@@ -213,17 +237,13 @@ next/omap-gpmc
 next/late
 
 fixes
-	<no branch> (532425a7a7738b479406496ca4ad6b3247688e44)
-		git://git.kernel.org/pub/scm/linux/kernel/git/mripard/linux tags/sunxi-fixes-for-3.18
-	<no branch> (b207422bb92f17f4f892a9b8737d44b37fece25b)
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-soc-fixes-for-v3.18
-	<no branch> (b89ff7c3c2dee189489a5f45eb8d72e106179299)
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-dt-fixes-for-v3.18
-	<no branch> (4f37828d4d69a46830e0525a065da9847fc7a819)
-		git://git.kernel.org/pub/scm/linux/kernel/git/horms/renesas tags/renesas-clock-fixes-for-v3.18
-	<no branch> (221b9bf42b26a22e6904d20f35c53aec2e73a646)
-		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.18-fixes-for-rc5
 	patch
-		ARM: multi_v7_defconfig: fix failure setting CPU voltage by enabling dependent I2C controller
+		ARM: tegra: irq: fix buggy usage of irq_data irq field
+	<no branch> (0526f276f94758245ac5886604fe8c805c1b6d2c)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-v3.18
+	<no branch> (0788148935c3a0fae3cca6af72943b9628bf8a54)
+		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-defconfig-v3.18
+	<no branch> (2eb04ae010a8fb165ba7aa56e9aa8e7980887dee)
+		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.18-2
 
 
