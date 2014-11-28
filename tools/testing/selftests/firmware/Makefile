@@ -1,25 +1,40 @@
 # Makefile for firmware loading selftests
 
 # No binaries, but make sure arg-less "make" doesn't trigger "run_tests"
+
+__fw_filesystem:
+fw_filesystem  = if /bin/sh ./fw_filesystem.sh ; then
+fw_filesystem += echo fw_filesystem: ok;
+fw_filesystem += else echo fw_filesystem: [FAIL];
+fw_filesystem += fi
+
+__fw_userhelper:
+fw_userhelper  = if /bin/sh ./fw_userhelper.sh ; then
+fw_userhelper += echo fw_userhelper: ok;
+fw_userhelper += else
+fw_userhelper += echo fw_userhelper: [FAIL];
+fw_userhelper += fi
+
 all:
 
-fw_filesystem:
-	@if /bin/sh ./fw_filesystem.sh ; then \
-                echo "fw_filesystem: ok"; \
-        else \
-                echo "fw_filesystem: [FAIL]"; \
-                exit 1; \
-        fi
+install:
+ifdef INSTALL_KSFT_PATH
+	install ./fw_filesystem.sh ./fw_userhelper.sh $(INSTALL_KSFT_PATH)
+	@echo echo Start firmware filesystem test .... >> $(KSELFTEST)
+	@echo "$(fw_filesystem)" >> $(KSELFTEST)
+	@echo echo End firmware filesystem test .... >> $(KSELFTEST)
+	@echo echo -------------------- >> $(KSELFTEST)
+	@echo echo Start firmware userhelper test .... >> $(KSELFTEST)
+	@echo "$(fw_userhelper)" >> $(KSELFTEST)
+	@echo echo End firmware userhelper test .... >> $(KSELFTEST)
+	@echo echo ============================== >> $(KSELFTEST)
+else
+	@echo Run make kselftest_install in top level source directory
+endif
 
-fw_userhelper:
-	@if /bin/sh ./fw_userhelper.sh ; then \
-                echo "fw_userhelper: ok"; \
-        else \
-                echo "fw_userhelper: [FAIL]"; \
-                exit 1; \
-        fi
-
-run_tests: all fw_filesystem fw_userhelper
+run_tests:
+	@$(fw_filesystem)
+	@$(fw_userhelper)
 
 # Nothing to clean up.
 clean:

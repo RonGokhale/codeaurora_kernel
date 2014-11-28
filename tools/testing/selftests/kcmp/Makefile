@@ -14,6 +14,8 @@ CFLAGS += -I../../../../include/
 CFLAGS += -I../../../../usr/include/
 CFLAGS += -I../../../../arch/x86/include/
 
+TEST_STR = ./kcmp_test || echo kcmp_test: [FAIL]
+
 all:
 ifeq ($(ARCH),x86)
 	gcc $(CFLAGS) kcmp_test.c -o kcmp_test
@@ -21,8 +23,26 @@ else
 	echo "Not an x86 target, can't build kcmp selftest"
 endif
 
+install:
+ifdef INSTALL_KSFT_PATH
+ifeq ($(ARCH),x86)
+	install ./kcmp_test $(INSTALL_KSFT_PATH)
+	@echo echo Start kcmp test .... >> $(KSELFTEST)
+	@echo "$(TEST_STR)" >> $(KSELFTEST)
+	@echo rm -f kcmp-test-file >> $(KSELFTEST)
+	@echo echo End kcmp test .... >> $(KSELFTEST)
+	@echo echo ============================== >> $(KSELFTEST)
+else
+	@echo Not an x86 target, unable install kcmp selftests
+endif
+else
+	@echo Run make kselftest_install in top level source directory
+endif
+
 run_tests: all
-	@./kcmp_test || echo "kcmp_test: [FAIL]"
+ifeq ($(ARCH),x86)
+	@$(TEST_STR)
+endif
 
 clean:
 	$(RM) kcmp_test kcmp-test-file
