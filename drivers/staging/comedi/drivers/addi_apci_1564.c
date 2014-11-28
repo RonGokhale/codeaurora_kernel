@@ -37,7 +37,6 @@ struct apci1564_private {
 	unsigned int mode2;		/* falling-edge/low level channels */
 	unsigned int ctrl;		/* interrupt mode OR (edge) . AND (level) */
 	unsigned char timer_select_mode;
-	unsigned char mode_select_register;
 	struct task_struct *tsk_current;
 };
 
@@ -65,10 +64,9 @@ static int apci1564_reset(struct comedi_device *dev)
 	outl(0x0, devpriv->amcc_iobase + APCI1564_TIMER_RELOAD_REG);
 
 	/* Reset the counter registers */
-	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(APCI1564_COUNTER1));
-	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(APCI1564_COUNTER2));
-	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(APCI1564_COUNTER3));
-	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(APCI1564_COUNTER4));
+	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(0));
+	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(1));
+	outl(0x0, dev->iobase + APCI1564_COUNTER_CTRL_REG(2));
 
 	return 0;
 }
@@ -95,9 +93,8 @@ static irqreturn_t apci1564_interrupt(int irq, void *d)
 
 		s->state = inl(dev->iobase + APCI1564_DI_INT_STATUS_REG)
 			       & 0xffff;
-		comedi_buf_put(s, s->state);
-		s->async->events |= COMEDI_CB_BLOCK | COMEDI_CB_EOS;
-		comedi_event(dev, s);
+		comedi_buf_write_samples(s, &s->state, 1);
+		comedi_handle_events(dev, s);
 
 		/* enable the interrupt */
 		outl(status, devpriv->amcc_iobase + APCI1564_DI_IRQ_REG);
@@ -406,7 +403,7 @@ static int apci1564_auto_attach(struct comedi_device *dev,
 	/*  Allocate and Initialise DO Subdevice Structures */
 	s = &dev->subdevices[1];
 	s->type		= COMEDI_SUBD_DO;
-	s->subdev_flags	= SDF_WRITEABLE;
+	s->subdev_flags	= SDF_WRITABLE;
 	s->n_chan	= 32;
 	s->maxdata	= 1;
 	s->range_table	= &range_digital;
@@ -434,10 +431,9 @@ static int apci1564_auto_attach(struct comedi_device *dev,
 	/*  Allocate and Initialise Timer Subdevice Structures */
 	s = &dev->subdevices[3];
 	s->type		= COMEDI_SUBD_TIMER;
-	s->subdev_flags	= SDF_WRITEABLE;
-	s->n_chan	= 1;
+	s->subdev_flags	= SDF_WRITABLE;
+	s->n_chan	= 3;
 	s->maxdata	= 0;
-	s->len_chanlist	= 1;
 	s->range_table	= &range_digital;
 	s->insn_write	= apci1564_timer_write;
 	s->insn_read	= apci1564_timer_read;

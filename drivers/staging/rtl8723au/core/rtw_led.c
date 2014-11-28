@@ -44,6 +44,7 @@ static void BlinkTimerCallback(unsigned long data)
 void BlinkWorkItemCallback23a(struct work_struct *work)
 {
 	struct led_8723a *pLed = container_of(work, struct led_8723a, BlinkWorkItem);
+
 	BlinkHandler23a(pLed);
 }
 
@@ -51,7 +52,8 @@ void BlinkWorkItemCallback23a(struct work_struct *work)
 /*	Description: */
 /*		Reset status of led_8723a object. */
 /*  */
-void ResetLedStatus23a(struct led_8723a * pLed) {
+void ResetLedStatus23a(struct led_8723a *pLed)
+{
 
 	pLed->CurrLedState = RTW_LED_OFF; /*  Current LED state. */
 	pLed->bLedOn = false; /*  true if LED is ON, false if LED is OFF. */
@@ -422,29 +424,23 @@ static void SwLedBlink3(struct led_8723a *pLed)
 	u8 bStopBlinking = false;
 
 	/*  Change LED according to BlinkingLedState specified. */
-	if (pLed->BlinkingLedState == RTW_LED_ON)
-	{
+	if (pLed->BlinkingLedState == RTW_LED_ON) {
 		SwLedOn23a(padapter, pLed);
 		RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("Blinktimes (%d): turn on\n", pLed->BlinkTimes));
-	}
-	else
-	{
+	} else {
 		if (pLed->CurrLedState != LED_BLINK_WPS_STOP)
 			SwLedOff23a(padapter, pLed);
 		RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("Blinktimes (%d): turn off\n", pLed->BlinkTimes));
 	}
 
-	switch (pLed->CurrLedState)
-	{
+	switch (pLed->CurrLedState) {
 		case LED_BLINK_SCAN:
 			pLed->BlinkTimes--;
-			if (pLed->BlinkTimes == 0)
-			{
+			if (pLed->BlinkTimes == 0) {
 				bStopBlinking = true;
 			}
 
-			if (bStopBlinking)
-			{
+			if (bStopBlinking) {
 				if (padapter->pwrctrlpriv.rf_pwrstate != rf_on)
 				{
 					SwLedOff23a(padapter, pLed);
@@ -465,15 +461,11 @@ static void SwLedBlink3(struct led_8723a *pLed)
 					RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("CurrLedState %d\n", pLed->CurrLedState));
 				}
 				pLed->bLedScanBlinkInProgress = false;
-			}
-			else
-			{
+			} else {
 				if (padapter->pwrctrlpriv.rf_pwrstate != rf_on)
 				{
 					SwLedOff23a(padapter, pLed);
-				}
-				else
-				{
+				} else {
 					if (pLed->bLedOn)
 						pLed->BlinkingLedState = RTW_LED_OFF;
 					else
@@ -486,12 +478,10 @@ static void SwLedBlink3(struct led_8723a *pLed)
 
 		case LED_BLINK_TXRX:
 			pLed->BlinkTimes--;
-			if (pLed->BlinkTimes == 0)
-			{
+			if (pLed->BlinkTimes == 0) {
 				bStopBlinking = true;
 			}
-			if (bStopBlinking)
-			{
+			if (bStopBlinking) {
 				if (padapter->pwrctrlpriv.rf_pwrstate != rf_on)
 				{
 					SwLedOff23a(padapter, pLed);
@@ -514,15 +504,11 @@ static void SwLedBlink3(struct led_8723a *pLed)
 					RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("CurrLedState %d\n", pLed->CurrLedState));
 				}
 				pLed->bLedBlinkInProgress = false;
-			}
-			else
-			{
+			} else {
 				if (padapter->pwrctrlpriv.rf_pwrstate != rf_on)
 				{
 					SwLedOff23a(padapter, pLed);
-				}
-				else
-				{
+				} else {
 					if (pLed->bLedOn)
 						pLed->BlinkingLedState = RTW_LED_OFF;
 					else
@@ -543,8 +529,7 @@ static void SwLedBlink3(struct led_8723a *pLed)
 			break;
 
 		case LED_BLINK_WPS_STOP:	/* WPS success */
-			if (pLed->BlinkingLedState == RTW_LED_ON)
-			{
+			if (pLed->BlinkingLedState == RTW_LED_ON) {
 				pLed->BlinkingLedState = RTW_LED_OFF;
 				mod_timer(&pLed->BlinkTimer, jiffies +
 					  msecs_to_jiffies(LED_BLINK_WPS_SUCESS_INTERVAL_ALPHA));
@@ -553,8 +538,7 @@ static void SwLedBlink3(struct led_8723a *pLed)
 				bStopBlinking = true;
 			}
 
-			if (bStopBlinking)
-			{
+			if (bStopBlinking) {
 				if (padapter->pwrctrlpriv.rf_pwrstate != rf_on)
 				{
 					SwLedOff23a(padapter, pLed);
@@ -584,8 +568,7 @@ static void SwLedBlink4(struct led_8723a *pLed)
 	unsigned long delay = 0;
 
 	/*  Change LED according to BlinkingLedState specified. */
-	if (pLed->BlinkingLedState == RTW_LED_ON)
-	{
+	if (pLed->BlinkingLedState == RTW_LED_ON) {
 		SwLedOn23a(padapter, pLed);
 		RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("Blinktimes (%d): turn on\n", pLed->BlinkTimes));
 	} else {
@@ -600,8 +583,7 @@ static void SwLedBlink4(struct led_8723a *pLed)
 		SwLedOff23a(padapter, pLed1);
 	}
 
-	switch (pLed->CurrLedState)
-	{
+	switch (pLed->CurrLedState) {
 		case LED_BLINK_SLOWLY:
 			if (pLed->bLedOn)
 				pLed->BlinkingLedState = RTW_LED_OFF;
@@ -750,8 +732,7 @@ static void SwLedBlink5(struct led_8723a *pLed)
 		RT_TRACE(_module_rtl8712_led_c_, _drv_info_, ("Blinktimes (%d): turn off\n", pLed->BlinkTimes));
 	}
 
-	switch (pLed->CurrLedState)
-	{
+	switch (pLed->CurrLedState) {
 		case LED_BLINK_SCAN:
 			pLed->BlinkTimes--;
 			if (pLed->BlinkTimes == 0) {
@@ -853,8 +834,7 @@ SwLedControlMode1(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 
 	long delay = -1;
 
-	switch (LedAction)
-	{
+	switch (LedAction) {
 		case LED_CTL_POWER_ON:
 		case LED_CTL_START_TO_LINK:
 		case LED_CTL_NO_LINK:
@@ -1183,8 +1163,7 @@ SwLedControlMode2(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 		break;
 	case LED_CTL_START_TO_LINK:
 	case LED_CTL_NO_LINK:
-		if (!IS_LED_BLINKING(pLed))
-		{
+		if (!IS_LED_BLINKING(pLed)) {
 			pLed->CurrLedState = RTW_LED_OFF;
 			pLed->BlinkingLedState = RTW_LED_OFF;
 			delay = 0;
@@ -1228,8 +1207,7 @@ SwLedControlMode3(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 	struct led_8723a *pLed = &ledpriv->SwLed0;
 	long delay = -1;
 
-	switch (LedAction)
-	{
+	switch (LedAction) {
 		case LED_CTL_SITE_SURVEY:
 			if (pmlmepriv->LinkDetectInfo.bBusyTraffic)
 				;
@@ -1343,8 +1321,7 @@ SwLedControlMode3(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 
 		case LED_CTL_START_TO_LINK:
 		case LED_CTL_NO_LINK:
-			if (!IS_LED_BLINKING(pLed))
-			{
+			if (!IS_LED_BLINKING(pLed)) {
 				pLed->CurrLedState = RTW_LED_OFF;
 				pLed->BlinkingLedState = RTW_LED_OFF;
 				delay = 0;
@@ -1390,8 +1367,7 @@ SwLedControlMode4(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 	struct led_8723a *pLed = &ledpriv->SwLed0;
 	struct led_8723a *pLed1 = &ledpriv->SwLed1;
 
-	switch (LedAction)
-	{
+	switch (LedAction) {
 		case LED_CTL_START_TO_LINK:
 			if (pLed1->bLedWPSBlinkInProgress) {
 				pLed1->bLedWPSBlinkInProgress = false;
@@ -1548,8 +1524,7 @@ SwLedControlMode4(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 				}
 				pLed->bLedWPSBlinkInProgress = true;
 				pLed->CurrLedState = LED_BLINK_WPS;
-				if (pLed->bLedOn)
-				{
+				if (pLed->bLedOn) {
 					pLed->BlinkingLedState = RTW_LED_OFF;
 					mod_timer(&pLed->BlinkTimer, jiffies +
 						  msecs_to_jiffies(LED_BLINK_SLOWLY_INTERVAL));
@@ -1695,8 +1670,7 @@ SwLedControlMode5(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 	struct mlme_priv *pmlmepriv = &padapter->mlmepriv;
 	struct led_8723a *pLed = &ledpriv->SwLed0;
 
-	switch (LedAction)
-	{
+	switch (LedAction) {
 		case LED_CTL_POWER_ON:
 		case LED_CTL_NO_LINK:
 		case LED_CTL_LINK:	/* solid blue */
@@ -1710,10 +1684,8 @@ SwLedControlMode5(struct rtw_adapter *padapter, enum led_ctl_mode LedAction)
 			if (pmlmepriv->LinkDetectInfo.bBusyTraffic &&
 			    check_fwstate(pmlmepriv, _FW_LINKED))
 				;
-			else if (pLed->bLedScanBlinkInProgress == false)
-			{
-				if (pLed->bLedBlinkInProgress == true)
-				{
+			else if (pLed->bLedScanBlinkInProgress == false) {
+				if (pLed->bLedBlinkInProgress == true) {
 					del_timer_sync(&pLed->BlinkTimer);
 					pLed->bLedBlinkInProgress = false;
 				}
