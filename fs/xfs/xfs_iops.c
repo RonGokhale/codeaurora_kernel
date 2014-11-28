@@ -984,10 +984,8 @@ xfs_vn_setattr(
 }
 
 STATIC int
-xfs_vn_update_time(
-	struct inode		*inode,
-	struct timespec		*now,
-	int			flags)
+xfs_vn_write_time(
+	struct inode		*inode)
 {
 	struct xfs_inode	*ip = XFS_I(inode);
 	struct xfs_mount	*mp = ip->i_mount;
@@ -1004,21 +1002,16 @@ xfs_vn_update_time(
 	}
 
 	xfs_ilock(ip, XFS_ILOCK_EXCL);
-	if (flags & S_CTIME) {
-		inode->i_ctime = *now;
-		ip->i_d.di_ctime.t_sec = (__int32_t)now->tv_sec;
-		ip->i_d.di_ctime.t_nsec = (__int32_t)now->tv_nsec;
-	}
-	if (flags & S_MTIME) {
-		inode->i_mtime = *now;
-		ip->i_d.di_mtime.t_sec = (__int32_t)now->tv_sec;
-		ip->i_d.di_mtime.t_nsec = (__int32_t)now->tv_nsec;
-	}
-	if (flags & S_ATIME) {
-		inode->i_atime = *now;
-		ip->i_d.di_atime.t_sec = (__int32_t)now->tv_sec;
-		ip->i_d.di_atime.t_nsec = (__int32_t)now->tv_nsec;
-	}
+
+	ip->i_d.di_ctime.t_sec = (__int32_t) inode->i_ctime.tv_sec;
+	ip->i_d.di_ctime.t_nsec = (__int32_t) inode->i_ctime.tv_nsec;
+
+	ip->i_d.di_mtime.t_sec = (__int32_t)inode->i_mtime.tv_sec;
+	ip->i_d.di_mtime.t_nsec = (__int32_t) inode->i_mtime.tv_nsec;
+
+	ip->i_d.di_atime.t_sec = (__int32_t) inode->i_atime.tv_sec;
+	ip->i_d.di_atime.t_nsec = (__int32_t) inode->i_atime.tv_nsec;
+
 	xfs_trans_ijoin(tp, ip, XFS_ILOCK_EXCL);
 	xfs_trans_log_inode(tp, ip, XFS_ILOG_TIMESTAMP);
 	return xfs_trans_commit(tp, 0);
@@ -1129,7 +1122,7 @@ static const struct inode_operations xfs_inode_operations = {
 	.removexattr		= generic_removexattr,
 	.listxattr		= xfs_vn_listxattr,
 	.fiemap			= xfs_vn_fiemap,
-	.update_time		= xfs_vn_update_time,
+	.write_time		= xfs_vn_write_time,
 };
 
 static const struct inode_operations xfs_dir_inode_operations = {
@@ -1156,7 +1149,7 @@ static const struct inode_operations xfs_dir_inode_operations = {
 	.getxattr		= generic_getxattr,
 	.removexattr		= generic_removexattr,
 	.listxattr		= xfs_vn_listxattr,
-	.update_time		= xfs_vn_update_time,
+	.write_time		= xfs_vn_write_time,
 	.tmpfile		= xfs_vn_tmpfile,
 };
 
@@ -1184,7 +1177,7 @@ static const struct inode_operations xfs_dir_ci_inode_operations = {
 	.getxattr		= generic_getxattr,
 	.removexattr		= generic_removexattr,
 	.listxattr		= xfs_vn_listxattr,
-	.update_time		= xfs_vn_update_time,
+	.write_time		= xfs_vn_write_time,
 	.tmpfile		= xfs_vn_tmpfile,
 };
 
@@ -1198,7 +1191,7 @@ static const struct inode_operations xfs_symlink_inode_operations = {
 	.getxattr		= generic_getxattr,
 	.removexattr		= generic_removexattr,
 	.listxattr		= xfs_vn_listxattr,
-	.update_time		= xfs_vn_update_time,
+	.write_time		= xfs_vn_write_time,
 };
 
 STATIC void
