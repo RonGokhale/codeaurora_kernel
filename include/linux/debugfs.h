@@ -21,6 +21,7 @@
 #include <linux/types.h>
 
 struct file_operations;
+struct device;
 
 struct debugfs_blob_wrapper {
 	void *data;
