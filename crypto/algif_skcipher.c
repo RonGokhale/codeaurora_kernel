@@ -448,14 +448,13 @@ static int skcipher_recvmsg(struct kiocb *unused, struct socket *sock,
 			while (!sg->length)
 				sg++;
 
-			used = ctx->used;
-			if (!used) {
+			if (!ctx->used) {
 				err = skcipher_wait_for_data(sk, flags);
 				if (err)
 					goto unlock;
 			}
 
-			used = min_t(unsigned long, used, seglen);
+			used = min_t(unsigned long, ctx->used, seglen);
 
 			used = af_alg_make_sg(&ctx->rsgl, from, used, 1);
 			err = used;
@@ -566,7 +565,7 @@ static void skcipher_sock_destruct(struct sock *sk)
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(&ctx->req);
 
 	skcipher_free_sgl(sk);
-	sock_kfree_s(sk, ctx->iv, crypto_ablkcipher_ivsize(tfm));
+	sock_kzfree_s(sk, ctx->iv, crypto_ablkcipher_ivsize(tfm));
 	sock_kfree_s(sk, ctx, ctx->len);
 	af_alg_release_parent(sk);
 }
