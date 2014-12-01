@@ -302,14 +302,15 @@ static unsigned char lcd_bits[LCD_PORTS][LCD_BITS][BIT_STATES];
 /*
  * Construct custom config from the kernel's configuration
  */
-#define DEFAULT_PROFILE         PANEL_PROFILE_LARGE
 #define DEFAULT_PARPORT         0
-#define DEFAULT_LCD             LCD_TYPE_OLD
-#define DEFAULT_KEYPAD          KEYPAD_TYPE_OLD
+#define DEFAULT_PROFILE         PANEL_PROFILE_LARGE
+#define DEFAULT_KEYPAD_TYPE     KEYPAD_TYPE_OLD
+#define DEFAULT_LCD_TYPE        LCD_TYPE_OLD
+#define DEFAULT_LCD_HEIGHT      2
 #define DEFAULT_LCD_WIDTH       40
 #define DEFAULT_LCD_BWIDTH      40
 #define DEFAULT_LCD_HWIDTH      64
-#define DEFAULT_LCD_HEIGHT      2
+#define DEFAULT_LCD_CHARSET     LCD_CHARSET_NORMAL
 #define DEFAULT_LCD_PROTO       LCD_PROTO_PARALLEL
 
 #define DEFAULT_LCD_PIN_E       PIN_AUTOLF
@@ -318,27 +319,31 @@ static unsigned char lcd_bits[LCD_PORTS][LCD_BITS][BIT_STATES];
 #define DEFAULT_LCD_PIN_SCL     PIN_STROBE
 #define DEFAULT_LCD_PIN_SDA     PIN_D0
 #define DEFAULT_LCD_PIN_BL      PIN_NOT_SET
-#define DEFAULT_LCD_CHARSET     LCD_CHARSET_NORMAL
-
-#ifdef CONFIG_PANEL_PROFILE
-#undef DEFAULT_PROFILE
-#define DEFAULT_PROFILE CONFIG_PANEL_PROFILE
-#endif
 
 #ifdef CONFIG_PANEL_PARPORT
 #undef DEFAULT_PARPORT
 #define DEFAULT_PARPORT CONFIG_PANEL_PARPORT
 #endif
 
+#ifdef CONFIG_PANEL_PROFILE
+#undef DEFAULT_PROFILE
+#define DEFAULT_PROFILE CONFIG_PANEL_PROFILE
+#endif
+
 #if DEFAULT_PROFILE == 0	/* custom */
 #ifdef CONFIG_PANEL_KEYPAD
-#undef DEFAULT_KEYPAD
-#define DEFAULT_KEYPAD CONFIG_PANEL_KEYPAD
+#undef DEFAULT_KEYPAD_TYPE
+#define DEFAULT_KEYPAD_TYPE CONFIG_PANEL_KEYPAD
 #endif
 
 #ifdef CONFIG_PANEL_LCD
-#undef DEFAULT_LCD
-#define DEFAULT_LCD CONFIG_PANEL_LCD
+#undef DEFAULT_LCD_TYPE
+#define DEFAULT_LCD_TYPE CONFIG_PANEL_LCD
+#endif
+
+#ifdef CONFIG_PANEL_LCD_HEIGHT
+#undef DEFAULT_LCD_HEIGHT
+#define DEFAULT_LCD_HEIGHT CONFIG_PANEL_LCD_HEIGHT
 #endif
 
 #ifdef CONFIG_PANEL_LCD_WIDTH
@@ -356,9 +361,9 @@ static unsigned char lcd_bits[LCD_PORTS][LCD_BITS][BIT_STATES];
 #define DEFAULT_LCD_HWIDTH CONFIG_PANEL_LCD_HWIDTH
 #endif
 
-#ifdef CONFIG_PANEL_LCD_HEIGHT
-#undef DEFAULT_LCD_HEIGHT
-#define DEFAULT_LCD_HEIGHT CONFIG_PANEL_LCD_HEIGHT
+#ifdef CONFIG_PANEL_LCD_CHARSET
+#undef DEFAULT_LCD_CHARSET
+#define DEFAULT_LCD_CHARSET CONFIG_PANEL_LCD_CHARSET
 #endif
 
 #ifdef CONFIG_PANEL_LCD_PROTO
@@ -396,16 +401,14 @@ static unsigned char lcd_bits[LCD_PORTS][LCD_BITS][BIT_STATES];
 #define DEFAULT_LCD_PIN_BL CONFIG_PANEL_LCD_PIN_BL
 #endif
 
-#ifdef CONFIG_PANEL_LCD_CHARSET
-#undef DEFAULT_LCD_CHARSET
-#define DEFAULT_LCD_CHARSET CONFIG_PANEL_LCD_CHARSET
-#endif
-
 #endif /* DEFAULT_PROFILE == 0 */
 
 /* global variables */
-static int keypad_open_cnt;	/* #times opened */
-static int lcd_open_cnt;	/* #times opened */
+
+/* Device single-open policy control */
+static atomic_t lcd_available = ATOMIC_INIT(1);
+static atomic_t keypad_available = ATOMIC_INIT(1);
+
 static struct pardevice *pprt;
 
 static int lcd_initialized;
@@ -430,6 +433,22 @@ static int parport = -1;
 module_param(parport, int, 0000);
 MODULE_PARM_DESC(parport, "Parallel port index (0=lpt1, 1=lpt2, ...)");
 
+static int profile = DEFAULT_PROFILE;
+module_param(profile, int, 0000);
+MODULE_PARM_DESC(profile,
+		 "1=16x2 old kp; 2=serial 16x2, new kp; 3=16x2 hantronix; "
+		 "4=16x2 nexcom; default=40x2, old kp");
+
+static int keypad_type = -1;
+module_param(keypad_type, int, 0000);
+MODULE_PARM_DESC(keypad_type,
+		 "Keypad type: 0=none, 1=old 6 keys, 2=new 6+1 keys, 3=nexcom 4 keys");
+
+static int lcd_type = -1;
+module_param(lcd_type, int, 0000);
+MODULE_PARM_DESC(lcd_type,
+		 "LCD type: 0=none, 1=old //, 2=serial ks0074, 3=hantronix //, 4=nexcom //, 5=compiled-in");
+
 static int lcd_height = -1;
 module_param(lcd_height, int, 0000);
 MODULE_PARM_DESC(lcd_height, "Number of lines on the LCD");
@@ -446,38 +465,14 @@ static int lcd_hwidth = -1;	/* hardware buffer width (usually 64) */
 module_param(lcd_hwidth, int, 0000);
 MODULE_PARM_DESC(lcd_hwidth, "LCD line hardware address (64)");
 
-static int lcd_enabled = -1;
-module_param(lcd_enabled, int, 0000);
-MODULE_PARM_DESC(lcd_enabled, "Deprecated option, use lcd_type instead");
-
-static int keypad_enabled = -1;
-module_param(keypad_enabled, int, 0000);
-MODULE_PARM_DESC(keypad_enabled, "Deprecated option, use keypad_type instead");
-
-static int lcd_type = -1;
-module_param(lcd_type, int, 0000);
-MODULE_PARM_DESC(lcd_type,
-		 "LCD type: 0=none, 1=old //, 2=serial ks0074, 3=hantronix //, 4=nexcom //, 5=compiled-in");
+static int lcd_charset = -1;
+module_param(lcd_charset, int, 0000);
+MODULE_PARM_DESC(lcd_charset, "LCD character set: 0=standard, 1=KS0074");
 
 static int lcd_proto = -1;
 module_param(lcd_proto, int, 0000);
 MODULE_PARM_DESC(lcd_proto,
 		 "LCD communication: 0=parallel (//), 1=serial, 2=TI LCD Interface");
-
-static int lcd_charset = -1;
-module_param(lcd_charset, int, 0000);
-MODULE_PARM_DESC(lcd_charset, "LCD character set: 0=standard, 1=KS0074");
-
-static int keypad_type = -1;
-module_param(keypad_type, int, 0000);
-MODULE_PARM_DESC(keypad_type,
-		 "Keypad type: 0=none, 1=old 6 keys, 2=new 6+1 keys, 3=nexcom 4 keys");
-
-static int profile = DEFAULT_PROFILE;
-module_param(profile, int, 0000);
-MODULE_PARM_DESC(profile,
-		 "1=16x2 old kp; 2=serial 16x2, new kp; 3=16x2 hantronix; "
-		 "4=16x2 nexcom; default=40x2, old kp");
 
 /*
  * These are the parallel port pins the LCD control signals are connected to.
@@ -503,20 +498,31 @@ module_param(lcd_rw_pin, int, 0000);
 MODULE_PARM_DESC(lcd_rw_pin,
 		 "# of the // port pin connected to LCD 'RW' signal, with polarity (-17..17)");
 
-static int lcd_bl_pin = PIN_NOT_SET;
-module_param(lcd_bl_pin, int, 0000);
-MODULE_PARM_DESC(lcd_bl_pin,
-		 "# of the // port pin connected to LCD backlight, with polarity (-17..17)");
+static int lcd_cl_pin = PIN_NOT_SET;
+module_param(lcd_cl_pin, int, 0000);
+MODULE_PARM_DESC(lcd_cl_pin,
+		 "# of the // port pin connected to serial LCD 'SCL' signal, with polarity (-17..17)");
 
 static int lcd_da_pin = PIN_NOT_SET;
 module_param(lcd_da_pin, int, 0000);
 MODULE_PARM_DESC(lcd_da_pin,
 		 "# of the // port pin connected to serial LCD 'SDA' signal, with polarity (-17..17)");
 
-static int lcd_cl_pin = PIN_NOT_SET;
-module_param(lcd_cl_pin, int, 0000);
-MODULE_PARM_DESC(lcd_cl_pin,
-		 "# of the // port pin connected to serial LCD 'SCL' signal, with polarity (-17..17)");
+static int lcd_bl_pin = PIN_NOT_SET;
+module_param(lcd_bl_pin, int, 0000);
+MODULE_PARM_DESC(lcd_bl_pin,
+		 "# of the // port pin connected to LCD backlight, with polarity (-17..17)");
+
+/* Deprecated module parameters - consider not using them anymore */
+
+static int lcd_enabled = -1;
+module_param(lcd_enabled, int, 0000);
+MODULE_PARM_DESC(lcd_enabled, "Deprecated option, use lcd_type instead");
+
+static int keypad_enabled = -1;
+module_param(keypad_enabled, int, 0000);
+MODULE_PARM_DESC(keypad_enabled, "Deprecated option, use keypad_type instead");
+
 
 static const unsigned char *lcd_char_conv;
 
@@ -1347,7 +1353,7 @@ static ssize_t lcd_write(struct file *file,
 
 static int lcd_open(struct inode *inode, struct file *file)
 {
-	if (lcd_open_cnt)
+	if (!atomic_dec_and_test(&lcd_available))
 		return -EBUSY;	/* open only once at a time */
 
 	if (file->f_mode & FMODE_READ)	/* device is write-only */
@@ -1357,13 +1363,12 @@ static int lcd_open(struct inode *inode, struct file *file)
 		lcd_clear_display();
 		lcd_must_clear = 0;
 	}
-	lcd_open_cnt++;
 	return nonseekable_open(inode, file);
 }
 
 static int lcd_release(struct inode *inode, struct file *file)
 {
-	lcd_open_cnt--;
+	atomic_inc(&lcd_available);
 	return 0;
 }
 
@@ -1375,9 +1380,9 @@ static const struct file_operations lcd_fops = {
 };
 
 static struct miscdevice lcd_dev = {
-	LCD_MINOR,
-	"lcd",
-	&lcd_fops
+	.minor	= LCD_MINOR,
+	.name	= "lcd",
+	.fops	= &lcd_fops,
 };
 
 /* public function usable from the kernel for any purpose */
@@ -1627,20 +1632,19 @@ static ssize_t keypad_read(struct file *file,
 
 static int keypad_open(struct inode *inode, struct file *file)
 {
-	if (keypad_open_cnt)
+	if (!atomic_dec_and_test(&keypad_available))
 		return -EBUSY;	/* open only once at a time */
 
 	if (file->f_mode & FMODE_WRITE)	/* device is read-only */
 		return -EPERM;
 
 	keypad_buflen = 0;	/* flush the buffer on opening */
-	keypad_open_cnt++;
 	return 0;
 }
 
 static int keypad_release(struct inode *inode, struct file *file)
 {
-	keypad_open_cnt--;
+	atomic_inc(&keypad_available);
 	return 0;
 }
 
@@ -1652,9 +1656,9 @@ static const struct file_operations keypad_fops = {
 };
 
 static struct miscdevice keypad_dev = {
-	KEYPAD_MINOR,
-	"keypad",
-	&keypad_fops
+	.minor	= KEYPAD_MINOR,
+	.name	= "keypad",
+	.fops	= &keypad_fops,
 };
 
 static void keypad_send_key(const char *string, int max_len)
@@ -1663,7 +1667,7 @@ static void keypad_send_key(const char *string, int max_len)
 		return;
 
 	/* send the key to the device only if a process is attached to it. */
-	if (keypad_open_cnt > 0) {
+	if (!atomic_read(&keypad_available)) {
 		while (max_len-- && keypad_buflen < KEYPAD_BUFFER && *string) {
 			keypad_buffer[(keypad_start + keypad_buflen++) %
 				      KEYPAD_BUFFER] = *string++;
@@ -2235,9 +2239,9 @@ static int panel_init(void)
 	case PANEL_PROFILE_CUSTOM:
 		/* custom profile */
 		if (keypad_type < 0)
-			keypad_type = DEFAULT_KEYPAD;
+			keypad_type = DEFAULT_KEYPAD_TYPE;
 		if (lcd_type < 0)
-			lcd_type = DEFAULT_LCD;
+			lcd_type = DEFAULT_LCD_TYPE;
 		break;
 	case PANEL_PROFILE_OLD:
 		/* 8 bits, 2*16, old keypad */

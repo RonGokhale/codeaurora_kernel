@@ -215,6 +215,7 @@ u32 rtw_free_uc_swdec_pending_queue23a(struct rtw_adapter *adapter)
 {
 	u32 cnt = 0;
 	struct recv_frame *pending_frame;
+
 	while ((pending_frame = rtw_alloc_recvframe23a(&adapter->recvpriv.uc_swdec_pending_queue))) {
 		rtw_free_recvframe23a(pending_frame);
 		DBG_8723A("%s: dequeue uc_swdec_pending_queue\n", __func__);
@@ -239,6 +240,7 @@ int rtw_enqueue_recvbuf23a_to_head(struct recv_buf *precvbuf, struct rtw_queue *
 int rtw_enqueue_recvbuf23a(struct recv_buf *precvbuf, struct rtw_queue *queue)
 {
 	unsigned long irqL;
+
 	spin_lock_irqsave(&queue->lock, irqL);
 
 	list_del_init(&precvbuf->list);
@@ -364,6 +366,7 @@ int recvframe_chkmic(struct rtw_adapter *adapter,
 
 			if (bmic_err == true) {
 				int i;
+
 				RT_TRACE(_module_rtl871x_recv_c_, _drv_err_,
 					 ("\n *(pframemic-8)-*(pframemic-1) ="
 					  "0x%02x:0x%02x:0x%02x:0x%02x:0x%02x:"
@@ -483,6 +486,7 @@ struct recv_frame *decryptor(struct rtw_adapter *padapter,
 
 	if (prxattrib->encrypt > 0) {
 		u8 *iv = precv_frame->pkt->data + prxattrib->hdrlen;
+
 		prxattrib->key_index = (((iv[3]) >> 6) & 0x3);
 
 		if (prxattrib->key_index > WEP_KEYS) {
@@ -564,59 +568,27 @@ static struct recv_frame *portctrl(struct rtw_adapter *adapter,
 		 ("########portctrl:adapter->securitypriv.dot11AuthAlgrthm ="
 		  "%d\n", adapter->securitypriv.dot11AuthAlgrthm));
 
+	prtnframe = precv_frame;
+
 	if (auth_alg == dot11AuthAlgrthm_8021X) {
 		/* get ether_type */
 		ptr = pfhdr->pkt->data + pfhdr->attrib.hdrlen;
 
 		ether_type = (ptr[6] << 8) | ptr[7];
 
-		if ((psta != NULL) && (psta->ieee8021x_blocked)) {
+		if (psta && psta->ieee8021x_blocked) {
 			/* blocked */
 			/* only accept EAPOL frame */
 			RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
 				 ("########portctrl:psta->ieee8021x_blocked =="
 				  "1\n"));
 
-			if (ether_type == eapol_type) {
-				prtnframe = precv_frame;
-			} else {
+			if (ether_type != eapol_type) {
 				/* free this frame */
 				rtw_free_recvframe23a(precv_frame);
 				prtnframe = NULL;
 			}
-		} else {
-			/* allowed */
-			/* check decryption status, and decrypt the frame if needed */
-			RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
-				 ("########portctrl:psta->ieee8021x_blocked =="
-				  "0\n"));
-			RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
-				 ("portctrl:precv_frame->hdr.attrib.privacy ="
-				  "%x\n", precv_frame->attrib.privacy));
-
-			if (pattrib->bdecrypted == 0) {
-				RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
-					 ("portctrl:prxstat->decrypted =%x\n",
-					  pattrib->bdecrypted));
-			}
-
-			prtnframe = precv_frame;
-			/* check is the EAPOL frame or not (Rekey) */
-			if (ether_type == eapol_type) {
-				RT_TRACE(_module_rtl871x_recv_c_, _drv_notice_,
-					 ("########portctrl:ether_type == "
-					  "0x888e\n"));
-				/* check Rekey */
-
-				prtnframe = precv_frame;
-			} else {
-				RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
-					 ("########portctrl:ether_type = 0x%04x"
-					  "\n", ether_type));
-			}
 		}
-	} else {
-		prtnframe = precv_frame;
 	}
 
 	return prtnframe;
@@ -1066,6 +1038,7 @@ int sta2ap_data_frame(struct rtw_adapter *adapter,
 		}
 	} else {
 		u8 *myhwaddr = myid(&adapter->eeprompriv);
+
 		if (!ether_addr_equal(pattrib->ra, myhwaddr)) {
 			ret = RTW_RX_HANDLED;
 			goto exit;
@@ -1405,8 +1378,7 @@ static int validate_recv_data_frame(struct rtw_adapter *adapter,
 		RT_TRACE(_module_rtl871x_recv_c_, _drv_info_,
 			 ("\n pattrib->encrypt =%d\n", pattrib->encrypt));
 
-		switch (pattrib->encrypt)
-		{
+		switch (pattrib->encrypt) {
 		case WLAN_CIPHER_SUITE_WEP40:
 		case WLAN_CIPHER_SUITE_WEP104:
 			pattrib->iv_len = IEEE80211_WEP_IV_LEN;
@@ -1505,8 +1477,7 @@ static int validate_recv_frame(struct rtw_adapter *adapter,
 	if (unlikely(bDumpRxPkt == 1))
 		dump_rx_pkt(skb, type, bDumpRxPkt);
 
-	switch (type)
-	{
+	switch (type) {
 	case IEEE80211_FTYPE_MGMT:
 		retval = validate_recv_mgnt_frame(adapter, precv_frame);
 		if (retval == _FAIL) {
@@ -1524,7 +1495,6 @@ static int validate_recv_frame(struct rtw_adapter *adapter,
 		retval = _FAIL; /*  only data frame return _SUCCESS */
 		break;
 	case IEEE80211_FTYPE_DATA:
-		rtw_led_control(adapter, LED_CTL_RX);
 		pattrib->qos = (subtype & IEEE80211_STYPE_QOS_DATA) ? 1 : 0;
 		retval = validate_recv_data_frame(adapter, precv_frame);
 		if (retval == _FAIL) {
@@ -1551,8 +1521,6 @@ static int wlanhdr_to_ethhdr (struct recv_frame *precvframe)
 	u16	eth_type, len, hdrlen;
 	u8	bsnaphdr;
 	u8	*psnap;
-
-	int ret = _SUCCESS;
 	struct rtw_adapter *adapter = precvframe->adapter;
 	struct mlme_priv *pmlmepriv = &adapter->mlmepriv;
 
@@ -1613,7 +1581,7 @@ static int wlanhdr_to_ethhdr (struct recv_frame *precvframe)
 	}
 
 
-	return ret;
+	return _SUCCESS;
 }
 
 /* perform defrag */
@@ -1691,7 +1659,7 @@ struct recv_frame *recvframe_defrag(struct rtw_adapter *adapter,
 		skb_put(skb, pnfhdr->pkt->len);
 
 		prframe->attrib.icv_len = pnfhdr->attrib.icv_len;
-	};
+	}
 
 	/* free the defrag_q queue and return the prframe */
 	rtw_free_recvframe23a_queue(defrag_q);
@@ -2177,8 +2145,7 @@ int process_recv_indicatepkts(struct rtw_adapter *padapter,
 				return retval;
 			}
 		}
-	} else /* B/G mode */
-	{
+	} else { /* B/G mode */
 		retval = wlanhdr_to_ethhdr(prframe);
 		if (retval != _SUCCESS) {
 			RT_TRACE(_module_rtl871x_recv_c_, _drv_err_,
@@ -2238,8 +2205,6 @@ static int recv_func_posthandle(struct rtw_adapter *padapter,
 	struct recv_priv *precvpriv = &padapter->recvpriv;
 
 	/*  DATA FRAME */
-	rtw_led_control(padapter, LED_CTL_RX);
-
 	prframe = decryptor(padapter, prframe);
 	if (prframe == NULL) {
 		RT_TRACE(_module_rtl871x_recv_c_, _drv_err_,
