@@ -735,17 +735,17 @@ isert_connect_release(struct isert_conn *isert_conn)
 	if (device && device->use_fastreg)
 		isert_conn_free_fastreg_pool(isert_conn);
 
+	isert_free_rx_descriptors(isert_conn);
+	rdma_destroy_id(isert_conn->conn_cm_id);
+
 	if (isert_conn->conn_qp) {
 		cq_index = ((struct isert_cq_desc *)
 			isert_conn->conn_qp->recv_cq->cq_context)->cq_index;
 		pr_debug("isert_connect_release: cq_index: %d\n", cq_index);
 		isert_conn->conn_device->cq_active_qps[cq_index]--;
 
-		rdma_destroy_qp(isert_conn->conn_cm_id);
+		ib_destroy_qp(isert_conn->conn_qp);
 	}
-
-	isert_free_rx_descriptors(isert_conn);
-	rdma_destroy_id(isert_conn->conn_cm_id);
 
 	ib_dereg_mr(isert_conn->conn_mr);
 	ib_dealloc_pd(isert_conn->conn_pd);
