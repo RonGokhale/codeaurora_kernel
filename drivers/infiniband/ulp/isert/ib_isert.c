@@ -685,8 +685,9 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	list_add_tail(&isert_conn->conn_accept_node, &isert_np->np_accept_list);
 	mutex_unlock(&isert_np->np_accept_mutex);
 
-	pr_debug("isert_connect_request() up np_sem np: %p\n", np);
+	pr_info("np %p: Allow accept_np to continue\n", np);
 	up(&isert_np->np_sem);
+
 	return 0;
 
 out_conn_dev:
@@ -705,6 +706,8 @@ out_login_buf:
 	kfree(isert_conn->login_buf);
 out:
 	kfree(isert_conn);
+	rdma_reject(cma_id, NULL, 0);
+
 	return ret;
 }
 
