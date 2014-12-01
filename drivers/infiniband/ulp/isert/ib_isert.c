@@ -831,6 +831,14 @@ isert_disconnected_handler(struct rdma_cm_id *cma_id, bool disconnect)
 	return 0;
 }
 
+static void
+isert_connect_error(struct rdma_cm_id *cma_id)
+{
+	struct isert_conn *isert_conn = (struct isert_conn *)cma_id->context;
+
+	isert_put_conn(isert_conn);
+}
+
 static int
 isert_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 {
@@ -857,7 +865,11 @@ isert_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:  /* FALLTHRU */
 		ret = isert_disconnected_handler(cma_id, disconnect);
 		break;
+	case RDMA_CM_EVENT_REJECTED:       /* FALLTHRU */
+	case RDMA_CM_EVENT_UNREACHABLE:    /* FALLTHRU */
 	case RDMA_CM_EVENT_CONNECT_ERROR:
+		isert_connect_error(cma_id);
+		break;
 	default:
 		pr_err("Unhandled RDMA CMA event: %d\n", event->event);
 		break;
@@ -3216,7 +3228,7 @@ static void isert_wait_conn(struct iscsi_conn *conn)
 {
 	struct isert_conn *isert_conn = conn->context;
 
-	pr_debug("isert_wait_conn: Starting \n");
+	pr_debug("isert_wait_conn: Starting\n");
 
 	mutex_lock(&isert_conn->conn_mutex);
 	if (isert_conn->conn_cm_id && !isert_conn->disconnect) {
