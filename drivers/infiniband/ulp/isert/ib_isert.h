@@ -123,7 +123,6 @@ struct isert_device;
 struct isert_conn {
 	enum iser_conn_state	state;
 	int			post_recv_buf_count;
-	atomic_t		post_send_buf_count;
 	u32			responder_resources;
 	u32			initiator_depth;
 	bool			pi_support;
@@ -156,6 +155,7 @@ struct isert_conn {
 	/* lock to protect fastreg pool */
 	spinlock_t		conn_lock;
 	struct work_struct	release_work;
+	struct ib_recv_wr       beacon;
 };
 
 #define ISERT_MAX_CQ 64
