@@ -118,7 +118,7 @@ bool __intel_display_power_is_enabled(struct drm_i915_private *dev_priv,
 }
 
 /**
- * intel_display_power_is_enabled - unlocked check for a power domain
+ * intel_display_power_is_enabled - check for a power domain
  * @dev_priv: i915 device instance
  * @domain: power domain to check
  *
@@ -577,6 +577,23 @@ static void chv_pipe_power_well_enable(struct drm_i915_private *dev_priv,
 		     power_well->data != PIPE_C);
 
 	chv_set_pipe_power_well(dev_priv, power_well, true);
+
+	if (power_well->data == PIPE_A) {
+		spin_lock_irq(&dev_priv->irq_lock);
+		valleyview_enable_display_irqs(dev_priv);
+		spin_unlock_irq(&dev_priv->irq_lock);
+
+		/*
+		 * During driver initialization/resume we can avoid restoring the
+		 * part of the HW/SW state that will be inited anyway explicitly.
+		 */
+		if (dev_priv->power_domains.initializing)
+			return;
+
+		intel_hpd_init(dev_priv);
+
+		i915_redisable_vga_power_on(dev_priv->dev);
+	}
 }
 
 static void chv_pipe_power_well_disable(struct drm_i915_private *dev_priv,
@@ -585,6 +602,12 @@ static void chv_pipe_power_well_disable(struct drm_i915_private *dev_priv,
 	WARN_ON_ONCE(power_well->data != PIPE_A &&
 		     power_well->data != PIPE_B &&
 		     power_well->data != PIPE_C);
+
+	if (power_well->data == PIPE_A) {
+		spin_lock_irq(&dev_priv->irq_lock);
+		valleyview_disable_display_irqs(dev_priv);
+		spin_unlock_irq(&dev_priv->irq_lock);
+	}
 
 	chv_set_pipe_power_well(dev_priv, power_well, false);
 

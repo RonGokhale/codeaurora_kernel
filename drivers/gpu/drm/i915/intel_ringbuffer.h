@@ -142,13 +142,14 @@ struct  intel_engine_cs {
 
 	unsigned irq_refcount; /* protected by dev_priv->irq_lock */
 	u32		irq_enable_mask;	/* bitmask to enable ring interrupt */
-	u32		trace_irq_seqno;
+	struct drm_i915_gem_request *trace_irq_req;
 	bool __must_check (*irq_get)(struct intel_engine_cs *ring);
 	void		(*irq_put)(struct intel_engine_cs *ring);
 
-	int		(*init)(struct intel_engine_cs *ring);
+	int		(*init_hw)(struct intel_engine_cs *ring);
 
-	int		(*init_context)(struct intel_engine_cs *ring);
+	int		(*init_context)(struct intel_engine_cs *ring,
+					struct intel_context *ctx);
 
 	void		(*write_tail)(struct intel_engine_cs *ring,
 				      u32 value);
@@ -235,6 +236,7 @@ struct  intel_engine_cs {
 	/* Execlists */
 	spinlock_t execlist_lock;
 	struct list_head execlist_queue;
+	struct list_head execlist_retired_req_list;
 	u8 next_context_status_buffer;
 	u32             irq_keep_mask; /* bitmask for interrupts that should not be masked */
 	int		(*emit_request)(struct intel_ringbuffer *ringbuf);
@@ -249,7 +251,7 @@ struct  intel_engine_cs {
 	 * ringbuffer.
 	 *
 	 * Includes buffers having the contents of their GPU caches
-	 * flushed, not necessarily primitives.  last_rendering_seqno
+	 * flushed, not necessarily primitives.  last_read_req
 	 * represents when the rendering involved will be completed.
 	 *
 	 * A reference is held on the buffer while on this list.
@@ -265,8 +267,7 @@ struct  intel_engine_cs {
 	/**
 	 * Do we have some not yet emitted requests outstanding?
 	 */
-	struct drm_i915_gem_request *preallocated_lazy_request;
-	u32 outstanding_lazy_seqno;
+	struct drm_i915_gem_request *outstanding_lazy_request;
 	bool gpu_caches_dirty;
 	bool fbc_dirty;
 
@@ -381,6 +382,9 @@ intel_write_status_page(struct intel_engine_cs *ring,
 #define I915_GEM_HWS_SCRATCH_INDEX	0x30
 #define I915_GEM_HWS_SCRATCH_ADDR (I915_GEM_HWS_SCRATCH_INDEX << MI_STORE_DWORD_INDEX_SHIFT)
 
+void intel_unpin_ringbuffer_obj(struct intel_ringbuffer *ringbuf);
+int intel_pin_and_map_ringbuffer_obj(struct drm_device *dev,
+				     struct intel_ringbuffer *ringbuf);
 void intel_destroy_ringbuffer_obj(struct intel_ringbuffer *ringbuf);
 int intel_alloc_ringbuffer_obj(struct drm_device *dev,
 			       struct intel_ringbuffer *ringbuf);
@@ -403,6 +407,7 @@ static inline void intel_ring_advance(struct intel_engine_cs *ring)
 	ringbuf->tail &= ringbuf->size - 1;
 }
 int __intel_ring_space(int head, int tail, int size);
+void intel_ring_update_space(struct intel_ringbuffer *ringbuf);
 int intel_ring_space(struct intel_ringbuffer *ringbuf);
 bool intel_ring_stopped(struct intel_engine_cs *ring);
 void __intel_ring_advance(struct intel_engine_cs *ring);
@@ -424,24 +429,18 @@ int intel_init_vebox_ring_buffer(struct drm_device *dev);
 u64 intel_ring_get_active_head(struct intel_engine_cs *ring);
 void intel_ring_setup_status_page(struct intel_engine_cs *ring);
 
+int init_workarounds_ring(struct intel_engine_cs *ring);
+
 static inline u32 intel_ring_get_tail(struct intel_ringbuffer *ringbuf)
 {
 	return ringbuf->tail;
 }
 
-static inline u32 intel_ring_get_seqno(struct intel_engine_cs *ring)
+static inline struct drm_i915_gem_request *
+intel_ring_get_request(struct intel_engine_cs *ring)
 {
-	BUG_ON(ring->outstanding_lazy_seqno == 0);
-	return ring->outstanding_lazy_seqno;
+	BUG_ON(ring->outstanding_lazy_request == NULL);
+	return ring->outstanding_lazy_request;
 }
-
-static inline void i915_trace_irq_get(struct intel_engine_cs *ring, u32 seqno)
-{
-	if (ring->trace_irq_seqno == 0 && ring->irq_get(ring))
-		ring->trace_irq_seqno = seqno;
-}
-
-/* DRI warts */
-int intel_render_ring_init_dri(struct drm_device *dev, u64 start, u32 size);
 
 #endif /* _INTEL_RINGBUFFER_H_ */
