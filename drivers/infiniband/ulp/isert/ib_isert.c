@@ -602,7 +602,6 @@ isert_connect_request(struct rdma_cm_id *cma_id, struct rdma_cm_event *event)
 	spin_lock_init(&isert_conn->conn_lock);
 	INIT_LIST_HEAD(&isert_conn->conn_fr_pool);
 
-	cma_id->context = isert_conn;
 	isert_conn->conn_cm_id = cma_id;
 
 	isert_conn->login_buf = kzalloc(ISCSI_DEF_MAX_RECV_SEG_LEN +
@@ -770,7 +769,7 @@ isert_connect_release(struct isert_conn *isert_conn)
 static void
 isert_connected_handler(struct rdma_cm_id *cma_id)
 {
-	struct isert_conn *isert_conn = cma_id->context;
+	struct isert_conn *isert_conn = cma_id->qp->qp_context;
 
 	pr_info("conn %p\n", isert_conn);
 
@@ -848,16 +847,16 @@ isert_conn_terminate(struct isert_conn *isert_conn)
 static int
 isert_disconnected_handler(struct rdma_cm_id *cma_id)
 {
+	struct iscsi_np *np = cma_id->context;
+	struct isert_np *isert_np = np->np_context;
 	struct isert_conn *isert_conn;
 
-	if (!cma_id->qp) {
-		struct isert_np *isert_np = cma_id->context;
-
+	if (isert_np->np_cm_id == cma_id) {
 		isert_np->np_cm_id = NULL;
 		return -1;
 	}
 
-	isert_conn = (struct isert_conn *)cma_id->context;
+	isert_conn = cma_id->qp->qp_context;
 
 	mutex_lock(&isert_conn->conn_mutex);
 	isert_conn_terminate(isert_conn);
@@ -872,7 +871,7 @@ isert_disconnected_handler(struct rdma_cm_id *cma_id)
 static void
 isert_connect_error(struct rdma_cm_id *cma_id)
 {
-	struct isert_conn *isert_conn = (struct isert_conn *)cma_id->context;
+	struct isert_conn *isert_conn = cma_id->qp->qp_context;
 
 	isert_put_conn(isert_conn);
 }
