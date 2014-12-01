@@ -31,22 +31,38 @@ bool available_free_memory(struct f2fs_sb_info *sbi, int type)
 {
 	struct f2fs_nm_info *nm_i = NM_I(sbi);
 	struct sysinfo val;
+	unsigned long avail_ram;
 	unsigned long mem_size = 0;
 	bool res = false;
 
 	si_meminfo(&val);
-	/* give 25%, 25%, 50% memory for each components respectively */
+
+	/* only uses low memory */
+	avail_ram = val.totalram - val.totalhigh;
+
+	/* give 25%, 25%, 50%, 50% memory for each components respectively */
 	if (type == FREE_NIDS) {
-		mem_size = (nm_i->fcnt * sizeof(struct free_nid)) >> 12;
-		res = mem_size < ((val.totalram * nm_i->ram_thresh / 100) >> 2);
+		mem_size = (nm_i->fcnt * sizeof(struct free_nid)) >>
+							PAGE_CACHE_SHIFT;
+		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 2);
 	} else if (type == NAT_ENTRIES) {
-		mem_size = (nm_i->nat_cnt * sizeof(struct nat_entry)) >> 12;
-		res = mem_size < ((val.totalram * nm_i->ram_thresh / 100) >> 2);
+		mem_size = (nm_i->nat_cnt * sizeof(struct nat_entry)) >>
+							PAGE_CACHE_SHIFT;
+		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 2);
 	} else if (type == DIRTY_DENTS) {
 		if (sbi->sb->s_bdi->dirty_exceeded)
 			return false;
 		mem_size = get_pages(sbi, F2FS_DIRTY_DENTS);
-		res = mem_size < ((val.totalram * nm_i->ram_thresh / 100) >> 1);
+		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 1);
+	} else if (type == INO_ENTRIES) {
+		int i;
+
+		if (sbi->sb->s_bdi->dirty_exceeded)
+			return false;
+		for (i = 0; i <= UPDATE_INO; i++)
+			mem_size += (sbi->im[i].ino_num *
+				sizeof(struct ino_entry)) >> PAGE_CACHE_SHIFT;
+		res = mem_size < ((avail_ram * nm_i->ram_thresh / 100) >> 1);
 	}
 	return res;
 }
@@ -155,7 +171,7 @@ retry:
 static void __clear_nat_cache_dirty(struct f2fs_nm_info *nm_i,
 						struct nat_entry *ne)
 {
-	nid_t set = ne->ni.nid / NAT_ENTRY_PER_BLOCK;
+	nid_t set = NAT_BLOCK_OFFSET(ne->ni.nid);
 	struct nat_entry_set *head;
 
 	head = radix_tree_lookup(&nm_i->nat_set_root, set);
@@ -1298,16 +1314,22 @@ static int f2fs_write_node_page(struct page *page,
 		return 0;
 	}
 
-	if (wbc->for_reclaim)
-		goto redirty_out;
-
-	down_read(&sbi->node_write);
+	if (wbc->for_reclaim) {
+		if (!down_read_trylock(&sbi->node_write))
+			goto redirty_out;
+	} else {
+		down_read(&sbi->node_write);
+	}
 	set_page_writeback(page);
 	write_node_page(sbi, page, &fio, nid, ni.blk_addr, &new_addr);
 	set_node_addr(sbi, &ni, new_addr, is_fsync_dnode(page));
 	dec_page_count(sbi, F2FS_DIRTY_NODES);
 	up_read(&sbi->node_write);
 	unlock_page(page);
+
+	if (wbc->for_reclaim)
+		f2fs_submit_merged_bio(sbi, NODE, WRITE);
+
 	return 0;
 
 redirty_out:
@@ -1903,10 +1925,10 @@ static void __flush_nat_entry_set(struct f2fs_sb_info *sbi,
 	else
 		f2fs_put_page(page, 1);
 
-	if (!set->entry_cnt) {
-		radix_tree_delete(&NM_I(sbi)->nat_set_root, set->set);
-		kmem_cache_free(nat_entry_set_slab, set);
-	}
+	f2fs_bug_on(sbi, set->entry_cnt);
+
+	radix_tree_delete(&NM_I(sbi)->nat_set_root, set->set);
+	kmem_cache_free(nat_entry_set_slab, set);
 }
 
 /*
@@ -1923,6 +1945,8 @@ void flush_nat_entries(struct f2fs_sb_info *sbi)
 	nid_t set_idx = 0;
 	LIST_HEAD(sets);
 
+	if (!nm_i->dirty_nat_cnt)
+		return;
 	/*
 	 * if there are no enough space in journal to store dirty nat
 	 * entries, remove all entries from journal and merge them
@@ -1930,9 +1954,6 @@ void flush_nat_entries(struct f2fs_sb_info *sbi)
 	 */
 	if (!__has_cursum_space(sum, nm_i->dirty_nat_cnt, NAT_JOURNAL))
 		remove_nats_in_journal(sbi);
-
-	if (!nm_i->dirty_nat_cnt)
-		return;
 
 	while ((found = __gang_lookup_nat_set(nm_i,
 					set_idx, NATVEC_SIZE, setvec))) {
@@ -2061,17 +2082,17 @@ int __init create_node_manager_caches(void)
 	free_nid_slab = f2fs_kmem_cache_create("free_nid",
 			sizeof(struct free_nid));
 	if (!free_nid_slab)
-		goto destory_nat_entry;
+		goto destroy_nat_entry;
 
 	nat_entry_set_slab = f2fs_kmem_cache_create("nat_entry_set",
 			sizeof(struct nat_entry_set));
 	if (!nat_entry_set_slab)
-		goto destory_free_nid;
+		goto destroy_free_nid;
 	return 0;
 
-destory_free_nid:
+destroy_free_nid:
 	kmem_cache_destroy(free_nid_slab);
-destory_nat_entry:
+destroy_nat_entry:
 	kmem_cache_destroy(nat_entry_slab);
 fail:
 	return -ENOMEM;
