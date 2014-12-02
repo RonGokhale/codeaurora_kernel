@@ -342,7 +342,7 @@ void		nfsd_lockd_shutdown(void);
 
 #define NFSD4_2_SUPPORTED_ATTRS_WORD2 \
 	(NFSD4_1_SUPPORTED_ATTRS_WORD2 | \
-	NFSD4_2_SECURITY_ATTRS)
+	FATTR4_WORD2_CHANGE_ATTR_TYPE | NFSD4_2_SECURITY_ATTRS)
 
 static inline u32 nfsd_suppattrs0(u32 minorversion)
 {
