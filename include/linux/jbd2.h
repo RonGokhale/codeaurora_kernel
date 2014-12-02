@@ -1374,6 +1374,7 @@ static inline u32 jbd2_chksum(journal_t *journal, u32 crc,
 		struct shash_desc shash;
 		char ctx[JBD_MAX_CHECKSUM_SIZE];
 	} desc;
+	__le32 out_crc;
 	int err;
 
 	BUG_ON(crypto_shash_descsize(journal->j_chksum_driver) >
@@ -1381,12 +1382,15 @@ static inline u32 jbd2_chksum(journal_t *journal, u32 crc,
 
 	desc.shash.tfm = journal->j_chksum_driver;
 	desc.shash.flags = 0;
-	*(u32 *)desc.ctx = crc;
+	out_crc = cpu_to_le32(crc);
+	crypto_shash_setkey(desc.shash.tfm, (u8 *)&out_crc, sizeof(out_crc));
+	crypto_shash_init(&desc.shash);
 
 	err = crypto_shash_update(&desc.shash, address, length);
 	BUG_ON(err);
 
-	return *(u32 *)desc.ctx;
+	crypto_shash_final(&desc.shash, (u8 *)&out_crc);
+	return le32_to_cpu(~out_crc);
 }
 
 /* Return most recent uncommitted transaction */
