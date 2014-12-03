@@ -743,84 +743,6 @@ u16 rtl8723a_EfuseGetCurrentSize_BT(struct rtw_adapter *padapter)
 	return retU2;
 }
 
-bool
-rtl8723a_EfusePgPacketRead(struct rtw_adapter *padapter, u8 offset, u8 *data)
-{
-	u8 efuse_data, word_cnts = 0;
-	u16 efuse_addr = 0;
-	u8 hoffset = 0, hworden = 0;
-	u8 i;
-	u8 max_section = 0;
-	s32 ret;
-
-	if (data == NULL)
-		return false;
-
-	EFUSE_GetEfuseDefinition23a(padapter, EFUSE_WIFI, TYPE_EFUSE_MAX_SECTION,
-				 &max_section);
-	if (offset > max_section) {
-		DBG_8723A("%s: Packet offset(%d) is illegal(>%d)!\n",
-			  __func__, offset, max_section);
-		return false;
-	}
-
-	memset(data, 0xFF, PGPKT_DATA_SIZE);
-	ret = true;
-
-	/*  */
-	/*  <Roger_TODO> Efuse has been pre-programmed dummy 5Bytes at the
-	    end of Efuse by CP. */
-	/*  Skip dummy parts to prevent unexpected data read from Efuse. */
-	/*  By pass right now. 2009.02.19. */
-	/*  */
-	while (AVAILABLE_EFUSE_ADDR(efuse_addr)) {
-		if (efuse_OneByteRead23a(padapter, efuse_addr++, &efuse_data) ==
-		    _FAIL) {
-			ret = false;
-			break;
-		}
-
-		if (efuse_data == 0xFF)
-			break;
-
-		if (EXT_HEADER(efuse_data)) {
-			hoffset = GET_HDR_OFFSET_2_0(efuse_data);
-			efuse_OneByteRead23a(padapter, efuse_addr++, &efuse_data);
-			if (ALL_WORDS_DISABLED(efuse_data)) {
-				DBG_8723A("%s: Error!! All words disabled!\n",
-					  __func__);
-				continue;
-			}
-
-			hoffset |= ((efuse_data & 0xF0) >> 1);
-			hworden = efuse_data & 0x0F;
-		} else {
-			hoffset = (efuse_data >> 4) & 0x0F;
-			hworden = efuse_data & 0x0F;
-		}
-
-		if (hoffset == offset) {
-			for (i = 0; i < EFUSE_MAX_WORD_UNIT; i++) {
-				/* Check word enable condition in the section */
-				if (!(hworden & (0x01 << i))) {
-					ReadEFuseByte23a(padapter, efuse_addr++,
-						      &efuse_data);
-					data[i * 2] = efuse_data;
-
-					ReadEFuseByte23a(padapter, efuse_addr++,
-						      &efuse_data);
-					data[(i * 2) + 1] = efuse_data;
-				}
-			}
-		} else {
-			word_cnts = Efuse_CalculateWordCnts23a(hworden);
-			efuse_addr += word_cnts * 2;
-		}
-	}
-
-	return ret;
-}
-
 void rtl8723a_read_chip_version(struct rtw_adapter *padapter)
 {
 	u32 value32;
@@ -1522,10 +1444,8 @@ static void _DisableAnalog(struct rtw_adapter *padapter, bool bWithoutHWSM)
 /*  HW Auto state machine */
 int CardDisableHWSM(struct rtw_adapter *padapter, u8 resetMCU)
 {
-	int rtStatus = _SUCCESS;
-
 	if (padapter->bSurpriseRemoved) {
-		return rtStatus;
+		return _SUCCESS;
 	}
 	/*  RF Off Sequence ==== */
 	_DisableRFAFEAndResetBB(padapter);
@@ -1542,18 +1462,14 @@ int CardDisableHWSM(struct rtw_adapter *padapter, u8 resetMCU)
 	RT_TRACE(_module_hci_hal_init_c_, _drv_info_,
 		 ("======> Card disable finished.\n"));
 
-	return rtStatus;
+	return _SUCCESS;
 }
 
 /*  without HW Auto state machine */
 int CardDisableWithoutHWSM(struct rtw_adapter *padapter)
 {
-	int rtStatus = _SUCCESS;
-
-	/* RT_TRACE(COMP_INIT, DBG_LOUD,
-	   ("======> Card Disable Without HWSM .\n")); */
 	if (padapter->bSurpriseRemoved) {
-		return rtStatus;
+		return _SUCCESS;
 	}
 
 	/*  RF Off Sequence ==== */
@@ -1573,7 +1489,7 @@ int CardDisableWithoutHWSM(struct rtw_adapter *padapter)
 
 	/* RT_TRACE(COMP_INIT, DBG_LOUD,
 	   ("<====== Card Disable Without HWSM .\n")); */
-	return rtStatus;
+	return _SUCCESS;
 }
 
 void Hal_InitPGData(struct rtw_adapter *padapter, u8 *PROMContent)
@@ -1945,23 +1861,19 @@ Hal_EfuseParseThermalMeter_8723A(struct rtw_adapter *padapter,
 	/*  */
 	/*  ThermalMeter from EEPROM */
 	/*  */
-	if (AutoloadFail == false)
+	if (!AutoloadFail)
 		pHalData->EEPROMThermalMeter =
 		    PROMContent[EEPROM_THERMAL_METER_8723A];
 	else
 		pHalData->EEPROMThermalMeter = EEPROM_Default_ThermalMeter;
 
-	if ((pHalData->EEPROMThermalMeter == 0xff) || (AutoloadFail == true)) {
+	if ((pHalData->EEPROMThermalMeter == 0xff) || AutoloadFail) {
 		pHalData->bAPKThermalMeterIgnore = true;
 		pHalData->EEPROMThermalMeter = EEPROM_Default_ThermalMeter;
 	}
 
 	DBG_8723A("%s: ThermalMeter = 0x%x\n", __func__,
 		  pHalData->EEPROMThermalMeter);
-}
-
-void Hal_InitChannelPlan23a(struct rtw_adapter *padapter)
-{
 }
 
 static void rtl8723a_cal_txdesc_chksum(struct tx_desc *ptxdesc)
@@ -1979,254 +1891,6 @@ static void rtl8723a_cal_txdesc_chksum(struct tx_desc *ptxdesc)
 	}
 
 	ptxdesc->txdw7 |= cpu_to_le32(checksum & 0x0000ffff);
-}
-
-static void fill_txdesc_sectype(struct pkt_attrib *pattrib,
-				struct txdesc_8723a *ptxdesc)
-{
-	if ((pattrib->encrypt > 0) && !pattrib->bswenc) {
-		switch (pattrib->encrypt) {
-			/*  SEC_TYPE */
-		case WLAN_CIPHER_SUITE_WEP40:
-		case WLAN_CIPHER_SUITE_WEP104:
-		case WLAN_CIPHER_SUITE_TKIP:
-			ptxdesc->sectype = 1;
-			break;
-
-		case WLAN_CIPHER_SUITE_CCMP:
-			ptxdesc->sectype = 3;
-			break;
-
-		case 0:
-		default:
-			break;
-		}
-	}
-}
-
-static void fill_txdesc_vcs(struct pkt_attrib *pattrib,
-			    struct txdesc_8723a *ptxdesc)
-{
-	/* DBG_8723A("cvs_mode =%d\n", pattrib->vcs_mode); */
-
-	switch (pattrib->vcs_mode) {
-	case RTS_CTS:
-		ptxdesc->rtsen = 1;
-		break;
-
-	case CTS_TO_SELF:
-		ptxdesc->cts2self = 1;
-		break;
-
-	case NONE_VCS:
-	default:
-		break;
-	}
-
-	if (pattrib->vcs_mode) {
-		ptxdesc->hw_rts_en = 1;	/*  ENABLE HW RTS */
-
-		/*  Set RTS BW */
-		if (pattrib->ht_en) {
-			if (pattrib->bwmode & HT_CHANNEL_WIDTH_40)
-				ptxdesc->rts_bw = 1;
-
-			switch (pattrib->ch_offset) {
-			case HAL_PRIME_CHNL_OFFSET_DONT_CARE:
-				ptxdesc->rts_sc = 0;
-				break;
-
-			case HAL_PRIME_CHNL_OFFSET_LOWER:
-				ptxdesc->rts_sc = 1;
-				break;
-
-			case HAL_PRIME_CHNL_OFFSET_UPPER:
-				ptxdesc->rts_sc = 2;
-				break;
-
-			default:
-				ptxdesc->rts_sc = 3;	/*  Duplicate */
-				break;
-			}
-		}
-	}
-}
-
-static void fill_txdesc_phy(struct pkt_attrib *pattrib,
-			    struct txdesc_8723a *ptxdesc)
-{
-	if (pattrib->ht_en) {
-		if (pattrib->bwmode & HT_CHANNEL_WIDTH_40)
-			ptxdesc->data_bw = 1;
-
-		switch (pattrib->ch_offset) {
-		case HAL_PRIME_CHNL_OFFSET_DONT_CARE:
-			ptxdesc->data_sc = 0;
-			break;
-
-		case HAL_PRIME_CHNL_OFFSET_LOWER:
-			ptxdesc->data_sc = 1;
-			break;
-
-		case HAL_PRIME_CHNL_OFFSET_UPPER:
-			ptxdesc->data_sc = 2;
-			break;
-
-		default:
-			ptxdesc->data_sc = 3;	/*  Duplicate */
-			break;
-		}
-	}
-}
-
-static void rtl8723a_fill_default_txdesc(struct xmit_frame *pxmitframe,
-					 u8 *pbuf)
-{
-	struct rtw_adapter *padapter;
-	struct hal_data_8723a *pHalData;
-	struct dm_priv *pdmpriv;
-	struct mlme_ext_priv *pmlmeext;
-	struct mlme_ext_info *pmlmeinfo;
-	struct pkt_attrib *pattrib;
-	struct txdesc_8723a *ptxdesc;
-	s32 bmcst;
-
-	padapter = pxmitframe->padapter;
-	pHalData = GET_HAL_DATA(padapter);
-	pdmpriv = &pHalData->dmpriv;
-	pmlmeext = &padapter->mlmeextpriv;
-	pmlmeinfo = &pmlmeext->mlmext_info;
-
-	pattrib = &pxmitframe->attrib;
-	bmcst = is_multicast_ether_addr(pattrib->ra);
-
-	ptxdesc = (struct txdesc_8723a *)pbuf;
-
-	if (pxmitframe->frame_tag == DATA_FRAMETAG) {
-		ptxdesc->macid = pattrib->mac_id;	/*  CAM_ID(MAC_ID) */
-
-		if (pattrib->ampdu_en == true)
-			ptxdesc->agg_en = 1;	/*  AGG EN */
-		else
-			ptxdesc->bk = 1;	/*  AGG BK */
-
-		ptxdesc->qsel = pattrib->qsel;
-		ptxdesc->rate_id = pattrib->raid;
-
-		fill_txdesc_sectype(pattrib, ptxdesc);
-
-		ptxdesc->seq = pattrib->seqnum;
-
-		if ((pattrib->ether_type != 0x888e) &&
-		    (pattrib->ether_type != 0x0806) &&
-		    (pattrib->dhcp_pkt != 1)) {
-			/*  Non EAP & ARP & DHCP type data packet */
-
-			fill_txdesc_vcs(pattrib, ptxdesc);
-			fill_txdesc_phy(pattrib, ptxdesc);
-
-			ptxdesc->rtsrate = 8;	/*  RTS Rate = 24M */
-			ptxdesc->data_ratefb_lmt = 0x1F;
-			ptxdesc->rts_ratefb_lmt = 0xF;
-
-			/*  use REG_INIDATA_RATE_SEL value */
-			ptxdesc->datarate =
-				pdmpriv->INIDATA_RATE[pattrib->mac_id];
-
-		} else {
-			/*  EAP data packet and ARP packet. */
-			/*  Use the 1M data rate to send the EAP/ARP packet. */
-			/*  This will maybe make the handshake smooth. */
-
-			ptxdesc->bk = 1;	/*  AGG BK */
-			ptxdesc->userate = 1;	/*  driver uses rate */
-			if (pmlmeinfo->preamble_mode == PREAMBLE_SHORT)
-				ptxdesc->data_short = 1;
-			ptxdesc->datarate = MRateToHwRate23a(pmlmeext->tx_rate);
-		}
-	} else if (pxmitframe->frame_tag == MGNT_FRAMETAG) {
-/*		RT_TRACE(_module_hal_xmit_c_, _drv_notice_,
-		("%s: MGNT_FRAMETAG\n", __func__)); */
-
-		ptxdesc->macid = pattrib->mac_id;	/*  CAM_ID(MAC_ID) */
-		ptxdesc->qsel = pattrib->qsel;
-		ptxdesc->rate_id = pattrib->raid;	/*  Rate ID */
-		ptxdesc->seq = pattrib->seqnum;
-		ptxdesc->userate = 1;	/*  driver uses rate, 1M */
-		ptxdesc->rty_lmt_en = 1;	/*  retry limit enable */
-		ptxdesc->data_rt_lmt = 6;	/*  retry limit = 6 */
-
-		/* CCX-TXRPT ack for xmit mgmt frames. */
-		if (pxmitframe->ack_report)
-			ptxdesc->ccx = 1;
-
-		ptxdesc->datarate = MRateToHwRate23a(pmlmeext->tx_rate);
-	} else if (pxmitframe->frame_tag == TXAGG_FRAMETAG) {
-		RT_TRACE(_module_hal_xmit_c_, _drv_warning_,
-			 ("%s: TXAGG_FRAMETAG\n", __func__));
-	} else {
-		RT_TRACE(_module_hal_xmit_c_, _drv_warning_,
-			 ("%s: frame_tag = 0x%x\n", __func__,
-			  pxmitframe->frame_tag));
-
-		ptxdesc->macid = 4;	/*  CAM_ID(MAC_ID) */
-		ptxdesc->rate_id = 6;	/*  Rate ID */
-		ptxdesc->seq = pattrib->seqnum;
-		ptxdesc->userate = 1;	/*  driver uses rate */
-		ptxdesc->datarate = MRateToHwRate23a(pmlmeext->tx_rate);
-	}
-
-	ptxdesc->pktlen = pattrib->last_txcmdsz;
-	ptxdesc->offset = TXDESC_SIZE + OFFSET_SZ;
-	if (bmcst)
-		ptxdesc->bmc = 1;
-	ptxdesc->ls = 1;
-	ptxdesc->fs = 1;
-	ptxdesc->own = 1;
-
-	/*  2009.11.05. tynli_test. Suggested by SD4 Filen for FW LPS. */
-	/*  (1) The sequence number of each non-Qos frame / broadcast /
-	 *   multicast / mgnt frame should be controled by Hw because Fw
-	 * will also send null data which we cannot control when Fw LPS enable.
-	 *  --> default enable non-Qos data sequense number.
-	 2010.06.23. by tynli. */
-	/*  (2) Enable HW SEQ control for beacon packet,
-	 * because we use Hw beacon. */
-	/*  (3) Use HW Qos SEQ to control the seq num of Ext port
-	 * non-Qos packets. */
-	/*  2010.06.23. Added by tynli. */
-	if (!pattrib->qos_en) {
-		/*  Hw set sequence number */
-		ptxdesc->hwseq_en = 1;	/*  HWSEQ_EN */
-		ptxdesc->hwseq_sel = 0;	/*  HWSEQ_SEL */
-	}
-}
-
-/*
- *	Description:
- *
- *	Parameters:
- *		pxmitframe	xmitframe
- *		pbuf		where to fill tx desc
- */
-void rtl8723a_update_txdesc(struct xmit_frame *pxmitframe, u8 *pbuf)
-{
-	struct tx_desc *pdesc;
-
-	pdesc = (struct tx_desc *)pbuf;
-	memset(pdesc, 0, sizeof(struct tx_desc));
-
-	rtl8723a_fill_default_txdesc(pxmitframe, pbuf);
-
-	pdesc->txdw0 = cpu_to_le32(pdesc->txdw0);
-	pdesc->txdw1 = cpu_to_le32(pdesc->txdw1);
-	pdesc->txdw2 = cpu_to_le32(pdesc->txdw2);
-	pdesc->txdw3 = cpu_to_le32(pdesc->txdw3);
-	pdesc->txdw4 = cpu_to_le32(pdesc->txdw4);
-	pdesc->txdw5 = cpu_to_le32(pdesc->txdw5);
-	pdesc->txdw6 = cpu_to_le32(pdesc->txdw6);
-	pdesc->txdw7 = cpu_to_le32(pdesc->txdw7);
-	rtl8723a_cal_txdesc_chksum(pdesc);
 }
 
 /*
