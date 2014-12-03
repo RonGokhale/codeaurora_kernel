@@ -22,9 +22,7 @@
 #include "xfs_log_format.h"
 #include "xfs_trans_resv.h"
 #include "xfs_bit.h"
-#include "xfs_inum.h"
 #include "xfs_sb.h"
-#include "xfs_ag.h"
 #include "xfs_mount.h"
 #include "xfs_inode.h"
 #include "xfs_btree.h"
@@ -39,7 +37,6 @@
 #include "xfs_buf_item.h"
 #include "xfs_icreate_item.h"
 #include "xfs_icache.h"
-#include "xfs_dinode.h"
 #include "xfs_trace.h"
 
 
@@ -1137,11 +1134,7 @@ xfs_dialloc_ag_update_inobt(
 	XFS_WANT_CORRUPTED_RETURN((rec.ir_free == frec->ir_free) &&
 				  (rec.ir_freecount == frec->ir_freecount));
 
-	error = xfs_inobt_update(cur, &rec);
-	if (error)
-		return error;
-
-	return 0;
+	return xfs_inobt_update(cur, &rec);
 }
 
 /*
