@@ -49,10 +49,6 @@ void __init at91_init_irq_default(void)
 
 void __init at91_init_interrupts(unsigned int *priority)
 {
-	/* Initialize the AIC interrupt controller */
-	if (IS_ENABLED(CONFIG_OLD_IRQ_AT91))
-		at91_aic_init(priority, at91_boot_soc.extern_irq);
-
 	/* Enable GPIO interrupts */
 	at91_gpio_irq_setup();
 }
@@ -418,7 +414,7 @@ void __init at91_ioremap_matrix(u32 base_addr)
 		panic(pr_fmt("Impossible to ioremap at91_matrix_base\n"));
 }
 
-#if defined(CONFIG_OF) && !defined(CONFIG_ARCH_AT91X40)
+#if defined(CONFIG_OF)
 static struct of_device_id ramc_ids[] = {
 	{ .compatible = "atmel,at91rm9200-sdramc", .data = at91rm9200_standby },
 	{ .compatible = "atmel,at91sam9260-sdramc", .data = at91sam9_sdram_standby },
@@ -460,9 +456,6 @@ void __init at91rm9200_dt_initialize(void)
 {
 	at91_dt_ramc();
 
-	/* Init clock subsystem */
-	at91_dt_clock_init();
-
 	/* Register the processor-specific clocks */
 	if (at91_boot_soc.register_clocks)
 		at91_boot_soc.register_clocks();
@@ -473,9 +466,6 @@ void __init at91rm9200_dt_initialize(void)
 void __init at91_dt_initialize(void)
 {
 	at91_dt_ramc();
-
-	/* Init clock subsystem */
-	at91_dt_clock_init();
 
 	/* Register the processor-specific clocks */
 	if (at91_boot_soc.register_clocks)
@@ -489,9 +479,6 @@ void __init at91_dt_initialize(void)
 void __init at91_initialize(unsigned long main_clock)
 {
 	at91_boot_soc.ioremap_registers();
-
-	/* Init clock subsystem */
-	at91_clock_init(main_clock);
 
 	/* Register the processor-specific clocks */
 	at91_boot_soc.register_clocks();
