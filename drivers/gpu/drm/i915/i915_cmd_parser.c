@@ -413,6 +413,8 @@ static const u32 gen7_render_regs[] = {
 	REG64(PS_INVOCATION_COUNT),
 	REG64(PS_DEPTH_COUNT),
 	OACONTROL, /* Only allowed for LRI and SRM. See below. */
+	REG64(MI_PREDICATE_SRC0),
+	REG64(MI_PREDICATE_SRC1),
 	GEN7_3DPRIM_END_OFFSET,
 	GEN7_3DPRIM_START_VERTEX,
 	GEN7_3DPRIM_VERTEX_COUNT,
@@ -714,13 +716,13 @@ int i915_cmd_parser_init_ring(struct intel_engine_cs *ring)
 	BUG_ON(!validate_cmds_sorted(ring, cmd_tables, cmd_table_count));
 	BUG_ON(!validate_regs_sorted(ring));
 
-	if (hash_empty(ring->cmd_hash)) {
-		ret = init_hash_table(ring, cmd_tables, cmd_table_count);
-		if (ret) {
-			DRM_ERROR("CMD: cmd_parser_init failed!\n");
-			fini_hash_table(ring);
-			return ret;
-		}
+	WARN_ON(!hash_empty(ring->cmd_hash));
+
+	ret = init_hash_table(ring, cmd_tables, cmd_table_count);
+	if (ret) {
+		DRM_ERROR("CMD: cmd_parser_init failed!\n");
+		fini_hash_table(ring);
+		return ret;
 	}
 
 	ring->needs_cmd_parser = true;
@@ -1072,6 +1074,8 @@ int i915_cmd_parser_get_version(void)
 	 *
 	 * 1. Initial version. Checks batches and reports violations, but leaves
 	 *    hardware parsing enabled (so does not allow new use cases).
+	 * 2. Allow access to the MI_PREDICATE_SRC0 and
+	 *    MI_PREDICATE_SRC1 registers.
 	 */
-	return 1;
+	return 2;
 }

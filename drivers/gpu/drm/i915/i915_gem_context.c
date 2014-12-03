@@ -88,6 +88,7 @@
 #include <drm/drmP.h>
 #include <drm/i915_drm.h>
 #include "i915_drv.h"
+#include "i915_trace.h"
 
 /* This is a HW constraint. The value below is the largest known requirement
  * I've seen in a spec to date, and that was a workaround for a non-shipping
@@ -136,6 +137,8 @@ void i915_gem_context_free(struct kref *ctx_ref)
 {
 	struct intel_context *ctx = container_of(ctx_ref,
 						 typeof(*ctx), ref);
+
+	trace_i915_context_free(ctx);
 
 	if (i915.enable_execlists)
 		intel_lr_context_free(ctx);
@@ -274,6 +277,8 @@ i915_gem_create_context(struct drm_device *dev,
 		ctx->ppgtt = ppgtt;
 	}
 
+	trace_i915_context_create(ctx);
+
 	return ctx;
 
 err_unpin:
@@ -403,14 +408,25 @@ int i915_gem_context_enable(struct drm_i915_private *dev_priv)
 
 	BUG_ON(!dev_priv->ring[RCS].default_context);
 
-	if (i915.enable_execlists)
-		return 0;
+	if (i915.enable_execlists) {
+		for_each_ring(ring, dev_priv, i) {
+			if (ring->init_context) {
+				ret = ring->init_context(ring,
+						ring->default_context);
+				if (ret) {
+					DRM_ERROR("ring init context: %d\n",
+							ret);
+					return ret;
+				}
+			}
+		}
 
-	for_each_ring(ring, dev_priv, i) {
-		ret = i915_switch_context(ring, ring->default_context);
-		if (ret)
-			return ret;
-	}
+	} else
+		for_each_ring(ring, dev_priv, i) {
+			ret = i915_switch_context(ring, ring->default_context);
+			if (ret)
+				return ret;
+		}
 
 	return 0;
 }
@@ -549,6 +565,7 @@ static int do_switch(struct intel_engine_cs *ring,
 	from = ring->last_context;
 
 	if (to->ppgtt) {
+		trace_switch_mm(ring, to);
 		ret = to->ppgtt->switch_mm(to->ppgtt, ring);
 		if (ret)
 			goto unpin_out;
@@ -613,7 +630,8 @@ static int do_switch(struct intel_engine_cs *ring,
 		 * swapped, but there is no way to do that yet.
 		 */
 		from->legacy_hw_ctx.rcs_state->dirty = 1;
-		BUG_ON(from->legacy_hw_ctx.rcs_state->ring != ring);
+		BUG_ON(i915_gem_request_get_ring(
+			from->legacy_hw_ctx.rcs_state->last_read_req) != ring);
 
 		/* obj is kept alive until the next request by its active ref */
 		i915_gem_object_ggtt_unpin(from->legacy_hw_ctx.rcs_state);
@@ -629,7 +647,7 @@ done:
 
 	if (uninitialized) {
 		if (ring->init_context) {
-			ret = ring->init_context(ring);
+			ret = ring->init_context(ring, to);
 			if (ret)
 				DRM_ERROR("ring init context: %d\n", ret);
 		}
