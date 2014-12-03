@@ -1014,6 +1014,24 @@ module_param_named(edid_fixup, edid_fixup, int, 0400);
 MODULE_PARM_DESC(edid_fixup,
 		 "Minimum number of valid EDID header bytes (0-8, default 6)");
 
+static int drm_edid_block_checksum(const u8 *raw_edid)
+{
+	int i;
+	u8 csum = 0;
+	for (i = 0; i < EDID_LENGTH; i++)
+		csum += raw_edid[i];
+
+	return csum;
+}
+
+static bool drm_edid_is_zero(const u8 *in_edid, int length)
+{
+	if (memchr_inv(in_edid, 0, length))
+		return false;
+
+	return true;
+}
+
 /**
  * drm_edid_block_valid - Sanity check the EDID block (base or extension)
  * @raw_edid: pointer to raw EDID block
@@ -1027,8 +1045,7 @@ MODULE_PARM_DESC(edid_fixup,
  */
 bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 {
-	int i;
-	u8 csum = 0;
+	u8 csum;
 	struct edid *edid = (struct edid *)raw_edid;
 
 	if (WARN_ON(!raw_edid))
@@ -1048,8 +1065,7 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 		}
 	}
 
-	for (i = 0; i < EDID_LENGTH; i++)
-		csum += raw_edid[i];
+	csum = drm_edid_block_checksum(raw_edid);
 	if (csum) {
 		if (print_bad_edid) {
 			DRM_ERROR("EDID checksum is invalid, remainder is %d\n", csum);
@@ -1080,9 +1096,13 @@ bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid)
 
 bad:
 	if (print_bad_edid) {
-		printk(KERN_ERR "Raw EDID:\n");
-		print_hex_dump(KERN_ERR, " \t", DUMP_PREFIX_NONE, 16, 1,
+		if (drm_edid_is_zero(raw_edid, EDID_LENGTH)) {
+			printk(KERN_ERR "EDID block is all zeroes\n");
+		} else {
+			printk(KERN_ERR "Raw EDID:\n");
+			print_hex_dump(KERN_ERR, " \t", DUMP_PREFIX_NONE, 16, 1,
 			       raw_edid, EDID_LENGTH, false);
+		}
 	}
 	return false;
 }
@@ -1174,14 +1194,6 @@ drm_do_probe_ddc_edid(void *data, u8 *buf, unsigned int block, size_t len)
 	} while (ret != xfers && --retries);
 
 	return ret == xfers ? 0 : -1;
-}
-
-static bool drm_edid_is_zero(u8 *in_edid, int length)
-{
-	if (memchr_inv(in_edid, 0, length))
-		return false;
-
-	return true;
 }
 
 /**
