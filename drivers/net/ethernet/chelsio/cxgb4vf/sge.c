@@ -118,7 +118,7 @@ enum {
 	 * we can specify for immediate data in the firmware Ethernet TX
 	 * Work Request.
 	 */
-	MAX_IMM_TX_PKT_LEN = FW_WR_IMMDLEN_MASK,
+	MAX_IMM_TX_PKT_LEN = FW_WR_IMMDLEN_M,
 
 	/*
 	 * Max size of a WR sent through a control TX queue.
@@ -598,6 +598,8 @@ static unsigned int refill_fl(struct adapter *adapter, struct sge_fl *fl,
 	 */
 	BUG_ON(fl->avail + n > fl->size - FL_PER_EQ_UNIT);
 
+	gfp |= __GFP_NOWARN;
+
 	/*
 	 * If we support large pages, prefer large buffers and fail over to
 	 * small pages if we can't allocate large pages to satisfy the refill.
@@ -608,8 +610,7 @@ static unsigned int refill_fl(struct adapter *adapter, struct sge_fl *fl,
 		goto alloc_small_pages;
 
 	while (n) {
-		page = alloc_pages(gfp | __GFP_COMP | __GFP_NOWARN,
-				   s->fl_pg_order);
+		page = __dev_alloc_pages(gfp, s->fl_pg_order);
 		if (unlikely(!page)) {
 			/*
 			 * We've failed inour attempt to allocate a "large
@@ -653,7 +654,7 @@ static unsigned int refill_fl(struct adapter *adapter, struct sge_fl *fl,
 
 alloc_small_pages:
 	while (n--) {
-		page = __skb_alloc_page(gfp | __GFP_NOWARN, NULL);
+		page = __dev_alloc_page(gfp);
 		if (unlikely(!page)) {
 			fl->alloc_failed++;
 			break;
@@ -902,7 +903,7 @@ static void write_sgl(const struct sk_buff *skb, struct sge_txq *tq,
 		sgl->addr0 = cpu_to_be64(addr[1]);
 	}
 
-	sgl->cmd_nsge = htonl(ULPTX_CMD(ULP_TX_SC_DSGL) |
+	sgl->cmd_nsge = htonl(ULPTX_CMD_V(ULP_TX_SC_DSGL) |
 			      ULPTX_NSGE(nfrags));
 	if (likely(--nfrags == 0))
 		return;
@@ -1145,7 +1146,7 @@ int t4vf_eth_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto out_free;
 	}
 
-	wr_mid = FW_WR_LEN16(DIV_ROUND_UP(flits, 2));
+	wr_mid = FW_WR_LEN16_V(DIV_ROUND_UP(flits, 2));
 	if (unlikely(credits < ETHTXQ_STOP_THRES)) {
 		/*
 		 * After we're done injecting the Work Request for this
@@ -1157,7 +1158,7 @@ int t4vf_eth_xmit(struct sk_buff *skb, struct net_device *dev)
 		 * has opened up.
 		 */
 		txq_stop(txq);
-		wr_mid |= FW_WR_EQUEQ | FW_WR_EQUIQ;
+		wr_mid |= FW_WR_EQUEQ_F | FW_WR_EQUIQ_F;
 	}
 
 	/*
@@ -1187,9 +1188,9 @@ int t4vf_eth_xmit(struct sk_buff *skb, struct net_device *dev)
 		int eth_xtra_len = skb_network_offset(skb) - ETH_HLEN;
 
 		wr->op_immdlen =
-			cpu_to_be32(FW_WR_OP(FW_ETH_TX_PKT_VM_WR) |
-				    FW_WR_IMMDLEN(sizeof(*lso) +
-						  sizeof(*cpl)));
+			cpu_to_be32(FW_WR_OP_V(FW_ETH_TX_PKT_VM_WR) |
+				    FW_WR_IMMDLEN_V(sizeof(*lso) +
+						    sizeof(*cpl)));
 		/*
 		 * Fill in the LSO CPL message.
 		 */
@@ -1224,8 +1225,8 @@ int t4vf_eth_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		len = is_eth_imm(skb) ? skb->len + sizeof(*cpl) : sizeof(*cpl);
 		wr->op_immdlen =
-			cpu_to_be32(FW_WR_OP(FW_ETH_TX_PKT_VM_WR) |
-				    FW_WR_IMMDLEN(len));
+			cpu_to_be32(FW_WR_OP_V(FW_ETH_TX_PKT_VM_WR) |
+				    FW_WR_IMMDLEN_V(len));
 
 		/*
 		 * Set up TX Packet CPL pointer, control word and perform
@@ -2087,26 +2088,26 @@ int t4vf_sge_alloc_rxq(struct adapter *adapter, struct sge_rspq *rspq,
 	 * into OS-independent common code ...
 	 */
 	memset(&cmd, 0, sizeof(cmd));
-	cmd.op_to_vfn = cpu_to_be32(FW_CMD_OP(FW_IQ_CMD) |
-				    FW_CMD_REQUEST |
-				    FW_CMD_WRITE |
-				    FW_CMD_EXEC);
-	cmd.alloc_to_len16 = cpu_to_be32(FW_IQ_CMD_ALLOC |
-					 FW_IQ_CMD_IQSTART(1) |
+	cmd.op_to_vfn = cpu_to_be32(FW_CMD_OP_V(FW_IQ_CMD) |
+				    FW_CMD_REQUEST_F |
+				    FW_CMD_WRITE_F |
+				    FW_CMD_EXEC_F);
+	cmd.alloc_to_len16 = cpu_to_be32(FW_IQ_CMD_ALLOC_F |
+					 FW_IQ_CMD_IQSTART_F |
 					 FW_LEN16(cmd));
 	cmd.type_to_iqandstindex =
-		cpu_to_be32(FW_IQ_CMD_TYPE(FW_IQ_TYPE_FL_INT_CAP) |
-			    FW_IQ_CMD_IQASYNCH(iqasynch) |
-			    FW_IQ_CMD_VIID(pi->viid) |
-			    FW_IQ_CMD_IQANDST(iqandst) |
-			    FW_IQ_CMD_IQANUS(1) |
-			    FW_IQ_CMD_IQANUD(SGE_UPDATEDEL_INTR) |
-			    FW_IQ_CMD_IQANDSTINDEX(intr_dest));
+		cpu_to_be32(FW_IQ_CMD_TYPE_V(FW_IQ_TYPE_FL_INT_CAP) |
+			    FW_IQ_CMD_IQASYNCH_V(iqasynch) |
+			    FW_IQ_CMD_VIID_V(pi->viid) |
+			    FW_IQ_CMD_IQANDST_V(iqandst) |
+			    FW_IQ_CMD_IQANUS_V(1) |
+			    FW_IQ_CMD_IQANUD_V(SGE_UPDATEDEL_INTR) |
+			    FW_IQ_CMD_IQANDSTINDEX_V(intr_dest));
 	cmd.iqdroprss_to_iqesize =
-		cpu_to_be16(FW_IQ_CMD_IQPCIECH(pi->port_id) |
-			    FW_IQ_CMD_IQGTSMODE |
-			    FW_IQ_CMD_IQINTCNTTHRESH(rspq->pktcnt_idx) |
-			    FW_IQ_CMD_IQESIZE(ilog2(rspq->iqe_len) - 4));
+		cpu_to_be16(FW_IQ_CMD_IQPCIECH_V(pi->port_id) |
+			    FW_IQ_CMD_IQGTSMODE_F |
+			    FW_IQ_CMD_IQINTCNTTHRESH_V(rspq->pktcnt_idx) |
+			    FW_IQ_CMD_IQESIZE_V(ilog2(rspq->iqe_len) - 4));
 	cmd.iqsize = cpu_to_be16(rspq->size);
 	cmd.iqaddr = cpu_to_be64(rspq->phys_addr);
 
@@ -2140,13 +2141,13 @@ int t4vf_sge_alloc_rxq(struct adapter *adapter, struct sge_rspq *rspq,
 		 */
 		cmd.iqns_to_fl0congen =
 			cpu_to_be32(
-				FW_IQ_CMD_FL0HOSTFCMODE(SGE_HOSTFCMODE_NONE) |
-				FW_IQ_CMD_FL0PACKEN(1) |
-				FW_IQ_CMD_FL0PADEN(1));
+				FW_IQ_CMD_FL0HOSTFCMODE_V(SGE_HOSTFCMODE_NONE) |
+				FW_IQ_CMD_FL0PACKEN_F |
+				FW_IQ_CMD_FL0PADEN_F);
 		cmd.fl0dcaen_to_fl0cidxfthresh =
 			cpu_to_be16(
-				FW_IQ_CMD_FL0FBMIN(SGE_FETCHBURSTMIN_64B) |
-				FW_IQ_CMD_FL0FBMAX(SGE_FETCHBURSTMAX_512B));
+				FW_IQ_CMD_FL0FBMIN_V(SGE_FETCHBURSTMIN_64B) |
+				FW_IQ_CMD_FL0FBMAX_V(SGE_FETCHBURSTMAX_512B));
 		cmd.fl0size = cpu_to_be16(flsz);
 		cmd.fl0addr = cpu_to_be64(fl->addr);
 	}
@@ -2250,24 +2251,25 @@ int t4vf_sge_alloc_eth_txq(struct adapter *adapter, struct sge_eth_txq *txq,
 	 * into the common code ...
 	 */
 	memset(&cmd, 0, sizeof(cmd));
-	cmd.op_to_vfn = cpu_to_be32(FW_CMD_OP(FW_EQ_ETH_CMD) |
-				    FW_CMD_REQUEST |
-				    FW_CMD_WRITE |
-				    FW_CMD_EXEC);
-	cmd.alloc_to_len16 = cpu_to_be32(FW_EQ_ETH_CMD_ALLOC |
-					 FW_EQ_ETH_CMD_EQSTART |
+	cmd.op_to_vfn = cpu_to_be32(FW_CMD_OP_V(FW_EQ_ETH_CMD) |
+				    FW_CMD_REQUEST_F |
+				    FW_CMD_WRITE_F |
+				    FW_CMD_EXEC_F);
+	cmd.alloc_to_len16 = cpu_to_be32(FW_EQ_ETH_CMD_ALLOC_F |
+					 FW_EQ_ETH_CMD_EQSTART_F |
 					 FW_LEN16(cmd));
-	cmd.viid_pkd = cpu_to_be32(FW_EQ_ETH_CMD_AUTOEQUEQE |
-				   FW_EQ_ETH_CMD_VIID(pi->viid));
+	cmd.viid_pkd = cpu_to_be32(FW_EQ_ETH_CMD_AUTOEQUEQE_F |
+				   FW_EQ_ETH_CMD_VIID_V(pi->viid));
 	cmd.fetchszm_to_iqid =
-		cpu_to_be32(FW_EQ_ETH_CMD_HOSTFCMODE(SGE_HOSTFCMODE_STPG) |
-			    FW_EQ_ETH_CMD_PCIECHN(pi->port_id) |
-			    FW_EQ_ETH_CMD_IQID(iqid));
+		cpu_to_be32(FW_EQ_ETH_CMD_HOSTFCMODE_V(SGE_HOSTFCMODE_STPG) |
+			    FW_EQ_ETH_CMD_PCIECHN_V(pi->port_id) |
+			    FW_EQ_ETH_CMD_IQID_V(iqid));
 	cmd.dcaen_to_eqsize =
-		cpu_to_be32(FW_EQ_ETH_CMD_FBMIN(SGE_FETCHBURSTMIN_64B) |
-			    FW_EQ_ETH_CMD_FBMAX(SGE_FETCHBURSTMAX_512B) |
-			    FW_EQ_ETH_CMD_CIDXFTHRESH(SGE_CIDXFLUSHTHRESH_32) |
-			    FW_EQ_ETH_CMD_EQSIZE(nentries));
+		cpu_to_be32(FW_EQ_ETH_CMD_FBMIN_V(SGE_FETCHBURSTMIN_64B) |
+			    FW_EQ_ETH_CMD_FBMAX_V(SGE_FETCHBURSTMAX_512B) |
+			    FW_EQ_ETH_CMD_CIDXFTHRESH_V(
+						SGE_CIDXFLUSHTHRESH_32) |
+			    FW_EQ_ETH_CMD_EQSIZE_V(nentries));
 	cmd.eqaddr = cpu_to_be64(txq->q.phys_addr);
 
 	/*
@@ -2293,9 +2295,9 @@ int t4vf_sge_alloc_eth_txq(struct adapter *adapter, struct sge_eth_txq *txq,
 	txq->q.cidx = 0;
 	txq->q.pidx = 0;
 	txq->q.stat = (void *)&txq->q.desc[txq->q.size];
-	txq->q.cntxt_id = FW_EQ_ETH_CMD_EQID_GET(be32_to_cpu(rpl.eqid_pkd));
+	txq->q.cntxt_id = FW_EQ_ETH_CMD_EQID_G(be32_to_cpu(rpl.eqid_pkd));
 	txq->q.abs_id =
-		FW_EQ_ETH_CMD_PHYSEQID_GET(be32_to_cpu(rpl.physeqid_pkd));
+		FW_EQ_ETH_CMD_PHYSEQID_G(be32_to_cpu(rpl.physeqid_pkd));
 	txq->txq = devq;
 	txq->tso = 0;
 	txq->tx_cso = 0;
