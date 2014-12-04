@@ -228,6 +228,7 @@ static int brcmstb_bus_error_handler(unsigned long addr, unsigned int fsr,
 
 	return ret;
 }
+#endif
 
 static irqreturn_t brcmstb_gisb_timeout_handler(int irq, void *dev_id)
 {
