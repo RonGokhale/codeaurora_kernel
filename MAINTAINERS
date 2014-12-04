@@ -1506,6 +1506,7 @@ S:	Maintained
 F:	arch/arm/boot/dts/vexpress*
 F:	arch/arm/mach-vexpress/
 F:	*/*/vexpress*
+F:	*/*/*/vexpress*
 F:	drivers/clk/versatile/clk-vexpress-osc.c
 F:	drivers/clocksource/versatile.c
 
