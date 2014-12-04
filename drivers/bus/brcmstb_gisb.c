@@ -307,7 +307,6 @@ static const struct of_device_id brcmstb_gisb_arb_of_match[] = {
 static struct platform_driver brcmstb_gisb_arb_driver = {
 	.driver = {
 		.name	= "brcm-gisb-arb",
-		.owner	= THIS_MODULE,
 		.of_match_table = brcmstb_gisb_arb_of_match,
 		.pm	= &brcmstb_gisb_arb_pm_ops,
 	},
