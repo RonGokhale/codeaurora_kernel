@@ -96,8 +96,6 @@ int start_gc_thread(struct f2fs_sb_info *sbi)
 	dev_t dev = sbi->sb->s_bdev->bd_dev;
 	int err = 0;
 
-	if (!test_opt(sbi, BG_GC))
-		goto out;
 	gc_th = kmalloc(sizeof(struct f2fs_gc_kthread), GFP_KERNEL);
 	if (!gc_th) {
 		err = -ENOMEM;
@@ -605,27 +603,27 @@ next_step:
 
 			data_page = find_data_page(inode,
 					start_bidx + ofs_in_node, false);
-			if (IS_ERR(data_page))
-				goto next_iput;
+			if (IS_ERR(data_page)) {
+				iput(inode);
+				continue;
+			}
 
 			f2fs_put_page(data_page, 0);
 			add_gc_inode(inode, ilist);
-		} else {
-			inode = find_gc_inode(dni.ino, ilist);
-			if (inode) {
-				start_bidx = start_bidx_of_node(nofs,
-								F2FS_I(inode));
-				data_page = get_lock_data_page(inode,
-						start_bidx + ofs_in_node);
-				if (IS_ERR(data_page))
-					continue;
-				move_data_page(inode, data_page, gc_type);
-				stat_inc_data_blk_count(sbi, 1);
-			}
+			continue;
 		}
-		continue;
-next_iput:
-		iput(inode);
+
+		/* phase 3 */
+		inode = find_gc_inode(dni.ino, ilist);
+		if (inode) {
+			start_bidx = start_bidx_of_node(nofs, F2FS_I(inode));
+			data_page = get_lock_data_page(inode,
+						start_bidx + ofs_in_node);
+			if (IS_ERR(data_page))
+				continue;
+			move_data_page(inode, data_page, gc_type);
+			stat_inc_data_blk_count(sbi, 1);
+		}
 	}
 
 	if (++phase < 4)
@@ -646,12 +644,14 @@ next_iput:
 }
 
 static int __get_victim(struct f2fs_sb_info *sbi, unsigned int *victim,
-						int gc_type, int type)
+			int gc_type)
 {
 	struct sit_info *sit_i = SIT_I(sbi);
 	int ret;
+
 	mutex_lock(&sit_i->sentry_lock);
-	ret = DIRTY_I(sbi)->v_ops->get_victim(sbi, victim, gc_type, type, LFS);
+	ret = DIRTY_I(sbi)->v_ops->get_victim(sbi, victim, gc_type,
+					      NO_CHECK_TYPE, LFS);
 	mutex_unlock(&sit_i->sentry_lock);
 	return ret;
 }
@@ -693,9 +693,9 @@ int f2fs_gc(struct f2fs_sb_info *sbi)
 	int gc_type = BG_GC;
 	int nfree = 0;
 	int ret = -1;
-	struct cp_control cpc = {
-		.reason = CP_SYNC,
-	};
+	struct cp_control cpc;
+
+	cpc.reason = test_opt(sbi, FASTBOOT) ? CP_UMOUNT : CP_SYNC;
 
 	INIT_LIST_HEAD(&ilist);
 gc_more:
@@ -709,7 +709,7 @@ gc_more:
 		write_checkpoint(sbi, &cpc);
 	}
 
-	if (!__get_victim(sbi, &segno, gc_type, NO_CHECK_TYPE))
+	if (!__get_victim(sbi, &segno, gc_type))
 		goto stop;
 	ret = 0;
 
