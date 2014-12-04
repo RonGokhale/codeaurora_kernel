@@ -35,7 +35,7 @@
 #include "smp.h"
 
 #define MGMT_VERSION	1
-#define MGMT_REVISION	7
+#define MGMT_REVISION	8
 
 static const u16 mgmt_commands[] = {
 	MGMT_OP_READ_INDEX_LIST,
@@ -574,6 +574,7 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 	if (lmp_le_capable(hdev)) {
 		settings |= MGMT_SETTING_LE;
 		settings |= MGMT_SETTING_ADVERTISING;
+		settings |= MGMT_SETTING_SECURE_CONN;
 		settings |= MGMT_SETTING_PRIVACY;
 	}
 
@@ -3562,7 +3563,7 @@ static int read_local_oob_data(struct sock *sk, struct hci_dev *hdev,
 		goto unlock;
 	}
 
-	if (test_bit(HCI_SC_ENABLED, &hdev->dev_flags))
+	if (bredr_sc_enabled(hdev))
 		err = hci_send_cmd(hdev, HCI_OP_READ_LOCAL_OOB_EXT_DATA,
 				   0, NULL);
 	else
@@ -3598,7 +3599,8 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 		}
 
 		err = hci_add_remote_oob_data(hdev, &cp->addr.bdaddr,
-					      cp->hash, cp->rand);
+					      cp->addr.type, cp->hash,
+					      cp->rand, NULL, NULL);
 		if (err < 0)
 			status = MGMT_STATUS_FAILED;
 		else
@@ -3608,6 +3610,7 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 				   status, &cp->addr, sizeof(cp->addr));
 	} else if (len == MGMT_ADD_REMOTE_OOB_EXT_DATA_SIZE) {
 		struct mgmt_cp_add_remote_oob_ext_data *cp = data;
+		u8 *rand192, *hash192;
 		u8 status;
 
 		if (cp->addr.type != BDADDR_BREDR) {
@@ -3618,9 +3621,17 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 			goto unlock;
 		}
 
-		err = hci_add_remote_oob_ext_data(hdev, &cp->addr.bdaddr,
-						  cp->hash192, cp->rand192,
-						  cp->hash256, cp->rand256);
+		if (bdaddr_type_is_le(cp->addr.type)) {
+			rand192 = NULL;
+			hash192 = NULL;
+		} else {
+			rand192 = cp->rand192;
+			hash192 = cp->hash192;
+		}
+
+		err = hci_add_remote_oob_data(hdev, &cp->addr.bdaddr,
+					      cp->addr.type, hash192, rand192,
+					      cp->hash256, cp->rand256);
 		if (err < 0)
 			status = MGMT_STATUS_FAILED;
 		else
@@ -3661,7 +3672,7 @@ static int remove_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 		goto done;
 	}
 
-	err = hci_remove_remote_oob_data(hdev, &cp->addr.bdaddr);
+	err = hci_remove_remote_oob_data(hdev, &cp->addr.bdaddr, cp->addr.type);
 	if (err < 0)
 		status = MGMT_STATUS_INVALID_PARAMS;
 	else
@@ -4572,18 +4583,13 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 {
 	struct mgmt_mode *cp = data;
 	struct pending_cmd *cmd;
-	u8 val, status;
+	u8 val;
 	int err;
 
 	BT_DBG("request for %s", hdev->name);
 
-	status = mgmt_bredr_support(hdev);
-	if (status)
-		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
-				  status);
-
-	if (!lmp_sc_capable(hdev) &&
-	    !test_bit(HCI_FORCE_SC, &hdev->dbg_flags))
+	if (!test_bit(HCI_LE_ENABLED, &hdev->dev_flags) &&
+	    !lmp_sc_capable(hdev) && !test_bit(HCI_FORCE_SC, &hdev->dbg_flags))
 		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
 				  MGMT_STATUS_NOT_SUPPORTED);
 
@@ -4593,7 +4599,10 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 
 	hci_dev_lock(hdev);
 
-	if (!hdev_is_powered(hdev)) {
+	if (!hdev_is_powered(hdev) ||
+	    (!lmp_sc_capable(hdev) &&
+	     !test_bit(HCI_FORCE_SC, &hdev->dbg_flags)) ||
+	    !test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags)) {
 		bool changed;
 
 		if (cp->val) {
@@ -4910,18 +4919,26 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 		else
 			addr_type = ADDR_LE_DEV_RANDOM;
 
-		if (key->master)
-			type = SMP_LTK;
-		else
-			type = SMP_LTK_SLAVE;
-
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
 			authenticated = 0x00;
+			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
 			break;
 		case MGMT_LTK_AUTHENTICATED:
 			authenticated = 0x01;
+			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
 			break;
+		case MGMT_LTK_P256_UNAUTH:
+			authenticated = 0x00;
+			type = SMP_LTK_P256;
+			break;
+		case MGMT_LTK_P256_AUTH:
+			authenticated = 0x01;
+			type = SMP_LTK_P256;
+			break;
+		case MGMT_LTK_P256_DEBUG:
+			authenticated = 0x00;
+			type = SMP_LTK_P256_DEBUG;
 		default:
 			continue;
 		}
@@ -6101,8 +6118,19 @@ void mgmt_new_link_key(struct hci_dev *hdev, struct link_key *key,
 
 static u8 mgmt_ltk_type(struct smp_ltk *ltk)
 {
-	if (ltk->authenticated)
-		return MGMT_LTK_AUTHENTICATED;
+	switch (ltk->type) {
+	case SMP_LTK:
+	case SMP_LTK_SLAVE:
+		if (ltk->authenticated)
+			return MGMT_LTK_AUTHENTICATED;
+		return MGMT_LTK_UNAUTHENTICATED;
+	case SMP_LTK_P256:
+		if (ltk->authenticated)
+			return MGMT_LTK_P256_AUTH;
+		return MGMT_LTK_P256_UNAUTH;
+	case SMP_LTK_P256_DEBUG:
+		return MGMT_LTK_P256_DEBUG;
+	}
 
 	return MGMT_LTK_UNAUTHENTICATED;
 }
@@ -6784,8 +6812,7 @@ void mgmt_read_local_oob_data_complete(struct hci_dev *hdev, u8 *hash192,
 		cmd_status(cmd->sk, hdev->id, MGMT_OP_READ_LOCAL_OOB_DATA,
 			   mgmt_status(status));
 	} else {
-		if (test_bit(HCI_SC_ENABLED, &hdev->dev_flags) &&
-		    hash256 && rand256) {
+		if (bredr_sc_enabled(hdev) && hash256 && rand256) {
 			struct mgmt_rp_read_local_oob_ext_data rp;
 
 			memcpy(rp.hash192, hash192, sizeof(rp.hash192));

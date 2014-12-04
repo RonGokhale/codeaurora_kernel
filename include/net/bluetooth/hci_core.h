@@ -140,6 +140,7 @@ struct link_key {
 struct oob_data {
 	struct list_head list;
 	bdaddr_t bdaddr;
+	u8 bdaddr_type;
 	u8 hash192[16];
 	u8 rand192[16];
 	u8 hash256[16];
@@ -306,6 +307,7 @@ struct hci_dev {
 	__u32			req_result;
 
 	void			*smp_data;
+	void			*smp_bredr_data;
 
 	struct discovery_state	discovery;
 	struct hci_conn_hash	conn_hash;
@@ -559,6 +561,7 @@ enum {
 	HCI_CONN_AUTH_INITIATOR,
 	HCI_CONN_DROP,
 	HCI_CONN_PARAM_REMOVAL_PEND,
+	HCI_CONN_NEW_LINK_KEY,
 };
 
 static inline bool hci_conn_ssp_enabled(struct hci_conn *conn)
@@ -921,13 +924,11 @@ struct link_key *hci_find_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr);
 struct link_key *hci_add_link_key(struct hci_dev *hdev, struct hci_conn *conn,
 				  bdaddr_t *bdaddr, u8 *val, u8 type,
 				  u8 pin_len, bool *persistent);
-struct smp_ltk *hci_find_ltk(struct hci_dev *hdev, __le16 ediv, __le64 rand,
-			     u8 role);
 struct smp_ltk *hci_add_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr,
 			    u8 addr_type, u8 type, u8 authenticated,
 			    u8 tk[16], u8 enc_size, __le16 ediv, __le64 rand);
-struct smp_ltk *hci_find_ltk_by_addr(struct hci_dev *hdev, bdaddr_t *bdaddr,
-				     u8 addr_type, u8 role);
+struct smp_ltk *hci_find_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr,
+			     u8 addr_type, u8 role);
 int hci_remove_ltk(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 bdaddr_type);
 void hci_smp_ltks_clear(struct hci_dev *hdev);
 int hci_remove_link_key(struct hci_dev *hdev, bdaddr_t *bdaddr);
@@ -942,13 +943,12 @@ void hci_smp_irks_clear(struct hci_dev *hdev);
 
 void hci_remote_oob_data_clear(struct hci_dev *hdev);
 struct oob_data *hci_find_remote_oob_data(struct hci_dev *hdev,
-					  bdaddr_t *bdaddr);
+					  bdaddr_t *bdaddr, u8 bdaddr_type);
 int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr,
-			    u8 *hash, u8 *rand);
-int hci_add_remote_oob_ext_data(struct hci_dev *hdev, bdaddr_t *bdaddr,
-				u8 *hash192, u8 *rand192,
-				u8 *hash256, u8 *rand256);
-int hci_remove_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr);
+			    u8 bdaddr_type, u8 *hash192, u8 *rand192,
+			    u8 *hash256, u8 *rand256);
+int hci_remove_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr,
+			       u8 bdaddr_type);
 
 void hci_event_packet(struct hci_dev *hdev, struct sk_buff *skb);
 
@@ -999,6 +999,9 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 
 #define hdev_is_powered(hdev) (test_bit(HCI_UP, &hdev->flags) && \
 				!test_bit(HCI_AUTO_OFF, &hdev->dev_flags))
+#define bredr_sc_enabled(dev) ((lmp_sc_capable(dev) || \
+				test_bit(HCI_FORCE_SC, &(dev)->dbg_flags)) && \
+			       test_bit(HCI_SC_ENABLED, &(dev)->dev_flags))
 
 /* ----- HCI protocols ----- */
 #define HCI_PROTO_DEFER             0x01
