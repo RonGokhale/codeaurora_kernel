@@ -129,6 +129,7 @@ static inline int set_arch_dma_coherent_ops(struct device *dev)
 }
 #define set_arch_dma_coherent_ops(dev)	set_arch_dma_coherent_ops(dev)
 
+/* do not use this function in a driver */
 static inline bool is_device_dma_coherent(struct device *dev)
 {
 	return dev->archdata.dma_coherent;
