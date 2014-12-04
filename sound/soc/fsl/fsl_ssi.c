@@ -67,8 +67,6 @@
 /**
  * FSLSSI_I2S_FORMATS: audio formats supported by the SSI
  *
- * This driver currently only supports the SSI running in I2S slave mode.
- *
  * The SSI has a limitation in that the samples must be in the same byte
  * order as the host CPU.  This is because when multiple bytes are written
  * to the STX register, the bytes and bits must be written in the same
@@ -1099,7 +1097,7 @@ static const struct snd_soc_component_driver fsl_ssi_component = {
 };
 
 static struct snd_soc_dai_driver fsl_ssi_ac97_dai = {
-	.ac97_control = 1,
+	.bus_control = true,
 	.playback = {
 		.stream_name = "AC97 Playback",
 		.channels_min = 2,
