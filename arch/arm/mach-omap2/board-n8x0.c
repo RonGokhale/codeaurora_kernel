@@ -21,7 +21,9 @@
 #include <linux/i2c.h>
 #include <linux/spi/spi.h>
 #include <linux/usb/musb.h>
+#include <linux/mmc/host.h>
 #include <linux/platform_data/spi-omap2-mcspi.h>
+#include <linux/platform_data/mmc-omap.h>
 #include <linux/mfd/menelaus.h>
 #include <sound/tlv320aic3x.h>
 
