@@ -35,7 +35,7 @@
 #include "smp.h"
 
 #define MGMT_VERSION	1
-#define MGMT_REVISION	7
+#define MGMT_REVISION	8
 
 static const u16 mgmt_commands[] = {
 	MGMT_OP_READ_INDEX_LIST,
@@ -574,6 +574,7 @@ static u32 get_supported_settings(struct hci_dev *hdev)
 	if (lmp_le_capable(hdev)) {
 		settings |= MGMT_SETTING_LE;
 		settings |= MGMT_SETTING_ADVERTISING;
+		settings |= MGMT_SETTING_SECURE_CONN;
 		settings |= MGMT_SETTING_PRIVACY;
 	}
 
@@ -3562,7 +3563,7 @@ static int read_local_oob_data(struct sock *sk, struct hci_dev *hdev,
 		goto unlock;
 	}
 
-	if (test_bit(HCI_SC_ENABLED, &hdev->dev_flags))
+	if (bredr_sc_enabled(hdev))
 		err = hci_send_cmd(hdev, HCI_OP_READ_LOCAL_OOB_EXT_DATA,
 				   0, NULL);
 	else
@@ -3598,7 +3599,8 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 		}
 
 		err = hci_add_remote_oob_data(hdev, &cp->addr.bdaddr,
-					      cp->hash, cp->rand);
+					      cp->addr.type, cp->hash,
+					      cp->rand, NULL, NULL);
 		if (err < 0)
 			status = MGMT_STATUS_FAILED;
 		else
@@ -3608,6 +3610,7 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 				   status, &cp->addr, sizeof(cp->addr));
 	} else if (len == MGMT_ADD_REMOTE_OOB_EXT_DATA_SIZE) {
 		struct mgmt_cp_add_remote_oob_ext_data *cp = data;
+		u8 *rand192, *hash192;
 		u8 status;
 
 		if (cp->addr.type != BDADDR_BREDR) {
@@ -3618,9 +3621,17 @@ static int add_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 			goto unlock;
 		}
 
-		err = hci_add_remote_oob_ext_data(hdev, &cp->addr.bdaddr,
-						  cp->hash192, cp->rand192,
-						  cp->hash256, cp->rand256);
+		if (bdaddr_type_is_le(cp->addr.type)) {
+			rand192 = NULL;
+			hash192 = NULL;
+		} else {
+			rand192 = cp->rand192;
+			hash192 = cp->hash192;
+		}
+
+		err = hci_add_remote_oob_data(hdev, &cp->addr.bdaddr,
+					      cp->addr.type, hash192, rand192,
+					      cp->hash256, cp->rand256);
 		if (err < 0)
 			status = MGMT_STATUS_FAILED;
 		else
@@ -3661,7 +3672,7 @@ static int remove_remote_oob_data(struct sock *sk, struct hci_dev *hdev,
 		goto done;
 	}
 
-	err = hci_remove_remote_oob_data(hdev, &cp->addr.bdaddr);
+	err = hci_remove_remote_oob_data(hdev, &cp->addr.bdaddr, cp->addr.type);
 	if (err < 0)
 		status = MGMT_STATUS_INVALID_PARAMS;
 	else
@@ -3675,64 +3686,150 @@ done:
 	return err;
 }
 
-static int mgmt_start_discovery_failed(struct hci_dev *hdev, u8 status)
+static bool trigger_discovery(struct hci_request *req, u8 *status)
 {
-	struct pending_cmd *cmd;
-	u8 type;
+	struct hci_dev *hdev = req->hdev;
+	struct hci_cp_le_set_scan_param param_cp;
+	struct hci_cp_le_set_scan_enable enable_cp;
+	struct hci_cp_inquiry inq_cp;
+	/* General inquiry access code (GIAC) */
+	u8 lap[3] = { 0x33, 0x8b, 0x9e };
+	u8 own_addr_type;
 	int err;
 
-	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+	switch (hdev->discovery.type) {
+	case DISCOV_TYPE_BREDR:
+		*status = mgmt_bredr_support(hdev);
+		if (*status)
+			return false;
 
-	cmd = mgmt_pending_find(MGMT_OP_START_DISCOVERY, hdev);
-	if (!cmd)
-		return -ENOENT;
+		if (test_bit(HCI_INQUIRY, &hdev->flags)) {
+			*status = MGMT_STATUS_BUSY;
+			return false;
+		}
 
-	type = hdev->discovery.type;
+		hci_inquiry_cache_flush(hdev);
 
-	err = cmd_complete(cmd->sk, hdev->id, cmd->opcode, mgmt_status(status),
-			   &type, sizeof(type));
-	mgmt_pending_remove(cmd);
+		memset(&inq_cp, 0, sizeof(inq_cp));
+		memcpy(&inq_cp.lap, lap, sizeof(inq_cp.lap));
+		inq_cp.length = DISCOV_BREDR_INQUIRY_LEN;
+		hci_req_add(req, HCI_OP_INQUIRY, sizeof(inq_cp), &inq_cp);
+		break;
 
-	return err;
+	case DISCOV_TYPE_LE:
+	case DISCOV_TYPE_INTERLEAVED:
+		*status = mgmt_le_support(hdev);
+		if (*status)
+			return false;
+
+		if (hdev->discovery.type == DISCOV_TYPE_INTERLEAVED &&
+		    !test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags)) {
+			*status = MGMT_STATUS_NOT_SUPPORTED;
+			return false;
+		}
+
+		if (test_bit(HCI_LE_ADV, &hdev->dev_flags)) {
+			/* Don't let discovery abort an outgoing
+			 * connection attempt that's using directed
+			 * advertising.
+			 */
+			if (hci_conn_hash_lookup_state(hdev, LE_LINK,
+						       BT_CONNECT)) {
+				*status = MGMT_STATUS_REJECTED;
+				return false;
+			}
+
+			disable_advertising(req);
+		}
+
+		/* If controller is scanning, it means the background scanning
+		 * is running. Thus, we should temporarily stop it in order to
+		 * set the discovery scanning parameters.
+		 */
+		if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
+			hci_req_add_le_scan_disable(req);
+
+		memset(&param_cp, 0, sizeof(param_cp));
+
+		/* All active scans will be done with either a resolvable
+		 * private address (when privacy feature has been enabled)
+		 * or unresolvable private address.
+		 */
+		err = hci_update_random_address(req, true, &own_addr_type);
+		if (err < 0) {
+			*status = MGMT_STATUS_FAILED;
+			return false;
+		}
+
+		param_cp.type = LE_SCAN_ACTIVE;
+		param_cp.interval = cpu_to_le16(DISCOV_LE_SCAN_INT);
+		param_cp.window = cpu_to_le16(DISCOV_LE_SCAN_WIN);
+		param_cp.own_address_type = own_addr_type;
+		hci_req_add(req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
+			    &param_cp);
+
+		memset(&enable_cp, 0, sizeof(enable_cp));
+		enable_cp.enable = LE_SCAN_ENABLE;
+		enable_cp.filter_dup = LE_SCAN_FILTER_DUP_ENABLE;
+		hci_req_add(req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
+			    &enable_cp);
+		break;
+
+	default:
+		*status = MGMT_STATUS_INVALID_PARAMS;
+		return false;
+	}
+
+	return true;
 }
 
 static void start_discovery_complete(struct hci_dev *hdev, u8 status)
 {
-	unsigned long timeout = 0;
+	struct pending_cmd *cmd;
+	unsigned long timeout;
 
 	BT_DBG("status %d", status);
 
-	if (status) {
-		hci_dev_lock(hdev);
-		mgmt_start_discovery_failed(hdev, status);
-		hci_dev_unlock(hdev);
-		return;
+	hci_dev_lock(hdev);
+
+	cmd = mgmt_pending_find(MGMT_OP_START_DISCOVERY, hdev);
+	if (cmd) {
+		u8 type = hdev->discovery.type;
+
+		cmd_complete(cmd->sk, hdev->id, cmd->opcode,
+			     mgmt_status(status), &type, sizeof(type));
+		mgmt_pending_remove(cmd);
 	}
 
-	hci_dev_lock(hdev);
+	if (status) {
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+		goto unlock;
+	}
+
 	hci_discovery_set_state(hdev, DISCOVERY_FINDING);
-	hci_dev_unlock(hdev);
 
 	switch (hdev->discovery.type) {
 	case DISCOV_TYPE_LE:
 		timeout = msecs_to_jiffies(DISCOV_LE_TIMEOUT);
 		break;
-
 	case DISCOV_TYPE_INTERLEAVED:
 		timeout = msecs_to_jiffies(hdev->discov_interleaved_timeout);
 		break;
-
 	case DISCOV_TYPE_BREDR:
+		timeout = 0;
 		break;
-
 	default:
 		BT_ERR("Invalid discovery type %d", hdev->discovery.type);
+		timeout = 0;
+		break;
 	}
 
-	if (!timeout)
-		return;
+	if (timeout)
+		queue_delayed_work(hdev->workqueue,
+				   &hdev->le_scan_disable, timeout);
 
-	queue_delayed_work(hdev->workqueue, &hdev->le_scan_disable, timeout);
+unlock:
+	hci_dev_unlock(hdev);
 }
 
 static int start_discovery(struct sock *sk, struct hci_dev *hdev,
@@ -3740,13 +3837,8 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 {
 	struct mgmt_cp_start_discovery *cp = data;
 	struct pending_cmd *cmd;
-	struct hci_cp_le_set_scan_param param_cp;
-	struct hci_cp_le_set_scan_enable enable_cp;
-	struct hci_cp_inquiry inq_cp;
 	struct hci_request req;
-	/* General inquiry access code (GIAC) */
-	u8 lap[3] = { 0x33, 0x8b, 0x9e };
-	u8 status, own_addr_type;
+	u8 status;
 	int err;
 
 	BT_DBG("%s", hdev->name);
@@ -3760,14 +3852,8 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 		goto failed;
 	}
 
-	if (test_bit(HCI_PERIODIC_INQ, &hdev->dev_flags)) {
-		err = cmd_complete(sk, hdev->id, MGMT_OP_START_DISCOVERY,
-				   MGMT_STATUS_BUSY, &cp->type,
-				   sizeof(cp->type));
-		goto failed;
-	}
-
-	if (hdev->discovery.state != DISCOVERY_STOPPED) {
+	if (hdev->discovery.state != DISCOVERY_STOPPED ||
+	    test_bit(HCI_PERIODIC_INQ, &hdev->dev_flags)) {
 		err = cmd_complete(sk, hdev->id, MGMT_OP_START_DISCOVERY,
 				   MGMT_STATUS_BUSY, &cp->type,
 				   sizeof(cp->type));
@@ -3784,160 +3870,46 @@ static int start_discovery(struct sock *sk, struct hci_dev *hdev,
 
 	hci_req_init(&req, hdev);
 
-	switch (hdev->discovery.type) {
-	case DISCOV_TYPE_BREDR:
-		status = mgmt_bredr_support(hdev);
-		if (status) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_START_DISCOVERY, status,
-					   &cp->type, sizeof(cp->type));
-			mgmt_pending_remove(cmd);
-			goto failed;
-		}
-
-		if (test_bit(HCI_INQUIRY, &hdev->flags)) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_START_DISCOVERY,
-					   MGMT_STATUS_BUSY, &cp->type,
-					   sizeof(cp->type));
-			mgmt_pending_remove(cmd);
-			goto failed;
-		}
-
-		hci_inquiry_cache_flush(hdev);
-
-		memset(&inq_cp, 0, sizeof(inq_cp));
-		memcpy(&inq_cp.lap, lap, sizeof(inq_cp.lap));
-		inq_cp.length = DISCOV_BREDR_INQUIRY_LEN;
-		hci_req_add(&req, HCI_OP_INQUIRY, sizeof(inq_cp), &inq_cp);
-		break;
-
-	case DISCOV_TYPE_LE:
-	case DISCOV_TYPE_INTERLEAVED:
-		status = mgmt_le_support(hdev);
-		if (status) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_START_DISCOVERY, status,
-					   &cp->type, sizeof(cp->type));
-			mgmt_pending_remove(cmd);
-			goto failed;
-		}
-
-		if (hdev->discovery.type == DISCOV_TYPE_INTERLEAVED &&
-		    !test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags)) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_START_DISCOVERY,
-					   MGMT_STATUS_NOT_SUPPORTED,
-					   &cp->type, sizeof(cp->type));
-			mgmt_pending_remove(cmd);
-			goto failed;
-		}
-
-		if (test_bit(HCI_LE_ADV, &hdev->dev_flags)) {
-			/* Don't let discovery abort an outgoing
-			 * connection attempt that's using directed
-			 * advertising.
-			 */
-			if (hci_conn_hash_lookup_state(hdev, LE_LINK,
-						       BT_CONNECT)) {
-				err = cmd_complete(sk, hdev->id,
-						   MGMT_OP_START_DISCOVERY,
-						   MGMT_STATUS_REJECTED,
-						   &cp->type,
-						   sizeof(cp->type));
-				mgmt_pending_remove(cmd);
-				goto failed;
-			}
-
-			disable_advertising(&req);
-		}
-
-		/* If controller is scanning, it means the background scanning
-		 * is running. Thus, we should temporarily stop it in order to
-		 * set the discovery scanning parameters.
-		 */
-		if (test_bit(HCI_LE_SCAN, &hdev->dev_flags))
-			hci_req_add_le_scan_disable(&req);
-
-		memset(&param_cp, 0, sizeof(param_cp));
-
-		/* All active scans will be done with either a resolvable
-		 * private address (when privacy feature has been enabled)
-		 * or unresolvable private address.
-		 */
-		err = hci_update_random_address(&req, true, &own_addr_type);
-		if (err < 0) {
-			err = cmd_complete(sk, hdev->id,
-					   MGMT_OP_START_DISCOVERY,
-					   MGMT_STATUS_FAILED,
-					   &cp->type, sizeof(cp->type));
-			mgmt_pending_remove(cmd);
-			goto failed;
-		}
-
-		param_cp.type = LE_SCAN_ACTIVE;
-		param_cp.interval = cpu_to_le16(DISCOV_LE_SCAN_INT);
-		param_cp.window = cpu_to_le16(DISCOV_LE_SCAN_WIN);
-		param_cp.own_address_type = own_addr_type;
-		hci_req_add(&req, HCI_OP_LE_SET_SCAN_PARAM, sizeof(param_cp),
-			    &param_cp);
-
-		memset(&enable_cp, 0, sizeof(enable_cp));
-		enable_cp.enable = LE_SCAN_ENABLE;
-		enable_cp.filter_dup = LE_SCAN_FILTER_DUP_ENABLE;
-		hci_req_add(&req, HCI_OP_LE_SET_SCAN_ENABLE, sizeof(enable_cp),
-			    &enable_cp);
-		break;
-
-	default:
+	if (!trigger_discovery(&req, &status)) {
 		err = cmd_complete(sk, hdev->id, MGMT_OP_START_DISCOVERY,
-				   MGMT_STATUS_INVALID_PARAMS,
-				   &cp->type, sizeof(cp->type));
+				   status, &cp->type, sizeof(cp->type));
 		mgmt_pending_remove(cmd);
 		goto failed;
 	}
 
 	err = hci_req_run(&req, start_discovery_complete);
-	if (err < 0)
+	if (err < 0) {
 		mgmt_pending_remove(cmd);
-	else
-		hci_discovery_set_state(hdev, DISCOVERY_STARTING);
+		goto failed;
+	}
+
+	hci_discovery_set_state(hdev, DISCOVERY_STARTING);
 
 failed:
 	hci_dev_unlock(hdev);
 	return err;
 }
 
-static int mgmt_stop_discovery_failed(struct hci_dev *hdev, u8 status)
-{
-	struct pending_cmd *cmd;
-	int err;
-
-	cmd = mgmt_pending_find(MGMT_OP_STOP_DISCOVERY, hdev);
-	if (!cmd)
-		return -ENOENT;
-
-	err = cmd_complete(cmd->sk, hdev->id, cmd->opcode, mgmt_status(status),
-			   &hdev->discovery.type, sizeof(hdev->discovery.type));
-	mgmt_pending_remove(cmd);
-
-	return err;
-}
-
 static void stop_discovery_complete(struct hci_dev *hdev, u8 status)
 {
+	struct pending_cmd *cmd;
+
 	BT_DBG("status %d", status);
 
 	hci_dev_lock(hdev);
 
-	if (status) {
-		mgmt_stop_discovery_failed(hdev, status);
-		goto unlock;
+	cmd = mgmt_pending_find(MGMT_OP_STOP_DISCOVERY, hdev);
+	if (cmd) {
+		u8 type = hdev->discovery.type;
+
+		cmd_complete(cmd->sk, hdev->id, cmd->opcode,
+			     mgmt_status(status), &type, sizeof(type));
+		mgmt_pending_remove(cmd);
 	}
 
-	hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
+	if (!status)
+		hci_discovery_set_state(hdev, DISCOVERY_STOPPED);
 
-unlock:
 	hci_dev_unlock(hdev);
 }
 
@@ -4572,18 +4544,13 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 {
 	struct mgmt_mode *cp = data;
 	struct pending_cmd *cmd;
-	u8 val, status;
+	u8 val;
 	int err;
 
 	BT_DBG("request for %s", hdev->name);
 
-	status = mgmt_bredr_support(hdev);
-	if (status)
-		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
-				  status);
-
-	if (!lmp_sc_capable(hdev) &&
-	    !test_bit(HCI_FORCE_SC, &hdev->dbg_flags))
+	if (!test_bit(HCI_LE_ENABLED, &hdev->dev_flags) &&
+	    !lmp_sc_capable(hdev) && !test_bit(HCI_FORCE_SC, &hdev->dbg_flags))
 		return cmd_status(sk, hdev->id, MGMT_OP_SET_SECURE_CONN,
 				  MGMT_STATUS_NOT_SUPPORTED);
 
@@ -4593,7 +4560,10 @@ static int set_secure_conn(struct sock *sk, struct hci_dev *hdev,
 
 	hci_dev_lock(hdev);
 
-	if (!hdev_is_powered(hdev)) {
+	if (!hdev_is_powered(hdev) ||
+	    (!lmp_sc_capable(hdev) &&
+	     !test_bit(HCI_FORCE_SC, &hdev->dbg_flags)) ||
+	    !test_bit(HCI_BREDR_ENABLED, &hdev->dev_flags)) {
 		bool changed;
 
 		if (cp->val) {
@@ -4910,18 +4880,26 @@ static int load_long_term_keys(struct sock *sk, struct hci_dev *hdev,
 		else
 			addr_type = ADDR_LE_DEV_RANDOM;
 
-		if (key->master)
-			type = SMP_LTK;
-		else
-			type = SMP_LTK_SLAVE;
-
 		switch (key->type) {
 		case MGMT_LTK_UNAUTHENTICATED:
 			authenticated = 0x00;
+			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
 			break;
 		case MGMT_LTK_AUTHENTICATED:
 			authenticated = 0x01;
+			type = key->master ? SMP_LTK : SMP_LTK_SLAVE;
 			break;
+		case MGMT_LTK_P256_UNAUTH:
+			authenticated = 0x00;
+			type = SMP_LTK_P256;
+			break;
+		case MGMT_LTK_P256_AUTH:
+			authenticated = 0x01;
+			type = SMP_LTK_P256;
+			break;
+		case MGMT_LTK_P256_DEBUG:
+			authenticated = 0x00;
+			type = SMP_LTK_P256_DEBUG;
 		default:
 			continue;
 		}
@@ -6101,8 +6079,19 @@ void mgmt_new_link_key(struct hci_dev *hdev, struct link_key *key,
 
 static u8 mgmt_ltk_type(struct smp_ltk *ltk)
 {
-	if (ltk->authenticated)
-		return MGMT_LTK_AUTHENTICATED;
+	switch (ltk->type) {
+	case SMP_LTK:
+	case SMP_LTK_SLAVE:
+		if (ltk->authenticated)
+			return MGMT_LTK_AUTHENTICATED;
+		return MGMT_LTK_UNAUTHENTICATED;
+	case SMP_LTK_P256:
+		if (ltk->authenticated)
+			return MGMT_LTK_P256_AUTH;
+		return MGMT_LTK_P256_UNAUTH;
+	case SMP_LTK_P256_DEBUG:
+		return MGMT_LTK_P256_DEBUG;
+	}
 
 	return MGMT_LTK_UNAUTHENTICATED;
 }
@@ -6784,8 +6773,7 @@ void mgmt_read_local_oob_data_complete(struct hci_dev *hdev, u8 *hash192,
 		cmd_status(cmd->sk, hdev->id, MGMT_OP_READ_LOCAL_OOB_DATA,
 			   mgmt_status(status));
 	} else {
-		if (test_bit(HCI_SC_ENABLED, &hdev->dev_flags) &&
-		    hash256 && rand256) {
+		if (bredr_sc_enabled(hdev) && hash256 && rand256) {
 			struct mgmt_rp_read_local_oob_ext_data rp;
 
 			memcpy(rp.hash192, hash192, sizeof(rp.hash192));
@@ -6886,22 +6874,8 @@ void mgmt_remote_name(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 link_type,
 void mgmt_discovering(struct hci_dev *hdev, u8 discovering)
 {
 	struct mgmt_ev_discovering ev;
-	struct pending_cmd *cmd;
 
 	BT_DBG("%s discovering %u", hdev->name, discovering);
-
-	if (discovering)
-		cmd = mgmt_pending_find(MGMT_OP_START_DISCOVERY, hdev);
-	else
-		cmd = mgmt_pending_find(MGMT_OP_STOP_DISCOVERY, hdev);
-
-	if (cmd != NULL) {
-		u8 type = hdev->discovery.type;
-
-		cmd_complete(cmd->sk, hdev->id, cmd->opcode, 0, &type,
-			     sizeof(type));
-		mgmt_pending_remove(cmd);
-	}
 
 	memset(&ev, 0, sizeof(ev));
 	ev.type = hdev->discovery.type;

@@ -3249,6 +3249,8 @@ static void hci_link_key_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &ev->bdaddr);
 	if (conn) {
+		clear_bit(HCI_CONN_NEW_LINK_KEY, &conn->flags);
+
 		if ((key->type == HCI_LK_UNAUTH_COMBINATION_P192 ||
 		     key->type == HCI_LK_UNAUTH_COMBINATION_P256) &&
 		    conn->auth_type != 0xff && (conn->auth_type & 0x01)) {
@@ -3294,12 +3296,15 @@ static void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	hci_dev_lock(hdev);
 
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &ev->bdaddr);
-	if (conn) {
-		hci_conn_hold(conn);
-		conn->disc_timeout = HCI_DISCONN_TIMEOUT;
-		hci_conn_drop(conn);
-		conn_set_key(conn, ev->key_type, conn->pin_length);
-	}
+	if (!conn)
+		goto unlock;
+
+	hci_conn_hold(conn);
+	conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+	hci_conn_drop(conn);
+
+	set_bit(HCI_CONN_NEW_LINK_KEY, &conn->flags);
+	conn_set_key(conn, ev->key_type, conn->pin_length);
 
 	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
 		goto unlock;
@@ -3326,12 +3331,13 @@ static void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	    !test_bit(HCI_KEEP_DEBUG_KEYS, &hdev->dev_flags)) {
 		list_del_rcu(&key->list);
 		kfree_rcu(key, rcu);
-	} else if (conn) {
-		if (persistent)
-			clear_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
-		else
-			set_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
+		goto unlock;
 	}
+
+	if (persistent)
+		clear_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
+	else
+		set_bit(HCI_CONN_FLUSH_KEY, &conn->flags);
 
 unlock:
 	hci_dev_unlock(hdev);
@@ -3767,7 +3773,7 @@ static void hci_io_capa_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 
 		cp.authentication = conn->auth_type;
 
-		if (hci_find_remote_oob_data(hdev, &conn->dst) &&
+		if (hci_find_remote_oob_data(hdev, &conn->dst, BDADDR_BREDR) &&
 		    (conn->out || test_bit(HCI_CONN_REMOTE_OOB, &conn->flags)))
 			cp.oob_data = 0x01;
 		else
@@ -4022,9 +4028,9 @@ static void hci_remote_oob_data_request_evt(struct hci_dev *hdev,
 	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
 		goto unlock;
 
-	data = hci_find_remote_oob_data(hdev, &ev->bdaddr);
+	data = hci_find_remote_oob_data(hdev, &ev->bdaddr, BDADDR_BREDR);
 	if (data) {
-		if (test_bit(HCI_SC_ENABLED, &hdev->dev_flags)) {
+		if (bredr_sc_enabled(hdev)) {
 			struct hci_cp_remote_oob_ext_data_reply cp;
 
 			bacpy(&cp.bdaddr, &ev->bdaddr);
@@ -4587,9 +4593,19 @@ static void hci_le_ltk_request_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (conn == NULL)
 		goto not_found;
 
-	ltk = hci_find_ltk(hdev, ev->ediv, ev->rand, conn->role);
-	if (ltk == NULL)
+	ltk = hci_find_ltk(hdev, &conn->dst, conn->dst_type, conn->role);
+	if (!ltk)
 		goto not_found;
+
+	if (smp_ltk_is_sc(ltk)) {
+		/* With SC both EDiv and Rand are set to zero */
+		if (ev->ediv || ev->rand)
+			goto not_found;
+	} else {
+		/* For non-SC keys check that EDiv and Rand match */
+		if (ev->ediv != ltk->ediv || ev->rand != ltk->rand)
+			goto not_found;
+	}
 
 	memcpy(cp.ltk, ltk->val, sizeof(ltk->val));
 	cp.handle = cpu_to_le16(conn->handle);
