@@ -242,6 +242,7 @@ next/dt
 		Merge branch 'clocksource/physical-timers' into next/dt
 	patch
 		Revert "ARM: dts: rockchip: temporarily disable smp on rk3288"
+		ARM: dts: rk3288: add arm,cpu-registers-not-fw-configured
 
 next/drivers
 	berlin/drivers
@@ -301,6 +302,11 @@ next/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
 	patch
 		ARM: multi_v7_defconfig: enable MAX77686 PMIC drivers for exynos4412-prime based SoCs
+		ARM: omap2plus_defconfig: remove unwanted ethernet drivers
+		ARM: omap2plus_defconfig: enable EDT FT5X06 touchscreen
+		ARM: omap2plus_defconfig: enable AM33XX SoC sound
+		ARM: omap2plus_defconfig: enable XHCI
+		ARM: omap2plus_defconfig: enable ECAP and EHRPWM
 
 next/arm64
 	cleanup/dts-subdirs
