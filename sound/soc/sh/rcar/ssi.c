@@ -68,7 +68,6 @@ struct rsnd_ssi {
 	struct rsnd_dai *rdai;
 	u32 cr_own;
 	u32 cr_clk;
-	u32 cr_etc;
 	int err;
 	unsigned int usrcnt;
 	unsigned int rate;
@@ -95,6 +94,9 @@ static int rsnd_ssi_use_busif(struct rsnd_mod *mod)
 	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
 	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
 	int use_busif = 0;
+
+	if (!rsnd_ssi_is_dma_mode(mod))
+		return 0;
 
 	if (!(rsnd_ssi_mode_flags(ssi) & RSND_SSI_NO_BUSIF))
 		use_busif = 1;
@@ -159,7 +161,8 @@ static int rsnd_ssi_master_clk_start(struct rsnd_ssi *ssi,
 				ssi->cr_clk	= FORCE | SWL_32 |
 						  SCKD | SWSD | CKDV(j);
 
-				dev_dbg(dev, "ssi%d outputs %u Hz\n",
+				dev_dbg(dev, "%s[%d] outputs %u Hz\n",
+					rsnd_mod_name(&ssi->mod),
 					rsnd_mod_id(&ssi->mod), rate);
 
 				return 0;
@@ -184,6 +187,7 @@ static void rsnd_ssi_hw_start(struct rsnd_ssi *ssi,
 {
 	struct rsnd_priv *priv = rsnd_mod_to_priv(&ssi->mod);
 	struct device *dev = rsnd_priv_to_dev(priv);
+	u32 cr_mode;
 	u32 cr;
 
 	if (0 == ssi->usrcnt) {
@@ -197,16 +201,29 @@ static void rsnd_ssi_hw_start(struct rsnd_ssi *ssi,
 		}
 	}
 
+	cr_mode = rsnd_ssi_is_dma_mode(&ssi->mod) ?
+		DMEN :			/* DMA : use DMA */
+		UIEN | OIEN | DIEN;	/* PIO : enable interrupt */
+
+
 	cr  =	ssi->cr_own	|
 		ssi->cr_clk	|
-		ssi->cr_etc	|
+		cr_mode		|
 		EN;
 
 	rsnd_mod_write(&ssi->mod, SSICR, cr);
 
+	/* enable WS continue */
+	if (rsnd_dai_is_clk_master(rdai))
+		rsnd_mod_write(&ssi->mod, SSIWSR, CONT);
+
+	/* clear error status */
+	rsnd_mod_write(&ssi->mod, SSISR, 0);
+
 	ssi->usrcnt++;
 
-	dev_dbg(dev, "ssi%d hw started\n", rsnd_mod_id(&ssi->mod));
+	dev_dbg(dev, "%s[%d] hw started\n",
+		rsnd_mod_name(&ssi->mod), rsnd_mod_id(&ssi->mod));
 }
 
 static void rsnd_ssi_hw_stop(struct rsnd_ssi *ssi,
@@ -249,7 +266,8 @@ static void rsnd_ssi_hw_stop(struct rsnd_ssi *ssi,
 		clk_disable_unprepare(ssi->clk);
 	}
 
-	dev_dbg(dev, "ssi%d hw stopped\n", rsnd_mod_id(&ssi->mod));
+	dev_dbg(dev, "%s[%d] hw stopped\n",
+		rsnd_mod_name(&ssi->mod), rsnd_mod_id(&ssi->mod));
 }
 
 /*
@@ -385,41 +403,42 @@ static int rsnd_ssi_pio_probe(struct rsnd_mod *mod,
 			       IRQF_SHARED,
 			       dev_name(dev), ssi);
 	if (ret)
-		dev_err(dev, "SSI request interrupt failed\n");
-
-	dev_dbg(dev, "%s (PIO) is probed\n", rsnd_mod_name(mod));
+		dev_err(dev, "%s[%d] (PIO) request interrupt failed\n",
+			rsnd_mod_name(mod), rsnd_mod_id(mod));
+	else
+		dev_dbg(dev, "%s[%d] (PIO) is probed\n",
+			rsnd_mod_name(mod), rsnd_mod_id(mod));
 
 	return ret;
 }
 
-static int rsnd_ssi_pio_start(struct rsnd_mod *mod,
-			      struct rsnd_dai *rdai)
+static int rsnd_ssi_start(struct rsnd_mod *mod,
+			  struct rsnd_dai *rdai)
 {
 	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
 	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
 
-	/* enable PIO IRQ */
-	ssi->cr_etc = UIEN | OIEN | DIEN;
-
-	rsnd_src_ssiu_start(mod, rdai, 0);
-
-	rsnd_src_enable_ssi_irq(mod, rdai);
+	rsnd_src_ssiu_start(mod, rdai, rsnd_ssi_use_busif(mod));
 
 	rsnd_ssi_hw_start(ssi, rdai, io);
+
+	rsnd_src_ssi_irq_enable(mod, rdai);
 
 	return 0;
 }
 
-static int rsnd_ssi_pio_stop(struct rsnd_mod *mod,
-			     struct rsnd_dai *rdai)
+static int rsnd_ssi_stop(struct rsnd_mod *mod,
+			 struct rsnd_dai *rdai)
 {
 	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
 
-	ssi->cr_etc = 0;
+	rsnd_src_ssi_irq_disable(mod, rdai);
+
+	rsnd_ssi_record_error(ssi, rsnd_mod_read(mod, SSISR));
 
 	rsnd_ssi_hw_stop(ssi, rdai);
 
-	rsnd_src_ssiu_stop(mod, rdai, 0);
+	rsnd_src_ssiu_stop(mod, rdai);
 
 	return 0;
 }
@@ -429,8 +448,8 @@ static struct rsnd_mod_ops rsnd_ssi_pio_ops = {
 	.probe	= rsnd_ssi_pio_probe,
 	.init	= rsnd_ssi_init,
 	.quit	= rsnd_ssi_quit,
-	.start	= rsnd_ssi_pio_start,
-	.stop	= rsnd_ssi_pio_stop,
+	.start	= rsnd_ssi_start,
+	.stop	= rsnd_ssi_stop,
 };
 
 static int rsnd_ssi_dma_probe(struct rsnd_mod *mod,
@@ -448,9 +467,11 @@ static int rsnd_ssi_dma_probe(struct rsnd_mod *mod,
 		dma_id);
 
 	if (ret < 0)
-		dev_err(dev, "SSI DMA failed\n");
-
-	dev_dbg(dev, "%s (DMA) is probed\n", rsnd_mod_name(mod));
+		dev_err(dev, "%s[%d] (DMA) is failed\n",
+			rsnd_mod_name(mod), rsnd_mod_id(mod));
+	else
+		dev_dbg(dev, "%s[%d] (DMA) is probed\n",
+			rsnd_mod_name(mod), rsnd_mod_id(mod));
 
 	return ret;
 }
@@ -463,25 +484,35 @@ static int rsnd_ssi_dma_remove(struct rsnd_mod *mod,
 	return 0;
 }
 
+static int rsnd_ssi_fallback(struct rsnd_mod *mod,
+			     struct rsnd_dai *rdai)
+{
+	struct rsnd_priv *priv = rsnd_mod_to_priv(mod);
+	struct device *dev = rsnd_priv_to_dev(priv);
+
+	/*
+	 * fallback to PIO
+	 *
+	 * SSI .probe might be called again.
+	 * see
+	 *	rsnd_rdai_continuance_probe()
+	 */
+	mod->ops = &rsnd_ssi_pio_ops;
+
+	dev_info(dev, "%s[%d] fallback to PIO mode\n",
+		 rsnd_mod_name(mod), rsnd_mod_id(mod));
+
+	return 0;
+}
+
 static int rsnd_ssi_dma_start(struct rsnd_mod *mod,
 			      struct rsnd_dai *rdai)
 {
-	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
-	struct rsnd_dma *dma = rsnd_mod_to_dma(&ssi->mod);
-	struct rsnd_dai_stream *io = rsnd_mod_to_io(mod);
+	struct rsnd_dma *dma = rsnd_mod_to_dma(mod);
 
-	/* enable DMA transfer */
-	ssi->cr_etc = DMEN;
-
-	rsnd_src_ssiu_start(mod, rdai, rsnd_ssi_use_busif(mod));
+	rsnd_ssi_start(mod, rdai);
 
 	rsnd_dma_start(dma);
-
-	rsnd_ssi_hw_start(ssi, ssi->rdai, io);
-
-	/* enable WS continue */
-	if (rsnd_dai_is_clk_master(rdai))
-		rsnd_mod_write(&ssi->mod, SSIWSR, CONT);
 
 	return 0;
 }
@@ -489,18 +520,11 @@ static int rsnd_ssi_dma_start(struct rsnd_mod *mod,
 static int rsnd_ssi_dma_stop(struct rsnd_mod *mod,
 			     struct rsnd_dai *rdai)
 {
-	struct rsnd_ssi *ssi = rsnd_mod_to_ssi(mod);
-	struct rsnd_dma *dma = rsnd_mod_to_dma(&ssi->mod);
-
-	ssi->cr_etc = 0;
-
-	rsnd_ssi_record_error(ssi, rsnd_mod_read(mod, SSISR));
-
-	rsnd_ssi_hw_stop(ssi, rdai);
+	struct rsnd_dma *dma = rsnd_mod_to_dma(mod);
 
 	rsnd_dma_stop(dma);
 
-	rsnd_src_ssiu_stop(mod, rdai, 1);
+	rsnd_ssi_stop(mod, rdai);
 
 	return 0;
 }
@@ -519,7 +543,14 @@ static struct rsnd_mod_ops rsnd_ssi_dma_ops = {
 	.quit	= rsnd_ssi_quit,
 	.start	= rsnd_ssi_dma_start,
 	.stop	= rsnd_ssi_dma_stop,
+	.fallback = rsnd_ssi_fallback,
 };
+
+int rsnd_ssi_is_dma_mode(struct rsnd_mod *mod)
+{
+	return mod->ops == &rsnd_ssi_dma_ops;
+}
+
 
 /*
  *		Non SSI
