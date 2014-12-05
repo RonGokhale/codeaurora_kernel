@@ -15,6 +15,10 @@ next/fixes-non-critical
 		MAINTAINERS: ARM Versatile Express platform
 	tegra/core
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-soc
+	patch
+		MAINTAINERS: ARM Versatile Express platform, add missing pattern
+		ARM: imx: irq: fix buggy usage of irq_data irq field
+		ARM: imx6: fix bogus use of irq_get_irq_data
 
 next/cleanup
 	cleanup/dts-subdirs
@@ -61,6 +65,10 @@ next/cleanup
 		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup4
 	patch
 		ARM: vexpress: Enable regulator framework when MMCI is in use
+	zynq/cleanup
+		https://github.com/Xilinx/linux-xlnx tags/zynq-cleanup-for-3.19
+	at91/cleanup5
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-cleanup5
 
 next/soc
 	rk/cpufreq
@@ -132,6 +140,11 @@ next/soc
 		ARM: add lolevel debug support for asm9260
 	mvebu/soc
 		git://git.infradead.org/linux-mvebu tags/mvebu-soc-3.19
+	mvebu/soc-suspend
+		git://git.infradead.org/linux-mvebu tags/mvebu-soc-suspend-3.19
+	patch
+		soc: integrator: Add terminating entry for integrator_cm_match
+		ARM: mvebu: use the cpufreq-dt platform_data for independent clocks
 
 next/boards
 
@@ -219,6 +232,16 @@ next/dt
 		git://git.infradead.org/linux-mvebu tags/mvebu-dt-3.19-2
 	bcm5301x/dt
 		https://github.com/hauke/linux tags/bcm5301x-dt-2014-11-27
+	zynq/dt
+		https://github.com/Xilinx/linux-xlnx tags/zynq-dt-for-3.19
+	rockchip/dt4
+		git://git.kernel.org/pub/scm/linux/kernel/git/mmind/linux-rockchip tags/v3.19-rockchip-dts4
+	bcm5301x/dt2
+		https://github.com/hauke/linux tags/bcm5301x-dt-2014-12-04
+	clocksource/physical-timers
+		Merge branch 'clocksource/physical-timers' into next/dt
+	patch
+		Revert "ARM: dts: rockchip: temporarily disable smp on rk3288"
 
 next/drivers
 	berlin/drivers
@@ -240,6 +263,14 @@ next/drivers
 		bus: brcmstb_gisb: resolve section mismatch
 	samsung/driver
 		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-driver
+	bcm/brcmstb-drivers
+		https://github.com/brcm/linux tags/arm-soc/for-3.19/brcmstb-drivers
+	driver/reset
+		git://git.pengutronix.de/git/pza/linux tags/reset-for-3.19-2
+	tegra/iommu
+		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-iommu
+	clocksource/physical-timers
+		Merge branch 'clocksource/physical-timers' into next/drivers
 
 next/defconfig
 	renesas/defconfig
@@ -264,6 +295,12 @@ next/defconfig
 		git://git.infradead.org/linux-mvebu tags/mvebu-defconfig-3.19-2
 	tegra/defconfig
 		git://git.kernel.org/pub/scm/linux/kernel/git/tegra/linux tags/tegra-for-3.19-defconfig
+	patch
+		ARM: defconfig: imx_v6_v7_defconfig updates
+	at91/defconfig
+		git://git.kernel.org/pub/scm/linux/kernel/git/nferre/linux-at91 tags/at91-defconfig
+	patch
+		ARM: multi_v7_defconfig: enable MAX77686 PMIC drivers for exynos4412-prime based SoCs
 
 next/arm64
 	cleanup/dts-subdirs
@@ -272,6 +309,8 @@ next/arm64
 		arm64: Create link to include/dt-bindings to enable C preprocessor use.
 		arm64: Add Juno board device tree.
 		arm64: amd-seattle: Adding device tree for AMD Seattle platform
+		arm64: ARM: Fix the Generic Timers interrupt active level description
+		arm64: amd-seattle: Fix PCI bus range due to SMMU limitation
 
 next/omap-gpmc
 	omap/dt
@@ -287,12 +326,5 @@ next/late
 
 fixes
 	patch
-		ARM: tegra: irq: fix buggy usage of irq_data irq field
-	<no branch> (0526f276f94758245ac5886604fe8c805c1b6d2c)
-		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-fixes-v3.18
-	<no branch> (0788148935c3a0fae3cca6af72943b9628bf8a54)
-		git://git.kernel.org/pub/scm/linux/kernel/git/kgene/linux-samsung tags/samsung-defconfig-v3.18
-	<no branch> (2eb04ae010a8fb165ba7aa56e9aa8e7980887dee)
-		git://git.infradead.org/linux-mvebu tags/mvebu-fixes-3.18-2
-
+		arm: ep93xx: add dma_masks for the M2P and M2M DMA controllers
 
