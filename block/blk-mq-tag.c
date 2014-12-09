@@ -254,6 +254,21 @@ static int bt_get(struct blk_mq_alloc_data *data,
 		if (tag != -1)
 			break;
 
+		/*
+		 * We're out of tags on this hardware queue, kick any
+		 * pending IO submits before going to sleep waiting for
+		 * some to complete.
+		 */
+		blk_mq_run_hw_queue(hctx, false);
+
+		/*
+		 * Retry tag allocation after running the hardware queue,
+		 * as running the queue may also have found completions.
+		 */
+		tag = __bt_get(hctx, bt, last_tag);
+		if (tag != -1)
+			break;
+
 		blk_mq_put_ctx(data->ctx);
 
 		io_schedule();
@@ -360,21 +375,6 @@ static void bt_clear_tag(struct blk_mq_bitmap_tags *bt, unsigned int tag)
 	}
 }
 
-static void __blk_mq_put_tag(struct blk_mq_tags *tags, unsigned int tag)
-{
-	BUG_ON(tag >= tags->nr_tags);
-
-	bt_clear_tag(&tags->bitmap_tags, tag);
-}
-
-static void __blk_mq_put_reserved_tag(struct blk_mq_tags *tags,
-				      unsigned int tag)
-{
-	BUG_ON(tag >= tags->nr_reserved_tags);
-
-	bt_clear_tag(&tags->breserved_tags, tag);
-}
-
 void blk_mq_put_tag(struct blk_mq_hw_ctx *hctx, unsigned int tag,
 		    unsigned int *last_tag)
 {
@@ -383,10 +383,13 @@ void blk_mq_put_tag(struct blk_mq_hw_ctx *hctx, unsigned int tag,
 	if (tag >= tags->nr_reserved_tags) {
 		const int real_tag = tag - tags->nr_reserved_tags;
 
-		__blk_mq_put_tag(tags, real_tag);
+		BUG_ON(real_tag >= tags->nr_tags);
+		bt_clear_tag(&tags->bitmap_tags, real_tag);
 		*last_tag = real_tag;
-	} else
-		__blk_mq_put_reserved_tag(tags, tag);
+	} else {
+		BUG_ON(tag >= tags->nr_reserved_tags);
+		bt_clear_tag(&tags->breserved_tags, tag);
+	}
 }
 
 static void bt_for_each(struct blk_mq_hw_ctx *hctx,
