@@ -432,6 +432,18 @@ ktime_t ktime_get_clocktai(void)
 }
 EXPORT_SYMBOL(ktime_get_clocktai);
 
+/**
+  * ktime_get_raw - Returns the raw monotonic time in ktime_t format
+  */
+ktime_t ktime_get_raw(void)
+{
+	struct timespec ts;
+
+	getrawmonotonic(&ts);
+	return timespec_to_ktime(ts);
+}
+EXPORT_SYMBOL_GPL(ktime_get_raw);
+
 #ifdef CONFIG_NTP_PPS
 
 /**
