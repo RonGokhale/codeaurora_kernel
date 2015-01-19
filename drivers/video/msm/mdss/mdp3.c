@@ -2148,6 +2148,7 @@ static int mdp3_probe(struct platform_device *pdev)
 	.panel_register_done = mdp3_panel_register_done,
 	.fb_stride = mdp3_fb_stride,
 	.fb_mem_alloc_fnc = mdp3_alloc,
+	.check_dsi_status = mdp3_check_dsi_ctrl_status,
 	};
 
 	struct mdp3_intr_cb underrun_cb = {
@@ -2248,7 +2249,7 @@ int mdp3_panel_get_boot_cfg(void)
 
 	if (!mdp3_res || !mdp3_res->pan_cfg.init_done)
 		rc = -EPROBE_DEFER;
-	if (mdp3_res->pan_cfg.lk_cfg)
+	else if (mdp3_res->pan_cfg.lk_cfg)
 		rc = 1;
 	else
 		rc = 0;

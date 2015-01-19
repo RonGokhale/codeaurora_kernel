@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -219,6 +219,7 @@ enum adreno_device_flags {
 	ADRENO_DEVICE_PWRON_FIXUP = 1,
 	ADRENO_DEVICE_INITIALIZED = 2,
 	ADRENO_DEVICE_STARTED = 3,
+	ADRENO_DEVICE_HANG_INTR = 4,
 };
 
 #define PERFCOUNTER_FLAG_NONE 0x0
@@ -343,6 +344,7 @@ enum adreno_regs {
 	ADRENO_REG_TC_CNTL_STATUS,
 	ADRENO_REG_TP0_CHICKEN,
 	ADRENO_REG_RBBM_RBBM_CTL,
+	ADRENO_REG_UCHE_INVALIDATE0,
 	ADRENO_REG_REGISTER_MAX,
 };
 
@@ -481,10 +483,12 @@ unsigned int adreno_a3xx_rbbm_clock_ctl_default(struct adreno_device
 struct kgsl_memdesc *adreno_find_region(struct kgsl_device *device,
 						phys_addr_t pt_base,
 						unsigned int gpuaddr,
-						unsigned int size);
+						unsigned int size,
+						struct kgsl_mem_entry **entry);
 
 uint8_t *adreno_convertaddr(struct kgsl_device *device,
-	phys_addr_t pt_base, unsigned int gpuaddr, unsigned int size);
+	phys_addr_t pt_base, unsigned int gpuaddr, unsigned int size,
+	struct kgsl_mem_entry **entry);
 
 struct kgsl_memdesc *adreno_find_ctxtmem(struct kgsl_device *device,
 	phys_addr_t pt_base, unsigned int gpuaddr, unsigned int size);
@@ -902,7 +906,6 @@ adreno_get_rptr(struct adreno_ringbuffer *rb)
 	adreno_readreg(adreno_dev, ADRENO_REG_CP_RB_RPTR, &result);
 	return result;
 }
-
 /*
  * adreno_set_protected_registers() - Protect the specified range of registers
  * from being accessed by the GPU

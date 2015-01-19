@@ -19,6 +19,7 @@
 #include <linux/msm_mdp.h>
 #include <linux/platform_device.h>
 #include <linux/notifier.h>
+#include <linux/kref.h>
 
 #include "mdss.h"
 #include "mdss_mdp_hwio.h"
@@ -180,7 +181,6 @@ struct mdss_mdp_ctl {
 	int force_screen_state;
 	struct mdss_mdp_perf_params cur_perf;
 	struct mdss_mdp_perf_params new_perf;
-	int perf_status;
 
 	struct mdss_data_type *mdata;
 	struct msm_fb_data_type *mfd;
@@ -188,10 +188,12 @@ struct mdss_mdp_ctl {
 	struct mdss_mdp_mixer *mixer_right;
 	struct mutex lock;
 	struct mutex *shared_lock;
-	spinlock_t spin_lock;
 
 	struct mdss_panel_data *panel_data;
 	struct mdss_mdp_vsync_handler vsync_handler;
+	struct mdss_mdp_vsync_handler recover_underrun_handler;
+	struct work_struct recover_work;
+	struct work_struct remove_underrun_handler;
 
 	struct mdss_mdp_img_rect roi;
 	u8 roi_changed;
@@ -285,6 +287,7 @@ struct pp_hist_col_info {
 	u32 hist_cnt_time;
 	u32 frame_cnt;
 	struct completion comp;
+	struct completion first_kick;
 	u32 data[HIST_V_SIZE];
 	struct mutex hist_mutex;
 	spinlock_t hist_lock;
@@ -355,7 +358,7 @@ struct mdss_mdp_pipe {
 	char __iomem *base;
 	u32 ftch_id;
 	u32 xin_id;
-	atomic_t ref_cnt;
+	struct kref kref;
 	u32 play_cnt;
 	int pid;
 	bool is_handed_off;
@@ -416,6 +419,7 @@ struct mdss_overlay_private {
 
 	struct mdss_data_type *mdata;
 	struct mutex ov_lock;
+	struct mutex dfps_lock;
 	struct mdss_mdp_ctl *ctl;
 	struct mdss_mdp_wb *wb;
 	struct list_head overlay_list;
@@ -541,12 +545,7 @@ void mdss_mdp_ctl_notifier_unregister(struct mdss_mdp_ctl *ctl,
 
 int mdss_mdp_mixer_handoff(struct mdss_mdp_ctl *ctl, u32 num,
 	struct mdss_mdp_pipe *pipe);
-
 int mdss_mdp_scan_pipes(void);
-
-void mdss_mdp_ctl_perf_taken(struct mdss_mdp_ctl *ctl);
-void mdss_mdp_ctl_perf_done(struct mdss_mdp_ctl *ctl);
-void mdss_mdp_ctl_perf_release_bw(struct mdss_mdp_ctl *ctl);
 
 struct mdss_mdp_mixer *mdss_mdp_wb_mixer_alloc(int rotator);
 int mdss_mdp_wb_mixer_destroy(struct mdss_mdp_mixer *mixer);
@@ -660,6 +659,7 @@ int mdss_mdp_wb_ioctl_handler(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
 
 int mdss_mdp_get_ctl_mixers(u32 fb_num, u32 *mixer_id);
 u32 mdss_mdp_fb_stride(u32 fb_index, u32 xres, int bpp);
+void mdss_check_dsi_ctrl_status(struct work_struct *work, uint32_t interval);
 
 int mdss_panel_register_done(struct mdss_panel_data *pdata);
 int mdss_mdp_limited_lut_igc_config(struct mdss_mdp_ctl *ctl);
@@ -681,7 +681,7 @@ int mdss_mdp_wb_get_format(struct msm_fb_data_type *mfd,
 int mdss_mdp_wb_set_secure(struct msm_fb_data_type *mfd, int enable);
 int mdss_mdp_wb_get_secure(struct msm_fb_data_type *mfd, uint8_t *enable);
 void mdss_mdp_ctl_restore(struct mdss_mdp_ctl *ctl);
-void mdss_mdp_footswitch_ctrl_ulps(int on, struct device *dev);
+int mdss_mdp_footswitch_ctrl_ulps(int on, struct device *dev);
 
 int mdss_mdp_pipe_program_pixel_extn(struct mdss_mdp_pipe *pipe);
 #define mfd_to_mdp5_data(mfd) (mfd->mdp.private1)
