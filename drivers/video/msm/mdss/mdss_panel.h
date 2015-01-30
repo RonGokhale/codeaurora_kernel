@@ -151,6 +151,7 @@ enum mdss_intf_events {
 	MDSS_EVENT_DSI_CMDLIST_KOFF,
 	MDSS_EVENT_ENABLE_PARTIAL_UPDATE,
 	MDSS_EVENT_DSI_ULPS_CTRL,
+	MDSS_EVENT_REGISTER_RECOVERY_HANDLER,
 };
 
 struct lcd_panel_info {
@@ -309,7 +310,8 @@ struct mdss_panel_info {
 	bool ulps_feature_enabled;
 	char dfps_update;
 	int new_fps;
-
+	int panel_max_fps;
+	int panel_max_vtotal;
 	u32 cont_splash_enabled;
 	u32 partial_update_enabled;
 	struct ion_handle *splash_ihdl;
