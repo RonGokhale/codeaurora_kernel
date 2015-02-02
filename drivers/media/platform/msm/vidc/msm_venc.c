@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -37,7 +37,6 @@
 #define B_FRAME_QP 30
 #define MAX_INTRA_REFRESH_MBS 300
 #define MAX_NUM_B_FRAMES 4
-#define MAX_LTR_FRAME_COUNT 10
 #define L_MODE V4L2_MPEG_VIDEO_H264_LOOP_FILTER_MODE_DISABLED_AT_SLICE_BOUNDARY
 #define CODING V4L2_MPEG_VIDEO_MPEG4_PROFILE_ADVANCED_CODING_EFFICIENCY
 
@@ -121,14 +120,6 @@ static const char *const perf_level[] = {
 	"Nominal",
 	"Performance",
 	"Turbo"
-};
-
-static const char *const intra_refresh_modes[] = {
-        "None",
-        "Cyclic",
-        "Adaptive",
-        "Cyclic Adaptive",
-        "Random"
 };
 
 enum msm_venc_ctrl_cluster {
@@ -1298,7 +1289,7 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDC_VIDEO_NUM_P_FRAMES:
 	{
 		int num_p, num_b;
-		struct v4l2_ctrl update_ctrl = {.id = 0};
+		struct v4l2_ctrl update_ctrl = {.id = 0, .val = 0};
 
 		if (ctrl->id == V4L2_CID_MPEG_VIDEO_H264_I_PERIOD &&
 			inst->fmts[CAPTURE_PORT]->fourcc != V4L2_PIX_FMT_H264 &&
@@ -1372,7 +1363,7 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MPEG_VIDEO_BITRATE_MODE:
 	{
 		int final_mode = 0;
-		struct v4l2_ctrl update_ctrl = {.id = 0};
+		struct v4l2_ctrl update_ctrl = {.id = 0, .val = 0};
 
 		/* V4L2_CID_MPEG_VIDEO_BITRATE_MODE and _RATE_CONTROL
 		 * manipulate the same thing.  If one control's state
