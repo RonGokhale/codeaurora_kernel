@@ -211,9 +211,7 @@ struct msm_vidc_core *get_vidc_core(int core_id)
 	}
 	mutex_lock(&vidc_driver->lock);
 	list_for_each_entry(core, &vidc_driver->cores, list) {
-		if (!core)
-			break;
-		if (core->id == core_id) {
+		if (core && core->id == core_id) {
 			found = 1;
 			break;
 		}
