@@ -1063,10 +1063,15 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 		 * When secure display is enabled, if there is a non secure
 		 * display pipe, skip that
 		 */
-		if ((mdp5_data->sd_enabled) &&
+		if (sd_in_pipe &&
 			!(pipe->flags & MDP_SECURE_DISPLAY_OVERLAY_SESSION)) {
-			pr_warn("Non secure pipe during secure display: %u: %08X, skip\n",
+			if (mdp5_data->sd_enabled == 0) {
+				pr_info("Unstaging non SD pipe (%u, %u)\n", pipe->num, pipe->ndx);
+				mdss_mdp_mixer_pipe_unstage(pipe);
+			} else {
+				pr_warn("Non secure pipe during secure display: %u: %08X, skip\n",
 					pipe->num, pipe->flags);
+			}
 			continue;
 		}
 		/*
