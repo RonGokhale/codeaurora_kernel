@@ -45,13 +45,7 @@
 #define PP_CLK_CFG_OFF 0
 #define PP_CLK_CFG_ON 1
 
-#define MEM_PROTECT_SD_CTRL 0xF
-
 #define INVALID_PIPE_INDEX 0xFFFF
-
-struct sd_ctrl_req {
-	unsigned int enable;
-} __attribute__ ((__packed__));
 
 static atomic_t ov_active_panels = ATOMIC_INIT(0);
 static int mdss_mdp_overlay_free_fb_pipe(struct msm_fb_data_type *mfd);
@@ -59,26 +53,6 @@ static int mdss_mdp_overlay_fb_parse_dt(struct msm_fb_data_type *mfd);
 static int mdss_mdp_overlay_off(struct msm_fb_data_type *mfd);
 static int mdss_mdp_overlay_splash_parse_dt(struct msm_fb_data_type *mfd);
 static void __vsync_retire_signal(struct msm_fb_data_type *mfd, int val);
-
-static int mdss_mdp_overlay_sd_ctrl(struct msm_fb_data_type *mfd,
-					unsigned int enable)
-{
-	struct sd_ctrl_req request;
-	unsigned int resp = -1;
-	int ret = 0;
-	pr_debug("sd_ctrl %u\n", enable);
-
-	request.enable = enable;
-
-	ret = scm_call(SCM_SVC_MP, MEM_PROTECT_SD_CTRL,
-		&request, sizeof(request), &resp, sizeof(resp));
-	pr_debug("scm_call MEM_PROTECT_SD_CTRL(%u): ret=%d, resp=%x",
-				enable, ret, resp);
-	if (ret)
-		return ret;
-
-	return resp;
-}
 
 static int mdss_mdp_overlay_get(struct msm_fb_data_type *mfd,
 				struct mdp_overlay *req)
@@ -1044,8 +1018,13 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 	 * secure display session
 	 */
 	if (!sd_in_pipe && mdp5_data->sd_enabled) {
-		if (0 == mdss_mdp_overlay_sd_ctrl(mfd, 0))
+		/* disable the secure display on last client */
+		if (mdss_get_sd_client_cnt() == 1)
+			ret = mdss_mdp_secure_display_ctrl(0);
+		if (!ret) {
+			mdss_update_sd_client(mdp5_data->mdata, false);
 			mdp5_data->sd_enabled = 0;
+		}
 	}
 
 	if (!ctl->shared_lock)
@@ -1153,10 +1132,13 @@ int mdss_mdp_overlay_kickoff(struct msm_fb_data_type *mfd,
 
 	if (ret == 0) {
 		mutex_lock(&mfd->lock);
-		if (!mdp5_data->sd_enabled && (sd_in_pipe == 1)) {
-			ret = mdss_mdp_overlay_sd_ctrl(mfd, 1);
-			if (ret == 0)
+		if (!mdp5_data->sd_enabled && sd_in_pipe) {
+			if (!mdss_get_sd_client_cnt())
+				ret = mdss_mdp_secure_display_ctrl(1);
+			if (ret == 0) {
 				mdp5_data->sd_enabled = 1;
+				mdss_update_sd_client(mdp5_data->mdata, true);
+			}
 		}
 		mutex_unlock(&mfd->lock);
 	}
