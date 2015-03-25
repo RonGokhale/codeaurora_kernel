@@ -163,12 +163,6 @@ clockevents_calc_mult_shift(struct clock_event_device *ce, u32 freq, u32 minsec)
 				      freq, minsec);
 }
 
-/* Should be core only, but is abused by arm bl_switcher */
-extern void clockevents_set_mode(struct clock_event_device *dev,
-				 enum clock_event_mode mode);
-extern int clockevents_program_event(struct clock_event_device *dev,
-				     ktime_t expires, bool force);
-
 extern void clockevents_suspend(void);
 extern void clockevents_resume(void);
 

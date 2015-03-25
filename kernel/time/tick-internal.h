@@ -28,6 +28,7 @@ extern bool tick_check_replacement(struct clock_event_device *curdev,
 				   struct clock_event_device *newdev);
 extern void tick_install_replacement(struct clock_event_device *dev);
 extern int tick_is_oneshot_available(void);
+extern struct tick_device *tick_get_device(int cpu);
 
 /* Check, if the device is functional or a dummy for broadcast */
 static inline int tick_device_is_functional(struct clock_event_device *dev)
@@ -38,6 +39,10 @@ static inline int tick_device_is_functional(struct clock_event_device *dev)
 extern void clockevents_shutdown(struct clock_event_device *dev);
 extern void clockevents_exchange_device(struct clock_event_device *old,
 					struct clock_event_device *new);
+extern void clockevents_set_mode(struct clock_event_device *dev,
+				 enum clock_event_mode mode);
+extern int clockevents_program_event(struct clock_event_device *dev,
+				     ktime_t expires, bool force);
 extern void clockevents_handle_noop(struct clock_event_device *dev);
 extern int __clockevents_update_freq(struct clock_event_device *dev, u32 freq);
 extern ssize_t sysfs_get_uname(const char *buf, char *dst, size_t cnt);
