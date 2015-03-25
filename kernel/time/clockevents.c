@@ -491,14 +491,12 @@ void clockevents_handle_noop(struct clock_event_device *dev)
  * @old:	device to release (can be NULL)
  * @new:	device to request (can be NULL)
  *
- * Called from the notifier chain. clockevents_lock is held already
+ * Called from various tick functions with clockevents_lock held and
+ * interrupts disabled.
  */
 void clockevents_exchange_device(struct clock_event_device *old,
 				 struct clock_event_device *new)
 {
-	unsigned long flags;
-
-	local_irq_save(flags);
 	/*
 	 * Caller releases a clock event device. We queue it into the
 	 * released list and do a notify add later.
@@ -514,7 +512,6 @@ void clockevents_exchange_device(struct clock_event_device *old,
 		BUG_ON(new->mode != CLOCK_EVT_MODE_UNUSED);
 		clockevents_shutdown(new);
 	}
-	local_irq_restore(flags);
 }
 
 /**
