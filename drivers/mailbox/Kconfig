@@ -34,6 +34,14 @@ config OMAP_MBOX_KFIFO_SIZE
 	  This can also be changed at runtime (via the mbox_kfifo_size
 	  module parameter).
 
+config TEGRA_BPMP_MBOX
+	bool "Tegra BPMP-lite Mailbox support"
+	depends on ARCH_TEGRA_210_SOC
+	default y
+	help
+	  Say y here to support Tegra's BPMP-lite mailbox driver.
+	  If unsure say N.
+
 config TEGRA_XUSB_MBOX
 	tristate "NVIDIA Tegra XUSB Mailbox"
 	depends on MFD_TEGRA_XUSB
