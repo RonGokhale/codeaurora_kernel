@@ -708,7 +708,7 @@ intel_crt_detect(struct drm_connector *connector, bool force)
 			status = connector_status_connected;
 		else
 			status = intel_crt_load_detect(crt);
-		intel_release_load_detect_pipe(connector, &tmp);
+		intel_release_load_detect_pipe(connector, &tmp, &ctx);
 	} else
 		status = connector_status_unknown;
 
@@ -794,6 +794,7 @@ static const struct drm_connector_funcs intel_crt_connector_funcs = {
 	.destroy = intel_crt_destroy,
 	.set_property = intel_crt_set_property,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_get_property = intel_connector_atomic_get_property,
 };
 
