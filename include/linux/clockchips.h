@@ -16,13 +16,11 @@ enum clock_event_nofitiers {
 	CLOCK_EVT_NOTIFY_BROADCAST_FORCE,
 	CLOCK_EVT_NOTIFY_BROADCAST_ENTER,
 	CLOCK_EVT_NOTIFY_BROADCAST_EXIT,
-	CLOCK_EVT_NOTIFY_SUSPEND,
-	CLOCK_EVT_NOTIFY_RESUME,
 	CLOCK_EVT_NOTIFY_CPU_DYING,
 	CLOCK_EVT_NOTIFY_CPU_DEAD,
 };
 
-#ifdef CONFIG_GENERIC_CLOCKEVENTS_BUILD
+#ifdef CONFIG_GENERIC_CLOCKEVENTS
 
 #include <linux/clocksource.h>
 #include <linux/cpumask.h>
@@ -158,15 +156,6 @@ extern void clockevents_config_and_register(struct clock_event_device *dev,
 
 extern int clockevents_update_freq(struct clock_event_device *ce, u32 freq);
 
-extern void clockevents_exchange_device(struct clock_event_device *old,
-					struct clock_event_device *new);
-extern void clockevents_set_mode(struct clock_event_device *dev,
-				 enum clock_event_mode mode);
-extern int clockevents_program_event(struct clock_event_device *dev,
-				     ktime_t expires, bool force);
-
-extern void clockevents_handle_noop(struct clock_event_device *dev);
-
 static inline void
 clockevents_calc_mult_shift(struct clock_event_device *ce, u32 freq, u32 minsec)
 {
@@ -194,13 +183,9 @@ static inline int tick_check_broadcast_expired(void) { return 0; }
 static inline void tick_setup_hrtimer_broadcast(void) {};
 #endif
 
-#ifdef CONFIG_GENERIC_CLOCKEVENTS
 extern int clockevents_notify(unsigned long reason, void *arg);
-#else
-static inline int clockevents_notify(unsigned long reason, void *arg) { return 0; }
-#endif
 
-#else /* CONFIG_GENERIC_CLOCKEVENTS_BUILD */
+#else /* CONFIG_GENERIC_CLOCKEVENTS */
 
 static inline void clockevents_suspend(void) {}
 static inline void clockevents_resume(void) {}
