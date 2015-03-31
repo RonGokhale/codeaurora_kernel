@@ -1,8 +1,8 @@
 #include <linux/errno.h>
 #include <linux/export.h>
 #include <linux/string.h>
+#include <bcm47xx.h>
 #include <bcm47xx_board.h>
-#include <bcm47xx_nvram.h>
 
 struct bcm47xx_board_type {
 	const enum bcm47xx_board board;
@@ -330,9 +330,8 @@ void __init bcm47xx_board_detect(void)
 	err = bcm47xx_nvram_getenv("boardtype", buf, sizeof(buf));
 
 	/* init of nvram failed, probably too early now */
-	if (err == -ENXIO) {
+	if (err == -ENXIO)
 		return;
-	}
 
 	board_detected = bcm47xx_board_get_nvram();
 	bcm47xx_board.board = board_detected->board;

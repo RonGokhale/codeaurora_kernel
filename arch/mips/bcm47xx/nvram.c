@@ -16,10 +16,12 @@
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/mtd/mtd.h>
-#include <bcm47xx_nvram.h>
+#include <linux/bcm47xx_nvram.h>
 
-#define NVRAM_MAGIC		0x48534C46	/* 'FLSH' */
-#define NVRAM_SPACE		0x8000
+#define NVRAM_MAGIC			0x48534C46	/* 'FLSH' */
+#define NVRAM_SPACE			0x8000
+#define NVRAM_MAX_GPIO_ENTRIES		32
+#define NVRAM_MAX_GPIO_VALUE_LEN	30
 
 #define FLASH_MIN		0x00020000	/* Minimum flash size */
 
@@ -91,20 +93,18 @@ static int nvram_find_and_copy(void __iomem *iobase, u32 lim)
 	return -ENXIO;
 
 found:
-
 	if (header->len > size)
 		pr_err("The nvram size accoridng to the header seems to be bigger than the partition on flash\n");
 	if (header->len > NVRAM_SPACE)
 		pr_err("nvram on flash (%i bytes) is bigger than the reserved space in memory, will just copy the first %i bytes\n",
 		       header->len, NVRAM_SPACE);
 
-	src = (u32 *) header;
-	dst = (u32 *) nvram_buf;
+	src = (u32 *)header;
+	dst = (u32 *)nvram_buf;
 	for (i = 0; i < sizeof(struct nvram_header); i += 4)
-		*dst++ = *src++;
+		*dst++ = __raw_readl(src++);
 	for (; i < header->len && i < NVRAM_SPACE && i < size; i += 4)
-		*dst++ = le32_to_cpu(*src++);
-	memset(dst, 0x0, NVRAM_SPACE - i);
+		*dst++ = readl(src++);
 
 	return 0;
 }
@@ -165,7 +165,6 @@ static int nvram_init(void)
 			err = mtd_read(mtd, from, len, &bytes_read, dst);
 			if (err)
 				return err;
-			memset(dst + bytes_read, 0x0, NVRAM_SPACE - bytes_read);
 
 			return 0;
 		}
@@ -178,7 +177,7 @@ static int nvram_init(void)
 int bcm47xx_nvram_getenv(const char *name, char *val, size_t val_len)
 {
 	char *var, *value, *end, *eq;
-	int err;
+	int data_left, err;
 
 	if (!name)
 		return -EINVAL;
@@ -192,17 +191,19 @@ int bcm47xx_nvram_getenv(const char *name, char *val, size_t val_len)
 	/* Look for name=value and return value */
 	var = &nvram_buf[sizeof(struct nvram_header)];
 	end = nvram_buf + sizeof(nvram_buf) - 2;
-	end[0] = end[1] = '\0';
+	end[0] = '\0';
+	end[1] = '\0';
 	for (; *var; var = value + strlen(value) + 1) {
-		eq = strchr(var, '=');
+		data_left = end - var;
+
+		eq = strnchr(var, data_left, '=');
 		if (!eq)
 			break;
 		value = eq + 1;
-		if ((eq - var) == strlen(name) &&
-			strncmp(var, name, (eq - var)) == 0) {
+		if (eq - var == strlen(name) &&
+		    strncmp(var, name, eq - var) == 0)
 			return snprintf(val, val_len, "%s", value);
 		}
-	}
 	return -ENOENT;
 }
 EXPORT_SYMBOL(bcm47xx_nvram_getenv);
@@ -210,10 +211,11 @@ EXPORT_SYMBOL(bcm47xx_nvram_getenv);
 int bcm47xx_nvram_gpio_pin(const char *name)
 {
 	int i, err;
-	char nvram_var[10];
-	char buf[30];
+	char nvram_var[] = "gpioXX";
+	char buf[NVRAM_MAX_GPIO_VALUE_LEN];
 
-	for (i = 0; i < 32; i++) {
+	/* TODO: Optimize it to don't call getenv so many times */
+	for (i = 0; i < NVRAM_MAX_GPIO_ENTRIES; i++) {
 		err = snprintf(nvram_var, sizeof(nvram_var), "gpio%i", i);
 		if (err <= 0)
 			continue;
