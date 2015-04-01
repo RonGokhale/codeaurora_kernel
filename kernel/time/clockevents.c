@@ -491,14 +491,12 @@ void clockevents_handle_noop(struct clock_event_device *dev)
  * @old:	device to release (can be NULL)
  * @new:	device to request (can be NULL)
  *
- * Called from the notifier chain. clockevents_lock is held already
+ * Called from various tick functions with clockevents_lock held and
+ * interrupts disabled.
  */
 void clockevents_exchange_device(struct clock_event_device *old,
 				 struct clock_event_device *new)
 {
-	unsigned long flags;
-
-	local_irq_save(flags);
 	/*
 	 * Caller releases a clock event device. We queue it into the
 	 * released list and do a notify add later.
@@ -514,7 +512,6 @@ void clockevents_exchange_device(struct clock_event_device *old,
 		BUG_ON(new->mode != CLOCK_EVT_MODE_UNUSED);
 		clockevents_shutdown(new);
 	}
-	local_irq_restore(flags);
 }
 
 /**
@@ -541,7 +538,6 @@ void clockevents_resume(void)
 			dev->resume(dev);
 }
 
-#ifdef CONFIG_GENERIC_CLOCKEVENTS
 /**
  * clockevents_notify - notification about relevant events
  * Returns 0 on success, any other value on error
@@ -568,15 +564,6 @@ int clockevents_notify(unsigned long reason, void *arg)
 
 	case CLOCK_EVT_NOTIFY_CPU_DYING:
 		tick_handover_do_timer(arg);
-		break;
-
-	case CLOCK_EVT_NOTIFY_SUSPEND:
-		tick_suspend();
-		tick_suspend_broadcast();
-		break;
-
-	case CLOCK_EVT_NOTIFY_RESUME:
-		tick_resume();
 		break;
 
 	case CLOCK_EVT_NOTIFY_CPU_DEAD:
@@ -727,5 +714,3 @@ static int __init clockevents_init_sysfs(void)
 }
 device_initcall(clockevents_init_sysfs);
 #endif /* SYSFS */
-
-#endif /* GENERIC_CLOCK_EVENTS */
