@@ -1882,7 +1882,7 @@ static void fsi_handler_init(struct fsi_priv *fsi,
 	}
 }
 
-static struct of_device_id fsi_of_match[];
+static const struct of_device_id fsi_of_match[];
 static int fsi_probe(struct platform_device *pdev)
 {
 	struct fsi_master *master;
@@ -2100,7 +2100,7 @@ static struct fsi_core fsi2_core = {
 	.b_mclk	= B_MST_CTLR,
 };
 
-static struct of_device_id fsi_of_match[] = {
+static const struct of_device_id fsi_of_match[] = {
 	{ .compatible = "renesas,sh_fsi",	.data = &fsi1_core},
 	{ .compatible = "renesas,sh_fsi2",	.data = &fsi2_core},
 	{},
@@ -2127,7 +2127,7 @@ static struct platform_driver fsi_driver = {
 
 module_platform_driver(fsi_driver);
 
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("SuperH onchip FSI audio driver");
 MODULE_AUTHOR("Kuninori Morimoto <morimoto.kuninori@renesas.com>");
 MODULE_ALIAS("platform:fsi-pcm-audio");
