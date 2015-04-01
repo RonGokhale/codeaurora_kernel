@@ -102,7 +102,7 @@ void tick_handle_periodic(struct clock_event_device *dev)
 
 	tick_periodic(cpu);
 
-	if (dev->mode != CLOCK_EVT_MODE_ONESHOT)
+	if (dev->state != CLOCK_EVT_STATE_ONESHOT)
 		return;
 	for (;;) {
 		/*
@@ -140,7 +140,7 @@ void tick_setup_periodic(struct clock_event_device *dev, int broadcast)
 
 	if ((dev->features & CLOCK_EVT_FEAT_PERIODIC) &&
 	    !tick_broadcast_oneshot_active()) {
-		clockevents_set_mode(dev, CLOCK_EVT_MODE_PERIODIC);
+		clockevents_set_state(dev, CLOCK_EVT_STATE_PERIODIC);
 	} else {
 		unsigned long seq;
 		ktime_t next;
@@ -150,7 +150,7 @@ void tick_setup_periodic(struct clock_event_device *dev, int broadcast)
 			next = tick_next_period;
 		} while (read_seqretry(&jiffies_lock, seq));
 
-		clockevents_set_mode(dev, CLOCK_EVT_MODE_ONESHOT);
+		clockevents_set_state(dev, CLOCK_EVT_STATE_ONESHOT);
 
 		for (;;) {
 			if (!clockevents_program_event(dev, next, false))
@@ -365,6 +365,7 @@ void tick_shutdown(unsigned int *cpup)
 		 * Prevent that the clock events layer tries to call
 		 * the set mode function!
 		 */
+		dev->state = CLOCK_EVT_STATE_DETACHED;
 		dev->mode = CLOCK_EVT_MODE_UNUSED;
 		clockevents_exchange_device(dev, NULL);
 		dev->event_handler = clockevents_handle_noop;
@@ -398,7 +399,8 @@ void tick_resume_local(void)
 	struct tick_device *td = this_cpu_ptr(&tick_cpu_device);
 	bool broadcast = tick_resume_check_broadcast();
 
-	clockevents_set_mode(td->evtdev, CLOCK_EVT_MODE_RESUME);
+	clockevents_tick_resume(td->evtdev);
+
 	if (!broadcast) {
 		if (td->mode == TICKDEV_MODE_PERIODIC)
 			tick_setup_periodic(td->evtdev, 0);

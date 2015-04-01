@@ -37,10 +37,11 @@ static inline int tick_device_is_functional(struct clock_event_device *dev)
 }
 
 extern void clockevents_shutdown(struct clock_event_device *dev);
+extern int clockevents_tick_resume(struct clock_event_device *dev);
 extern void clockevents_exchange_device(struct clock_event_device *old,
 					struct clock_event_device *new);
-extern void clockevents_set_mode(struct clock_event_device *dev,
-				 enum clock_event_mode mode);
+extern void clockevents_set_state(struct clock_event_device *dev,
+				  enum clock_event_state state);
 extern int clockevents_program_event(struct clock_event_device *dev,
 				     ktime_t expires, bool force);
 extern void clockevents_handle_noop(struct clock_event_device *dev);
