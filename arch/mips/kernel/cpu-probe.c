@@ -441,6 +441,8 @@ static inline unsigned int decode_config3(struct cpuinfo_mips *c)
 		c->htw_seq = 0;
 		c->options |= MIPS_CPU_HTW;
 	}
+	if (config3 & MIPS_CONF3_CDMM)
+		c->options |= MIPS_CPU_CDMM;
 
 	return config3 & MIPS_CONF_M;
 }
@@ -516,6 +518,10 @@ static inline unsigned int decode_config5(struct cpuinfo_mips *c)
 		c->options |= MIPS_CPU_MAAR;
 	if (config5 & MIPS_CONF5_LLB)
 		c->options |= MIPS_CPU_RW_LLB;
+#ifdef CONFIG_XPA
+	if (config5 & MIPS_CONF5_MVH)
+		c->options |= MIPS_CPU_XPA;
+#endif
 
 	return config5 & MIPS_CONF_M;
 }
@@ -850,8 +856,13 @@ static inline void cpu_probe_legacy(struct cpuinfo_mips *c, unsigned int cpu)
 		c->tlbsize = 64;
 		break;
 	case PRID_IMP_R14000:
-		c->cputype = CPU_R14000;
-		__cpu_name[cpu] = "R14000";
+		if (((c->processor_id >> 4) & 0x0f) > 2) {
+			c->cputype = CPU_R16000;
+			__cpu_name[cpu] = "R16000";
+		} else {
+			c->cputype = CPU_R14000;
+			__cpu_name[cpu] = "R14000";
+		}
 		set_isa(c, MIPS_CPU_ISA_IV);
 		c->options = MIPS_CPU_TLB | MIPS_CPU_4K_CACHE | MIPS_CPU_4KEX |
 			     MIPS_CPU_FPU | MIPS_CPU_32FPR |
