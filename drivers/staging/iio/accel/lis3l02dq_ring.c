@@ -110,7 +110,7 @@ static int lis3l02dq_read_all(struct iio_dev *indio_dev, u8 *rx_array)
 }
 
 static int lis3l02dq_get_buffer_element(struct iio_dev *indio_dev,
-				u8 *buf)
+					u8 *buf)
 {
 	int ret, i;
 	u8 *rx_array;
@@ -118,7 +118,7 @@ static int lis3l02dq_get_buffer_element(struct iio_dev *indio_dev,
 	int scan_count = bitmap_weight(indio_dev->active_scan_mask,
 				       indio_dev->masklength);
 
-	rx_array = kzalloc(4 * scan_count, GFP_KERNEL);
+	rx_array = kcalloc(4, scan_count, GFP_KERNEL);
 	if (rx_array == NULL)
 		return -ENOMEM;
 	ret = lis3l02dq_read_all(indio_dev, rx_array);
@@ -330,19 +330,21 @@ static int lis3l02dq_buffer_postenable(struct iio_dev *indio_dev)
 	if (test_bit(0, indio_dev->active_scan_mask)) {
 		t |= LIS3L02DQ_REG_CTRL_1_AXES_X_ENABLE;
 		oneenabled = true;
-	} else
+	} else {
 		t &= ~LIS3L02DQ_REG_CTRL_1_AXES_X_ENABLE;
+	}
 	if (test_bit(1, indio_dev->active_scan_mask)) {
 		t |= LIS3L02DQ_REG_CTRL_1_AXES_Y_ENABLE;
 		oneenabled = true;
-	} else
+	} else {
 		t &= ~LIS3L02DQ_REG_CTRL_1_AXES_Y_ENABLE;
+	}
 	if (test_bit(2, indio_dev->active_scan_mask)) {
 		t |= LIS3L02DQ_REG_CTRL_1_AXES_Z_ENABLE;
 		oneenabled = true;
-	} else
+	} else {
 		t &= ~LIS3L02DQ_REG_CTRL_1_AXES_Z_ENABLE;
-
+	}
 	if (!oneenabled) /* what happens in this case is unknown */
 		return -EINVAL;
 	ret = lis3l02dq_spi_write_reg_8(indio_dev,
