@@ -152,7 +152,6 @@ static struct neighbour *ipv4_neigh_lookup(const struct dst_entry *dst,
 
 static struct dst_ops ipv4_dst_ops = {
 	.family =		AF_INET,
-	.protocol =		cpu_to_be16(ETH_P_IP),
 	.check =		ipv4_dst_check,
 	.default_advmss =	ipv4_default_advmss,
 	.mtu =			ipv4_mtu,
@@ -483,7 +482,7 @@ u32 ip_idents_reserve(u32 hash, int segs)
 }
 EXPORT_SYMBOL(ip_idents_reserve);
 
-void __ip_select_ident(struct iphdr *iph, int segs)
+void __ip_select_ident(struct net *net, struct iphdr *iph, int segs)
 {
 	static u32 ip_idents_hashrnd __read_mostly;
 	u32 hash, id;
@@ -492,7 +491,7 @@ void __ip_select_ident(struct iphdr *iph, int segs)
 
 	hash = jhash_3words((__force u32)iph->daddr,
 			    (__force u32)iph->saddr,
-			    iph->protocol,
+			    iph->protocol ^ net_hash_mix(net),
 			    ip_idents_hashrnd);
 	id = ip_idents_reserve(hash, segs);
 	iph->id = htons(id);
@@ -2225,7 +2224,6 @@ static u32 *ipv4_rt_blackhole_cow_metrics(struct dst_entry *dst,
 
 static struct dst_ops ipv4_dst_blackhole_ops = {
 	.family			=	AF_INET,
-	.protocol		=	cpu_to_be16(ETH_P_IP),
 	.check			=	ipv4_blackhole_dst_check,
 	.mtu			=	ipv4_blackhole_mtu,
 	.default_advmss		=	ipv4_default_advmss,
@@ -2321,11 +2319,11 @@ static int rt_fill_info(struct net *net,  __be32 dst, __be32 src,
 	if (IPCB(skb)->flags & IPSKB_DOREDIRECT)
 		r->rtm_flags |= RTCF_DOREDIRECT;
 
-	if (nla_put_be32(skb, RTA_DST, dst))
+	if (nla_put_in_addr(skb, RTA_DST, dst))
 		goto nla_put_failure;
 	if (src) {
 		r->rtm_src_len = 32;
-		if (nla_put_be32(skb, RTA_SRC, src))
+		if (nla_put_in_addr(skb, RTA_SRC, src))
 			goto nla_put_failure;
 	}
 	if (rt->dst.dev &&
@@ -2338,11 +2336,11 @@ static int rt_fill_info(struct net *net,  __be32 dst, __be32 src,
 #endif
 	if (!rt_is_input_route(rt) &&
 	    fl4->saddr != src) {
-		if (nla_put_be32(skb, RTA_PREFSRC, fl4->saddr))
+		if (nla_put_in_addr(skb, RTA_PREFSRC, fl4->saddr))
 			goto nla_put_failure;
 	}
 	if (rt->rt_uses_gateway &&
-	    nla_put_be32(skb, RTA_GATEWAY, rt->rt_gateway))
+	    nla_put_in_addr(skb, RTA_GATEWAY, rt->rt_gateway))
 		goto nla_put_failure;
 
 	expires = rt->dst.expires;
@@ -2438,8 +2436,8 @@ static int inet_rtm_getroute(struct sk_buff *in_skb, struct nlmsghdr *nlh)
 	ip_hdr(skb)->protocol = IPPROTO_ICMP;
 	skb_reserve(skb, MAX_HEADER + sizeof(struct iphdr));
 
-	src = tb[RTA_SRC] ? nla_get_be32(tb[RTA_SRC]) : 0;
-	dst = tb[RTA_DST] ? nla_get_be32(tb[RTA_DST]) : 0;
+	src = tb[RTA_SRC] ? nla_get_in_addr(tb[RTA_SRC]) : 0;
+	dst = tb[RTA_DST] ? nla_get_in_addr(tb[RTA_DST]) : 0;
 	iif = tb[RTA_IIF] ? nla_get_u32(tb[RTA_IIF]) : 0;
 	mark = tb[RTA_MARK] ? nla_get_u32(tb[RTA_MARK]) : 0;
 
