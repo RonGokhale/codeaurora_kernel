@@ -44,7 +44,7 @@
  */
 enum sensors {
 	FAN,
-	AMBIENT_TEMP,
+	TEMP,
 	POWER_SUPPLY,
 	POWER_INPUT,
 	MAX_SENSOR_TYPE,
@@ -55,6 +55,7 @@ static struct sensor_group {
 	const char *compatible;
 	struct attribute_group group;
 	u32 attr_count;
+	u32 hwmon_index;
 } sensor_groups[] = {
 	{"fan", "ibm,opal-sensor-cooling-fan"},
 	{"temp", "ibm,opal-sensor-amb-temp"},
@@ -64,6 +65,8 @@ static struct sensor_group {
 
 struct sensor_data {
 	u32 id; /* An opaque id of the firmware for each sensor */
+	u32 hwmon_index;
+	u32 opal_index;
 	enum sensors type;
 	char name[MAX_ATTR_LEN];
 	struct device_attribute dev_attr;
@@ -87,7 +90,7 @@ static ssize_t show_sensor(struct device *dev, struct device_attribute *devattr,
 		return ret;
 
 	/* Convert temperature to milli-degrees */
-	if (sdata->type == AMBIENT_TEMP)
+	if (sdata->type == TEMP)
 		x *= 1000;
 	/* Convert power to micro-watts */
 	else if (sdata->type == POWER_INPUT)
@@ -127,46 +130,71 @@ static int get_sensor_index_attr(const char *name, u32 *index,
 	return 0;
 }
 
+static const char *convert_opal_attr_name(enum sensors type,
+					  const char *opal_attr)
+{
+	const char *attr_name = NULL;
+
+	if (!strcmp(opal_attr, DT_FAULT_ATTR_SUFFIX)) {
+		attr_name = "fault";
+	} else if (!strcmp(opal_attr, DT_DATA_ATTR_SUFFIX)) {
+		attr_name = "input";
+	} else if (!strcmp(opal_attr, DT_THRESHOLD_ATTR_SUFFIX)) {
+		if (type == TEMP)
+			attr_name = "max";
+		else if (type == FAN)
+			attr_name = "min";
+	}
+
+	return attr_name;
+}
+
 /*
  * This function translates the DT node name into the 'hwmon' attribute name.
  * IBMPOWERNV device node appear like cooling-fan#2-data, amb-temp#1-thrs etc.
  * which need to be mapped as fan2_input, temp1_max respectively before
  * populating them inside hwmon device class.
  */
-static int create_hwmon_attr_name(struct device *dev, enum sensors type,
-					 const char *node_name,
-					 char *hwmon_attr_name)
+static const char *parse_opal_node_name(const char *node_name,
+					enum sensors type, u32 *index)
 {
 	char attr_suffix[MAX_ATTR_LEN];
-	char *attr_name;
-	u32 index;
+	const char *attr_name;
 	int err;
 
-	err = get_sensor_index_attr(node_name, &index, attr_suffix);
-	if (err) {
-		dev_err(dev, "Sensor device node name '%s' is invalid\n",
-			node_name);
-		return err;
-	}
+	err = get_sensor_index_attr(node_name, index, attr_suffix);
+	if (err)
+		return ERR_PTR(err);
 
-	if (!strcmp(attr_suffix, DT_FAULT_ATTR_SUFFIX)) {
-		attr_name = "fault";
-	} else if (!strcmp(attr_suffix, DT_DATA_ATTR_SUFFIX)) {
-		attr_name = "input";
-	} else if (!strcmp(attr_suffix, DT_THRESHOLD_ATTR_SUFFIX)) {
-		if (type == AMBIENT_TEMP)
-			attr_name = "max";
-		else if (type == FAN)
-			attr_name = "min";
-		else
-			return -ENOENT;
-	} else {
-		return -ENOENT;
-	}
+	attr_name = convert_opal_attr_name(type, attr_suffix);
+	if (!attr_name)
+		return ERR_PTR(-ENOENT);
 
-	snprintf(hwmon_attr_name, MAX_ATTR_LEN, "%s%d_%s",
-		 sensor_groups[type].name, index, attr_name);
-	return 0;
+	return attr_name;
+}
+
+static int get_sensor_type(struct device_node *np)
+{
+	enum sensors type;
+
+	for (type = 0; type < MAX_SENSOR_TYPE; type++) {
+		if (of_device_is_compatible(np, sensor_groups[type].compatible))
+			return type;
+	}
+	return MAX_SENSOR_TYPE;
+}
+
+static u32 get_sensor_hwmon_index(struct sensor_data *sdata,
+				  struct sensor_data *sdata_table, int count)
+{
+	int i;
+
+	for (i = 0; i < count; i++)
+		if (sdata_table[i].opal_index == sdata->opal_index &&
+		    sdata_table[i].type == sdata->type)
+			return sdata_table[i].hwmon_index;
+
+	return ++sensor_groups[sdata->type].hwmon_index;
 }
 
 static int populate_attr_groups(struct platform_device *pdev)
@@ -181,12 +209,9 @@ static int populate_attr_groups(struct platform_device *pdev)
 		if (np->name == NULL)
 			continue;
 
-		for (type = 0; type < MAX_SENSOR_TYPE; type++)
-			if (of_device_is_compatible(np,
-					sensor_groups[type].compatible)) {
-				sensor_groups[type].attr_count++;
-				break;
-			}
+		type = get_sensor_type(np);
+		if (type != MAX_SENSOR_TYPE)
+			sensor_groups[type].attr_count++;
 	}
 
 	of_node_put(opal);
@@ -233,14 +258,13 @@ static int create_device_attrs(struct platform_device *pdev)
 	}
 
 	for_each_child_of_node(opal, np) {
+		const char *attr_name;
+		u32 opal_index;
+
 		if (np->name == NULL)
 			continue;
 
-		for (type = 0; type < MAX_SENSOR_TYPE; type++)
-			if (of_device_is_compatible(np,
-					sensor_groups[type].compatible))
-				break;
-
+		type = get_sensor_type(np);
 		if (type == MAX_SENSOR_TYPE)
 			continue;
 
@@ -253,10 +277,22 @@ static int create_device_attrs(struct platform_device *pdev)
 
 		sdata[count].id = sensor_id;
 		sdata[count].type = type;
-		err = create_hwmon_attr_name(&pdev->dev, type, np->name,
-					     sdata[count].name);
-		if (err)
+
+		attr_name = parse_opal_node_name(np->name, type, &opal_index);
+		if (IS_ERR(attr_name)) {
+			dev_err(&pdev->dev, "Sensor device node name '%s' is invalid\n",
+				np->name);
+			err = PTR_ERR(attr_name);
 			goto exit_put_node;
+		}
+
+		sdata[count].opal_index = opal_index;
+		sdata[count].hwmon_index =
+			get_sensor_hwmon_index(&sdata[count], sdata, count);
+
+		snprintf(sdata[count].name, MAX_ATTR_LEN, "%s%d_%s",
+			 sensor_groups[type].name, sdata[count].hwmon_index,
+			 attr_name);
 
 		sysfs_attr_init(&sdata[count].dev_attr.attr);
 		sdata[count].dev_attr.attr.name = sdata[count].name;
