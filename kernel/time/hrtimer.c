@@ -1767,7 +1767,7 @@ schedule_hrtimeout_range_clock(ktime_t *expires, unsigned long delta,
 	 * A NULL parameter means "infinite"
 	 */
 	if (!expires) {
-		schedule();
+		freezable_schedule();
 		return -EINTR;
 	}
 
@@ -1781,7 +1781,7 @@ schedule_hrtimeout_range_clock(ktime_t *expires, unsigned long delta,
 		t.task = NULL;
 
 	if (likely(t.task))
-		schedule();
+		freezable_schedule();
 
 	hrtimer_cancel(&t.timer);
 	destroy_hrtimer_on_stack(&t.timer);
