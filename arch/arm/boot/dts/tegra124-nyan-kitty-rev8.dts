@@ -5,15 +5,16 @@
 #include "tegra124-nyan-kitty-emc.dtsi"
 
 / {
-	model = "Google Nyan Kitty";
+	model = "Google Nyan Kitty Rev 8";
 
-	compatible = "google,nyan-kitty-rev10", "google,nyan-kitty-rev9",
-			"google,nyan-kitty-rev8", "google,nyan-kitty-rev7",
-			"google,nyan-kitty-rev6", "google,nyan-kitty-rev5",
-			"google,nyan-kitty-rev4", "google,nyan-kitty-rev3",
-			"google,nyan-kitty-rev2", "google,nyan-kitty-rev1",
-			"google,nyan-kitty-rev0", "google,nyan",
-			"nvidia,tegra124";
+	compatible = "google,nyan-kitty-rev8",
+			"google,nyan", "nvidia,tegra124";
+
+	firmware {
+		chromeos {
+			recovery-gpio = <&gpio TEGRA_GPIO(Q, 7) GPIO_ACTIVE_LOW>;
+		};
+	};
 
 	host1x@50000000 {
 		dc@54200000 {
@@ -21,7 +22,7 @@
 			width = <476>;
 			height = <268>;
 			power-off-time = <1000>;
-			pwm-to-bl-on = <500>;
+			pwm-to-bl-on = <20>;
 			bl-off-to-pwm = <100>;
 		};
 
@@ -65,16 +66,25 @@
 				nvidia,tristate = <TEGRA_PIN_DISABLE>;
 				nvidia,enable-input = <TEGRA_PIN_DISABLE>;
 			};
+			bt_irq {
+				nvidia,pins = "pu6";
+				nvidia,function = "rsvd3";
+				nvidia,pull = <TEGRA_PIN_PULL_UP>;
+				nvidia,tristate = <TEGRA_PIN_ENABLE>;
+				nvidia,enable-input = <TEGRA_PIN_ENABLE>;
+			};
 		};
 	};
 
 	i2c@7000c400 {
 		clock-frequency = <400000>;
 		touchscreen {
-			compatible = "elan,elants_i2c", "elan,i2c_touchscreen";
+			compatible = "elan,i2c_touchscreen";
 			reg = <0x10>;
 			interrupt-parent = <&gpio>;
 			interrupts = <TEGRA_GPIO(K, 2) IRQ_TYPE_EDGE_FALLING>;
+			nvidia,pmc-wakeup = <&pmc 1 34 2>;
+			wakeup-source;
 		};
 	};
 
@@ -84,6 +94,9 @@
 		calib-1v8-offsets = <0x7676>;
 		calib-1v8-offsets-uhs-modes = <0x3f>;
 		max-frequency = <204000000>;
+		bt-wake {
+			nvidia,pmc-wakeup = <&pmc 1 7 2>;
+		};
 	};
 
 	sdhci@700b0400 {
@@ -104,6 +117,16 @@
 		calib-1v8-offsets-uhs-modes = <0x3f>;
 		max-frequency = <200000000>;
 	};
+
+        regulators {
+                avdd_lcd: regulator@5 {
+                        gpio;
+                };
+
+                lcd_bl_en: regulator@7 {
+                        gpio = <&ams3722 4 GPIO_ACTIVE_HIGH>; /* AS3722 GPIO 4 */
+                };
+        };
 
 	backlight {
 		pwms = <&pwm 1 47619>;
@@ -155,7 +178,7 @@
 
 	skin_temp: therm-est {
 		compatible = "nvidia,tegra124-therm-est";
-		toffset = <3526>;
+		toffset = <(-9948)>;
 		tc1 = <10>;
 		tc2 = <1>;
 		polling-period = <1100>;
@@ -165,12 +188,12 @@
 		sub-devs {
 			dev@0 {
 				dev = <&diode_thermal_sensor>;
-				coeffs = "-1 0 1 2 3 2 1 0 0 1 2 -1 -2 -3 -1 -2 -2 -4 -5 -11";
+				coeffs = "0 0 0 0 0 0 0 -1 -1 -1 -1 -1 0 -1 -1 -1 -1 -1 -1 -4";
 			};
 
 			dev@1 {
 				dev = <&board_thermal_sensor>;
-				coeffs = "-14 -5 -2 -1 -1 2 5 6 12 4 3 -6 0 10 10 5 1 4 17 52";
+				coeffs = "51 17 9 7 4 3 -2 -3 -2 -1 -4 -4 -5 -8 -6 -1 -1 0 11 57";
 			};
 		};
 	};
@@ -184,7 +207,7 @@
 
 			trips {
 				balance_trip0: balance_trip {
-					temperature = <45000>; /* millicelsius */
+					temperature = <55000>; /* millicelsius */
 					hysteresis = <0>; /* millicelsius */
 					type = "passive";
 				};
@@ -257,5 +280,9 @@
 				};
 			};
 		};
+	};
+
+	cpu_edp {
+		regulator-ma = <16000>;
 	};
 };
