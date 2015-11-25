@@ -117,7 +117,7 @@ static int terminate_request(struct cros_ec_device *ec_dev)
 	trans.delay_usecs = ec_spi->end_of_msg_delay;
 	spi_message_add_tail(&trans, &msg);
 
-	ret = spi_sync(ec_spi->spi, &msg);
+	ret = spi_sync_locked(ec_spi->spi, &msg);
 
 	/* Reset end-of-response timer */
 	ktime_get_ts(&ts);
@@ -153,7 +153,7 @@ static int receive_n_bytes(struct cros_ec_device *ec_dev, u8 *buf, int n)
 
 	spi_message_init(&msg);
 	spi_message_add_tail(&trans, &msg);
-	ret = spi_sync(ec_spi->spi, &msg);
+	ret = spi_sync_locked(ec_spi->spi, &msg);
 	if (ret < 0)
 		dev_err(ec_dev->dev, "spi transfer failed: %d\n", ret);
 
@@ -399,10 +399,10 @@ static int cros_ec_pkt_xfer_spi(struct cros_ec_device *ec_dev,
 	}
 
 	rx_buf = kzalloc(len, GFP_KERNEL);
-	if (!rx_buf) {
-		ret = -ENOMEM;
-		goto exit;
-	}
+	if (!rx_buf)
+		return -ENOMEM;
+
+	spi_bus_lock(ec_spi->spi->master);
 
 	/*
 	 * Leave a gap between CS assertion and clocking of data to allow the
@@ -422,7 +422,7 @@ static int cros_ec_pkt_xfer_spi(struct cros_ec_device *ec_dev,
 	trans.len = len;
 	trans.cs_change = 1;
 	spi_message_add_tail(&trans, &msg);
-	ret = spi_sync(ec_spi->spi, &msg);
+	ret = spi_sync_locked(ec_spi->spi, &msg);
 
 	/* Get the response */
 	if (!ret) {
@@ -448,6 +448,9 @@ static int cros_ec_pkt_xfer_spi(struct cros_ec_device *ec_dev,
 	}
 
 	final_ret = terminate_request(ec_dev);
+
+	spi_bus_unlock(ec_spi->spi->master);
+
 	if (!ret)
 		ret = final_ret;
 	if (ret < 0)
@@ -536,10 +539,10 @@ static int cros_ec_cmd_xfer_spi(struct cros_ec_device *ec_dev,
 	}
 
 	rx_buf = kzalloc(len, GFP_KERNEL);
-	if (!rx_buf) {
-		ret = -ENOMEM;
-		goto exit;
-	}
+	if (!rx_buf)
+		return -ENOMEM;
+
+	spi_bus_lock(ec_spi->spi->master);
 
 	/* Transmit phase - send our message */
 	debug_packet(ec_dev->dev, "out", ec_dev->dout, len);
@@ -550,7 +553,7 @@ static int cros_ec_cmd_xfer_spi(struct cros_ec_device *ec_dev,
 	trans.cs_change = 1;
 	spi_message_init(&msg);
 	spi_message_add_tail(&trans, &msg);
-	ret = spi_sync(ec_spi->spi, &msg);
+	ret = spi_sync_locked(ec_spi->spi, &msg);
 
 	/* Get the response */
 	if (!ret) {
@@ -576,6 +579,9 @@ static int cros_ec_cmd_xfer_spi(struct cros_ec_device *ec_dev,
 	}
 
 	final_ret = terminate_request(ec_dev);
+
+	spi_bus_unlock(ec_spi->spi->master);
+
 	if (!ret)
 		ret = final_ret;
 	if (ret < 0)
