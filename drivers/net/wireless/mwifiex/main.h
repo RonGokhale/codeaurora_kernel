@@ -1383,6 +1383,12 @@ void *mwifiex_alloc_dma_align_buf(int rx_len, gfp_t flags);
 void mwifiex_queue_main_work(struct mwifiex_adapter *adapter);
 int mwifiex_process_host_command(struct mwifiex_private *priv,
 				 struct iwreq *wrq);
+int mwifiex_get_wakeup_reason(struct mwifiex_private *priv, u16 action,
+			      int cmd_type,
+			      struct mwifiex_ds_wakeup_reason *wakeup_reason);
+int mwifiex_ret_wakeup_reason(struct mwifiex_private *priv,
+			      struct host_cmd_ds_command *resp,
+			      struct host_cmd_ds_wakeup_reason *wakeup_reason);
 
 int mwifiex_sysfs_register(struct mwifiex_private *priv);
 void mwifiex_sysfs_unregister(struct mwifiex_private *priv);

@@ -1728,6 +1728,22 @@ static int mwifiex_cmd_sdio_rx_aggr_cfg(struct host_cmd_ds_command *cmd,
 	return 0;
 }
 
+/* This function prepares command to get HS wakeup reason.
+ *
+ * Preparation includes -
+ *      - Setting command ID, action and proper size
+ *      - Ensuring correct endian-ness
+ */
+static int mwifiex_cmd_get_wakeup_reason(struct mwifiex_private *priv,
+					 struct host_cmd_ds_command *cmd)
+{
+	cmd->command = cpu_to_le16(HostCmd_CMD_HS_WAKEUP_REASON);
+	cmd->size = cpu_to_le16(sizeof(struct host_cmd_ds_wakeup_reason) +
+				S_DS_GEN);
+
+	return 0;
+}
+
 /*
  * This function prepares the commands before sending them to the firmware.
  *
@@ -1972,6 +1988,10 @@ int mwifiex_sta_prepare_cmd(struct mwifiex_private *priv, uint16_t cmd_no,
 		ret = mwifiex_cmd_sdio_rx_aggr_cfg(cmd_ptr, cmd_action,
 						   data_buf);
 		break;
+	case HostCmd_CMD_HS_WAKEUP_REASON:
+		ret = mwifiex_cmd_get_wakeup_reason(priv, cmd_ptr);
+		break;
+
 	default:
 		mwifiex_dbg(priv->adapter, ERROR,
 			    "PREP_CMD: unknown cmd- %#x\n", cmd_no);
