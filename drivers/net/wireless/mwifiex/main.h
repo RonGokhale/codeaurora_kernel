@@ -918,6 +918,7 @@ struct mwifiex_adapter {
 	bool scan_chan_gap_enabled;
 	struct sk_buff_head rx_data_q;
 	bool mfg_mode;
+	struct cfg80211_wowlan_nd_info *nd_info;
 };
 
 int mwifiex_init_lock_list(struct mwifiex_adapter *adapter);
