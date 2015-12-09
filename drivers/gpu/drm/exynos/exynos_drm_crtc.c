@@ -370,7 +370,7 @@ int exynos_drm_crtc_create(struct exynos_drm_manager *manager)
 	private->crtc[manager->pipe] = crtc;
 
 	ret = drm_crtc_init_with_planes(manager->drm_dev, crtc, plane, NULL,
-					&exynos_crtc_funcs);
+					&exynos_crtc_funcs, NULL);
 	if (ret < 0)
 		goto err_crtc;
 
