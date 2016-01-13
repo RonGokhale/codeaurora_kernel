@@ -770,7 +770,7 @@ static int panel_jdi_setup_primary(struct mipi_dsi_device *dsi,
 	jdi->enable_gpio = of_get_named_gpio_flags(dsi->dev.of_node,
 				"enable-gpio", 0, &gpio_flags);
 	if (!gpio_is_valid(jdi->enable_gpio)) {
-		DRM_ERROR("enable gpio not found: %d\n", ret);
+		DRM_ERROR("enable gpio not found\n");
 		ret = -ENODEV;
 		goto out_slave;
 	}
