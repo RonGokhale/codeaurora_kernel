@@ -3,8 +3,7 @@
 
 #include <linux/bug.h>
 #include <linux/stringify.h>
-#include <linux/types.h>
-#include <linux/tracepoint.h>
+#include <linux/tracepoint-defs.h>
 
 struct page;
 struct vm_area_struct;
