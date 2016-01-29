@@ -1080,12 +1080,26 @@ void dwc2_hcd_qh_deactivate(struct dwc2_hsotg *hsotg, struct dwc2_qh *qh,
 	 * Note: we purposely use the frame_number from the "hsotg" structure
 	 * since we know SOF interrupt will handle future frames.
 	 */
-	if (dwc2_frame_num_le(qh->next_active_frame, hsotg->frame_number))
+	if (dwc2_frame_num_le(qh->next_active_frame, hsotg->frame_number)) {
+		enum dwc2_transaction_type tr_type;
+
+		/*
+		 * We're bypassing the SOF handler which is normally what puts
+		 * us on the ready list because we're in a hurry and need to
+		 * try to catch up.
+		 */
+		dwc2_sch_vdbg(hsotg, "QH=%p IMM ready fn=%04x, nxt=%04x\n",
+			      qh, frame_number, qh->next_active_frame);
 		list_move_tail(&qh->qh_list_entry,
 			       &hsotg->periodic_sched_ready);
-	else
+
+		tr_type = dwc2_hcd_select_transactions(hsotg);
+		if (tr_type != DWC2_TRANSACTION_NONE)
+			dwc2_hcd_queue_transactions(hsotg, tr_type);
+	} else {
 		list_move_tail(&qh->qh_list_entry,
 			       &hsotg->periodic_sched_inactive);
+	}
 }
 
 /**
