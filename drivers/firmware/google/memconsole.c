@@ -9,6 +9,7 @@
 #include <linux/init.h>
 #include <linux/sysfs.h>
 #include <linux/kobject.h>
+#include <linux/module.h>
 
 #include "memconsole.h"
 
@@ -81,3 +82,6 @@ void memconsole_exit(void)
 	sysfs_remove_bin_file(firmware_kobj, &memconsole_bin_attr);
 }
 EXPORT_SYMBOL(memconsole_exit);
+
+MODULE_AUTHOR("Google, Inc.");
+MODULE_LICENSE("GPL");
