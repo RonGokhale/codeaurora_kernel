@@ -11,6 +11,7 @@
 #include "dm-path-selector.h"
 #include "dm-uevent.h"
 
+#include <linux/percpu_counter.h>
 #include <linux/blkdev.h>
 #include <linux/ctype.h>
 #include <linux/init.h>
@@ -83,7 +84,7 @@ struct multipath {
 	struct pgpath *current_pgpath;
 	struct priority_group *current_pg;
 	struct priority_group *next_pg;	/* Switch to this PG if set */
-	unsigned repeat_count;		/* I/Os left before calling PS again */
+	struct percpu_counter repeat_count; /* I/Os left before calling PS again */
 
 	unsigned queue_io:1;		/* Must we queue all I/O? */
 	unsigned queue_if_no_path:1;	/* Queue I/O if last path fails? */
@@ -196,15 +197,16 @@ static struct multipath *alloc_multipath(struct dm_target *ti, bool use_blk_mq)
 		init_waitqueue_head(&m->pg_init_wait);
 		mutex_init(&m->work_mutex);
 
+		if (percpu_counter_init(&m->repeat_count, 0, GFP_KERNEL))
+			goto out_percpu_cnt;
+
 		m->mpio_pool = NULL;
 		if (!use_blk_mq) {
 			unsigned min_ios = dm_get_reserved_rq_based_ios();
 
 			m->mpio_pool = mempool_create_slab_pool(min_ios, _mpio_cache);
-			if (!m->mpio_pool) {
-				kfree(m);
-				return NULL;
-			}
+			if (!m->mpio_pool)
+				goto out_mpio_pool;
 		}
 
 		m->ti = ti;
@@ -212,6 +214,12 @@ static struct multipath *alloc_multipath(struct dm_target *ti, bool use_blk_mq)
 	}
 
 	return m;
+
+out_mpio_pool:
+	percpu_counter_destroy(&m->repeat_count);
+out_percpu_cnt:
+	kfree(m);
+	return NULL;
 }
 
 static void free_multipath(struct multipath *m)
@@ -226,6 +234,7 @@ static void free_multipath(struct multipath *m)
 	kfree(m->hw_handler_name);
 	kfree(m->hw_handler_params);
 	mempool_destroy(m->mpio_pool);
+	percpu_counter_destroy(&m->repeat_count);
 	kfree(m);
 }
 
@@ -319,12 +328,14 @@ static int __choose_path_in_pg(struct multipath *m, struct priority_group *pg,
 			       size_t nr_bytes)
 {
 	struct dm_path *path;
+	unsigned repeat_count;
 
-	path = pg->ps.type->select_path(&pg->ps, &m->repeat_count, nr_bytes);
+	path = pg->ps.type->select_path(&pg->ps, &repeat_count, nr_bytes);
 	if (!path)
 		return -ENXIO;
 
 	m->current_pgpath = path_to_pgpath(path);
+	percpu_counter_set(&m->repeat_count, repeat_count);
 
 	if (m->current_pg != pg)
 		__switch_pg(m, m->current_pgpath);
@@ -412,9 +423,13 @@ static int __multipath_map(struct dm_target *ti, struct request *clone,
 	spin_lock_irq(&m->lock);
 
 	/* Do we need to select a new pgpath? */
-	if (!m->current_pgpath ||
-	    (!m->queue_io && (m->repeat_count && --m->repeat_count == 0)))
+	if (!m->current_pgpath)
 		__choose_pgpath(m, nr_bytes);
+	else if (!m->queue_io) {
+		percpu_counter_dec(&m->repeat_count);
+		if (percpu_counter_read_positive(&m->repeat_count) == 0)
+			__choose_pgpath(m, nr_bytes);
+	}
 
 	pgpath = m->current_pgpath;
 
