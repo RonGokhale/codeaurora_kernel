@@ -370,13 +370,10 @@ static struct pgpath *choose_path_in_pg(struct multipath *m,
 	struct pgpath *pgpath = NULL;
 	struct multipath_paths *paths = get_multipath_paths(m);
 
-	spin_lock_irqsave(&m->lock, flags);
 	path = pg->ps.type->select_path(&pg->ps, &repeat_count, nr_bytes);
 	if (!path) {
-		spin_unlock_irqrestore(&m->lock, flags);
 		return ERR_PTR(-ENXIO);
 	}
-	spin_unlock_irqrestore(&m->lock, flags);
 
 	pgpath = path_to_pgpath(path);
 	percpu_counter_set(&m->repeat_count, repeat_count);
