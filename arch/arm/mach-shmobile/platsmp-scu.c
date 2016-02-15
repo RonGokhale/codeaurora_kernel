@@ -46,7 +46,6 @@ void __init shmobile_smp_scu_prepare_cpus(phys_addr_t scu_base_phys,
 {
 	/* install boot code shared by all CPUs */
 	shmobile_boot_fn = virt_to_phys(shmobile_smp_boot);
-	shmobile_boot_arg = MPIDR_HWID_BITMASK;
 
 	/* enable SCU and cache coherency on booting CPU */
 	shmobile_scu_base_phys = scu_base_phys;
