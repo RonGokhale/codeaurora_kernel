@@ -563,10 +563,12 @@ enum {
 #define EXT4_GET_BLOCKS_NO_NORMALIZE		0x0040
 	/* Request will not result in inode size update (user for fallocate) */
 #define EXT4_GET_BLOCKS_KEEP_SIZE		0x0080
+	/* Do not take i_data_sem locking in ext4_map_blocks */
+#define EXT4_GET_BLOCKS_NO_LOCK			0x0100
 	/* Convert written extents to unwritten */
-#define EXT4_GET_BLOCKS_CONVERT_UNWRITTEN	0x0100
+#define EXT4_GET_BLOCKS_CONVERT_UNWRITTEN	0x0200
 	/* Write zeros to newly created written extents */
-#define EXT4_GET_BLOCKS_ZERO			0x0200
+#define EXT4_GET_BLOCKS_ZERO			0x0300
 #define EXT4_GET_BLOCKS_CREATE_ZERO		(EXT4_GET_BLOCKS_CREATE |\
 					EXT4_GET_BLOCKS_ZERO)
 
@@ -2302,6 +2304,7 @@ struct page *ext4_encrypt(struct inode *inode,
 int ext4_decrypt(struct page *page);
 int ext4_encrypted_zeroout(struct inode *inode, ext4_lblk_t lblk,
 			   ext4_fsblk_t pblk, ext4_lblk_t len);
+extern const struct dentry_operations ext4_encrypted_d_ops;
 
 #ifdef CONFIG_EXT4_FS_ENCRYPTION
 int ext4_init_crypto(void);
