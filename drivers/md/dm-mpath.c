@@ -93,11 +93,9 @@ struct multipath {
 	spinlock_t lock;
 
 	struct multipath_paths __rcu *paths;
-	struct percpu_counter repeat_count; /* I/Os left before calling PS again */
-
-	wait_queue_head_t pg_init_wait;	/* Wait for pg_init completion */
 
 	struct mutex work_mutex;
+	wait_queue_head_t pg_init_wait;	/* Wait for pg_init completion */
 	struct work_struct trigger_event;
 
 	const char *hw_handler_name;
@@ -210,9 +208,6 @@ static struct multipath *alloc_multipath(struct dm_target *ti, bool use_blk_mq)
 		paths->pg_init_delay_msecs = DM_PG_INIT_DELAY_DEFAULT;
 		rcu_assign_pointer(m->paths, paths);
 
-		if (percpu_counter_init(&m->repeat_count, 0, GFP_KERNEL))
-			goto out_percpu_cnt;
-
 		m->mpio_pool = NULL;
 		if (!use_blk_mq) {
 			unsigned min_ios = dm_get_reserved_rq_based_ios();
@@ -229,8 +224,6 @@ static struct multipath *alloc_multipath(struct dm_target *ti, bool use_blk_mq)
 	return m;
 
 out_mpio_pool:
-	percpu_counter_destroy(&m->repeat_count);
-out_percpu_cnt:
 	kfree(paths);
 out_paths:
 	kfree(m);
@@ -250,7 +243,6 @@ static void free_multipath(struct multipath *m)
 	kfree(m->hw_handler_name);
 	kfree(m->hw_handler_params);
 	mempool_destroy(m->mpio_pool);
-	percpu_counter_destroy(&m->repeat_count);
 	kfree(paths);
 	kfree(m);
 }
@@ -376,7 +368,6 @@ static struct pgpath *choose_path_in_pg(struct multipath *m,
 	}
 
 	pgpath = path_to_pgpath(path);
-	percpu_counter_set(&m->repeat_count, repeat_count);
 
 	if (unlikely(rcu_access_pointer(paths->current_pg) != pg)) {
 		/* Only update current_pgpath if pg changed */
@@ -500,18 +491,8 @@ static int __multipath_map(struct dm_target *ti, struct request *clone,
 
 	/* Do we need to select a new pgpath? */
 	pgpath = get_current_pgpath(paths);
-	if (!pgpath)
+	if (!pgpath || !paths->queue_io)
 		pgpath = choose_pgpath(m, nr_bytes, &sync_rcu);
-	else if (!paths->queue_io) {
-		/*
-		 * FIXME: Still using repeat_count for now because
-		 * removing it actively hurts performance; even if
-		 * repeat_count is 1!?
-		 */
-		percpu_counter_dec(&m->repeat_count);
-		if (percpu_counter_read_positive(&m->repeat_count) == 0)
-			pgpath = choose_pgpath(m, nr_bytes, &sync_rcu);
-	}
 
 	if (!pgpath) {
 		if (!must_push_back(m))
