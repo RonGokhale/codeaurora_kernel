@@ -35,9 +35,12 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 
+#include <linux/apple-gmux.h>
 #include <linux/console.h>
 #include <linux/module.h>
 #include <linux/pm_runtime.h>
+#include <linux/vgaarb.h>
+#include <linux/vga_switcheroo.h>
 #include <drm/drm_crtc_helper.h>
 
 static struct drm_driver driver;
@@ -600,13 +603,7 @@ static int i915_drm_suspend(struct drm_device *dev)
 
 	intel_suspend_gt_powersave(dev);
 
-	/*
-	 * Disable CRTCs directly since we want to preserve sw state
-	 * for _thaw. Also, power gate the CRTC power wells.
-	 */
-	drm_modeset_lock_all(dev);
 	intel_display_suspend(dev);
-	drm_modeset_unlock_all(dev);
 
 	intel_dp_mst_suspend(dev);
 
@@ -761,9 +758,7 @@ static int i915_drm_resume(struct drm_device *dev)
 		dev_priv->display.hpd_irq_setup(dev);
 	spin_unlock_irq(&dev_priv->irq_lock);
 
-	drm_modeset_lock_all(dev);
 	intel_display_resume(dev);
-	drm_modeset_unlock_all(dev);
 
 	intel_dp_mst_resume(dev);
 
@@ -968,6 +963,15 @@ static int i915_pci_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	 */
 	if (PCI_FUNC(pdev->devfn))
 		return -ENODEV;
+
+	/*
+	 * apple-gmux is needed on dual GPU MacBook Pro
+	 * to probe the panel if we're the inactive GPU.
+	 */
+	if (IS_ENABLED(CONFIG_VGA_ARB) && IS_ENABLED(CONFIG_VGA_SWITCHEROO) &&
+	    apple_gmux_present() && pdev != vga_default_device() &&
+	    !vga_switcheroo_handler_flags())
+		return -EPROBE_DEFER;
 
 	return drm_get_pci_dev(pdev, ent, &driver);
 }
