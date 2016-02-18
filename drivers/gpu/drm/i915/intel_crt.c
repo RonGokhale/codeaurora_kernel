@@ -71,22 +71,29 @@ static bool intel_crt_get_hw_state(struct intel_encoder *encoder,
 	struct intel_crt *crt = intel_encoder_to_crt(encoder);
 	enum intel_display_power_domain power_domain;
 	u32 tmp;
+	bool ret;
 
 	power_domain = intel_display_port_power_domain(encoder);
-	if (!intel_display_power_is_enabled(dev_priv, power_domain))
+	if (!intel_display_power_get_if_enabled(dev_priv, power_domain))
 		return false;
+
+	ret = false;
 
 	tmp = I915_READ(crt->adpa_reg);
 
 	if (!(tmp & ADPA_DAC_ENABLE))
-		return false;
+		goto out;
 
 	if (HAS_PCH_CPT(dev))
 		*pipe = PORT_TO_PIPE_CPT(tmp);
 	else
 		*pipe = PORT_TO_PIPE(tmp);
 
-	return true;
+	ret = true;
+out:
+	intel_display_power_put(dev_priv, power_domain);
+
+	return ret;
 }
 
 static unsigned int intel_crt_get_flags(struct intel_encoder *encoder)
@@ -216,6 +223,7 @@ intel_crt_mode_valid(struct drm_connector *connector,
 		     struct drm_display_mode *mode)
 {
 	struct drm_device *dev = connector->dev;
+	int max_dotclk = to_i915(dev)->max_dotclk_freq;
 
 	int max_clock = 0;
 	if (mode->flags & DRM_MODE_FLAG_DBLSCAN)
@@ -229,6 +237,9 @@ intel_crt_mode_valid(struct drm_connector *connector,
 	else
 		max_clock = 400000;
 	if (mode->clock > max_clock)
+		return MODE_CLOCK_HIGH;
+
+	if (mode->clock > max_dotclk)
 		return MODE_CLOCK_HIGH;
 
 	/* The FDI receiver on LPT only supports 8bpc and only has 2 lanes. */
