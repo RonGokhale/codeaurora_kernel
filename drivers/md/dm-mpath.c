@@ -358,11 +358,10 @@ static struct pgpath *choose_path_in_pg(struct multipath *m,
 {
 	unsigned long flags;
 	struct dm_path *path;
-	unsigned repeat_count;
 	struct pgpath *pgpath = NULL;
 	struct multipath_paths *paths = get_multipath_paths(m);
 
-	path = pg->ps.type->select_path(&pg->ps, &repeat_count, nr_bytes);
+	path = pg->ps.type->select_path(&pg->ps, nr_bytes);
 	if (!path) {
 		return ERR_PTR(-ENXIO);
 	}
