@@ -62,6 +62,8 @@ extern const int mmap_rnd_compat_bits_max;
 extern int mmap_rnd_compat_bits __read_mostly;
 #endif
 
+extern int min_filelist_kbytes;
+
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include <asm/processor.h>
