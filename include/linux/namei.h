@@ -87,6 +87,9 @@ extern void unlock_rename(struct dentry *, struct dentry *);
 
 extern void nd_jump_link(struct path *path);
 
+struct nameidata;
+extern int nameidata_get_total_link_count(struct nameidata *nd);
+
 static inline void nd_terminate_link(void *name, size_t len, size_t maxlen)
 {
 	((char *) name)[min(len, maxlen)] = '\0';
